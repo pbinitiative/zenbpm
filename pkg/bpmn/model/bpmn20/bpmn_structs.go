@@ -4,110 +4,89 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20/extensions"
 )
 
-type TDefinitions struct {
-	Id                 string     `xml:"id,attr"`
-	Name               string     `xml:"name,attr"`
-	TargetNamespace    string     `xml:"targetNamespace,attr"`
-	ExpressionLanguage string     `xml:"expressionLanguage,attr"`
-	TypeLanguage       string     `xml:"typeLanguage,attr"`
-	Exporter           string     `xml:"exporter,attr"`
-	ExporterVersion    string     `xml:"exporterVersion,attr"`
-	Process            TProcess   `xml:"process"`
-	Messages           []TMessage `xml:"message"`
+//type TProcess struct {
+//	TCallableElement
+//	//Id                           string                    `xml:"id,attr"`
+//	//Name                         string                    `xml:"name,attr"`
+//	ProcessType                  string         `xml:"processType,attr"`
+//	IsClosed                     bool           `xml:"isClosed,attr"`
+//	IsExecutable                 bool           `xml:"isExecutable,attr"`
+//	DefinitionalCollaborationRef string         `xml:"definitionalCollaborationRef,attr"`
+//	FlowElements                 []TFlowElement `xml:"-"`
+//	//StartEvents                  []TStartEvent             `xml:"startEvent"`
+//	//EndEvents                    []TEndEvent               `xml:"endEvent"`
+//	//SequenceFlows                []TSequenceFlow           `xml:"sequenceFlow"`
+//	//ServiceTasks                 []TServiceTask            `xml:"serviceTask"`
+//	//UserTasks                    []TUserTask               `xml:"userTask"`
+//	//ParallelGateway              []TParallelGateway        `xml:"parallelGateway"`
+//	//ExclusiveGateway             []TExclusiveGateway       `xml:"exclusiveGateway"`
+//	//IntermediateCatchEvent       []TIntermediateCatchEvent `xml:"intermediateCatchEvent"`
+//	//IntermediateThrowEvent        []TIntermediateThrowEvent `xml:"intermediateThrowEvent"`
+//	//EventBasedGateway            []TEventBasedGateway      `xml:"eventBasedGateway"`
+//	//InclusiveGateway             []TInclusiveGateway       `xml:"inclusiveGateway"`
+//}
+
+func init() {
+	registeredRootElements[RootElementMessage] = func() RootElement { return &TMessage{} }
 }
 
-type TProcess struct {
-	Id                           string                    `xml:"id,attr"`
-	Name                         string                    `xml:"name,attr"`
-	ProcessType                  string                    `xml:"processType,attr"`
-	IsClosed                     bool                      `xml:"isClosed,attr"`
-	IsExecutable                 bool                      `xml:"isExecutable,attr"`
-	DefinitionalCollaborationRef string                    `xml:"definitionalCollaborationRef,attr"`
-	StartEvents                  []TStartEvent             `xml:"startEvent"`
-	EndEvents                    []TEndEvent               `xml:"endEvent"`
-	SequenceFlows                []TSequenceFlow           `xml:"sequenceFlow"`
-	ServiceTasks                 []TServiceTask            `xml:"serviceTask"`
-	UserTasks                    []TUserTask               `xml:"userTask"`
-	ParallelGateway              []TParallelGateway        `xml:"parallelGateway"`
-	ExclusiveGateway             []TExclusiveGateway       `xml:"exclusiveGateway"`
-	IntermediateCatchEvent       []TIntermediateCatchEvent `xml:"intermediateCatchEvent"`
-	IntermediateTrowEvent        []TIntermediateThrowEvent `xml:"intermediateThrowEvent"`
-	EventBasedGateway            []TEventBasedGateway      `xml:"eventBasedGateway"`
-	InclusiveGateway             []TInclusiveGateway       `xml:"inclusiveGateway"`
+func (d *RootElementsType) Messages() *[]TMessage {
+	var messages []TMessage
+	for _, re := range []RootElement(*d) {
+		if re.getRootElementType() == RootElementMessage {
+			messages = append(messages, re.(TMessage))
+		}
+	}
+	return &messages
 }
 
-type TSequenceFlow struct {
-	Id                  string        `xml:"id,attr"`
-	Name                string        `xml:"name,attr"`
-	SourceRef           string        `xml:"sourceRef,attr"`
-	TargetRef           string        `xml:"targetRef,attr"`
-	ConditionExpression []TExpression `xml:"conditionExpression"`
-}
+//type TSequenceFlow struct {
+//	Id                  string        `xml:"id,attr"`
+//	Name                string        `xml:"name,attr"`
+//	SourceRef           string        `xml:"sourceRef,attr"`
+//	TargetRef           string        `xml:"targetRef,attr"`
+//	ConditionExpression []TExpression `xml:"conditionExpression"`
+//}
 
 type TExpression struct {
 	Text string `xml:",innerxml"`
 }
 
 type TStartEvent struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IsInterrupting      bool     `xml:"isInterrupting,attr"`
-	ParallelMultiple    bool     `xml:"parallelMultiple,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
+	TEvent
+	IsInterrupting   bool `xml:"isInterrupting,attr"`
+	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 }
 
-type TEndEvent struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
-}
+type TEndEvent = TEvent
 
 type TServiceTask struct {
-	Id                  string                     `xml:"id,attr"`
-	Name                string                     `xml:"name,attr"`
-	Default             string                     `xml:"default,attr"`
-	CompletionQuantity  int                        `xml:"completionQuantity,attr"`
-	IsForCompensation   bool                       `xml:"isForCompensation,attr"`
-	OperationRef        string                     `xml:"operationRef,attr"`
-	Implementation      string                     `xml:"implementation,attr"`
-	IncomingAssociation []string                   `xml:"incoming"`
-	OutgoingAssociation []string                   `xml:"outgoing"`
-	Input               []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
-	Output              []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
-	TaskDefinition      extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	TTask
+	Default        string                     `xml:"default,attr"`
+	OperationRef   string                     `xml:"operationRef,attr"`
+	Implementation string                     `xml:"implementation,attr"`
+	Input          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 }
 
 type TUserTask struct {
-	Id                   string                           `xml:"id,attr"`
-	Name                 string                           `xml:"name,attr"`
-	IncomingAssociation  []string                         `xml:"incoming"`
-	OutgoingAssociation  []string                         `xml:"outgoing"`
+	TTask
 	Input                []extensions.TIoMapping          `xml:"extensionElements>ioMapping>input"`
 	Output               []extensions.TIoMapping          `xml:"extensionElements>ioMapping>output"`
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
 type TParallelGateway struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
+	TGateway
 }
 
 type TExclusiveGateway struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
+	TGateway
 }
 
 type TIntermediateCatchEvent struct {
-	Id                     string                  `xml:"id,attr"`
-	Name                   string                  `xml:"name,attr"`
-	IncomingAssociation    []string                `xml:"incoming"`
-	OutgoingAssociation    []string                `xml:"outgoing"`
+	TEvent
 	MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
 	TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
 	LinkEventDefinition    TLinkEventDefinition    `xml:"linkEventDefinition"`
@@ -116,19 +95,22 @@ type TIntermediateCatchEvent struct {
 }
 
 type TIntermediateThrowEvent struct {
-	Id                  string                  `xml:"id,attr"`
-	Name                string                  `xml:"name,attr"`
-	IncomingAssociation []string                `xml:"incoming"`
+	TEvent
 	LinkEventDefinition TLinkEventDefinition    `xml:"linkEventDefinition"`
 	Output              []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
 type TEventBasedGateway struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
+	TGateway
+	Instantiate      bool                  `xml:"instantiate,attr"`
+	EventGatewayType EventBasedGatewayType `xml:"eventGatewayType,attr"`
 }
+type EventBasedGatewayType = string
+
+const (
+	EventBasedGatewayTypeExclusive EventBasedGatewayType = "Exclusive"
+	EventBasedGatewayTypeParallel  EventBasedGatewayType = "Parallel"
+)
 
 type TMessageEventDefinition struct {
 	Id         string `xml:"id,attr"`
@@ -150,6 +132,8 @@ type TMessage struct {
 	Name string `xml:"name,attr"`
 }
 
+func (t TMessage) getRootElementType() RootElementType { return RootElementMessage }
+
 type TTimeDuration struct {
 	XMLText string `xml:",innerxml"`
 }
@@ -160,3 +144,8 @@ type TInclusiveGateway struct {
 	IncomingAssociation []string `xml:"incoming"`
 	OutgoingAssociation []string `xml:"outgoing"`
 }
+
+const (
+	//RootElementProcess RootElementType = "process"
+	RootElementMessage RootElementType = "message"
+)

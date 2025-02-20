@@ -33,43 +33,43 @@ func FindBaseElementsById(definitions *TDefinitions, id string) (elements []*Bas
 			elements = append(elements, element)
 		}
 	}
-	for _, startEvent := range definitions.Process.StartEvents {
+	for _, startEvent := range definitions.RootElements.Process().StartEvents {
 		var be BaseElement = startEvent
 		appender(&be)
 	}
-	for _, endEvent := range definitions.Process.EndEvents {
+	for _, endEvent := range definitions.RootElements.Process().EndEvents {
 		var be BaseElement = endEvent
 		appender(&be)
 	}
-	for _, task := range definitions.Process.ServiceTasks {
+	for _, task := range definitions.RootElements.Process().ServiceTasks {
 		var be BaseElement = task
 		appender(&be)
 	}
-	for _, task := range definitions.Process.UserTasks {
+	for _, task := range definitions.RootElements.Process().UserTasks {
 		var be BaseElement = task
 		appender(&be)
 	}
-	for _, parallelGateway := range definitions.Process.ParallelGateway {
+	for _, parallelGateway := range definitions.RootElements.Process().ParallelGateway {
 		var be BaseElement = parallelGateway
 		appender(&be)
 	}
-	for _, exclusiveGateway := range definitions.Process.ExclusiveGateway {
+	for _, exclusiveGateway := range definitions.RootElements.Process().ExclusiveGateway {
 		var be BaseElement = exclusiveGateway
 		appender(&be)
 	}
-	for _, eventBasedGateway := range definitions.Process.EventBasedGateway {
+	for _, eventBasedGateway := range definitions.RootElements.Process().EventBasedGateway {
 		var be BaseElement = eventBasedGateway
 		appender(&be)
 	}
-	for _, intermediateCatchEvent := range definitions.Process.IntermediateCatchEvent {
+	for _, intermediateCatchEvent := range definitions.RootElements.Process().IntermediateCatchEvent {
 		var be BaseElement = intermediateCatchEvent
 		appender(&be)
 	}
-	for _, intermediateCatchEvent := range definitions.Process.IntermediateTrowEvent {
+	for _, intermediateCatchEvent := range definitions.RootElements.Process().IntermediateThrowEvent {
 		var be BaseElement = intermediateCatchEvent
 		appender(&be)
 	}
-	for _, inclusiveGateway := range definitions.Process.InclusiveGateway {
+	for _, inclusiveGateway := range definitions.RootElements.Process().InclusiveGateway {
 		var be BaseElement = inclusiveGateway
 		appender(&be)
 	}

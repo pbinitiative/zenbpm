@@ -39,14 +39,14 @@ func (state *BpmnEngineState) load(xmlData []byte, resourceName string) (*Proces
 
 	processInfo := ProcessInfo{
 		Version:          1,
-		BpmnProcessId:    definitions.Process.Id,
+		BpmnProcessId:    definitions.RootElements.Process().Id,
 		ProcessKey:       state.generateKey(),
 		definitions:      definitions,
 		bpmnData:         compressAndEncode(xmlData),
 		bpmnResourceName: resourceName,
 		bpmnChecksum:     md5sum,
 	}
-	processes := state.FindProcessesById(definitions.Process.Id)
+	processes := state.FindProcessesById(definitions.RootElements.Process().Id)
 	if len(processes) > 0 {
 		if areEqual(processes[0].bpmnChecksum, md5sum) {
 			return processes[0], nil

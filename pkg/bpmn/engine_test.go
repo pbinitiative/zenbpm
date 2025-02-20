@@ -273,11 +273,11 @@ func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
 	// when
 	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v1.definitions.RootElements.Process().Name, is.EqualTo("aName"))
 	// when
 	v2, err := engine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v2.definitions.RootElements.Process().Name, is.EqualTo("aName"))
 
 	instance, err := engine.CreateInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())
@@ -299,11 +299,11 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 	// when
 	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v1.definitions.RootElements.Process().Name, is.EqualTo("aName"))
 	// when
 	v2, err := engine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v2.definitions.RootElements.Process().Name, is.EqualTo("aName"))
 
 	instance, err := engine.CreateAndRunInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())

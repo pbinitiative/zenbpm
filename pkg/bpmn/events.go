@@ -145,7 +145,7 @@ func (state *BpmnEngineState) createMessageSubscription(instance *processInstanc
 func (state *BpmnEngineState) findMessagesByProcessKey(processKey int64) *[]bpmn20.TMessage {
 	p := state.persistence.FindProcessByKey(processKey)
 	if p != nil {
-		return &p.definitions.Messages
+		return p.definitions.RootElements.Messages()
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ func (state *BpmnEngineState) handleIntermediateThrowEvent(process *ProcessInfo,
 			elementName: ite.Name,
 		}}
 	}
-	for _, ice := range process.definitions.Process.IntermediateCatchEvent {
+	for _, ice := range process.definitions.RootElements.Process().IntermediateCatchEvent {
 		if ice.LinkEventDefinition.Name == linkName {
 			elementVarHolder := var_holder.New(&instance.VariableHolder, nil)
 			if err := propagateProcessInstanceVariables(&elementVarHolder, ite.Output); err != nil {

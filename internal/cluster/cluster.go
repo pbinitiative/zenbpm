@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/pkg/store"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
 
@@ -38,7 +38,7 @@ type ZenNode struct {
 }
 
 // make sure that the ZenNode implements PersistentStorage
-var _ store.PersistentStorage = &ZenNode{}
+var _ storage.PersistentStorage = &ZenNode{}
 
 // Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {

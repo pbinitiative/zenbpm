@@ -12,16 +12,16 @@ import (
 	"github.com/bwmarrin/snowflake"
 	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	sql "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
-	"github.com/pbinitiative/zenbpm/pkg/store"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
 
 type BpmnEnginePersistenceRqlite struct {
 	snowflakeIdGenerator *snowflake.Node
-	store                store.PersistentStorage
+	store                storage.PersistentStorage
 }
 
-func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, store store.PersistentStorage) *BpmnEnginePersistenceRqlite {
+func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, store storage.PersistentStorage) *BpmnEnginePersistenceRqlite {
 	gen := snowflakeIdGenerator
 
 	Init(store)
@@ -442,7 +442,7 @@ func (persistence *BpmnEnginePersistenceRqlite) IsLeader() bool {
 	return persistence.store.IsLeader(context.Background())
 }
 
-func Init(store store.PersistentStorage) {
+func Init(store storage.PersistentStorage) {
 	log.Printf("Is leader: %v", store.IsLeader(context.Background()))
 	if !store.IsLeader(context.Background()) {
 		log.Println("Not a leader, skipping init")
@@ -484,7 +484,7 @@ func whereClauseBuilder(mappings map[string]string, operator string) string {
 
 }
 
-func execute(statements []string, store store.PersistentStorage) ([]*proto.ExecuteQueryResponse, error) {
+func execute(statements []string, store storage.PersistentStorage) ([]*proto.ExecuteQueryResponse, error) {
 	stmts := generateStatments(statements)
 
 	er := &proto.ExecuteRequest{
@@ -516,7 +516,7 @@ func generateStatments(statements []string) []*proto.Statement {
 	return stmts
 }
 
-func query(query string, store store.PersistentStorage) ([]*proto.QueryRows, error) {
+func query(query string, store storage.PersistentStorage) ([]*proto.QueryRows, error) {
 
 	stmts := generateStatments([]string{query})
 

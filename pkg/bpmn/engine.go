@@ -8,7 +8,7 @@ import (
 	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
 	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
-	"github.com/pbinitiative/zenbpm/pkg/store"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -31,14 +31,14 @@ type BpmnEngine interface {
 }
 
 // New creates a new instance of the BPMN Engine;
-func New(store store.PersistentStorage) BpmnEngineState {
+func New(store storage.PersistentStorage) BpmnEngineState {
 	return NewWithName(fmt.Sprintf("Bpmn-Engine-%d", getGlobalSnowflakeIdGenerator().Generate().Int64()), store)
 }
 
 // NewWithName creates an engine with an arbitrary name of the engine;
 // useful in case you have multiple ones, in order to distinguish them;
 // also stored in when marshalling a process instance state, in case you want to store some special identifier
-func NewWithName(name string, store store.PersistentStorage) BpmnEngineState {
+func NewWithName(name string, store storage.PersistentStorage) BpmnEngineState {
 	snowflakeIdGenerator := getGlobalSnowflakeIdGenerator()
 	state := BpmnEngineState{
 		name:         name,

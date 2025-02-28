@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: schema.sql
 
-package sql
+package rqlite
 
 import (
 	"context"

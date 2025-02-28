@@ -2,21 +2,19 @@
 // versions:
 //   sqlc v1.28.0
 
-package sql
+package rqlite
 
 import (
 	"context"
 	"database/sql"
-
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 )
 
 type DBTX interface {
 	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 	PrepareContext(context.Context, string) (*sql.Stmt, error)
 	// QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
-	QueryContext(context.Context, string, ...interface{}) (*rqlite.Rows, error)
-	QueryRowContext(context.Context, string, ...interface{}) *rqlite.Rows
+	QueryContext(context.Context, string, ...interface{}) (*Rows, error)
+	QueryRowContext(context.Context, string, ...interface{}) *Row
 }
 
 func New(db DBTX) *Queries {

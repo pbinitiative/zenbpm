@@ -7,7 +7,7 @@ import (
 
 type BpmnEnginePersistence interface {
 	FindProcesses(processId string, processKey int64) []*sql.ProcessDefinitionEntity
-	FindProcessInstances(processInstanceKey int64, processDefinitionKey int64) []*sql.ProcessInstanceEntity
+	FindProcessInstances(processInstanceKey int64, processDefinitionKey int64) []ProcessInstance
 	FindMessageSubscription(originActivityKey int64, processInstanceKey int64, elementId string, state []string) []*sql.MessageSubscriptionEntity
 	FindTimers(originActivityKey int64, processInstanceKey int64, state []string) []*sql.TimerEntity
 	FindJobs(elementId string, processInstanceKey int64, jobKey int64, state []string) []*sql.JobEntity

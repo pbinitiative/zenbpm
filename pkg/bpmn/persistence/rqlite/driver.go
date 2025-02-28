@@ -20,6 +20,15 @@ type Rows struct {
 	ctx       context.Context
 }
 
+type Row struct {
+	columns   []string
+	types     []string
+	values    *proto.Values
+	rowNumber int64 // -1 is the default, indicating Next() has not been called
+	err       error
+	ctx       context.Context
+}
+
 func constructRows(ctx context.Context, columns []string, types []string, values []*proto.Values) *Rows {
 	return &Rows{
 		columns:   columns,

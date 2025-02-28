@@ -75,6 +75,7 @@ func (s *ZenNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.
 	return s.partitions[0].Query(ctx, req)
 }
 
+// TODO: this needs to implement that only the leader can execute
 func (s *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
 	return s.partitions[0].Execute(ctx, req)
 }

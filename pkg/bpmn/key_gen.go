@@ -17,14 +17,14 @@ func (state *BpmnEngineState) generateKey() int64 {
 // constraints: see also createGlobalSnowflakeIdGenerator
 func getGlobalSnowflakeIdGenerator() *snowflake.Node {
 	if globalIdGenerator == nil {
-		globalIdGenerator = createGlobalSnowflakeIdGenerator()
+		globalIdGenerator = CreateSnowflakeIdGenerator()
 	}
 	return globalIdGenerator
 }
 
-// createGlobalSnowflakeIdGenerator a new ID generator,
+// CreateSnowflakeIdGenerator a new ID generator,
 // constraints: creating two new instances within a few microseconds, will create generators with the same seed
-func createGlobalSnowflakeIdGenerator() *snowflake.Node {
+func CreateSnowflakeIdGenerator() *snowflake.Node {
 	hash32 := adler32.New()
 	for _, e := range os.Environ() {
 		hash32.Sum([]byte(e))

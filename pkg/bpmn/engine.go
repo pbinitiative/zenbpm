@@ -49,7 +49,7 @@ func NewWithName(name string, store storage.PersistentStorage) BpmnEngineState {
 	}
 
 	// TODO: this should be removed and replaced by calls to store
-	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, store)
+	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(store)
 
 	var p BpmnEnginePersistenceService = NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, &state, rqliteService)
 

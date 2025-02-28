@@ -1,0 +1,14 @@
+version: "2"
+sql:
+    - engine: "sqlite"
+      queries:
+          - "sql/process_instance.sql"
+          - "sql/schema.sql"
+      schema: "sql/schema.sql"
+      gen:
+          go:
+              package: "sql"
+              out: "generated"
+              # sql_package: "sql"
+              emit_json_tags: true
+              emit_interface: true

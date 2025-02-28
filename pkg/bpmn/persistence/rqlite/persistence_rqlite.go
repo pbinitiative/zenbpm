@@ -2,7 +2,9 @@ package rqlite
 
 import (
 	"context"
+	sqlc "database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	sql "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	db "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql/generated"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
@@ -19,16 +22,21 @@ import (
 type BpmnEnginePersistenceRqlite struct {
 	snowflakeIdGenerator *snowflake.Node
 	store                storage.PersistentStorage
+	queries              *db.Queries
 }
+
+//go:embed schema.sql
+var ddl string
 
 func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, store storage.PersistentStorage) *BpmnEnginePersistenceRqlite {
 	gen := snowflakeIdGenerator
 
-	Init(store)
+	queries := Init(store)
 
 	return &BpmnEnginePersistenceRqlite{
 		snowflakeIdGenerator: gen,
 		store:                store,
+		queries:              queries,
 	}
 }
 
@@ -94,6 +102,27 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId string, 
 
 	}
 	return processDefinitions
+}
+
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstancesNew(processInstanceKey int64, processDefinitionKey int64) []*db.ProcessInstance {
+
+	params := db.GetProcessInstancesParams{
+		Key:                  sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
+		ProcessDefinitionKey: sqlc.NullInt64{Int64: processDefinitionKey, Valid: processDefinitionKey != -1},
+	}
+
+	// Fetch process instances
+	instances, err := queries.GetProcessInstances(context.Background(), params)
+	if err != nil {
+		log.Fatal("Select failed:", err)
+	}
+
+	var processInstances []*db.ProcessInstance = make([]*db.ProcessInstance, 0)
+	for _, inst := range instances {
+		processInstances = append(processInstances, &inst)
+	}
+
+	return processInstances
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInstanceKey int64, processDefinitionKey int64) []*sql.ProcessInstanceEntity {
@@ -442,11 +471,11 @@ func (persistence *BpmnEnginePersistenceRqlite) IsLeader() bool {
 	return persistence.store.IsLeader(context.Background())
 }
 
-func Init(store storage.PersistentStorage) {
+func Init(store storage.PersistentStorage) *db.Queries {
 	log.Printf("Is leader: %v", store.IsLeader(context.Background()))
 	if !store.IsLeader(context.Background()) {
 		log.Println("Not a leader, skipping init")
-		return
+		return nil
 	}
 
 	log.Println("Initing database!")
@@ -463,6 +492,22 @@ func Init(store storage.PersistentStorage) {
 	if err != nil {
 		log.Fatalf("Error executing SQL statements %s", err)
 	}
+
+	ctx := context.Background()
+
+	dbConn, err := sqlc.Open("sqlite", ":memory:")
+	if err != nil {
+		return nil
+	}
+
+	// create tables
+	if _, err := dbConn.ExecContext(ctx, ddl); err != nil {
+		return nil
+	}
+
+	queries := db.New(dbConn)
+
+	return queries
 
 }
 
@@ -540,7 +585,64 @@ func query(query string, store storage.PersistentStorage) ([]*proto.QueryRows, e
 	}
 	log.Printf("Result: %v", results)
 	return results, nil
+}
 
+type rqliteResult struct {
+	lastInsertId int64
+	rowsAffected int64
+}
+
+func (r rqliteResult) LastInsertId() (int64, error) {
+	return r.lastInsertId, nil
+}
+
+func (r rqliteResult) RowsAffected() (int64, error) {
+	return r.rowsAffected, nil
+}
+
+func (persistence *BpmnEnginePersistenceRqlite) ExecContext(ctx context.Context, sql string, _ ...interface{}) (sqlc.Result, error) {
+	result, err := execute([]string{sql}, persistence.store)
+
+	if err != nil {
+		log.Panicf("Error executing SQL statements")
+		return nil, err
+	}
+
+	lastInsertId, rowsAffected := int64(-1), int64(-1)
+	for _, r := range result {
+		lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
+	}
+	return rqliteResult{lastInsertId: lastInsertId, rowsAffected: rowsAffected}, nil
+}
+
+func (persistence *BpmnEnginePersistenceRqlite) PrepareContext(ctx context.Context, sql string) (*sqlc.Stmt, error) {
+	return nil, errors.New("PrepareContext not supported by rqlite")
+}
+
+func (persistence *BpmnEnginePersistenceRqlite) QueryContext(ctx context.Context, sql string, args ...interface{}) (*Rows, error) {
+	results, err := query(sql, persistence.store)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) > 1 {
+		return nil, errors.New("Multiple results not supported")
+	}
+	for _, r := range results {
+		return constructRows(ctx, r.Columns, r.Types, r.Values), nil
+	}
+	// empty results
+	return constructRows(ctx, []string{}, []string{}, []*proto.Values{}), nil
+}
+
+func (persistence *BpmnEnginePersistenceRqlite) QueryRowContext(ctx context.Context, sql string, args ...interface{}) *sqlc.Row {
+	// rows, err := persistence.QueryContext(ctx, sql, args...)
+	// if err != nil {
+	// 	return &sqlc.Row{} // Returning empty sql.Row on error
+	// }
+	// defer rows.Close()
+
+	// return rowsToRow(rows)
+	return nil
 }
 
 var activityStateMap = map[string]int{

@@ -1,5 +1,11 @@
-name: go test
-on: [ push, pull_request ]
+name: go-test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
 jobs:
   go-test:
     runs-on: ubuntu-latest

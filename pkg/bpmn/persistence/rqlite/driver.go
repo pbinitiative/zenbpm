@@ -21,12 +21,11 @@ type Rows struct {
 }
 
 type Row struct {
-	columns   []string
-	types     []string
-	values    *proto.Values
-	rowNumber int64 // -1 is the default, indicating Next() has not been called
-	err       error
-	ctx       context.Context
+	columns []string
+	types   []string
+	values  *proto.Values
+	err     error
+	ctx     context.Context
 }
 
 func constructRows(ctx context.Context, columns []string, types []string, values []*proto.Values) *Rows {
@@ -71,13 +70,25 @@ func (qr *Rows) Scan(dest ...any) error {
 		return errors.New("you need to Next() before you Scan(), sorry, it's complicated")
 	}
 
-	if len(dest) != len(qr.columns) {
-		return fmt.Errorf("expected %d columns but got %d vars", len(qr.columns), len(dest))
+	if qr.rowNumber >= int64(len(qr.values)) {
+		return errors.New("no more rows")
 	}
 
 	thisRowValues := qr.values[qr.rowNumber]
+	err := Scan(qr.ctx, qr.columns, thisRowValues, dest...)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func Scan(ctx context.Context, columns []string, values *proto.Values, dest ...any) error {
+	if len(dest) != len(columns) {
+		return fmt.Errorf("expected %d columns but got %d vars", len(columns), len(dest))
+	}
 	for n, d := range dest {
-		src := thisRowValues.Parameters[n]
+		src := values.Parameters[n]
 		switch d := d.(type) {
 		case *time.Time:
 			if src == nil {
@@ -85,7 +96,7 @@ func (qr *Rows) Scan(dest ...any) error {
 			}
 			t, err := toTime(src)
 			if err != nil {
-				return fmt.Errorf("%v: bad time col:(%d/%s) val:%v", err, n, qr.columns[n], src)
+				return fmt.Errorf("%v: bad time col:(%d/%s) val:%v", err, n, columns[n], src)
 			}
 			*d = t
 		case *int:
@@ -101,7 +112,24 @@ func (qr *Rows) Scan(dest ...any) error {
 				}
 				*d = i
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
+			default:
+				return fmt.Errorf("invalid int col:%d type:%T val:%v", n, src, src)
+			}
+		case *int32:
+			switch x := src.GetValue().(type) {
+			case *proto.Parameter_I:
+				*d = int32(x.I)
+			case *proto.Parameter_D:
+				*d = int32(x.D)
+			case *proto.Parameter_S:
+				i, err := strconv.Atoi(x.S)
+				if err != nil {
+					return err
+				}
+				*d = int32(i)
+			case nil:
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid int col:%d type:%T val:%v", n, src, src)
 			}
@@ -118,7 +146,7 @@ func (qr *Rows) Scan(dest ...any) error {
 				}
 				*d = int64(i)
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid int col:%d type:%T val:%v", n, src, src)
 			}
@@ -135,7 +163,7 @@ func (qr *Rows) Scan(dest ...any) error {
 				}
 				*d = f
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid float64 col:%d type:%T val:%v", n, src, src)
 			}
@@ -144,7 +172,7 @@ func (qr *Rows) Scan(dest ...any) error {
 			case *proto.Parameter_S:
 				*d = x.S
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid string col:%d type:%T val:%v", n, src, src)
 			}
@@ -174,7 +202,7 @@ func (qr *Rows) Scan(dest ...any) error {
 				}
 				*d = b
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid bool col:%d type:%T val:%v", n, src, src)
 			}
@@ -185,7 +213,7 @@ func (qr *Rows) Scan(dest ...any) error {
 			case *proto.Parameter_S:
 				*d = []byte(x.S)
 			case nil:
-				log.Debugf(qr.ctx, "skipping nil scan data for variable #%d (%s)", n, qr.columns[n])
+				log.Debugf(ctx, "skipping nil scan data for variable #%d (%s)", n, columns[n])
 			default:
 				return fmt.Errorf("invalid []byte col:%d type:%T val:%v", n, src, src)
 			}
@@ -306,7 +334,6 @@ func (qr *Rows) Scan(dest ...any) error {
 			return fmt.Errorf("unknown destination type (%T) to scan into in variable #%d", d, n)
 		}
 	}
-
 	return nil
 }
 
@@ -330,4 +357,12 @@ func (rs *Rows) Err() error {
 	// As we know potential error right at the beging ater the QueryContext is called we dont need this
 	return nil
 
+}
+
+func (r *Row) Scan(dest ...interface{}) error {
+	if r.values == nil {
+		return errors.New("No row to scan")
+	}
+	Scan(r.ctx, r.columns, r.values, dest...)
+	return nil
 }

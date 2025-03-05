@@ -3,16 +3,27 @@ sql:
     - engine: "sqlite"
       queries:
           - "sql/process_instance.sql"
-          - "sql/schema.sql"
+          - "sql/process_definition.sql"
+          - "sql/message_subscription.sql"
+          - "sql/timer.sql"
+          - "sql/job.sql"
+          - "sql/activity_instance.sql"
+          #   - "sql/schema.sql"
       schema: "sql/schema.sql"
 
       gen:
           go:
               package: "rqlite"
               out: "./"
-              # sql_package: "sql"
               emit_json_tags: true
+              emit_empty_slices: true
               emit_interface: true
               overrides:
                   - column: "process_instance.state"
+                    go_type: "int"
+                  - column: "process_definition.version"
+                    go_type: "int32"
+                  - column: "message_subscription.state"
+                    go_type: "int"
+                  - column: "message_subscription.origin_activity_state"
                     go_type: "int"

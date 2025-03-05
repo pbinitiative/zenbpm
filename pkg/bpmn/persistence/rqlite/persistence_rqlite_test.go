@@ -9,7 +9,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
-	sql "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 )
 
 var rqlitePersistence *BpmnEnginePersistenceRqlite
@@ -77,12 +76,8 @@ func Test_ParseSimleResult_works(t *testing.T) {
 }
 
 func Test_ProcessInstanceWrite_works(t *testing.T) {
-	err := rqlitePersistence.createSchema()
-	if err != nil {
-		t.Fatalf("Failed creating schema: %s", err)
-	}
 
-	processInstance := sql.ProcessInstanceEntity{
+	processInstance := ProcessInstance{
 		Key:                  1,
 		ProcessDefinitionKey: 1,
 		CreatedAt:            time.Now().Unix(),
@@ -91,17 +86,117 @@ func Test_ProcessInstanceWrite_works(t *testing.T) {
 		CaughtEvents:         "",
 		Activities:           "",
 	}
-	err = rqlitePersistence.PersistProcessInstanceNew(context.Background(), &processInstance)
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processInstances := rqlitePersistence.FindProcessInstances(1, -1)
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), 1, -1)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
 
 	for _, pi := range processInstances {
 		if pi.Key != 1 {
 			t.Errorf("Wrong key: %d", pi.Key)
 		}
 	}
+}
+
+func Test_ProcessInstanceUpdate_works(t *testing.T) {
+
+	processInstance := ProcessInstance{
+		Key:                  1,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                1,
+		VariableHolder:       "",
+		CaughtEvents:         "",
+		Activities:           "",
+	}
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processInstance.State = 4
+	processInstance.Activities = "[]"
+	processInstance.VariableHolder = "[]"
+	processInstance.CaughtEvents = "[]"
+
+	err = rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
+
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), 1, -1)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
+
+	for _, pi := range processInstances {
+		if pi.Key != 1 {
+			t.Errorf("Wrong key: %d", pi.Key)
+		}
+		if pi.State != 4 {
+			t.Errorf("Wrong state: %d", pi.State)
+		}
+		if pi.Activities != "[]" {
+			t.Errorf("Wrong activities: %s", pi.Activities)
+		}
+		if pi.VariableHolder != "[]" {
+			t.Errorf("Wrong variable holder: %s", pi.VariableHolder)
+		}
+		if pi.CaughtEvents != "[]" {
+			t.Errorf("Wrong caught events: %s", pi.CaughtEvents)
+		}
+	}
+}
+
+func Test_ProcessDefinitionWrite_works(t *testing.T) {
+	ProcessDefinition := ProcessDefinition{
+		Key:              1,
+		Version:          1,
+		BpmnProcessID:    "1",
+		BpmnData:         "",
+		BpmnChecksum:     []byte{},
+		BpmnResourceName: "",
+	}
+
+	err := rqlitePersistence.SaveNewProcess(t.Context(), &ProcessDefinition)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), "1", -1)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(processDefinitions) != 1 {
+		t.Errorf("Wrong number of process definitions: %d", len(processDefinitions))
+	}
+
+	for _, pd := range processDefinitions {
+		if pd.Key != 1 {
+			t.Errorf("Wrong key: %d", pd.Key)
+		}
+	}
+
 }

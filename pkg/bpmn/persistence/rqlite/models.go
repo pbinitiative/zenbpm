@@ -4,6 +4,49 @@
 
 package rqlite
 
+type ActivityInstance struct {
+	Key                  int64       `json:"key"`
+	ProcessInstanceKey   int64       `json:"process_instance_key"`
+	ProcessDefinitionKey int64       `json:"process_definition_key"`
+	CreatedAt            int64       `json:"created_at"`
+	State                string      `json:"state"`
+	ElementID            string      `json:"element_id"`
+	BpmnElementType      string      `json:"bpmn_element_type"`
+	
+}
+
+type Job struct {
+	Key                int64  `json:"key"`
+	ElementID          string `json:"element_id"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	State              int64  `json:"state"`
+	CreatedAt          int64  `json:"created_at"`
+}
+
+type MessageSubscription struct {
+	ElementInstanceKey  int64       `json:"element_instance_key"`
+	ElementID           string      `json:"element_id"`
+	ProcessKey          int64       `json:"process_key"`
+	ProcessInstanceKey  int64       `json:"process_instance_key"`
+	Name                string      `json:"name"`
+	State               int         `json:"state"`
+	CreatedAt           int64       `json:"created_at"`
+	OriginActivityKey   int64       `json:"origin_activity_key"`
+	OriginActivityState int         `json:"origin_activity_state"`
+	OriginActivityID    string      `json:"origin_activity_id"`
+	
+}
+
+type ProcessDefinition struct {
+	Key              int64  `json:"key"`
+	Version          int32  `json:"version"`
+	BpmnProcessID    string `json:"bpmn_process_id"`
+	BpmnData         string `json:"bpmn_data"`
+	BpmnChecksum     []byte `json:"bpmn_checksum"`
+	BpmnResourceName string `json:"bpmn_resource_name"`
+}
+
 type ProcessInstance struct {
 	Key                  int64  `json:"key"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
@@ -12,4 +55,16 @@ type ProcessInstance struct {
 	VariableHolder       string `json:"variable_holder"`
 	CaughtEvents         string `json:"caught_events"`
 	Activities           string `json:"activities"`
+}
+
+type Timer struct {
+	ElementID          string      `json:"element_id"`
+	ElementInstanceKey int64       `json:"element_instance_key"`
+	ProcessKey         int64       `json:"process_key"`
+	ProcessInstanceKey int64       `json:"process_instance_key"`
+	State              int64       `json:"state"`
+	CreatedAt          int64       `json:"created_at"`
+	DueAt              int64       `json:"due_at"`
+	Duration           int64       `json:"duration"`
+	
 }

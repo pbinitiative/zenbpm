@@ -10,32 +10,26 @@ import (
 	"database/sql"
 )
 
-const getProcessInstances = `-- name: GetProcessInstances :many
+const findProcessInstances = `-- name: FindProcessInstances :many
 SELECT "key", process_definition_key, created_at, state, variable_holder, caught_events, activities 
 FROM process_instance
-WHERE (
-        created_at >= ?1
-        OR ?1 IS NULL
-    ) AND (
-        
-        created_at >= ?2
-        OR ?2 IS NULL
-    )
+WHERE COALESCE(?1, "key") = "key"
+    AND COALESCE(?2, process_definition_key) = process_definition_key
 ORDER BY created_at DESC
 `
 
-type GetProcessInstancesParams struct {
+type FindProcessInstancesParams struct {
 	Key                  sql.NullInt64 `json:"key"`
 	ProcessDefinitionKey sql.NullInt64 `json:"process_definition_key"`
 }
 
-func (q *Queries) GetProcessInstances(ctx context.Context, arg GetProcessInstancesParams) ([]ProcessInstance, error) {
-	rows, err := q.db.QueryContext(ctx, getProcessInstances, arg.Key, arg.ProcessDefinitionKey)
+func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInstancesParams) ([]ProcessInstance, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstances, arg.Key, arg.ProcessDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ProcessInstance
+	items := []ProcessInstance{}
 	for rows.Next() {
 		var i ProcessInstance
 		if err := rows.Scan(
@@ -60,15 +54,41 @@ func (q *Queries) GetProcessInstances(ctx context.Context, arg GetProcessInstanc
 	return items, nil
 }
 
-const insertProcessInstance = `-- name: InsertProcessInstance :exec
+const getProcessInstance = `-- name: GetProcessInstance :one
+SELECT "key", process_definition_key, created_at, state, variable_holder, caught_events, activities 
+FROM process_instance
+WHERE key = ?1
+`
+
+func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error) {
+	row := q.db.QueryRowContext(ctx, getProcessInstance, key)
+	var i ProcessInstance
+	err := row.Scan(
+		&i.Key,
+		&i.ProcessDefinitionKey,
+		&i.CreatedAt,
+		&i.State,
+		&i.VariableHolder,
+		&i.CaughtEvents,
+		&i.Activities,
+	)
+	return i, err
+}
+
+const saveProcessInstance = `-- name: SaveProcessInstance :exec
 INSERT INTO process_instance (
     key, process_definition_key, created_at, state, variable_holder, caught_events, activities
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?
 )
+ ON CONFLICT(key) DO UPDATE SET 
+    state = excluded.state,
+    variable_holder = excluded.variable_holder,
+    caught_events = excluded.caught_events,
+    activities = excluded.activities
 `
 
-type InsertProcessInstanceParams struct {
+type SaveProcessInstanceParams struct {
 	Key                  int64  `json:"key"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	CreatedAt            int64  `json:"created_at"`
@@ -78,8 +98,8 @@ type InsertProcessInstanceParams struct {
 	Activities           string `json:"activities"`
 }
 
-func (q *Queries) InsertProcessInstance(ctx context.Context, arg InsertProcessInstanceParams) error {
-	_, err := q.db.ExecContext(ctx, insertProcessInstance,
+func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
+	_, err := q.db.ExecContext(ctx, saveProcessInstance,
 		arg.Key,
 		arg.ProcessDefinitionKey,
 		arg.CreatedAt,

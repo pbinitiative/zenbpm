@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const createProcessInstanceTable = `-- name: CreateProcessInstanceTable :exec
+const createSchema = `-- name: CreateSchema :exec
 CREATE TABLE IF NOT EXISTS process_instance (
     key INTEGER PRIMARY KEY,
     process_definition_key INTEGER NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS process_instance (
 )
 `
 
-func (q *Queries) CreateProcessInstanceTable(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, createProcessInstanceTable)
+func (q *Queries) CreateSchema(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, createSchema)
 	return err
 }

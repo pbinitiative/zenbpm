@@ -1,10 +1,13 @@
 package rqlite
 
 import (
+	"context"
 	"log"
+	"time"
 
 	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 	rqlitePersitence "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 )
 
@@ -65,6 +68,15 @@ func (e *exporter) NewElementEvent(event *bpmnEngineExporter.ProcessInstanceEven
 	// 	ParentProcessInstanceKey: noInstanceKey,
 	// 	ParentElementInstanceKey: noInstanceKey,
 	// }
-	e.persistence.PersistActivity(event, elementInfo)
+	activity := rqlite.ActivityInstance{
+		Key:                  -1,
+		ProcessInstanceKey:   event.ProcessInstanceKey,
+		ProcessDefinitionKey: event.ProcessKey,
+		CreatedAt:            time.Now().Unix(),
+		State:                elementInfo.Intent,
+		ElementID:            elementInfo.ElementId,
+		BpmnElementType:      elementInfo.BpmnElementType,
+	}
+	e.persistence.SaveActivity(context.Background(), activity)
 
 }

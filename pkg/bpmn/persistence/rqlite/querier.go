@@ -6,12 +6,25 @@ package rqlite
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
-	CreateProcessInstanceTable(ctx context.Context) error
-	GetProcessInstances(ctx context.Context, arg GetProcessInstancesParams) ([]ProcessInstance, error)
-	InsertProcessInstance(ctx context.Context, arg InsertProcessInstanceParams) error
+	FindActivityInstances(ctx context.Context, processInstanceKey sql.NullInt64) ([]FindActivityInstancesRow, error)
+	FindJobByKey(ctx context.Context, key int64) (Job, error)
+	FindJobs(ctx context.Context, arg FindJobsParams) ([]Job, error)
+	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]FindMessageSubscriptionsRow, error)
+	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
+	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)
+	FindProcessInstances(ctx context.Context, arg FindProcessInstancesParams) ([]ProcessInstance, error)
+	FindTimers(ctx context.Context, arg FindTimersParams) ([]FindTimersRow, error)
+	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
+	SaveActivityInstance(ctx context.Context, arg SaveActivityInstanceParams) error
+	SaveJob(ctx context.Context, arg SaveJobParams) error
+	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
+	SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error
+	SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error
+	SaveTimer(ctx context.Context, arg SaveTimerParams) error
 }
 
 var _ Querier = (*Queries)(nil)

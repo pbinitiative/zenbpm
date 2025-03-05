@@ -1,24 +1,23 @@
 package rqlite
 
 import (
-	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
-	sql "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	"context"
 )
 
 type BpmnEnginePersistence interface {
-	FindProcesses(processId string, processKey int64) []*sql.ProcessDefinitionEntity
-	FindProcessInstances(processInstanceKey int64, processDefinitionKey int64) []ProcessInstance
-	FindMessageSubscription(originActivityKey int64, processInstanceKey int64, elementId string, state []string) []*sql.MessageSubscriptionEntity
-	FindTimers(originActivityKey int64, processInstanceKey int64, state []string) []*sql.TimerEntity
-	FindJobs(elementId string, processInstanceKey int64, jobKey int64, state []string) []*sql.JobEntity
-	FindActivitiesByProcessInstanceKey(processInstanceKey int64) []*sql.ActivityInstanceEntity
+	FindProcesses(ctx context.Context, processId string, processKey int64) ([]ProcessDefinition, error)
+	FindProcessInstances(ctx context.Context, processInstanceKey int64, processDefinitionKey int64) ([]ProcessInstance, error)
+	FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]MessageSubscription, error)
+	FindTimers(ctx context.Context, originActivityKey int64, processInstanceKey int64, state []string) ([]Timer, error)
+	FindJobs(ctx context.Context, elementId string, processInstanceKey int64, jobKey int64, state []string) ([]Job, error)
+	FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]ActivityInstance, error)
 
 	IsLeader() bool
 
-	PersistNewProcess(process *sql.ProcessDefinitionEntity) error
-	PersistProcessInstance(processInstance *sql.ProcessInstanceEntity) error
-	PersistNewMessageSubscription(subscription *sql.MessageSubscriptionEntity) error
-	PersistNewTimer(timer *sql.TimerEntity) error
-	PersistJob(job *sql.JobEntity) error
-	PersistActivity(event *bpmnEngineExporter.ProcessInstanceEvent, elementInfo *bpmnEngineExporter.ElementInfo) error
+	SaveNewProcess(ctx context.Context, process *ProcessDefinition) error
+	SaveProcessInstance(ctx context.Context, processInstance *ProcessInstance) error
+	SaveMessageSubscription(ctx context.Context, subscription *MessageSubscription) error
+	SaveTimer(ctx context.Context, timer *Timer) error
+	SaveJob(ctx context.Context, job *Job) error
+	SaveActivity(ctx context.Context, activity ActivityInstance) error
 }

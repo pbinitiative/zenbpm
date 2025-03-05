@@ -22,7 +22,7 @@ type Timer struct {
 	DueAt              time.Time     `json:"da"`
 	Duration           time.Duration `json:"du"`
 	originActivity     activity
-	baseElement        *bpmn20.FlowNode
+	baseElement        bpmn20.FlowNode
 }
 
 type TimerState string
@@ -47,7 +47,7 @@ func (t Timer) State() ActivityState {
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }
 
-func (t Timer) Element() *bpmn20.FlowNode {
+func (t Timer) Element() bpmn20.FlowNode {
 	return t.baseElement
 }
 
@@ -56,8 +56,8 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *proces
 
 	if timer != nil && timer.originActivity != nil {
 		originActivity := instance.findActivity(timer.originActivity.Key())
-		if originActivity != nil && (*originActivity.Element()).GetType() == bpmn20.EventBasedGateway {
-			ebgActivity := originActivity.(*eventBasedGatewayActivity)
+		if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+			ebgActivity := originActivity.(eventBasedGatewayActivity)
 			if ebgActivity.OutboundCompleted() {
 				timer.TimerState = TimerCancelled
 				return false, timer, err
@@ -80,8 +80,8 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *proces
 		timer.TimerState = TimerTriggered
 		if timer.originActivity != nil {
 			originActivity := instance.findActivity(timer.originActivity.Key())
-			if originActivity != nil && (*originActivity.Element()).GetType() == bpmn20.EventBasedGateway {
-				ebgActivity := originActivity.(*eventBasedGatewayActivity)
+			if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+				ebgActivity := originActivity.(eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
 			}
 		}
@@ -107,11 +107,11 @@ func (state *BpmnEngineState) createTimer(instance *processInstanceInfo, ice bpm
 		CreatedAt:          now,
 		DueAt:              durationVal.Shift(now),
 		Duration:           time.Duration(durationVal.TS) * time.Second,
-		baseElement:        &be,
+		baseElement:        be,
 		originActivity:     originActivity,
 	}
-	state.persistence.PersistNewTimer(t)
-	return t, nil
+	_err := state.persistence.PersistNewTimer(t)
+	return t, _err
 }
 
 func findExistingTimerNotYetTriggered(state *BpmnEngineState, id string, instance *processInstanceInfo) *Timer {

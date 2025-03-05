@@ -71,7 +71,7 @@ type activitySurrogate struct {
 	ActivityKey        int64         `json:"k"`
 	ActivityState      ActivityState `json:"s"`
 	ElementReferenceId string        `json:"e"`
-	elementReference   *bpmn20.FlowNode
+	elementReference   bpmn20.FlowNode
 }
 
 type baseElementPlaceholder struct {
@@ -115,7 +115,7 @@ func (a activityPlaceholder) State() ActivityState {
 	panic("the placeholder does not implement all methods, by intent")
 }
 
-func (a activityPlaceholder) Element() *bpmn20.FlowNode {
+func (a activityPlaceholder) Element() bpmn20.FlowNode {
 	panic("the placeholder does not implement all methods, by intent")
 }
 
@@ -129,7 +129,7 @@ func (t *Timer) MarshalJSON() ([]byte, error) {
 	ta.OriginActivitySurrogate = activitySurrogate{
 		ActivityKey:        t.originActivity.Key(),
 		ActivityState:      t.originActivity.State(),
-		ElementReferenceId: (*t.originActivity.Element()).GetId(),
+		ElementReferenceId: t.originActivity.Element().GetId(),
 	}
 	return json.Marshal(ta)
 }
@@ -155,7 +155,7 @@ func (m *MessageSubscription) MarshalJSON() ([]byte, error) {
 	msa.OriginActivitySurrogate = activitySurrogate{
 		ActivityKey:        m.originActivity.Key(),
 		ActivityState:      m.originActivity.State(),
-		ElementReferenceId: (*m.originActivity.Element()).GetId(),
+		ElementReferenceId: m.originActivity.Element().GetId(),
 	}
 	return json.Marshal(msa)
 }
@@ -208,7 +208,7 @@ func createEventBasedGatewayActivityAdapter(ebga *eventBasedGatewayActivity) *ac
 		Type:                      eventBasedGatewayActivityAdapterType,
 		Key:                       ebga.key,
 		State:                     ebga.state,
-		ElementReference:          (*ebga.element).GetId(),
+		ElementReference:          ebga.element.GetId(),
 		OutboundActivityCompleted: ebga.OutboundActivityCompleted,
 	}
 	return aa
@@ -219,7 +219,7 @@ func createGatewayActivityAdapter(ga *gatewayActivity) *activityAdapter {
 		Type:                    gatewayActivityAdapterType,
 		Key:                     ga.key,
 		State:                   ga.state,
-		ElementReference:        (*ga.element).GetId(),
+		ElementReference:        ga.element.GetId(),
 		Parallel:                ga.parallel,
 		InboundFlowIdsCompleted: ga.inboundFlowIdsCompleted,
 	}
@@ -236,7 +236,7 @@ func (a activitySurrogate) State() ActivityState {
 	return a.ActivityState
 }
 
-func (a activitySurrogate) Element() *bpmn20.FlowNode {
+func (a activitySurrogate) Element() bpmn20.FlowNode {
 	return a.elementReference
 }
 
@@ -332,16 +332,16 @@ func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAda
 			pii.activities = append(pii.activities, &gatewayActivity{
 				key:                     aa.Key,
 				state:                   aa.State,
-				element:                 &elementPlaceholder,
+				element:                 elementPlaceholder,
 				parallel:                aa.Parallel,
 				inboundFlowIdsCompleted: aa.InboundFlowIdsCompleted,
 			})
 		case eventBasedGatewayActivityAdapterType:
-			var elementPlaceholder bpmn20.FlowNode = &baseElementPlaceholder{id: aa.ElementReference}
+			var elementPlaceholder bpmn20.FlowNode = baseElementPlaceholder{id: aa.ElementReference}
 			pii.activities = append(pii.activities, &eventBasedGatewayActivity{
 				key:                       aa.Key,
 				state:                     aa.State,
-				element:                   &elementPlaceholder,
+				element:                   elementPlaceholder,
 				OutboundActivityCompleted: aa.OutboundActivityCompleted,
 			})
 		default:

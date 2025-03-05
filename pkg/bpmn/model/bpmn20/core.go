@@ -19,6 +19,14 @@ type TDocumentation struct {
 	Format string `xml:"textFormat,attr"`
 }
 
+func (doc TDocumentation) GetText() string {
+	return doc.Text
+}
+
+func (doc TDocumentation) GetFormat() string {
+	return doc.Format
+}
+
 type TBaseElement struct {
 	// This attribute is used to uniquely identify BPMN elements. The id is
 	// REQUIRED if this element is referenced or intended to be referenced by
@@ -28,7 +36,28 @@ type TBaseElement struct {
 
 	// This attribute is used to annotate the BPMN element, such as descriptions
 	// and other documentation.
-	//docs []*TDocumentation
+	Documentation []TDocumentation `xml:"documentation"`
+}
+
+func (t TBaseElement) GetId() string {
+	return t.Id
+}
+func (t TBaseElement) GetDocumentation() []Documentation {
+	var docs []Documentation
+	for _, doc := range t.Documentation {
+		docs = append(docs, doc)
+	}
+	return docs
+}
+
+type Documentation interface {
+	GetText() string
+	GetFormat() string
+}
+
+type BaseElement interface {
+	GetId() string
+	GetDocumentation() []Documentation
 }
 
 type RootElement interface {
@@ -96,9 +125,19 @@ type TCallableElement struct {
 	Name string `xml:"name,attr"`
 }
 
+type FlowElement interface {
+	BaseElement
+	GetName() string
+	GetType() ElementType
+}
+
 type TFlowElement struct {
 	TBaseElement
 	Name string `xml:"name,attr"`
+}
+
+func (fe TFlowElement) GetName() string {
+	return fe.Name
 }
 
 type TSequenceFlow struct {
@@ -107,10 +146,23 @@ type TSequenceFlow struct {
 	TargetRef           string        `xml:"targetRef,attr"`
 	ConditionExpression []TExpression `xml:"conditionExpression"`
 }
+type FlowNode interface {
+	FlowElement
+	GetIncomingAssociation() []string
+	GetOutgoingAssociation() []string
+}
 type TFlowNode struct {
 	TFlowElement
 	IncomingAssociation []string `xml:"incoming"`
 	OutgoingAssociation []string `xml:"outgoing"`
+}
+
+func (fn TFlowNode) GetIncomingAssociation() []string {
+	return fn.IncomingAssociation
+}
+
+func (fn TFlowNode) GetOutgoingAssociation() []string {
+	return fn.OutgoingAssociation
 }
 
 //type TFlowElementsContainer

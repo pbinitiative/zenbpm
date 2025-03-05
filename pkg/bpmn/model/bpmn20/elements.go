@@ -1,6 +1,6 @@
 package bpmn20
 
-import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20/extensions"
+import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 
 type ElementType string
 type GatewayDirection string
@@ -25,16 +25,16 @@ const (
 	Mixed       GatewayDirection = "Mixed"
 )
 
-type BaseElement interface {
-	GetId() string
-	GetName() string
-	GetIncomingAssociation() []string
-	GetOutgoingAssociation() []string
-	GetType() ElementType
-}
+//type BaseElement interface {
+//	GetId() string
+//	GetName() string
+//	GetIncomingAssociation() []string
+//	GetOutgoingAssociation() []string
+//	GetType() ElementType
+//}
 
 type TaskElement interface {
-	BaseElement
+	FlowNode
 	GetInputMapping() []extensions.TIoMapping
 	GetOutputMapping() []extensions.TIoMapping
 	GetTaskDefinitionType() string
@@ -43,7 +43,7 @@ type TaskElement interface {
 }
 
 type GatewayElement interface {
-	BaseElement
+	FlowNode
 	IsParallel() bool
 	IsExclusive() bool
 	IsInclusive() bool
@@ -69,23 +69,23 @@ func (startEvent TStartEvent) GetType() ElementType {
 	return StartEvent
 }
 
-func (endEvent TEndEvent) GetId() string {
-	return endEvent.Id
+func (act TEndEvent) GetId() string {
+	return act.Id
 }
 
-func (endEvent TEndEvent) GetName() string {
-	return endEvent.Name
+func (act TEndEvent) GetName() string {
+	return act.Name
 }
 
-func (endEvent TEndEvent) GetIncomingAssociation() []string {
-	return endEvent.IncomingAssociation
+func (act TEndEvent) GetIncomingAssociation() []string {
+	return act.IncomingAssociation
 }
 
-func (endEvent TEndEvent) GetOutgoingAssociation() []string {
-	return endEvent.OutgoingAssociation
+func (act TEndEvent) GetOutgoingAssociation() []string {
+	return act.OutgoingAssociation
 }
 
-func (endEvent TEndEvent) GetType() ElementType {
+func (act TEndEvent) GetType() ElementType {
 	return EndEvent
 }
 

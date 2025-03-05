@@ -15,7 +15,7 @@ type job struct {
 	JobKey             int64         `json:"jk"`
 	JobState           ActivityState `json:"s"`
 	CreatedAt          time.Time     `json:"c"`
-	baseElement        *bpmn20.BaseElement
+	baseElement        *bpmn20.FlowNode
 }
 
 func (j job) Key() int64 {
@@ -26,7 +26,7 @@ func (j job) State() ActivityState {
 	return j.JobState
 }
 
-func (j job) Element() *bpmn20.BaseElement {
+func (j job) Element() *bpmn20.FlowNode {
 	return j.baseElement
 }
 
@@ -89,7 +89,7 @@ func (state *BpmnEngineState) JobCompleteById(jobId int64) {
 }
 
 func findOrCreateJob(state *BpmnEngineState, element *bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
-	be := (*element).(bpmn20.BaseElement)
+	be := (*element).(bpmn20.FlowNode)
 	jobs := state.persistence.FindJobs(be.GetId(), instance, -1)
 	if len(jobs) > 0 {
 		jobs[0].baseElement = &be

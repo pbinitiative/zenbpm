@@ -27,50 +27,50 @@ func FindFirstSequenceFlow(sequenceFlows *[]TSequenceFlow, sourceId string, targ
 	return result
 }
 
-func FindBaseElementsById(definitions *TDefinitions, id string) (elements []*BaseElement) {
-	appender := func(element *BaseElement) {
+func FindFlowNodesById(definitions *TDefinitions, id string) (elements []*FlowNode) {
+	appender := func(element *FlowNode) {
 		if (*element).GetId() == id {
 			elements = append(elements, element)
 		}
 	}
 	for _, startEvent := range definitions.RootElements.Process().StartEvents {
-		var be BaseElement = startEvent
+		var be FlowNode = startEvent
 		appender(&be)
 	}
 	for _, endEvent := range definitions.RootElements.Process().EndEvents {
-		var be BaseElement = endEvent
+		var be FlowNode = endEvent
 		appender(&be)
 	}
 	for _, task := range definitions.RootElements.Process().ServiceTasks {
-		var be BaseElement = task
+		var be FlowNode = task
 		appender(&be)
 	}
 	for _, task := range definitions.RootElements.Process().UserTasks {
-		var be BaseElement = task
+		var be FlowNode = task
 		appender(&be)
 	}
 	for _, parallelGateway := range definitions.RootElements.Process().ParallelGateway {
-		var be BaseElement = parallelGateway
+		var be FlowNode = parallelGateway
 		appender(&be)
 	}
 	for _, exclusiveGateway := range definitions.RootElements.Process().ExclusiveGateway {
-		var be BaseElement = exclusiveGateway
+		var be FlowNode = exclusiveGateway
 		appender(&be)
 	}
 	for _, eventBasedGateway := range definitions.RootElements.Process().EventBasedGateway {
-		var be BaseElement = eventBasedGateway
+		var be FlowNode = eventBasedGateway
 		appender(&be)
 	}
 	for _, intermediateCatchEvent := range definitions.RootElements.Process().IntermediateCatchEvent {
-		var be BaseElement = intermediateCatchEvent
+		var be FlowNode = intermediateCatchEvent
 		appender(&be)
 	}
 	for _, intermediateCatchEvent := range definitions.RootElements.Process().IntermediateThrowEvent {
-		var be BaseElement = intermediateCatchEvent
+		var be FlowNode = intermediateCatchEvent
 		appender(&be)
 	}
 	for _, inclusiveGateway := range definitions.RootElements.Process().InclusiveGateway {
-		var be BaseElement = inclusiveGateway
+		var be FlowNode = inclusiveGateway
 		appender(&be)
 	}
 	return elements

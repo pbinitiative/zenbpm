@@ -71,7 +71,7 @@ type activitySurrogate struct {
 	ActivityKey        int64         `json:"k"`
 	ActivityState      ActivityState `json:"s"`
 	ElementReferenceId string        `json:"e"`
-	elementReference   *bpmn20.BaseElement
+	elementReference   *bpmn20.FlowNode
 }
 
 type baseElementPlaceholder struct {
@@ -80,6 +80,9 @@ type baseElementPlaceholder struct {
 
 func (b baseElementPlaceholder) GetId() string {
 	return b.id
+}
+func (b baseElementPlaceholder) GetDocumentation() []bpmn20.Documentation {
+	panic("the placeholder does not implement all methods, by intent")
 }
 
 func (b baseElementPlaceholder) GetName() string {
@@ -112,7 +115,7 @@ func (a activityPlaceholder) State() ActivityState {
 	panic("the placeholder does not implement all methods, by intent")
 }
 
-func (a activityPlaceholder) Element() *bpmn20.BaseElement {
+func (a activityPlaceholder) Element() *bpmn20.FlowNode {
 	panic("the placeholder does not implement all methods, by intent")
 }
 
@@ -233,7 +236,7 @@ func (a activitySurrogate) State() ActivityState {
 	return a.ActivityState
 }
 
-func (a activitySurrogate) Element() *bpmn20.BaseElement {
+func (a activitySurrogate) Element() *bpmn20.FlowNode {
 	return a.elementReference
 }
 
@@ -325,7 +328,7 @@ func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAda
 	for _, aa := range activityAdapters {
 		switch aa.Type {
 		case gatewayActivityAdapterType:
-			var elementPlaceholder bpmn20.BaseElement = &baseElementPlaceholder{id: aa.ElementReference}
+			var elementPlaceholder bpmn20.FlowNode = &baseElementPlaceholder{id: aa.ElementReference}
 			pii.activities = append(pii.activities, &gatewayActivity{
 				key:                     aa.Key,
 				state:                   aa.State,
@@ -334,7 +337,7 @@ func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAda
 				inboundFlowIdsCompleted: aa.InboundFlowIdsCompleted,
 			})
 		case eventBasedGatewayActivityAdapterType:
-			var elementPlaceholder bpmn20.BaseElement = &baseElementPlaceholder{id: aa.ElementReference}
+			var elementPlaceholder bpmn20.FlowNode = &baseElementPlaceholder{id: aa.ElementReference}
 			pii.activities = append(pii.activities, &eventBasedGatewayActivity{
 				key:                       aa.Key,
 				state:                     aa.State,
@@ -349,7 +352,7 @@ func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAda
 
 func recoverProcessInstanceActivitiesPartWithBaseElements(pii *processInstanceInfo, activityAdapters []*activityAdapter) {
 	for _, aa := range activityAdapters {
-		bes := bpmn20.FindBaseElementsById(&pii.ProcessInfo.definitions, aa.ElementReference)
+		bes := bpmn20.FindFlowNodesById(&pii.ProcessInfo.definitions, aa.ElementReference)
 		if len(bes) == 0 {
 			log.Printf("Could not find base element with id %s", aa.ElementReference)
 			continue
@@ -381,9 +384,9 @@ func recoverProcessInstanceActivitiesPart2(state *BpmnEngineState) {
 	// 	for _, a := range pi.activities {
 	// 		switch activity := a.(type) {
 	// 		case *eventBasedGatewayActivity:
-	// 			activity.element = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, (*a.Element()).GetId())[0]
+	// 			activity.element = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, (*a.Element()).GetId())[0]
 	// 		case *gatewayActivity:
-	// 			activity.element = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, (*a.Element()).GetId())[0]
+	// 			activity.element = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, (*a.Element()).GetId())[0]
 	// 		default:
 	// 			panic(fmt.Sprintf("[invariant check] missing case for activity type=%T", a))
 	// 		}
@@ -418,8 +421,8 @@ func recoverJobs(state *BpmnEngineState) error {
 	// 		}
 	// 	}
 	// 	definitions := pi.ProcessInfo.definitions
-	// 	element := BPMN20.FindBaseElementsById(&definitions, j.ElementId)[0]
-	// 	j.baseElement = element
+	// 	activity := BPMN20.FindFlowNodesById(&definitions, j.ElementId)[0]
+	// 	j.baseElement = activity
 	// }
 	return nil
 }
@@ -433,13 +436,13 @@ func recoverTimers(state *BpmnEngineState) error {
 	// 				"the marshalled JSON was likely corrupt", t.ProcessInstanceKey),
 	// 		}
 	// 	}
-	// 	t.baseElement = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, t.ElementId)[0]
+	// 	t.baseElement = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, t.ElementId)[0]
 	// 	availableOriginActivity := pi.findActivity(t.originActivity.Key())
 	// 	if availableOriginActivity != nil {
 	// 		t.originActivity = availableOriginActivity
 	// 	} else {
 	// 		originActivitySurrogate := t.originActivity.(activitySurrogate)
-	// 		originActivitySurrogate.elementReference = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, originActivitySurrogate.ElementReferenceId)[0]
+	// 		originActivitySurrogate.elementReference = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, originActivitySurrogate.ElementReferenceId)[0]
 	// 		t.originActivity = originActivitySurrogate
 	// 	}
 	// }
@@ -455,13 +458,13 @@ func recoverMessageSubscriptions(state *BpmnEngineState) error {
 	// 				"the marshalled JSON was likely corrupt", ms.ProcessInstanceKey),
 	// 		}
 	// 	}
-	// 	ms.baseElement = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, ms.ElementId)[0]
+	// 	ms.baseElement = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, ms.ElementId)[0]
 	// 	availableOriginActivity := pi.findActivity(ms.originActivity.Key())
 	// 	if availableOriginActivity != nil {
 	// 		ms.originActivity = availableOriginActivity
 	// 	} else {
 	// 		originActivitySurrogate := ms.originActivity.(activitySurrogate)
-	// 		originActivitySurrogate.elementReference = BPMN20.FindBaseElementsById(&pi.ProcessInfo.definitions, originActivitySurrogate.ElementReferenceId)[0]
+	// 		originActivitySurrogate.elementReference = BPMN20.FindFlowNodesById(&pi.ProcessInfo.definitions, originActivitySurrogate.ElementReferenceId)[0]
 	// 		ms.originActivity = originActivitySurrogate
 	// 	}
 	// }

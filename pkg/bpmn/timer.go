@@ -22,7 +22,7 @@ type Timer struct {
 	DueAt              time.Time     `json:"da"`
 	Duration           time.Duration `json:"du"`
 	originActivity     activity
-	baseElement        *bpmn20.BaseElement
+	baseElement        *bpmn20.FlowNode
 }
 
 type TimerState string
@@ -47,7 +47,7 @@ func (t Timer) State() ActivityState {
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }
 
-func (t Timer) Element() *bpmn20.BaseElement {
+func (t Timer) Element() *bpmn20.FlowNode {
 	return t.baseElement
 }
 
@@ -69,7 +69,7 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *proces
 		timer, err = state.createTimer(instance, ice, originActivity)
 		if err != nil {
 			evalErr := &ExpressionEvaluationError{
-				Msg: fmt.Sprintf("Error evaluating expression in intermediate timer cacht event element id='%s' name='%s'", ice.Id, ice.Name),
+				Msg: fmt.Sprintf("Error evaluating expression in intermediate timer cacht event activity id='%s' name='%s'", ice.Id, ice.Name),
 				Err: err,
 			}
 			return false, timer, evalErr
@@ -94,9 +94,9 @@ func (state *BpmnEngineState) createTimer(instance *processInstanceInfo, ice bpm
 	durationVal, err := findDurationValue(ice)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
-			"from element with ID=%s. Error:%s", ice.Id, err.Error())}
+			"from activity with ID=%s. Error:%s", ice.Id, err.Error())}
 	}
-	var be bpmn20.BaseElement = ice
+	var be bpmn20.FlowNode = ice
 	now := time.Now()
 	t := &Timer{
 		ElementId:          ice.Id,

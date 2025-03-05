@@ -143,7 +143,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	case Ready:
 		// use start events to start the instance
 		for _, startEvent := range process.definitions.RootElements.Process().StartEvents {
-			var be bpmn20.BaseElement = startEvent
+			var be bpmn20.FlowNode = startEvent
 			commandQueue = append(commandQueue, activityCommand{
 				element: &be,
 			})
@@ -192,7 +192,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 			}
 			for _, flow := range nextFlows {
 				state.exportSequenceFlowEvent(*process, *instance, flow)
-				baseElements := bpmn20.FindBaseElementsById(&process.definitions, flow.TargetRef)
+				baseElements := bpmn20.FindFlowNodesById(&process.definitions, flow.TargetRef)
 				targetBaseElement := baseElements[0]
 				aCmd := activityCommand{
 					sourceId:       flowId,
@@ -233,7 +233,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	return err
 }
 
-func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.BaseElement, originActivity activity) []command {
+func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.FlowNode, originActivity activity) []command {
 	state.exportElementEvent(*process, *instance, *element, exporter.ElementActivated) // FIXME: don't create event on continuation ?!?!
 	createFlowTransitions := true
 	var activity activity
@@ -337,7 +337,7 @@ func createCheckExclusiveGatewayDoneCommand(originActivity activity) (cmds []com
 	return cmds
 }
 
-func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.BaseElement, activity activity) (cmds []command) {
+func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.FlowNode, activity activity) (cmds []command) {
 	nextFlows := bpmn20.FindSequenceFlows(&process.definitions.RootElements.Process().SequenceFlows, (*element).GetOutgoingAssociation())
 	var err error
 	switch (*element).GetType() {
@@ -382,7 +382,7 @@ func (state *BpmnEngineState) handleIntermediateCatchEvent(process *ProcessInfo,
 	} else if ice.TimerEventDefinition.Id != "" {
 		continueFlow, activity, err = state.handleIntermediateTimerCatchEvent(instance, ice, originActivity)
 	} else if ice.LinkEventDefinition.Id != "" {
-		var be bpmn20.BaseElement = ice
+		var be bpmn20.FlowNode = ice
 		activity = &elementActivity{
 			key:     state.generateKey(),
 			state:   Active, // FIXME: should be Completed?
@@ -419,7 +419,7 @@ func (state *BpmnEngineState) handleEndEvent(process *ProcessInfo, instance *pro
 func (state *BpmnEngineState) handleParallelGateway(process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TParallelGateway, originActivity activity) (continueFlow bool, resultActivity activity) {
 	resultActivity = instance.findActiveActivityByElementId(element.Id)
 	if resultActivity == nil {
-		var be bpmn20.BaseElement = element
+		var be bpmn20.FlowNode = element
 		resultActivity = &gatewayActivity{
 			key:      state.generateKey(),
 			state:    Active,
@@ -446,7 +446,7 @@ func (state *BpmnEngineState) findActiveJobsForContinuation(instance *processIns
 // if no ids are provided, all active subscriptions are returned
 func (state *BpmnEngineState) findActiveSubscriptions(instance *processInstanceInfo) (result []*MessageSubscription) {
 	for _, ms := range state.persistence.FindMessageSubscription(-1, instance, "", Active) {
-		bes := bpmn20.FindBaseElementsById(&instance.ProcessInfo.definitions, ms.ElementId)
+		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.definitions, ms.ElementId)
 		if len(bes) == 0 {
 			continue
 		}
@@ -461,7 +461,7 @@ func (state *BpmnEngineState) findActiveSubscriptions(instance *processInstanceI
 // findCreatedTimers the list of all scheduled/creates timers in the engine, not yet completed
 func (state *BpmnEngineState) findCreatedTimers(instance *processInstanceInfo) (result []*Timer) {
 	for _, t := range state.persistence.FindTimers(-1, instance.InstanceKey, TimerCreated) {
-		bes := bpmn20.FindBaseElementsById(&instance.ProcessInfo.definitions, t.ElementId)
+		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.definitions, t.ElementId)
 		if len(bes) == 0 {
 			continue
 		}

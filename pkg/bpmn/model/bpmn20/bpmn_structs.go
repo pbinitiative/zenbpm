@@ -1,7 +1,7 @@
 package bpmn20
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20/extensions"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 //type TProcess struct {
@@ -61,19 +61,14 @@ type TStartEvent struct {
 type TEndEvent = TEvent
 
 type TServiceTask struct {
-	TTask
-	Default        string                     `xml:"default,attr"`
-	OperationRef   string                     `xml:"operationRef,attr"`
-	Implementation string                     `xml:"implementation,attr"`
-	Input          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
-	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
-	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	TExternallyProcessedTask
+	OperationRef   string `xml:"operationRef,attr"`
+	Implementation string `xml:"implementation,attr"`
 }
 
+// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 type TUserTask struct {
 	TTask
-	Input                []extensions.TIoMapping          `xml:"extensionElements>ioMapping>input"`
-	Output               []extensions.TIoMapping          `xml:"extensionElements>ioMapping>output"`
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
@@ -91,13 +86,15 @@ type TIntermediateCatchEvent struct {
 	TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
 	LinkEventDefinition    TLinkEventDefinition    `xml:"linkEventDefinition"`
 	ParallelMultiple       bool                    `xml:"parallelMultiple"`
-	Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
 type TIntermediateThrowEvent struct {
 	TEvent
-	LinkEventDefinition TLinkEventDefinition    `xml:"linkEventDefinition"`
-	Output              []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+	LinkEventDefinition TLinkEventDefinition `xml:"linkEventDefinition"`
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
 type TEventBasedGateway struct {
@@ -139,10 +136,7 @@ type TTimeDuration struct {
 }
 
 type TInclusiveGateway struct {
-	Id                  string   `xml:"id,attr"`
-	Name                string   `xml:"name,attr"`
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
+	TGateway
 }
 
 const (

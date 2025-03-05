@@ -16,7 +16,7 @@ type MessageSubscription struct {
 	MessageState       ActivityState `json:"s"`
 	CreatedAt          time.Time     `json:"c"`
 	originActivity     activity
-	baseElement        *bpmn20.BaseElement
+	baseElement        *bpmn20.FlowNode
 }
 
 func (m MessageSubscription) Key() int64 {
@@ -27,7 +27,7 @@ func (m MessageSubscription) State() ActivityState {
 	return m.MessageState
 }
 
-func (m MessageSubscription) Element() *bpmn20.BaseElement {
+func (m MessageSubscription) Element() *bpmn20.FlowNode {
 	return m.baseElement
 }
 
@@ -128,7 +128,7 @@ func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *Proce
 }
 
 func (state *BpmnEngineState) createMessageSubscription(instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent) *MessageSubscription {
-	var be bpmn20.BaseElement = ice
+	var be bpmn20.FlowNode = ice
 	ms := &MessageSubscription{
 		ElementId:          ice.Id,
 		ElementInstanceKey: state.generateKey(),

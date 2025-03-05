@@ -1,11 +1,5 @@
 package bpmn20
 
-import (
-	"bytes"
-	"encoding/xml"
-	"io"
-)
-
 // All BPMN elements that inherit from the BaseElement will have the capability,
 // through the Documentation element, to have one (1) or more text descriptions
 // of that element.
@@ -60,64 +54,25 @@ type BaseElement interface {
 	GetDocumentation() []Documentation
 }
 
-type RootElement interface {
-	getRootElementType() RootElementType
+type TRootElementsContainer struct {
+	Process  TProcess   `xml:"process"`
+	Messages []TMessage `xml:"message"`
 }
-
-type RootElementType string
-
-var registeredRootElements = map[RootElementType]func() RootElement{}
 
 type TDefinitions struct {
 	TBaseElement
-	Name               string           `xml:"name,attr"`
-	TargetNamespace    string           `xml:"targetNamespace,attr"`
-	ExpressionLanguage string           `xml:"expressionLanguage,attr"`
-	TypeLanguage       string           `xml:"typeLanguage,attr"`
-	Exporter           string           `xml:"exporter,attr"`
-	ExporterVersion    string           `xml:"exporterVersion,attr"`
-	RootElements       RootElementsType `xml:"-"`
+	TRootElementsContainer
+	Name               string `xml:"name,attr"`
+	TargetNamespace    string `xml:"targetNamespace,attr"`
+	ExpressionLanguage string `xml:"expressionLanguage,attr"`
+	TypeLanguage       string `xml:"typeLanguage,attr"`
+	Exporter           string `xml:"exporter,attr"`
+	ExporterVersion    string `xml:"exporterVersion,attr"`
 }
-type RootElementsType []RootElement
 
-func (ret *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	type Alias TDefinitions
-	aux := &struct {
-		*Alias
-		RawXML []byte `xml:",innerxml"`
-	}{
-		Alias: (*Alias)(ret),
-	}
-
-	if err := d.DecodeElement(aux, &start); err != nil {
-		return err
-	}
-	innerDecoder := xml.NewDecoder(bytes.NewReader(aux.RawXML))
-	for {
-		token, err := innerDecoder.Token()
-		var re RootElement
-
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-		switch pe := token.(type) {
-		case xml.StartElement:
-			tp := registeredRootElements[RootElementType(pe.Name.Local)]
-			if tp != nil {
-				re = tp()
-			} else {
-				continue
-			}
-
-			if err := innerDecoder.DecodeElement(re, &pe); err != nil {
-				return err
-			}
-			ret.RootElements = append(ret.RootElements, re)
-		}
-	}
-	return nil
+type TMessage struct {
+	Id   string `xml:"id,attr"`
+	Name string `xml:"name,attr"`
 }
 
 type TCallableElement struct {
@@ -146,11 +101,13 @@ type TSequenceFlow struct {
 	TargetRef           string        `xml:"targetRef,attr"`
 	ConditionExpression []TExpression `xml:"conditionExpression"`
 }
+
 type FlowNode interface {
 	FlowElement
 	GetIncomingAssociation() []string
 	GetOutgoingAssociation() []string
 }
+
 type TFlowNode struct {
 	TFlowElement
 	IncomingAssociation []string `xml:"incoming"`
@@ -166,3 +123,7 @@ func (fn TFlowNode) GetOutgoingAssociation() []string {
 }
 
 //type TFlowElementsContainer
+
+type TExpression struct {
+	Text string `xml:",innerxml"`
+}

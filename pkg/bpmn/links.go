@@ -31,7 +31,7 @@ func (state *BpmnEngineState) handleIntermediateThrowEvent(process *ProcessInfo,
 				var element bpmn20.FlowNode = ice
 				nextCommands = []command{activityCommand{
 					sourceId:       ice.Id,
-					element:        &element,
+					element:        element,
 					originActivity: activity,
 				}}
 			}

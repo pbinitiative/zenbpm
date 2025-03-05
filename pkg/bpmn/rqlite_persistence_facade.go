@@ -345,7 +345,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(su
 	if subscription.originActivity != nil {
 		ms.OriginActivityKey = subscription.originActivity.Key()
 		ms.OriginActivityState = activityStateMap[subscription.originActivity.State()]
-		ms.OriginActivityId = (*subscription.originActivity.Element()).GetId()
+		ms.OriginActivityId = subscription.originActivity.Element().GetId()
 	}
 
 	return persistence.rqlitePersistence.PersistNewMessageSubscription(ms)

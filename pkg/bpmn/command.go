@@ -32,7 +32,7 @@ func (f flowTransitionCommand) Type() commandType {
 
 type activityCommand struct {
 	sourceId       string
-	element        *bpmn20.FlowNode
+	element        bpmn20.FlowNode
 	originActivity activity
 }
 

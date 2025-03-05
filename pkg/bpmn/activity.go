@@ -43,13 +43,13 @@ const (
 type activity interface {
 	Key() int64
 	State() ActivityState
-	Element() *bpmn20.FlowNode
+	Element() bpmn20.FlowNode
 }
 
 type elementActivity struct {
 	key     int64         `json:"k"`
 	state   ActivityState `json:"s"`
-	element *bpmn20.FlowNode
+	element bpmn20.FlowNode
 }
 
 func (a elementActivity) Key() int64 {
@@ -60,7 +60,7 @@ func (a elementActivity) State() ActivityState {
 	return a.state
 }
 
-func (a elementActivity) Element() *bpmn20.FlowNode {
+func (a elementActivity) Element() bpmn20.FlowNode {
 	return a.element
 }
 
@@ -69,7 +69,7 @@ func (a elementActivity) Element() *bpmn20.FlowNode {
 type gatewayActivity struct {
 	key                     int64         `json:"k"`
 	state                   ActivityState `json:"s"`
-	element                 *bpmn20.FlowNode
+	element                 bpmn20.FlowNode
 	parallel                bool
 	inboundFlowIdsCompleted []string
 }
@@ -82,12 +82,12 @@ func (ga *gatewayActivity) State() ActivityState {
 	return ga.state
 }
 
-func (ga *gatewayActivity) Element() *bpmn20.FlowNode {
+func (ga *gatewayActivity) Element() bpmn20.FlowNode {
 	return ga.element
 }
 
 func (ga *gatewayActivity) AreInboundFlowsCompleted() bool {
-	for _, association := range (*ga.element).GetIncomingAssociation() {
+	for _, association := range ga.element.GetIncomingAssociation() {
 		if !contains(ga.inboundFlowIdsCompleted, association) {
 			return false
 		}
@@ -114,7 +114,7 @@ func (ga gatewayActivity) MarshalJSON() ([]byte, error) {
 	}{
 		Key:                     ga.key,
 		State:                   ga.state,
-		ElementID:               (*ga.element).GetId(), // Get the ID from the element
+		ElementID:               ga.element.GetId(), // Get the ID from the element
 		Parallel:                ga.parallel,
 		InboundFlowIdsCompleted: ga.inboundFlowIdsCompleted,
 	})
@@ -125,26 +125,26 @@ func (ga gatewayActivity) MarshalJSON() ([]byte, error) {
 type eventBasedGatewayActivity struct {
 	key                       int64
 	state                     ActivityState
-	element                   *bpmn20.FlowNode
+	element                   bpmn20.FlowNode
 	OutboundActivityCompleted string
 }
 
-func (ebg *eventBasedGatewayActivity) Key() int64 {
+func (ebg eventBasedGatewayActivity) Key() int64 {
 	return ebg.key
 }
 
-func (ebg *eventBasedGatewayActivity) State() ActivityState {
+func (ebg eventBasedGatewayActivity) State() ActivityState {
 	return ebg.state
 }
 
-func (ebg *eventBasedGatewayActivity) Element() *bpmn20.FlowNode {
+func (ebg eventBasedGatewayActivity) Element() bpmn20.FlowNode {
 	return ebg.element
 }
 
-func (ebg *eventBasedGatewayActivity) SetOutboundCompleted(id string) {
+func (ebg eventBasedGatewayActivity) SetOutboundCompleted(id string) {
 	ebg.OutboundActivityCompleted = id
 }
 
-func (ebg *eventBasedGatewayActivity) OutboundCompleted() bool {
+func (ebg eventBasedGatewayActivity) OutboundCompleted() bool {
 	return len(ebg.OutboundActivityCompleted) > 0
 }

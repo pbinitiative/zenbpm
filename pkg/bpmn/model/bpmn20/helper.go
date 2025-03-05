@@ -27,51 +27,51 @@ func FindFirstSequenceFlow(sequenceFlows *[]TSequenceFlow, sourceId string, targ
 	return result
 }
 
-func FindFlowNodesById(definitions *TDefinitions, id string) (elements []*FlowNode) {
-	appender := func(element *FlowNode) {
-		if (*element).GetId() == id {
+func FindFlowNodesById(definitions *TDefinitions, id string) (elements []FlowNode) {
+	appender := func(element FlowNode) {
+		if element.GetId() == id {
 			elements = append(elements, element)
 		}
 	}
 	for _, startEvent := range definitions.Process.StartEvents {
 		var be FlowNode = startEvent
-		appender(&be)
+		appender(be)
 	}
 	for _, endEvent := range definitions.Process.EndEvents {
 		var be FlowNode = endEvent
-		appender(&be)
+		appender(be)
 	}
 	for _, task := range definitions.Process.ServiceTasks {
 		var be FlowNode = task
-		appender(&be)
+		appender(be)
 	}
 	for _, task := range definitions.Process.UserTasks {
 		var be FlowNode = task
-		appender(&be)
+		appender(be)
 	}
 	for _, parallelGateway := range definitions.Process.ParallelGateway {
 		var be FlowNode = parallelGateway
-		appender(&be)
+		appender(be)
 	}
 	for _, exclusiveGateway := range definitions.Process.ExclusiveGateway {
 		var be FlowNode = exclusiveGateway
-		appender(&be)
+		appender(be)
 	}
 	for _, eventBasedGateway := range definitions.Process.EventBasedGateway {
 		var be FlowNode = eventBasedGateway
-		appender(&be)
+		appender(be)
 	}
 	for _, intermediateCatchEvent := range definitions.Process.IntermediateCatchEvent {
 		var be FlowNode = intermediateCatchEvent
-		appender(&be)
+		appender(be)
 	}
 	for _, intermediateCatchEvent := range definitions.Process.IntermediateThrowEvent {
 		var be FlowNode = intermediateCatchEvent
-		appender(&be)
+		appender(be)
 	}
 	for _, inclusiveGateway := range definitions.Process.InclusiveGateway {
 		var be FlowNode = inclusiveGateway
-		appender(&be)
+		appender(be)
 	}
 	return elements
 }

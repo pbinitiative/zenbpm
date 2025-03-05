@@ -16,7 +16,7 @@ type MessageSubscription struct {
 	MessageState       ActivityState `json:"s"`
 	CreatedAt          time.Time     `json:"c"`
 	originActivity     activity
-	baseElement        *bpmn20.FlowNode
+	baseElement        bpmn20.FlowNode
 }
 
 func (m MessageSubscription) Key() int64 {
@@ -27,7 +27,7 @@ func (m MessageSubscription) State() ActivityState {
 	return m.MessageState
 }
 
-func (m MessageSubscription) Element() *bpmn20.FlowNode {
+func (m MessageSubscription) Element() bpmn20.FlowNode {
 	return m.baseElement
 }
 
@@ -83,7 +83,7 @@ func (state *BpmnEngineState) GetTimersScheduled() []Timer {
 func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *ProcessInfo, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, ms *MessageSubscription, err error) {
 	ms = findMatchingActiveSubscriptions(state, instance, ice.Id)
 
-	if originActivity != nil && (*originActivity.Element()).GetType() == bpmn20.EventBasedGateway {
+	if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
 		ebgActivity := originActivity.(*eventBasedGatewayActivity)
 		if ebgActivity.OutboundCompleted() {
 			ms.MessageState = WithDrawn // FIXME: is this correct?
@@ -117,7 +117,7 @@ func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *Proce
 		ms.MessageState = Completed
 		if ms.originActivity != nil {
 			originActivity := instance.findActivity(ms.originActivity.Key())
-			if originActivity != nil && (*originActivity.Element()).GetType() == bpmn20.EventBasedGateway {
+			if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
 				ebgActivity := originActivity.(*eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
 			}
@@ -137,7 +137,7 @@ func (state *BpmnEngineState) createMessageSubscription(instance *processInstanc
 		Name:               ice.Name,
 		CreatedAt:          time.Now(),
 		MessageState:       Active,
-		baseElement:        &be,
+		baseElement:        be,
 	}
 	return ms
 }

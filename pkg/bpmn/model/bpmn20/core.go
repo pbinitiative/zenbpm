@@ -1,44 +1,44 @@
 package bpmn20
 
-// All BPMN elements that inherit from the BaseElement will have the capability,
-// through the Documentation element, to have one (1) or more text descriptions
+// TDocumentation  BPMN elements that inherit from the BaseElement will have the capability,
+// through the TDocumentation element, to have one (1) or more text descriptions
 // of that element.
 type TDocumentation struct {
-	// This attribute is used to capture the text descriptions of a
+	// Text attribute is used to capture the text descriptions of a
 	// BPMN element.
 	Text string `xml:"text,text"`
 
-	// This attribute identifies the format of the text. It MUST follow
+	// Format attribute identifies the format of the text. It MUST follow
 	// the mime-type format. The default is "text/plain".
 	Format string `xml:"textFormat,attr"`
 }
 
-func (doc TDocumentation) GetText() string {
-	return doc.Text
+func (documentation TDocumentation) GetText() string {
+	return documentation.Text
 }
 
-func (doc TDocumentation) GetFormat() string {
-	return doc.Format
+func (documentation TDocumentation) GetFormat() string {
+	return documentation.Format
 }
 
 type TBaseElement struct {
-	// This attribute is used to uniquely identify BPMN elements. The id is
+	// Id attribute is used to uniquely identify BPMN elements. The id is
 	// REQUIRED if this element is referenced or intended to be referenced by
 	// something else. If the element is not currently referenced and is never
 	// intended to be referenced, the id MAY be omitted.
 	Id string `xml:"id,attr"`
 
-	// This attribute is used to annotate the BPMN element, such as descriptions
+	// Documentation attribute is used to annotate the BPMN element, such as descriptions
 	// and other documentation.
 	Documentation []TDocumentation `xml:"documentation"`
 }
 
-func (t TBaseElement) GetId() string {
-	return t.Id
+func (baseElement TBaseElement) GetId() string {
+	return baseElement.Id
 }
-func (t TBaseElement) GetDocumentation() []Documentation {
+func (baseElement TBaseElement) GetDocumentation() []Documentation {
 	var docs []Documentation
-	for _, doc := range t.Documentation {
+	for _, doc := range baseElement.Documentation {
 		docs = append(docs, doc)
 	}
 	return docs
@@ -49,6 +49,8 @@ type Documentation interface {
 	GetFormat() string
 }
 
+// BaseElement is the abstract super class/interface for most BPMN elements.
+// It provides the attributes id and documentation, which other elements will inherit
 type BaseElement interface {
 	GetId() string
 	GetDocumentation() []Documentation
@@ -102,6 +104,8 @@ type TSequenceFlow struct {
 	ConditionExpression []TExpression `xml:"conditionExpression"`
 }
 
+// FlowNode is the abstract super class/interface that provides a single element as the source and target Sequence Flow associations.
+// Central abstraction used by the engine to traverse through the process flows.
 type FlowNode interface {
 	FlowElement
 	GetIncomingAssociation() []string
@@ -114,12 +118,12 @@ type TFlowNode struct {
 	OutgoingAssociation []string `xml:"outgoing"`
 }
 
-func (fn TFlowNode) GetIncomingAssociation() []string {
-	return fn.IncomingAssociation
+func (flowNode TFlowNode) GetIncomingAssociation() []string {
+	return flowNode.IncomingAssociation
 }
 
-func (fn TFlowNode) GetOutgoingAssociation() []string {
-	return fn.OutgoingAssociation
+func (flowNode TFlowNode) GetOutgoingAssociation() []string {
+	return flowNode.OutgoingAssociation
 }
 
 //type TFlowElementsContainer

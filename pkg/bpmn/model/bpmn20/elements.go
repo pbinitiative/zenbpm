@@ -25,14 +25,6 @@ const (
 	Mixed       GatewayDirection = "Mixed"
 )
 
-//type BaseElement interface {
-//	GetId() string
-//	GetName() string
-//	GetIncomingAssociation() []string
-//	GetOutgoingAssociation() []string
-//	GetType() ElementType
-//}
-
 type TaskElement interface {
 	FlowNode
 	GetInputMapping() []extensions.TIoMapping
@@ -69,23 +61,23 @@ func (startEvent TStartEvent) GetType() ElementType {
 	return StartEvent
 }
 
-func (act TEndEvent) GetId() string {
-	return act.Id
+func (activity TEndEvent) GetId() string {
+	return activity.Id
 }
 
-func (act TEndEvent) GetName() string {
-	return act.Name
+func (activity TEndEvent) GetName() string {
+	return activity.Name
 }
 
-func (act TEndEvent) GetIncomingAssociation() []string {
-	return act.IncomingAssociation
+func (activity TEndEvent) GetIncomingAssociation() []string {
+	return activity.IncomingAssociation
 }
 
-func (act TEndEvent) GetOutgoingAssociation() []string {
-	return act.OutgoingAssociation
+func (activity TEndEvent) GetOutgoingAssociation() []string {
+	return activity.OutgoingAssociation
 }
 
-func (act TEndEvent) GetType() ElementType {
+func (activity TEndEvent) GetType() ElementType {
 	return EndEvent
 }
 

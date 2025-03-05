@@ -142,7 +142,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	switch instance.State {
 	case Ready:
 		// use start events to start the instance
-		for _, startEvent := range process.definitions.RootElements.Process().StartEvents {
+		for _, startEvent := range process.definitions.Process.StartEvents {
 			var be bpmn20.FlowNode = startEvent
 			commandQueue = append(commandQueue, activityCommand{
 				element: &be,
@@ -182,7 +182,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 		case flowTransitionType:
 			sourceActivity := cmd.(flowTransitionCommand).sourceActivity
 			flowId := cmd.(flowTransitionCommand).sequenceFlowId
-			nextFlows := bpmn20.FindSequenceFlows(&process.definitions.RootElements.Process().SequenceFlows, []string{flowId})
+			nextFlows := bpmn20.FindSequenceFlows(&process.definitions.Process.SequenceFlows, []string{flowId})
 			if bpmn20.ExclusiveGateway == (*sourceActivity.Element()).GetType() {
 				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 				if err != nil {
@@ -338,7 +338,7 @@ func createCheckExclusiveGatewayDoneCommand(originActivity activity) (cmds []com
 }
 
 func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.FlowNode, activity activity) (cmds []command) {
-	nextFlows := bpmn20.FindSequenceFlows(&process.definitions.RootElements.Process().SequenceFlows, (*element).GetOutgoingAssociation())
+	nextFlows := bpmn20.FindSequenceFlows(&process.definitions.Process.SequenceFlows, (*element).GetOutgoingAssociation())
 	var err error
 	switch (*element).GetType() {
 	case bpmn20.ExclusiveGateway:
@@ -428,7 +428,7 @@ func (state *BpmnEngineState) handleParallelGateway(process *ProcessInfo, instan
 		}
 		instance.appendActivity(resultActivity)
 	}
-	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.definitions.RootElements.Process().SequenceFlows, (*originActivity.Element()).GetId(), element.GetId())
+	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.definitions.Process.SequenceFlows, (*originActivity.Element()).GetId(), element.GetId())
 	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.Id)
 	continueFlow = resultActivity.(*gatewayActivity).parallel && resultActivity.(*gatewayActivity).AreInboundFlowsCompleted()
 	if continueFlow {

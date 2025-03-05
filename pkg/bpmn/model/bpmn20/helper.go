@@ -78,11 +78,11 @@ func FindFlowNodesById(definitions *TDefinitions, id string) (elements []FlowNod
 
 // HasConditionExpression returns true, if there's exactly 1 expression present (as by the spec)
 // and there's some non-whitespace-characters available
-func (flow TSequenceFlow) HasConditionExpression() bool {
-	return len(flow.ConditionExpression) == 1 && len(strings.TrimSpace(flow.GetConditionExpression())) > 0
+func (sequenceFlow TSequenceFlow) HasConditionExpression() bool {
+	return len(sequenceFlow.ConditionExpression) == 1 && len(strings.TrimSpace(sequenceFlow.GetConditionExpression())) > 0
 }
 
 // GetConditionExpression returns the embedded expression. There will be a panic thrown, in case none exists!
-func (flow TSequenceFlow) GetConditionExpression() string {
-	return html.UnescapeString(flow.ConditionExpression[0].Text)
+func (sequenceFlow TSequenceFlow) GetConditionExpression() string {
+	return html.UnescapeString(sequenceFlow.ConditionExpression[0].Text)
 }

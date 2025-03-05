@@ -52,7 +52,7 @@ type TGateway struct {
 
 type TEvent = TActivity
 
-// ExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
+// TExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
 // BPMN 2.0 Unorthodox.
 type TExternallyProcessedTask struct {
 	TTask
@@ -64,9 +64,9 @@ type TServiceTask struct {
 	Implementation string `xml:"implementation,attr"`
 }
 
-// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 type TUserTask struct {
 	TTask
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
@@ -138,12 +138,12 @@ type TTimeDuration struct {
 	XMLText string `xml:",innerxml"`
 }
 
-func (act TActivity) GetCompletionQuantity() int {
-	return act.CompletionQuantity
+func (activity TActivity) GetCompletionQuantity() int {
+	return activity.CompletionQuantity
 }
-func (act TActivity) GetIsForCompensation() bool {
-	return act.IsForCompensation
+func (activity TActivity) GetIsForCompensation() bool {
+	return activity.IsForCompensation
 }
-func (act TActivity) GetStartQuantity() int {
-	return act.StartQuantity
+func (activity TActivity) GetStartQuantity() int {
+	return activity.StartQuantity
 }

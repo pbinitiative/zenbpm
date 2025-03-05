@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.28.0
 
-package rqlite
+package sql
 
 type ActivityInstance struct {
 	Key                  int64       `json:"key"`
@@ -20,7 +20,7 @@ type Job struct {
 	ElementID          string `json:"element_id"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int64  `json:"state"`
+	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 }
 
@@ -62,7 +62,7 @@ type Timer struct {
 	ElementInstanceKey int64       `json:"element_instance_key"`
 	ProcessKey         int64       `json:"process_key"`
 	ProcessInstanceKey int64       `json:"process_instance_key"`
-	State              int64       `json:"state"`
+	State              int         `json:"state"`
 	CreatedAt          int64       `json:"created_at"`
 	DueAt              int64       `json:"due_at"`
 	Duration           int64       `json:"duration"`

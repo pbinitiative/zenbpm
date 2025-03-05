@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.28.0
 
-package rqlite
+package sql
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 type Querier interface {
 	FindActivityInstances(ctx context.Context, processInstanceKey sql.NullInt64) ([]FindActivityInstancesRow, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
-	FindJobs(ctx context.Context, arg FindJobsParams) ([]Job, error)
+	FindJobsWithStates(ctx context.Context, arg FindJobsWithStatesParams) ([]Job, error)
+	FindJobsWithoutStates(ctx context.Context, arg FindJobsWithoutStatesParams) ([]Job, error)
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]FindMessageSubscriptionsRow, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)

@@ -9,6 +9,7 @@ import (
 
 	_ "embed"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
@@ -17,10 +18,10 @@ type BpmnEnginePersistenceRqlite struct {
 	//TODO: to remove
 	// snowflakeIdGenerator *snowflake.Node
 	store   storage.PersistentStorage
-	queries *Queries
+	queries *sql.Queries
 }
 
-//go:embed sql/schema.sql
+//go:embed sql_source/schema.sql
 var ddl string
 
 func NewBpmnEnginePersistenceRqlite( /*snowflakeIdGenerator *snowflake.Node, */ store storage.PersistentStorage) *BpmnEnginePersistenceRqlite {
@@ -30,7 +31,7 @@ func NewBpmnEnginePersistenceRqlite( /*snowflakeIdGenerator *snowflake.Node, */ 
 		store: store,
 	}
 
-	queries := New(rqlitePersistence)
+	queries := sql.New(rqlitePersistence)
 
 	rqlitePersistence.setQueries(queries)
 	rqlitePersistence.ExecContext(context.Background(), ddl)
@@ -39,9 +40,9 @@ func NewBpmnEnginePersistenceRqlite( /*snowflakeIdGenerator *snowflake.Node, */ 
 }
 
 // READ
-func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Context, bpmnProcessId string, processDefinitionKey int64) ([]ProcessDefinition, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Context, bpmnProcessId string, processDefinitionKey int64) ([]sql.ProcessDefinition, error) {
 
-	params := FindProcessDefinitionsParams{
+	params := sql.FindProcessDefinitionsParams{
 		Key:           sqlc.NullInt64{Int64: processDefinitionKey, Valid: processDefinitionKey != -1},
 		BpmnProcessID: sqlc.NullString{String: bpmnProcessId, Valid: bpmnProcessId != ""},
 	}
@@ -56,9 +57,9 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Contex
 	return definitions, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context.Context, processInstanceKey int64, processDefinitionKey int64) ([]ProcessInstance, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context.Context, processInstanceKey int64, processDefinitionKey int64) ([]sql.ProcessInstance, error) {
 
-	params := FindProcessInstancesParams{
+	params := sql.FindProcessInstancesParams{
 		Key:                  sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
 		ProcessDefinitionKey: sqlc.NullInt64{Int64: processDefinitionKey, Valid: processDefinitionKey != -1},
 	}
@@ -73,9 +74,9 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context
 	return instances, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]MessageSubscription, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]sql.MessageSubscription, error) {
 
-	params := FindMessageSubscriptionsParams{
+	params := sql.FindMessageSubscriptionsParams{
 		OriginActivityKey:  sqlc.NullInt64{Int64: originActivityKey, Valid: originActivityKey != -1},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
 		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
@@ -87,15 +88,15 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(ctx cont
 		log.Fatal("Finding message subscriptions failed", err)
 		return nil, err
 	}
-	resultSubscriptions := make([]MessageSubscription, len(messageSubscriptions))
+	resultSubscriptions := make([]sql.MessageSubscription, len(messageSubscriptions))
 	for i, ms := range messageSubscriptions {
-		resultSubscriptions[i] = MessageSubscription(ms)
+		resultSubscriptions[i] = sql.MessageSubscription(ms)
 	}
 	return resultSubscriptions, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, elementInstanceKey int64, processInstanceKey int64, state []string) ([]Timer, error) {
-	params := FindTimersParams{
+func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, elementInstanceKey int64, processInstanceKey int64, state []string) ([]sql.Timer, error) {
+	params := sql.FindTimersParams{
 		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
 		ElementInstanceKey: sqlc.NullInt64{Int64: elementInstanceKey, Valid: elementInstanceKey != -1},
 	}
@@ -106,23 +107,43 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, 
 		log.Fatal("Finding timers failed", err)
 		return nil, err
 	}
-	resultTimers := make([]Timer, len(timers))
+	resultTimers := make([]sql.Timer, len(timers))
 	for i, t := range timers {
-		resultTimers[i] = Timer(t)
+		resultTimers[i] = sql.Timer(t)
 	}
 	return resultTimers, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, elementId string, processInstanceKey int64, jobKey int64, state []string) ([]Job, error) {
+func interfaceSlice(slice []string) []interface{} {
+	ret := make([]interface{}, len(slice))
+	for i, v := range slice {
+		ret[i] = v
+	}
+	return ret
+}
 
-	params := FindJobsParams{
-		Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
-		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, elementId string, processInstanceKey int64, jobKey int64, state []string) ([]sql.Job, error) {
+	var jobs []sql.Job
+	var err error
+	if len(state) == 0 {
+		params := sql.FindJobsWithoutStatesParams{
+			Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
+			ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
+			ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+		}
+		// Fetch jobs
+		jobs, err = persistence.queries.FindJobsWithoutStates(ctx, params)
+	} else {
+		params := sql.FindJobsWithStatesParams{
+			Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
+			ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
+			ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+			States:             convertActivityStateArray(state),
+		}
+		// Fetch jobs
+		jobs, err = persistence.queries.FindJobsWithStates(ctx, params)
 	}
 
-	// Fetch jobs
-	jobs, err := persistence.queries.FindJobs(ctx, params)
 	if err != nil {
 		log.Fatal("Finding jobs failed", err)
 		return nil, err
@@ -130,45 +151,45 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, el
 	return jobs, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]ActivityInstance, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]sql.ActivityInstance, error) {
 	// Fetch activities
 	activities, err := persistence.queries.FindActivityInstances(ctx, sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1})
 	if err != nil {
 		log.Fatal("Finding activities failed", err)
 		return nil, err
 	}
-	resultActivities := make([]ActivityInstance, len(activities))
+	resultActivities := make([]sql.ActivityInstance, len(activities))
 	for i, a := range activities {
-		resultActivities[i] = ActivityInstance(a)
+		resultActivities[i] = sql.ActivityInstance(a)
 	}
 	return resultActivities, nil
 }
 
 // WRITE
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveNewProcess(ctx context.Context, processDefinition *ProcessDefinition) error {
-	return persistence.queries.SaveProcessDefinition(ctx, SaveProcessDefinitionParams(*processDefinition))
+func (persistence *BpmnEnginePersistenceRqlite) SaveNewProcess(ctx context.Context, processDefinition *sql.ProcessDefinition) error {
+	return persistence.queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams(*processDefinition))
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveProcessInstance(ctx context.Context, processInstance *ProcessInstance) error {
-	return persistence.queries.SaveProcessInstance(ctx, SaveProcessInstanceParams(*processInstance))
+func (persistence *BpmnEnginePersistenceRqlite) SaveProcessInstance(ctx context.Context, processInstance *sql.ProcessInstance) error {
+	return persistence.queries.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams(*processInstance))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveMessageSubscription(ctx context.Context, subscription *MessageSubscription) error {
-	return persistence.queries.SaveMessageSubscription(ctx, SaveMessageSubscriptionParams(*subscription))
+func (persistence *BpmnEnginePersistenceRqlite) SaveMessageSubscription(ctx context.Context, subscription *sql.MessageSubscription) error {
+	return persistence.queries.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams(*subscription))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveTimer(ctx context.Context, timer *Timer) error {
-	return persistence.queries.SaveTimer(ctx, SaveTimerParams(*timer))
+func (persistence *BpmnEnginePersistenceRqlite) SaveTimer(ctx context.Context, timer *sql.Timer) error {
+	return persistence.queries.SaveTimer(ctx, sql.SaveTimerParams(*timer))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveJob(ctx context.Context, job *Job) error {
-	return persistence.queries.SaveJob(ctx, SaveJobParams(*job))
+func (persistence *BpmnEnginePersistenceRqlite) SaveJob(ctx context.Context, job *sql.Job) error {
+	return persistence.queries.SaveJob(ctx, sql.SaveJobParams(*job))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveActivity(ctx context.Context, activity ActivityInstance) error {
-	return persistence.queries.SaveActivityInstance(ctx, SaveActivityInstanceParams(activity))
+func (persistence *BpmnEnginePersistenceRqlite) SaveActivity(ctx context.Context, activity sql.ActivityInstance) error {
+	return persistence.queries.SaveActivityInstance(ctx, sql.SaveActivityInstanceParams(activity))
 
 }
 
@@ -176,7 +197,7 @@ func (persistence *BpmnEnginePersistenceRqlite) IsLeader() bool {
 	return persistence.store.IsLeader(context.Background())
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) setQueries(queries *Queries) {
+func (persistence *BpmnEnginePersistenceRqlite) setQueries(queries *sql.Queries) {
 	persistence.queries = queries
 }
 
@@ -280,7 +301,7 @@ func generateStatment(sql string, parameters ...interface{}) *proto.Statement {
 	}
 }
 
-func query(query string, store storage.PersistentStorage, parameters ...interface{}) ([]*proto.QueryRows, error) {
+func queryDatabase(query string, store storage.PersistentStorage, parameters ...interface{}) ([]*proto.QueryRows, error) {
 
 	stmts := generateStatment(query, parameters...)
 
@@ -342,8 +363,8 @@ func (persistence *BpmnEnginePersistenceRqlite) PrepareContext(ctx context.Conte
 	return nil, errors.New("PrepareContext not supported by rqlite")
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) QueryContext(ctx context.Context, sql string, args ...interface{}) (*Rows, error) {
-	results, err := query(sql, persistence.store, args...)
+func (persistence *BpmnEnginePersistenceRqlite) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	results, err := queryDatabase(query, persistence.store, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -351,31 +372,25 @@ func (persistence *BpmnEnginePersistenceRqlite) QueryContext(ctx context.Context
 		return nil, errors.New("Multiple results not supported")
 	}
 	for _, r := range results {
-		return constructRows(ctx, r.Columns, r.Types, r.Values), nil
+		return sql.ConstructRows(ctx, r.Columns, r.Types, r.Values), nil
 	}
 	// empty results
-	return constructRows(ctx, []string{}, []string{}, []*proto.Values{}), nil
+	return sql.ConstructRows(ctx, []string{}, []string{}, []*proto.Values{}), nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) QueryRowContext(ctx context.Context, sql string, args ...interface{}) *Row {
-	rows, err := persistence.QueryContext(ctx, sql, args...)
+func (persistence *BpmnEnginePersistenceRqlite) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	rows, err := persistence.QueryContext(ctx, query, args...)
 	if err != nil {
-		return &Row{ctx: ctx, err: err}
+		return sql.ConstructRow(ctx, []string{}, []string{}, nil, err)
 	}
 	defer rows.Close()
 
 	row := rows.Next()
 	if !row {
-		return &Row{} // Returning empty sql.Row on error
+
+		return sql.ConstructRow(ctx, []string{}, []string{}, nil, errors.New("No rows"))
 	} else {
-		row := &Row{
-			columns: rows.columns,
-			types:   rows.types,
-			values:  rows.values[0],
-			ctx:     ctx,
-			err:     nil,
-		}
-		return row
+		return sql.ConstructRowFromRows(ctx, rows, nil)
 	}
 
 }
@@ -394,6 +409,18 @@ var activityStateMap = map[string]int{
 	"WITHDRAWN":    11,
 }
 
+func convertActivityStateArray(state []string) []int {
+	var result []int
+	for _, s := range state {
+		mapped := activityStateMap[s]
+		if mapped == 0 {
+			continue
+		}
+		result = append(result, activityStateMap[s])
+	}
+	return result
+}
+
 // reverse the map
 func reverseMap[K comparable, V comparable](m map[K]V) map[V]K {
 	rm := make(map[V]K)
@@ -407,4 +434,13 @@ var timerStateMap = map[string]int{
 	"TIMERCREATED":   1,
 	"TIMERTIGGERED":  2,
 	"TIMERCANCELLED": 3,
+}
+
+func convertTimerStateArray(state []string) []int {
+	var result []int
+	for _, s := range state {
+		result = append(result, timerStateMap[s])
+	}
+	return result
+
 }

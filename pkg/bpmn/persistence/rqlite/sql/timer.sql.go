@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: timer.sql
 
-package rqlite
+package sql
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type FindTimersRow struct {
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessKey         int64  `json:"process_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int64  `json:"state"`
+	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 	DueAt              int64  `json:"due_at"`
 	Duration           int64  `json:"duration"`
@@ -77,7 +77,7 @@ type SaveTimerParams struct {
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessKey         int64  `json:"process_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int64  `json:"state"`
+	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 	DueAt              int64  `json:"due_at"`
 	Duration           int64  `json:"duration"`

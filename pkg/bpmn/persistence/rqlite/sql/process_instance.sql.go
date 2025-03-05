@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: process_instance.sql
 
-package rqlite
+package sql
 
 import (
 	"context"

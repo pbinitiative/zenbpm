@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: message_subscription.sql
 
-package rqlite
+package sql
 
 import (
 	"context"

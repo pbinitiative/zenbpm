@@ -9,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 )
 
 var rqlitePersistence *BpmnEnginePersistenceRqlite
@@ -77,7 +78,7 @@ func Test_ParseSimleResult_works(t *testing.T) {
 
 func Test_ProcessInstanceWrite_works(t *testing.T) {
 
-	processInstance := ProcessInstance{
+	processInstance := sql.ProcessInstance{
 		Key:                  1,
 		ProcessDefinitionKey: 1,
 		CreatedAt:            time.Now().Unix(),
@@ -113,7 +114,7 @@ func Test_ProcessInstanceWrite_works(t *testing.T) {
 
 func Test_ProcessInstanceUpdate_works(t *testing.T) {
 
-	processInstance := ProcessInstance{
+	processInstance := sql.ProcessInstance{
 		Key:                  1,
 		ProcessDefinitionKey: 1,
 		CreatedAt:            time.Now().Unix(),
@@ -167,7 +168,7 @@ func Test_ProcessInstanceUpdate_works(t *testing.T) {
 }
 
 func Test_ProcessDefinitionWrite_works(t *testing.T) {
-	ProcessDefinition := ProcessDefinition{
+	ProcessDefinition := sql.ProcessDefinition{
 		Key:              1,
 		Version:          1,
 		BpmnProcessID:    "1",
@@ -199,4 +200,64 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 		}
 	}
 
+}
+
+func Test_JobFindByKey_failsProperlyWhenKeyNotFound(t *testing.T) {
+	_, err := rqlitePersistence.queries.FindJobByKey(t.Context(), 1)
+
+	if err == nil {
+		t.Errorf("Expected error when key not found")
+	}
+
+	if err.Error() != sql.ErrNoRows {
+		t.Errorf("Unexpected error: %s", err)
+	}
+
+}
+
+func Test_JobWrite_works(t *testing.T) {
+	job := sql.Job{
+		Key:                1,
+		ElementID:          "id",
+		ElementInstanceKey: 1,
+		ProcessInstanceKey: 1,
+		State:              1,
+		CreatedAt:          1,
+	}
+
+	err := rqlitePersistence.SaveJob(t.Context(), &job)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), "", -1, 1, nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(jobs) != 1 {
+		t.Errorf("Wrong number of jobs: %d", len(jobs))
+	}
+
+	for _, j := range jobs {
+		if j.Key != 1 {
+			t.Errorf("Wrong key: %d", j.Key)
+		}
+	}
+}
+
+func Test_JobStateFilter_works(t *testing.T) {
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), "", -1, 1, []string{"ACTIVE", "COMPLETED"})
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(jobs) != 1 {
+		t.Errorf("Wrong number of jobs: %d", len(jobs))
+	}
 }

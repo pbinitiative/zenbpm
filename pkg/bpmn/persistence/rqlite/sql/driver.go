@@ -1,4 +1,4 @@
-package rqlite
+package sql
 
 import (
 	"context"
@@ -28,13 +28,37 @@ type Row struct {
 	ctx     context.Context
 }
 
-func constructRows(ctx context.Context, columns []string, types []string, values []*proto.Values) *Rows {
+const (
+	ErrNoRows = "No result row"
+)
+
+func ConstructRows(ctx context.Context, columns []string, types []string, values []*proto.Values) *Rows {
 	return &Rows{
 		columns:   columns,
 		types:     types,
 		values:    values,
 		rowNumber: -1,
 		ctx:       ctx,
+	}
+}
+
+func ConstructRow(ctx context.Context, columns []string, types []string, values *proto.Values, err error) *Row {
+	return &Row{
+		columns: columns,
+		types:   types,
+		values:  values,
+		ctx:     ctx,
+		err:     err,
+	}
+}
+
+func ConstructRowFromRows(ctx context.Context, rows *Rows, err error) *Row {
+	return &Row{
+		columns: rows.columns,
+		types:   rows.types,
+		values:  rows.values[0],
+		ctx:     ctx,
+		err:     err,
 	}
 }
 
@@ -361,7 +385,7 @@ func (rs *Rows) Err() error {
 
 func (r *Row) Scan(dest ...interface{}) error {
 	if r.values == nil {
-		return errors.New("No row to scan")
+		return errors.New(ErrNoRows)
 	}
 	Scan(r.ctx, r.columns, r.values, dest...)
 	return nil

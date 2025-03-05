@@ -3,14 +3,17 @@
 //   sqlc v1.28.0
 // source: job.sql
 
-package rqlite
+package sql
 
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const findJobByKey = `-- name: FindJobByKey :one
+;
+
 SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE key = ?1
 `
 
@@ -28,21 +31,79 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 	return i, err
 }
 
-const findJobs = `-- name: FindJobs :many
+const findJobsWithStates = `-- name: FindJobsWithStates :many
+SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE 
+    COALESCE(?1, "key") = "key" AND
+    COALESCE(?2, process_instance_key) = process_instance_key AND
+    COALESCE(?3, "element_id") = "element_id" AND
+    "state" IN (/*SLICE:states*/?)
+`
+
+type FindJobsWithStatesParams struct {
+	Key                sql.NullInt64  `json:"key"`
+	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
+	ElementID          sql.NullString `json:"element_id"`
+	States             []int          `json:"states"`
+}
+
+func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStatesParams) ([]Job, error) {
+	query := findJobsWithStates
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Key)
+	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	queryParams = append(queryParams, arg.ElementID)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementID,
+			&i.ElementInstanceKey,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findJobsWithoutStates = `-- name: FindJobsWithoutStates :many
 SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE 
     COALESCE(?1, "key") = "key" AND
     COALESCE(?2, process_instance_key) = process_instance_key AND
     COALESCE(?3, "element_id") = "element_id"
 `
 
-type FindJobsParams struct {
+type FindJobsWithoutStatesParams struct {
 	Key                sql.NullInt64  `json:"key"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	ElementID          sql.NullString `json:"element_id"`
 }
 
-func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findJobs, arg.Key, arg.ProcessInstanceKey, arg.ElementID)
+func (q *Queries) FindJobsWithoutStates(ctx context.Context, arg FindJobsWithoutStatesParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, findJobsWithoutStates, arg.Key, arg.ProcessInstanceKey, arg.ElementID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +144,7 @@ type SaveJobParams struct {
 	ElementID          string `json:"element_id"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int64  `json:"state"`
+	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 }
 

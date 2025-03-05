@@ -7,8 +7,8 @@ import (
 
 	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 	rqlitePersitence "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 )
 
 const noInstanceKey = -1
@@ -68,7 +68,7 @@ func (e *exporter) NewElementEvent(event *bpmnEngineExporter.ProcessInstanceEven
 	// 	ParentProcessInstanceKey: noInstanceKey,
 	// 	ParentElementInstanceKey: noInstanceKey,
 	// }
-	activity := rqlite.ActivityInstance{
+	activity := sql.ActivityInstance{
 		Key:                  -1,
 		ProcessInstanceKey:   event.ProcessInstanceKey,
 		ProcessDefinitionKey: event.ProcessKey,

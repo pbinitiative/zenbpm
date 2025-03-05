@@ -13,6 +13,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
@@ -302,7 +303,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job 
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(processDefinition *ProcessInfo) error {
 
-	return persistence.rqlitePersistence.SaveNewProcess(context.Background(), &rqlite.ProcessDefinition{
+	return persistence.rqlitePersistence.SaveNewProcess(context.Background(), &sql.ProcessDefinition{
 		Key:              processDefinition.ProcessKey,
 		Version:          processDefinition.Version,
 		BpmnProcessID:    processDefinition.BpmnProcessId,
@@ -342,7 +343,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 		log.Fatalf("Error serializing activities: %s", err)
 	}
 
-	return persistence.rqlitePersistence.SaveProcessInstance(context.Background(), &rqlite.ProcessInstance{
+	return persistence.rqlitePersistence.SaveProcessInstance(context.Background(), &sql.ProcessInstance{
 		Key:                  processInstance.InstanceKey,
 		ProcessDefinitionKey: processInstance.ProcessInfo.ProcessKey,
 		CreatedAt:            processInstance.CreatedAt.Unix(),
@@ -357,7 +358,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(subscription *MessageSubscription) error {
 
 	ms :=
-		&rqlite.MessageSubscription{
+		&sql.MessageSubscription{
 			ElementID:          subscription.ElementId,
 			ElementInstanceKey: subscription.ElementInstanceKey,
 			ProcessKey:         subscription.ProcessKey,
@@ -378,7 +379,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(su
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(timer *Timer) error {
 
-	return persistence.rqlitePersistence.SaveTimer(context.Background(), &rqlite.Timer{
+	return persistence.rqlitePersistence.SaveTimer(context.Background(), &sql.Timer{
 		ElementID:          timer.ElementId,
 		ElementInstanceKey: timer.ElementInstanceKey,
 		ProcessKey:         timer.ProcessKey,
@@ -391,7 +392,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(timer *Timer) er
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistJob(job *job) error {
-	return persistence.rqlitePersistence.SaveJob(context.Background(), &rqlite.Job{
+	return persistence.rqlitePersistence.SaveJob(context.Background(), &sql.Job{
 		Key:                job.JobKey,
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,

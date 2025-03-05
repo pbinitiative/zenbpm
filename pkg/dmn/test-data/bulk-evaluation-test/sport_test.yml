@@ -1,0 +1,76 @@
+tests:
+
+# Location Tests
+  - decision: "location"
+    input:
+      weather: "good"
+    expectedOutput: "outdoor"
+  - decision: "location"
+    input:
+      weather: "bad"
+    expectedOutput: "indoor"
+  - decision: "sport"
+    input:
+      equipment: "racket"
+      weather: "bad"
+    expectedOutput: "squash"
+
+# Sport Tests
+  - decision: "sport"
+    input:
+      equipment: "racket"
+      weather: "bad"
+    expectedOutput: "squash"
+  - decision: "sport"
+    input:
+      equipment: "racket"
+      weather: "good"
+    expectedOutput: "tennis"
+  - decision: "sport"
+    input:
+      equipment: "club"
+      weather: "bad"
+    expectedOutput: "minigolf"
+  - decision: "sport"
+    input:
+      equipment: "club"
+      weather: "good"
+    expectedOutput: "golf"
+
+# Clothes Tests
+  - decision: "clothes"
+    input:
+      temperature: "cold"
+      weather: "bad"
+    expectedOutput:
+      shoes: Sneakers
+      top: Shirt
+      bottom: Shorts
+      hat: ""
+  - decision: "clothes"
+    input:
+      temperature: "warm"
+      weather: "bad"
+    expectedOutput:
+      shoes: Sneakers
+      top: Shirt
+      bottom: Shorts
+      hat: ""
+  - decision: "clothes"
+    input:
+      temperature: "cold"
+      weather: "good"
+    expectedOutput:
+      shoes: Boots
+      top: Sweater
+      bottom: Pants
+      hat: "Hat"
+  - decision: "clothes"
+    input:
+      temperature: "warm"
+      weather: "good"
+    expectedOutput:
+      shoes: Boots
+      top: Shirt
+      bottom: Shorts
+      hat: ""

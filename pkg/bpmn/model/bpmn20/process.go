@@ -1,5 +1,13 @@
 package bpmn20
 
+import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
+
+type Activity interface {
+	FlowNode
+	GetCompletionQuantity() int
+	GetIsForCompensation() bool
+	GetStartQuantity() int
+}
 type TActivity struct {
 	TFlowNode
 	CompletionQuantity int  `xml:"completionQuantity,attr"`
@@ -7,7 +15,30 @@ type TActivity struct {
 	StartQuantity      int  `xml:"startQuantity,attr"`
 }
 
-type TTask = TActivity
+func (act TActivity) GetCompletionQuantity() int {
+	return act.CompletionQuantity
+}
+func (act TActivity) GetIsForCompensation() bool {
+	return act.IsForCompensation
+}
+func (act TActivity) GetStartQuantity() int {
+	return act.StartQuantity
+}
+
+type TTask struct {
+	TActivity
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
+	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+}
+
+// ExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
+// BPMN 2.0 Unorthodox.
+type TExternallyProcessedTask struct {
+	TTask
+	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+}
+
 type TEvent = TActivity
 
 type TGateway struct {

@@ -193,7 +193,7 @@ func Test_evaluation_error_percolates_up(t *testing.T) {
 	// then
 	then.AssertThat(t, instance.State, is.EqualTo(Failed))
 	then.AssertThat(t, err, is.Not(is.Nil()))
-	then.AssertThat(t, err.Error(), has.Prefix("Error evaluating expression in flow element id="))
+	then.AssertThat(t, err.Error(), has.Prefix("Error evaluating expression in flow activity id="))
 
 	// cleanup
 	bpmnEngine.Stop()

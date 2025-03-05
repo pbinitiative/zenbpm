@@ -185,7 +185,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 			MessageState:       reverseMap(activityStateMap)[subscription.State],
 			CreatedAt:          time.Unix(subscription.CreatedAt, 0),
 			originActivity:     constructOriginActivity(subscription.OriginActivityKey, subscription.OriginActivityState, subscription.OriginActivityId, pi.ProcessInfo),
-			baseElement:        bpmn20.FindBaseElementsById(&pi.ProcessInfo.definitions, subscription.ElementID)[0],
+			baseElement:        bpmn20.FindFlowNodesById(&pi.ProcessInfo.definitions, subscription.ElementID)[0],
 		})
 	}
 	return resultSubscriptions
@@ -196,7 +196,7 @@ func constructOriginActivity(originActivityKey int64, originActivityState int, o
 	activity := &elementActivity{
 		key:     originActivityKey,
 		state:   reverseMap(activityStateMap)[originActivityState],
-		element: bpmn20.FindBaseElementsById(&process.definitions, originActivityId)[0],
+		element: bpmn20.FindFlowNodesById(&process.definitions, originActivityId)[0],
 	}
 
 	return activity
@@ -252,7 +252,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, proce
 
 		}
 
-		bes := bpmn20.FindBaseElementsById(&processInstance.ProcessInfo.definitions, resultJob.ElementId)
+		bes := bpmn20.FindFlowNodesById(&processInstance.ProcessInfo.definitions, resultJob.ElementId)
 		if len(bes) == 0 {
 			continue
 		}

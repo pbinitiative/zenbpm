@@ -43,13 +43,13 @@ const (
 type activity interface {
 	Key() int64
 	State() ActivityState
-	Element() *bpmn20.BaseElement
+	Element() *bpmn20.FlowNode
 }
 
 type elementActivity struct {
 	key     int64         `json:"k"`
 	state   ActivityState `json:"s"`
-	element *bpmn20.BaseElement
+	element *bpmn20.FlowNode
 }
 
 func (a elementActivity) Key() int64 {
@@ -60,7 +60,7 @@ func (a elementActivity) State() ActivityState {
 	return a.state
 }
 
-func (a elementActivity) Element() *bpmn20.BaseElement {
+func (a elementActivity) Element() *bpmn20.FlowNode {
 	return a.element
 }
 
@@ -69,7 +69,7 @@ func (a elementActivity) Element() *bpmn20.BaseElement {
 type gatewayActivity struct {
 	key                     int64         `json:"k"`
 	state                   ActivityState `json:"s"`
-	element                 *bpmn20.BaseElement
+	element                 *bpmn20.FlowNode
 	parallel                bool
 	inboundFlowIdsCompleted []string
 }
@@ -82,7 +82,7 @@ func (ga *gatewayActivity) State() ActivityState {
 	return ga.state
 }
 
-func (ga *gatewayActivity) Element() *bpmn20.BaseElement {
+func (ga *gatewayActivity) Element() *bpmn20.FlowNode {
 	return ga.element
 }
 
@@ -125,7 +125,7 @@ func (ga gatewayActivity) MarshalJSON() ([]byte, error) {
 type eventBasedGatewayActivity struct {
 	key                       int64
 	state                     ActivityState
-	element                   *bpmn20.BaseElement
+	element                   *bpmn20.FlowNode
 	OutboundActivityCompleted string
 }
 
@@ -137,7 +137,7 @@ func (ebg *eventBasedGatewayActivity) State() ActivityState {
 	return ebg.state
 }
 
-func (ebg *eventBasedGatewayActivity) Element() *bpmn20.BaseElement {
+func (ebg *eventBasedGatewayActivity) Element() *bpmn20.FlowNode {
 	return ebg.element
 }
 

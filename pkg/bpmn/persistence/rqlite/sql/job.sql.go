@@ -8,7 +8,6 @@ package sql
 import (
 	"context"
 	"database/sql"
-	"strings"
 )
 
 const findJobByKey = `-- name: FindJobByKey :one
@@ -36,31 +35,24 @@ SELECT "key", element_id, element_instance_key, process_instance_key, state, cre
     COALESCE(?1, "key") = "key" AND
     COALESCE(?2, process_instance_key) = process_instance_key AND
     COALESCE(?3, "element_id") = "element_id" AND
-    "state" IN (/*SLICE:states*/?)
+    (?4 IS  NULL OR
+    "state" IN (SELECT value FROM json_each(?4)))
 `
 
 type FindJobsWithStatesParams struct {
 	Key                sql.NullInt64  `json:"key"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	ElementID          sql.NullString `json:"element_id"`
-	States             []int          `json:"states"`
+	States             interface{}    `json:"states"`
 }
 
 func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStatesParams) ([]Job, error) {
-	query := findJobsWithStates
-	var queryParams []interface{}
-	queryParams = append(queryParams, arg.Key)
-	queryParams = append(queryParams, arg.ProcessInstanceKey)
-	queryParams = append(queryParams, arg.ElementID)
-	if len(arg.States) > 0 {
-		for _, v := range arg.States {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, findJobsWithStates,
+		arg.Key,
+		arg.ProcessInstanceKey,
+		arg.ElementID,
+		arg.States,
+	)
 	if err != nil {
 		return nil, err
 	}

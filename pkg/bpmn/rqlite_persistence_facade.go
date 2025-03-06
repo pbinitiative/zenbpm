@@ -175,7 +175,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 	if processInstance != nil {
 		pik = (*processInstance).GetInstanceKey()
 	}
-	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscription(context.Background(), originActivityKey, pik, elementId, states)
+	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscriptions(context.Background(), originActivityKey, pik, elementId, states)
 
 	if err != nil {
 		log.Fatal("Finding message subscriptions failed", err)
@@ -195,7 +195,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 		resultSubscriptions = append(resultSubscriptions, &MessageSubscription{
 			ElementId:          subscription.ElementID,
 			ElementInstanceKey: subscription.ElementInstanceKey,
-			ProcessKey:         subscription.ProcessKey,
+			ProcessKey:         subscription.ProcessDefinitionKey,
 			ProcessInstanceKey: subscription.ProcessInstanceKey,
 			Name:               subscription.Name,
 			MessageState:       reverseMap(activityStateMap)[subscription.State],
@@ -234,7 +234,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int
 		resultTimers = append(resultTimers, &Timer{
 			ElementId:          timer.ElementID,
 			ElementInstanceKey: timer.ElementInstanceKey,
-			ProcessKey:         timer.ProcessKey,
+			ProcessKey:         timer.ProcessDefinitionKey,
 			ProcessInstanceKey: timer.ProcessInstanceKey,
 			TimerState:         reverseMap(timerStateMap)[int(timer.State)],
 			CreatedAt:          time.Unix(timer.CreatedAt, 0),
@@ -303,7 +303,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job 
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(processDefinition *ProcessInfo) error {
 
-	return persistence.rqlitePersistence.SaveNewProcess(context.Background(), &sql.ProcessDefinition{
+	return persistence.rqlitePersistence.SaveNewProcess(context.Background(), sql.ProcessDefinition{
 		Key:              processDefinition.ProcessKey,
 		Version:          processDefinition.Version,
 		BpmnProcessID:    processDefinition.BpmnProcessId,
@@ -343,7 +343,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 		log.Fatalf("Error serializing activities: %s", err)
 	}
 
-	return persistence.rqlitePersistence.SaveProcessInstance(context.Background(), &sql.ProcessInstance{
+	return persistence.rqlitePersistence.SaveProcessInstance(context.Background(), sql.ProcessInstance{
 		Key:                  processInstance.InstanceKey,
 		ProcessDefinitionKey: processInstance.ProcessInfo.ProcessKey,
 		CreatedAt:            processInstance.CreatedAt.Unix(),
@@ -358,14 +358,14 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(subscription *MessageSubscription) error {
 
 	ms :=
-		&sql.MessageSubscription{
-			ElementID:          subscription.ElementId,
-			ElementInstanceKey: subscription.ElementInstanceKey,
-			ProcessKey:         subscription.ProcessKey,
-			ProcessInstanceKey: subscription.ProcessInstanceKey,
-			Name:               subscription.Name,
-			State:              activityStateMap[subscription.State()],
-			CreatedAt:          subscription.CreatedAt.Unix(),
+		sql.MessageSubscription{
+			ElementID:            subscription.ElementId,
+			ElementInstanceKey:   subscription.ElementInstanceKey,
+			ProcessDefinitionKey: subscription.ProcessKey,
+			ProcessInstanceKey:   subscription.ProcessInstanceKey,
+			Name:                 subscription.Name,
+			State:                activityStateMap[subscription.State()],
+			CreatedAt:            subscription.CreatedAt.Unix(),
 		}
 
 	if subscription.originActivity != nil {
@@ -379,25 +379,26 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(su
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(timer *Timer) error {
 
-	return persistence.rqlitePersistence.SaveTimer(context.Background(), &sql.Timer{
-		ElementID:          timer.ElementId,
-		ElementInstanceKey: timer.ElementInstanceKey,
-		ProcessKey:         timer.ProcessKey,
-		ProcessInstanceKey: timer.ProcessInstanceKey,
-		State:              int64(timerStateMap[timer.TimerState]),
-		CreatedAt:          timer.CreatedAt.Unix(),
-		DueAt:              timer.DueAt.Unix(),
-		Duration:           int64(timer.Duration.Seconds()),
+	return persistence.rqlitePersistence.SaveTimer(context.Background(), sql.Timer{
+		Key:                  timer.Key(),
+		ElementID:            timer.ElementId,
+		ElementInstanceKey:   timer.ElementInstanceKey,
+		ProcessDefinitionKey: timer.ProcessKey,
+		ProcessInstanceKey:   timer.ProcessInstanceKey,
+		State:                int(timerStateMap[timer.TimerState]),
+		CreatedAt:            timer.CreatedAt.Unix(),
+		DueAt:                timer.DueAt.Unix(),
+		Duration:             int64(timer.Duration.Seconds()),
 	})
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) PersistJob(job *job) error {
-	return persistence.rqlitePersistence.SaveJob(context.Background(), &sql.Job{
+	return persistence.rqlitePersistence.SaveJob(context.Background(), sql.Job{
 		Key:                job.JobKey,
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
-		State:              int64(activityStateMap[job.JobState]),
+		State:              activityStateMap[job.JobState],
 		CreatedAt:          job.CreatedAt.Unix(),
 	})
 

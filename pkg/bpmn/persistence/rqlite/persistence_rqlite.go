@@ -4,6 +4,8 @@ import (
 	"context"
 	sqlc "database/sql"
 	"errors"
+	"strconv"
+	"strings"
 
 	"log"
 
@@ -74,12 +76,13 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context
 	return instances, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]sql.MessageSubscription, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscriptions(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]sql.MessageSubscription, error) {
 
 	params := sql.FindMessageSubscriptionsParams{
 		OriginActivityKey:  sqlc.NullInt64{Int64: originActivityKey, Valid: originActivityKey != -1},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
 		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
 	}
 
 	// Fetch subscriptions
@@ -99,6 +102,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, 
 	params := sql.FindTimersParams{
 		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
 		ElementInstanceKey: sqlc.NullInt64{Int64: elementInstanceKey, Valid: elementInstanceKey != -1},
+		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: state != nil},
 	}
 
 	// Fetch timers
@@ -123,27 +127,14 @@ func interfaceSlice(slice []string) []interface{} {
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, elementId string, processInstanceKey int64, jobKey int64, state []string) ([]sql.Job, error) {
-	var jobs []sql.Job
-	var err error
-	if len(state) == 0 {
-		params := sql.FindJobsWithoutStatesParams{
-			Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
-			ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-			ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
-		}
-		// Fetch jobs
-		jobs, err = persistence.queries.FindJobsWithoutStates(ctx, params)
-	} else {
-		params := sql.FindJobsWithStatesParams{
-			Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
-			ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-			ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
-			States:             convertActivityStateArray(state),
-		}
-		// Fetch jobs
-		jobs, err = persistence.queries.FindJobsWithStates(ctx, params)
+	params := sql.FindJobsWithStatesParams{
+		Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
+		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
+		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
 	}
-
+	// Fetch jobs
+	jobs, err := persistence.queries.FindJobsWithStates(ctx, params)
 	if err != nil {
 		log.Fatal("Finding jobs failed", err)
 		return nil, err
@@ -167,25 +158,25 @@ func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceK
 
 // WRITE
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveNewProcess(ctx context.Context, processDefinition *sql.ProcessDefinition) error {
-	return persistence.queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams(*processDefinition))
+func (persistence *BpmnEnginePersistenceRqlite) SaveNewProcess(ctx context.Context, processDefinition sql.ProcessDefinition) error {
+	return persistence.queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams(processDefinition))
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveProcessInstance(ctx context.Context, processInstance *sql.ProcessInstance) error {
-	return persistence.queries.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams(*processInstance))
+func (persistence *BpmnEnginePersistenceRqlite) SaveProcessInstance(ctx context.Context, processInstance sql.ProcessInstance) error {
+	return persistence.queries.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams(processInstance))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveMessageSubscription(ctx context.Context, subscription *sql.MessageSubscription) error {
-	return persistence.queries.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams(*subscription))
+func (persistence *BpmnEnginePersistenceRqlite) SaveMessageSubscription(ctx context.Context, subscription sql.MessageSubscription) error {
+	return persistence.queries.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams(subscription))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveTimer(ctx context.Context, timer *sql.Timer) error {
-	return persistence.queries.SaveTimer(ctx, sql.SaveTimerParams(*timer))
+func (persistence *BpmnEnginePersistenceRqlite) SaveTimer(ctx context.Context, timer sql.Timer) error {
+	return persistence.queries.SaveTimer(ctx, sql.SaveTimerParams(timer))
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) SaveJob(ctx context.Context, job *sql.Job) error {
-	return persistence.queries.SaveJob(ctx, sql.SaveJobParams(*job))
+func (persistence *BpmnEnginePersistenceRqlite) SaveJob(ctx context.Context, job sql.Job) error {
+	return persistence.queries.SaveJob(ctx, sql.SaveJobParams(job))
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) SaveActivity(ctx context.Context, activity sql.ActivityInstance) error {
@@ -409,16 +400,20 @@ var activityStateMap = map[string]int{
 	"WITHDRAWN":    11,
 }
 
-func convertActivityStateArray(state []string) []int {
-	var result []int
+func convertStateArray(state []string, stateMap map[string]int) []string {
+	var result []string
 	for _, s := range state {
-		mapped := activityStateMap[s]
+		mapped := stateMap[s]
 		if mapped == 0 {
 			continue
 		}
-		result = append(result, activityStateMap[s])
+		result = append(result, strconv.Itoa(mapped))
 	}
 	return result
+}
+
+func serializeState(state []string, stateMap map[string]int) string {
+	return "[" + strings.Join(convertStateArray(state, stateMap), ",") + "]"
 }
 
 // reverse the map

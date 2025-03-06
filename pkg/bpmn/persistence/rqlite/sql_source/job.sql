@@ -9,7 +9,8 @@ SELECT * FROM job WHERE
     COALESCE(sqlc.narg('key'), "key") = "key" AND
     COALESCE(sqlc.narg('process_instance_key'), process_instance_key) = process_instance_key AND
     COALESCE(sqlc.narg('element_id'), "element_id") = "element_id" AND
-    "state" IN (sqlc.slice('states'));
+    (sqlc.narg('states') IS  NULL OR
+    "state" IN (SELECT value FROM json_each(?4)));
 
 -- name: FindJobsWithoutStates :many
 SELECT * FROM job WHERE 

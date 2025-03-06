@@ -11,30 +11,34 @@ import (
 )
 
 const findTimers = `-- name: FindTimers :many
-SELECT element_id, element_instance_key, process_key, process_instance_key, state, created_at, due_at, duration
+SELECT key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration
 FROM timer
 WHERE COALESCE(?1, process_instance_key) = process_instance_key AND
-  COALESCE(?2, "element_instance_key") = "element_instance_key"
+  COALESCE(?2, "element_instance_key") = "element_instance_key" AND
+  (?3 IS  NULL OR
+    "state" IN (SELECT value FROM json_each(?3)))
 `
 
 type FindTimersParams struct {
 	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
 	ElementInstanceKey sql.NullInt64 `json:"element_instance_key"`
+	States             interface{}   `json:"states"`
 }
 
 type FindTimersRow struct {
-	ElementID          string `json:"element_id"`
-	ElementInstanceKey int64  `json:"element_instance_key"`
-	ProcessKey         int64  `json:"process_key"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int    `json:"state"`
-	CreatedAt          int64  `json:"created_at"`
-	DueAt              int64  `json:"due_at"`
-	Duration           int64  `json:"duration"`
+	Key                  int64  `json:"key"`
+	ElementID            string `json:"element_id"`
+	ElementInstanceKey   int64  `json:"element_instance_key"`
+	ProcessDefinitionKey int64  `json:"process_definition_key"`
+	ProcessInstanceKey   int64  `json:"process_instance_key"`
+	State                int    `json:"state"`
+	CreatedAt            int64  `json:"created_at"`
+	DueAt                int64  `json:"due_at"`
+	Duration             int64  `json:"duration"`
 }
 
 func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]FindTimersRow, error) {
-	rows, err := q.db.QueryContext(ctx, findTimers, arg.ProcessInstanceKey, arg.ElementInstanceKey)
+	rows, err := q.db.QueryContext(ctx, findTimers, arg.ProcessInstanceKey, arg.ElementInstanceKey, arg.States)
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +47,10 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]FindT
 	for rows.Next() {
 		var i FindTimersRow
 		if err := rows.Scan(
+			&i.Key,
 			&i.ElementID,
 			&i.ElementInstanceKey,
-			&i.ProcessKey,
+			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
 			&i.State,
 			&i.CreatedAt,
@@ -67,27 +72,29 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]FindT
 
 const saveTimer = `-- name: SaveTimer :exec
 INSERT INTO timer
-(element_id, element_instance_key, process_key, process_instance_key, state, created_at, due_at, duration)
+(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration)
 VALUES
-(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state
+(?,?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state
 `
 
 type SaveTimerParams struct {
-	ElementID          string `json:"element_id"`
-	ElementInstanceKey int64  `json:"element_instance_key"`
-	ProcessKey         int64  `json:"process_key"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	State              int    `json:"state"`
-	CreatedAt          int64  `json:"created_at"`
-	DueAt              int64  `json:"due_at"`
-	Duration           int64  `json:"duration"`
+	Key                  int64  `json:"key"`
+	ElementID            string `json:"element_id"`
+	ElementInstanceKey   int64  `json:"element_instance_key"`
+	ProcessDefinitionKey int64  `json:"process_definition_key"`
+	ProcessInstanceKey   int64  `json:"process_instance_key"`
+	State                int    `json:"state"`
+	CreatedAt            int64  `json:"created_at"`
+	DueAt                int64  `json:"due_at"`
+	Duration             int64  `json:"duration"`
 }
 
 func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
 	_, err := q.db.ExecContext(ctx, saveTimer,
+		arg.Key,
 		arg.ElementID,
 		arg.ElementInstanceKey,
-		arg.ProcessKey,
+		arg.ProcessDefinitionKey,
 		arg.ProcessInstanceKey,
 		arg.State,
 		arg.CreatedAt,

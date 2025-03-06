@@ -3,6 +3,7 @@ package rqlite
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ func Test_ProcessInstanceWrite_works(t *testing.T) {
 		CaughtEvents:         "",
 		Activities:           "",
 	}
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
@@ -106,8 +107,8 @@ func Test_ProcessInstanceWrite_works(t *testing.T) {
 	}
 
 	for _, pi := range processInstances {
-		if pi.Key != 1 {
-			t.Errorf("Wrong key: %d", pi.Key)
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
 		}
 	}
 }
@@ -123,7 +124,7 @@ func Test_ProcessInstanceUpdate_works(t *testing.T) {
 		CaughtEvents:         "",
 		Activities:           "",
 	}
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
@@ -134,7 +135,7 @@ func Test_ProcessInstanceUpdate_works(t *testing.T) {
 	processInstance.VariableHolder = "[]"
 	processInstance.CaughtEvents = "[]"
 
-	err = rqlitePersistence.SaveProcessInstance(t.Context(), &processInstance)
+	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
 
 	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), 1, -1)
 
@@ -149,20 +150,8 @@ func Test_ProcessInstanceUpdate_works(t *testing.T) {
 	}
 
 	for _, pi := range processInstances {
-		if pi.Key != 1 {
-			t.Errorf("Wrong key: %d", pi.Key)
-		}
-		if pi.State != 4 {
-			t.Errorf("Wrong state: %d", pi.State)
-		}
-		if pi.Activities != "[]" {
-			t.Errorf("Wrong activities: %s", pi.Activities)
-		}
-		if pi.VariableHolder != "[]" {
-			t.Errorf("Wrong variable holder: %s", pi.VariableHolder)
-		}
-		if pi.CaughtEvents != "[]" {
-			t.Errorf("Wrong caught events: %s", pi.CaughtEvents)
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
 		}
 	}
 }
@@ -173,11 +162,11 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 		Version:          1,
 		BpmnProcessID:    "1",
 		BpmnData:         "",
-		BpmnChecksum:     []byte{},
+		BpmnChecksum:     []byte{12, 32},
 		BpmnResourceName: "",
 	}
 
-	err := rqlitePersistence.SaveNewProcess(t.Context(), &ProcessDefinition)
+	err := rqlitePersistence.SaveNewProcess(t.Context(), ProcessDefinition)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
@@ -195,8 +184,8 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 	}
 
 	for _, pd := range processDefinitions {
-		if pd.Key != 1 {
-			t.Errorf("Wrong key: %d", pd.Key)
+		if !reflect.DeepEqual(pd, ProcessDefinition) {
+			t.Errorf("Wrong process definition data got: %+v expected: %+v", pd, ProcessDefinition)
 		}
 	}
 
@@ -207,9 +196,7 @@ func Test_JobFindByKey_failsProperlyWhenKeyNotFound(t *testing.T) {
 
 	if err == nil {
 		t.Errorf("Expected error when key not found")
-	}
-
-	if err.Error() != sql.ErrNoRows {
+	} else if err.Error() != sql.ErrNoRows {
 		t.Errorf("Unexpected error: %s", err)
 	}
 
@@ -225,7 +212,7 @@ func Test_JobWrite_works(t *testing.T) {
 		CreatedAt:          1,
 	}
 
-	err := rqlitePersistence.SaveJob(t.Context(), &job)
+	err := rqlitePersistence.SaveJob(t.Context(), job)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
@@ -243,8 +230,8 @@ func Test_JobWrite_works(t *testing.T) {
 	}
 
 	for _, j := range jobs {
-		if j.Key != 1 {
-			t.Errorf("Wrong key: %d", j.Key)
+		if j != job {
+			t.Errorf("Wrong job data got: %+v expected: %+v", j, job)
 		}
 	}
 }
@@ -259,5 +246,117 @@ func Test_JobStateFilter_works(t *testing.T) {
 	// Assert
 	if len(jobs) != 1 {
 		t.Errorf("Wrong number of jobs: %d", len(jobs))
+	}
+}
+
+func Test_TimerWrite_works(t *testing.T) {
+	timer := sql.Timer{
+		Key:                  1,
+		ElementID:            "id",
+		ElementInstanceKey:   1,
+		ProcessInstanceKey:   1,
+		State:                1,
+		CreatedAt:            1,
+		ProcessDefinitionKey: 1,
+		DueAt:                1,
+		Duration:             1,
+	}
+
+	err := rqlitePersistence.SaveTimer(t.Context(), timer)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	timers, err := rqlitePersistence.FindTimers(t.Context(), -1, 1, nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(timers) != 1 {
+		t.Errorf("Wrong number of timers: %d", len(timers))
+	}
+
+	for _, timer := range timers {
+		if timer != timer {
+			t.Errorf("Wrong timer data got: %+v expected: %+v", timer, timer)
+		}
+	}
+}
+
+func Test_MessageSubscriptionWrite_works(t *testing.T) {
+	messageSubscription := sql.MessageSubscription{
+		Key:                  1,
+		ElementID:            "id",
+		ElementInstanceKey:   1,
+		ProcessInstanceKey:   1,
+		ProcessDefinitionKey: 1,
+		OriginActivityKey:    1,
+		Name:                 "name",
+		State:                1,
+		CreatedAt:            time.Now().Unix(),
+		OriginActivityState:  1,
+		OriginActivityID:     "id",
+	}
+
+	err := rqlitePersistence.SaveMessageSubscription(t.Context(), messageSubscription)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	messageSubscriptions, err := rqlitePersistence.FindMessageSubscriptions(t.Context(), 1, 1, "", nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(messageSubscriptions) != 1 {
+		t.Errorf("Wrong number of message subscriptions: %d", len(messageSubscriptions))
+	}
+
+	for _, ms := range messageSubscriptions {
+		if ms != messageSubscription {
+			t.Errorf("Wrong message subscription data got: %+v expected: %+v", ms, messageSubscription)
+		}
+	}
+
+}
+
+func Test_ActivityInstanceWrite_works(t *testing.T) {
+	activityInstance := sql.ActivityInstance{
+		Key:                  1,
+		ElementID:            "id",
+		ProcessInstanceKey:   1,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                "ACTIVATED",
+		BpmnElementType:      "Task",
+	}
+
+	err := rqlitePersistence.SaveActivity(t.Context(), activityInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	activityInstances, err := rqlitePersistence.FindActivitiesByProcessInstanceKey(t.Context(), 1)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+	if len(activityInstances) != 1 {
+		t.Errorf("Wrong number of activity instances: %d", len(activityInstances))
+	}
+
+	for _, ai := range activityInstances {
+		if ai != activityInstance {
+			t.Errorf("Wrong activity instance data got: %+v expected: %+v", ai, activityInstance)
+		}
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 type BpmnEnginePersistenceRqlite struct {
@@ -59,7 +60,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessByKey(processKey int6
 func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId string, processKey int64) []*ProcessInfo {
 	// TODO finds all processes with given ID sorted by version number
 
-	processes, err := persistence.rqlitePersistence.FindProcesses(context.Background(), processId, processKey)
+	processes, err := persistence.rqlitePersistence.FindProcesses(context.Background(), &processId, &processKey)
 
 	if err != nil {
 		log.Fatalf("Error finding processes: %s", err)
@@ -109,7 +110,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstanceByKey(process
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInstanceKey int64) []*processInstanceInfo {
-	instances, err := persistence.rqlitePersistence.FindProcessInstances(context.Background(), processInstanceKey, -1)
+	instances, err := persistence.rqlitePersistence.FindProcessInstances(context.Background(), &processInstanceKey, nil)
 
 	if err != nil {
 		log.Fatal("Finding process instance failed", err)
@@ -170,12 +171,12 @@ func convertTimerStatesToStrings(states []TimerState) []string {
 
 func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...ActivityState) []*MessageSubscription {
 	states := convertActivityStatesToStrings(state)
-	pik := int64(-1)
+	var pik *int64
 
 	if processInstance != nil {
-		pik = (*processInstance).GetInstanceKey()
+		pik = ptr.To((*processInstance).GetInstanceKey())
 	}
-	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscriptions(context.Background(), originActivityKey, pik, elementId, states)
+	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscriptions(context.Background(), &originActivityKey, pik, &elementId, states)
 
 	if err != nil {
 		log.Fatal("Finding message subscriptions failed", err)
@@ -221,7 +222,7 @@ func constructOriginActivity(originActivityKey int64, originActivityState int, o
 
 func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int64, processInstanceKey int64, state ...TimerState) []*Timer {
 	states := convertTimerStatesToStrings(state)
-	timers, err := persistence.rqlitePersistence.FindTimers(context.Background(), originActivityKey, processInstanceKey, states)
+	timers, err := persistence.rqlitePersistence.FindTimers(context.Background(), &originActivityKey, &processInstanceKey, states)
 
 	if err != nil {
 		log.Fatal("Finding timers failed", err)
@@ -249,12 +250,12 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int
 
 func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...ActivityState) []*job {
 	states := convertActivityStatesToStrings(state)
-	processInstanceKey := int64(-1)
+	var processInstanceKey *int64
 	if processInstance != nil {
-		processInstanceKey = (*processInstance).GetInstanceKey()
+		processInstanceKey = ptr.To((*processInstance).GetInstanceKey())
 	}
 
-	jobs, err := persistence.rqlitePersistence.FindJobs(context.Background(), elementId, processInstanceKey, jobKey, states)
+	jobs, err := persistence.rqlitePersistence.FindJobs(context.Background(), &elementId, processInstanceKey, &jobKey, states)
 
 	if err != nil {
 		log.Fatal("Finding jobs failed", err)

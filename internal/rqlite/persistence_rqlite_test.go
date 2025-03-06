@@ -11,6 +11,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 var rqlitePersistence *BpmnEnginePersistenceRqlite
@@ -94,7 +95,7 @@ func Test_ProcessInstanceWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), 1, -1)
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -137,7 +138,7 @@ func Test_ProcessInstanceUpdate_works(t *testing.T) {
 
 	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
 
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), 1, -1)
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -172,7 +173,7 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), "1", -1)
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), ptr.To("1"), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -218,7 +219,7 @@ func Test_JobWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	jobs, err := rqlitePersistence.FindJobs(t.Context(), "", -1, 1, nil)
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -237,7 +238,7 @@ func Test_JobWrite_works(t *testing.T) {
 }
 
 func Test_JobStateFilter_works(t *testing.T) {
-	jobs, err := rqlitePersistence.FindJobs(t.Context(), "", -1, 1, []string{"ACTIVE", "COMPLETED"})
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), []string{"ACTIVE", "COMPLETED"})
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -268,7 +269,7 @@ func Test_TimerWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	timers, err := rqlitePersistence.FindTimers(t.Context(), -1, 1, nil)
+	timers, err := rqlitePersistence.FindTimers(t.Context(), nil, ptr.To(int64(1)), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -307,7 +308,7 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	messageSubscriptions, err := rqlitePersistence.FindMessageSubscriptions(t.Context(), 1, 1, "", nil)
+	messageSubscriptions, err := rqlitePersistence.FindMessageSubscriptions(t.Context(), ptr.To(int64(1)), ptr.To(int64(1)), nil, nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -343,7 +344,7 @@ func Test_ActivityInstanceWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	activityInstances, err := rqlitePersistence.FindActivitiesByProcessInstanceKey(t.Context(), 1)
+	activityInstances, err := rqlitePersistence.FindActivitiesByProcessInstanceKey(t.Context(), ptr.To(int64(1)))
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)

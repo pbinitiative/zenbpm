@@ -12,6 +12,7 @@ import (
 	_ "embed"
 
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
@@ -42,11 +43,11 @@ func NewBpmnEnginePersistenceRqlite( /*snowflakeIdGenerator *snowflake.Node, */ 
 }
 
 // READ
-func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Context, bpmnProcessId string, processDefinitionKey int64) ([]sql.ProcessDefinition, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Context, bpmnProcessId *string, processDefinitionKey *int64) ([]sql.ProcessDefinition, error) {
 
 	params := sql.FindProcessDefinitionsParams{
-		Key:           sqlc.NullInt64{Int64: processDefinitionKey, Valid: processDefinitionKey != -1},
-		BpmnProcessID: sqlc.NullString{String: bpmnProcessId, Valid: bpmnProcessId != ""},
+		Key:           sqlc.NullInt64{Int64: ptr.Deref(processDefinitionKey, int64(0)), Valid: processDefinitionKey != nil},
+		BpmnProcessID: sqlc.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
 	}
 
 	// Fetch process instances
@@ -59,11 +60,11 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Contex
 	return definitions, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context.Context, processInstanceKey int64, processDefinitionKey int64) ([]sql.ProcessInstance, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context.Context, processInstanceKey *int64, processDefinitionKey *int64) ([]sql.ProcessInstance, error) {
 
 	params := sql.FindProcessInstancesParams{
-		Key:                  sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-		ProcessDefinitionKey: sqlc.NullInt64{Int64: processDefinitionKey, Valid: processDefinitionKey != -1},
+		Key:                  sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
+		ProcessDefinitionKey: sqlc.NullInt64{Int64: ptr.Deref(processDefinitionKey, int64(0)), Valid: processDefinitionKey != nil},
 	}
 
 	// Fetch process instances
@@ -76,12 +77,12 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context
 	return instances, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscriptions(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]sql.MessageSubscription, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscriptions(ctx context.Context, originActivityKey *int64, processInstanceKey *int64, elementId *string, state []string) ([]sql.MessageSubscription, error) {
 
 	params := sql.FindMessageSubscriptionsParams{
-		OriginActivityKey:  sqlc.NullInt64{Int64: originActivityKey, Valid: originActivityKey != -1},
-		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+		OriginActivityKey:  sqlc.NullInt64{Int64: ptr.Deref(originActivityKey, int64(0)), Valid: originActivityKey != nil},
+		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
+		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
 		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
 	}
 
@@ -98,10 +99,10 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscriptions(ctx con
 	return resultSubscriptions, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, elementInstanceKey int64, processInstanceKey int64, state []string) ([]sql.Timer, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, elementInstanceKey *int64, processInstanceKey *int64, state []string) ([]sql.Timer, error) {
 	params := sql.FindTimersParams{
-		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-		ElementInstanceKey: sqlc.NullInt64{Int64: elementInstanceKey, Valid: elementInstanceKey != -1},
+		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
+		ElementInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(elementInstanceKey, int64(0)), Valid: elementInstanceKey != nil},
 		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: state != nil},
 	}
 
@@ -126,11 +127,11 @@ func interfaceSlice(slice []string) []interface{} {
 	return ret
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, elementId string, processInstanceKey int64, jobKey int64, state []string) ([]sql.Job, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, elementId *string, processInstanceKey *int64, jobKey *int64, state []string) ([]sql.Job, error) {
 	params := sql.FindJobsWithStatesParams{
-		Key:                sqlc.NullInt64{Int64: jobKey, Valid: jobKey != -1},
-		ProcessInstanceKey: sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1},
-		ElementID:          sqlc.NullString{String: elementId, Valid: elementId != ""},
+		Key:                sqlc.NullInt64{Int64: ptr.Deref(jobKey, int64(-1)), Valid: jobKey != nil},
+		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil},
+		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
 		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
 	}
 	// Fetch jobs
@@ -142,9 +143,9 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, el
 	return jobs, nil
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]sql.ActivityInstance, error) {
+func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey *int64) ([]sql.ActivityInstance, error) {
 	// Fetch activities
-	activities, err := persistence.queries.FindActivityInstances(ctx, sqlc.NullInt64{Int64: processInstanceKey, Valid: processInstanceKey != -1})
+	activities, err := persistence.queries.FindActivityInstances(ctx, sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil})
 	if err != nil {
 		log.Fatal("Finding activities failed", err)
 		return nil, err

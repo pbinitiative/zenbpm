@@ -104,7 +104,7 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	processes, err := s.engine.GetPersistence().FindProcesses(ctx, "", -1)
+	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
-	processes, err := s.engine.GetPersistence().FindProcesses(ctx, "", request.ProcessDefinitionKey)
+	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, &request.ProcessDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.ProcessDefinitionKey != nil {
 		processDefintionKey = *request.Params.ProcessDefinitionKey
 	}
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, -1, processDefintionKey)
+	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, &processDefintionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 }
 
 func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.ProcessInstance, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, key, -1)
+	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, &key, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, request.ProcessInstanceKey, -1)
+	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, ptr.To(int64(request.ProcessInstanceKey)), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	activites, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, request.ProcessInstanceKey)
+	activites, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, ptr.To(request.ProcessInstanceKey))
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 }
 
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
-	jobs, err := s.engine.GetPersistence().FindJobs(ctx, "", request.ProcessInstanceKey, int64(-1), []string{})
+	jobs, err := s.engine.GetPersistence().FindJobs(ctx, nil, ptr.To(request.ProcessInstanceKey), nil, nil)
 	if err != nil {
 		return nil, err
 	}

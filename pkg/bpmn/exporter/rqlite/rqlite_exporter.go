@@ -7,8 +7,8 @@ import (
 
 	bpmnEngineExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 
-	rqlitePersitence "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	rqlitePersitence "github.com/pbinitiative/zenbpm/internal/rqlite"
+	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 )
 
 const noInstanceKey = -1

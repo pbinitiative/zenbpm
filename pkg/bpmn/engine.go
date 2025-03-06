@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
-	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 

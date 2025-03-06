@@ -11,9 +11,9 @@ import (
 	"log"
 
 	"github.com/bwmarrin/snowflake"
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 

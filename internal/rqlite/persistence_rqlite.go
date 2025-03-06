@@ -11,7 +11,7 @@ import (
 
 	_ "embed"
 
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )

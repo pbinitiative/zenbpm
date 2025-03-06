@@ -10,7 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 )
 
 var rqlitePersistence *BpmnEnginePersistenceRqlite

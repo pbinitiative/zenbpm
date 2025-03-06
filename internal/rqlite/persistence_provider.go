@@ -3,7 +3,7 @@ package rqlite
 import (
 	"context"
 
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 )
 
 type BpmnEnginePersistence interface {

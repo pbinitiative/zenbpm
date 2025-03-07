@@ -1,0 +1,54 @@
+syntax = "proto3";
+package command;
+
+option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/command/proto";
+
+message Command {
+	enum Type {
+		TYPE_UNKNOWN = 0;
+		TYPE_NOOP = 1;
+		TYPE_NODE_CHANGE = 2;
+		TYPE_NODE_PARTITION_CHANGE = 3;
+	}
+	Type type = 1;
+	oneof request {
+			NodeChange node_change = 2;
+			NodePartitionChange node_partition_change = 3;
+	}
+}
+
+enum Role {
+	ROLE_TYPE_UNKNOWN = 0;
+	ROLE_TYPE_FOLLOWER = 1;
+	ROLE_TYPE_LEADER = 2;
+}
+
+enum NodeState {
+	NODE_STATE_UNKNOWN = 0;
+	NODE_STATE_STARTING = 1;
+	NODE_STATE_STARTED = 2;
+	NODE_STATE_ERROR = 3;
+}
+
+message NodeChange {
+	string node_id = 1; // node which changed
+	string priv_grpc_addr = 2; // address of the private GRPC endpoint
+	NodeState state = 3;
+	Role role = 4;
+}
+
+enum NodePartitionState {
+	NODE_PARTITION_STATE_UNKNOWN = 0;
+	NODE_PARTITION_STATE_ERROR = 1;
+	NODE_PARTITION_STATE_JOINING = 2;
+	NODE_PARTITION_STATE_LEAVING = 3;
+	NODE_PARTITION_STATE_INITIALIZING = 4;
+	NODE_PARTITION_STATE_INITIALIZED = 5;
+}
+
+message NodePartitionChange {
+	string node_id = 1; // node which changed
+	uint32 partition_id = 2; // partition id which changed on node
+	NodePartitionState state = 3;
+	Role role = 4;
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,9 +17,17 @@ const (
 )
 
 type Config struct {
-	Server Server  `yaml:"server" json:"server"` // configuration of the public REST server
-	Name   string  `yaml:"name" json:"name"`     // used for OTEL as an application identifier
-	RqLite *RqLite `yaml:"rqlite" json:"rqlite"`
+	Server  Server  `yaml:"server" json:"server"` // configuration of the public REST server
+	Name    string  `yaml:"name" json:"name"`     // used for OTEL as an application identifier
+	Cluster Cluster `yaml:"cluster" json:"cluster"`
+	RqLite  *RqLite `yaml:"rqlite" json:"rqlite"`
+}
+
+type Cluster struct {
+	BootstrapExpect int    `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_BOOTSTRAP_EXPECT"`
+	RaftAddr        string `yaml:"raftAddress" json:"raftAddress" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
+	RaftDir         string `yaml:"raftDir" json:"raftDir" env:"CLUSTER_RAFT_DIR"`
+	NodeId          string `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID"`
 }
 
 type Server struct {
@@ -35,13 +44,19 @@ func InitConfig() Config {
 		if err != nil {
 			panic(err)
 		}
-		fileName = fmt.Sprintf("%s/conf/zenbpm/conf.yaml", wd)
+		fileName = fmt.Sprintf("%s/conf.yaml", wd)
 	} else {
 		fileName = confFile
 	}
-	err := cleanenv.ReadConfig(fileName, &c)
+	var err error
+	if _, perr := os.Stat(fileName); errors.Is(perr, os.ErrNotExist) {
+		err = cleanenv.ReadEnv(&c)
+		fmt.Printf("Configuration file %s not found. Reading config from ENV.\n", fileName)
+	} else {
+		err = cleanenv.ReadConfig(fileName, &c)
+	}
 	if err != nil {
-		fmt.Printf("Error occurred while reading the configuration file: %s Error: %v", fileName, err)
+		fmt.Printf("Error occurred while reading the configuration: %s\n", err)
 		panic(err)
 	}
 	return c

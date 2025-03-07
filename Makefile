@@ -23,14 +23,10 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate: gen-proto
+generate:
 	go generate ./...
 	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
 	sed -i "s/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`//g" internal/rqlite/sql/models.go
-
-.PHONY: gen-proto
-gen-proto: 
-	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative ./internal/cluster/proto/*.proto
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

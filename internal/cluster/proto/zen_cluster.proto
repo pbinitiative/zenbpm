@@ -1,25 +1,77 @@
 syntax = "proto3";
+package cluster;
 
-option go_package = "github.com/github.com/pbinitiative/internal/cluster/proto";
+import "command.proto";
 
+option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/proto";
+
+// GRPC API exposed through private GRPC endpoint
 service ZenService {
-	rpc AddNode(AddNodeRequest) returns (AddNodeResponse) {}
-	rpc GetNodes(GetNodesRequest) returns (GetNodesResponse) {}
+	// Notify notifies this node that a remote node is ready
+	// for bootstrapping.
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+	// Join joins a remote node to the cluster.
+  rpc Join(JoinRequest) returns (JoinResponse);
+
+  rpc ClusterBackup(ClusterBackupRequest) returns (ClusterBackupResponse);
+  rpc ClusterRestore(ClusterRestoreRequest) returns (ClusterRestoreResponse);
+  rpc ConfigurationUpdate(ConfigurationUpdateRequest) returns (ConfigurationUpdateResponse);
+  rpc AssignPartition(AssignPartitionRequest) returns (AssignPartitionResponse);
+  rpc UnassignPartition(UnassignPartitionRequest) returns (UnassignPartitionResponse);
+  rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
+  rpc PartitionRestore(PartitionRestoreRequest) returns (PartitionRestoreResponse);
+
+	rpc NodeCommand(command.Command) returns (NodeCommandResponse);
 }
 
-message AddNodeRequest {
-	string nodeId = 1;
+message ErrorResult {
+  uint32 code = 1;
+  string message = 2;
 }
 
-message AddNodeResponse {
-	uint64 commit_index = 1;
+message NotifyRequest {
+	string id = 1;
+	string address = 2;
 }
 
-message GetNodesRequest {
+message NotifyResponse {
+	optional ErrorResult error = 1;
 }
 
-message GetNodesResponse {
-	uint64 read_at_index = 1;
-	repeated string best_words = 2;
+message JoinRequest {
+	string id = 1;
+	string address = 2;
+	bool voter = 3;
 }
 
+message JoinResponse {
+	optional ErrorResult error = 1;
+  string leader = 2;
+}
+
+message PartitionRestoreRequest{}
+message PartitionRestoreResponse{}
+message PartitionBackupRequest{}
+message PartitionBackupResponse{}
+message UnassignPartitionRequest{}
+message UnassignPartitionResponse{}
+message AssignPartitionRequest{}
+message AssignPartitionResponse{}
+message ConfigurationUpdateRequest{}
+message ConfigurationUpdateResponse{}
+message ClusterRestoreRequest{}
+message ClusterRestoreResponse{}
+message ClusterBackupRequest{}
+message ClusterBackupResponse{}
+
+message NodeCommandResponse {
+	optional ErrorResult error = 1;
+  command.Command.Type type = 2;
+	oneof response {
+	  ClusterNodeChangeResponse node_change = 3;
+	  ClusterNodePartitionChangeResponse node_partition_change = 4;
+	}
+}
+
+message ClusterNodeChangeResponse {}
+message ClusterNodePartitionChangeResponse{}

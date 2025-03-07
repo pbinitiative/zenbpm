@@ -1,9 +1,9 @@
 # Table of contents
 1. [ZenBPM cluster](#zenbpm-cluster)
    1. [Main cluster](#main-cluster)
-      1. [Messages](#messages)
-         1. [Cluster messages:](#cluster-messages:)
-         2. [Partition messages:](#partition-messages:)
+      1. [Commands](#commands)
+         1. [ClusterNodeChange](#clusternodechange)
+         2. [ClusterNodePartitionChange](#clusternodepartitionchange)
       2. [Leader](#leader)
       3. [Followers](#followers)
    2. [Partition groups](#partition-groups)
@@ -26,47 +26,18 @@ Main cluster has a role of a controller of Partition groups.
  - invokes **rebalance of the partitions** when cluster state becomes invalid. (ex. Partition group has too few members for too long)
  - supports **zones**. For case of high availability deployment support zones so that each node can be marked with a zone it is in. Zone is used during rebalance to ensure that not all members of Partition group are in the same zone.
 
-### Messages
-This is the list of protobuf raft log messages. Each node needs to come to the same cluster state after consuming Raft log.
+### Commands
+This is the list of protobuf raft log commands. Each node needs to come to the same cluster state after consuming Raft log.
+[Proto](command/proto/command.proto)
 
-#### Cluster messages:
-- NodeStateChange: 
-  - node leaves Main cluster
-  - node becomes unavailable
-  - node joins into the Main cluster
-- ClusterBackupStart:
-  - backup of the cluster starts
-- ClusterBackupEnd:
-  - backup of the cluster ends
-- ClusterRestoreStart:
-  - restore of the cluster starts
-- ClusterRestoreEnd:
-  - restore of the cluster ends
-- ConfigurationUpdate:
-  - update the configuration of the cluster
-- ConfigurationUpdateStart:
-  - cluster started to update its configuration
-- ConfigurationUpdateEnd:
-  - update of the configuration of the cluster is finished
+#### ClusterNodeChange
+- cluster state changes
+- internal GRPC address changes
+- cluster role changes
 
-#### Partition messages:  
-- PartitionStateChange:
-  - node leaves Partition raft group
-  - node becomes unavailable
-  - node joins into the partition group
-- PartitionAssignement:
-  - message from leader with command to join a specific Partition group
-- PartitionUnassignement:
-  - message from leader with command to leave a specific Partition group
-- PartitionBackupStart:
-  - backup of the partition starts
-- PartitionBackupEnd:
-  - backup of the partition ends
-- PartitionRestoreStart:
-  - restore of the partition starts
-- PartitionRestoreEnd:
-  - restore of the partition ends
-
+#### ClusterNodePartitionChange
+- partition state changes
+- partition role changes
 
 ### Leader
 Main cluster leader is one node responsible for the state of whole ZenBPM cluster. It manages:
@@ -90,7 +61,7 @@ When a node is part of the Partition group and is:
  - leader in that Partition group it will: 
    - listen on the public API ports for commands on the partition
    - start its BPMN & DMN engines and start processing requests and instances for that concrete partition.
- - follower in that Partition group it will:
+   - follower in that Partition group it will:
    - listen on the public API ports for queries on the partition
 
 # ZenBPM node
@@ -100,6 +71,17 @@ If the current node cannot handle the request, the request is proxied to the nod
 
 ## Private GRPC communication
 Internal communication between nodes.
+- Notify - sent by a node to peers when it is ready for bootstrapping
+- Join - joins a node to raft cluster (recipient is leader)
+- ClusterBackup - request to start a cluster backup (recipient is leader)
+- ClusterRestore - request to start a cluster restore (recipient is leader)
+- ConfigurationUpdate - configuration update request (recipient is leader)
+- AssignPartition - request to join partition group (recipient is follower)
+- UnassignPartition - request to leave partition group (recipient is member of partition group)
+- PartitionBackup - request to back up partition (recipient is leader of partition group)
+- PartitionRestore - request to restore partition (recipient is leader of partition group)
+
+- NodeCommand - updates from nodes propagated to raft log (recipient is leader)
 
 ## Public GRPC 
 Public GRPC endpoint provides compatibility with latest [Camunda GRPC API](https://github.com/camunda/camunda/blob/8.5.15/zeebe/gateway-protocol/src/main/proto/gateway.proto) and extends it with additional ZenBPM capabilities.

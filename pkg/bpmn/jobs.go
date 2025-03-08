@@ -9,12 +9,12 @@ import (
 )
 
 type job struct {
-	ElementId          string        `json:"id"`
-	ElementInstanceKey int64         `json:"ik"`
-	ProcessInstanceKey int64         `json:"pik"`
-	JobKey             int64         `json:"jk"`
-	JobState           ActivityState `json:"s"`
-	CreatedAt          time.Time     `json:"c"`
+	ElementId          string               `json:"id"`
+	ElementInstanceKey int64                `json:"ik"`
+	ProcessInstanceKey int64                `json:"pik"`
+	JobKey             int64                `json:"jk"`
+	JobState           bpmn20.ActivityState `json:"s"`
+	CreatedAt          time.Time            `json:"c"`
 	baseElement        bpmn20.FlowNode
 }
 
@@ -22,7 +22,7 @@ func (j job) Key() int64 {
 	return j.JobKey
 }
 
-func (j job) State() ActivityState {
+func (j job) State() bpmn20.ActivityState {
 	return j.JobState
 }
 
@@ -38,12 +38,12 @@ func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *
 	handler := state.findTaskHandler(element)
 	variableHolder := var_holder.New(&instance.VariableHolder, nil)
 	if handler != nil {
-		if job.JobState != Completing {
-			job.JobState = Active
+		if job.JobState != bpmn20.Completing {
+			job.JobState = bpmn20.Active
 			activatedJob := &activatedJob{
 				processInstanceInfo:      instance,
-				failHandler:              func(reason string) { job.JobState = Failed },
-				completeHandler:          func() { job.JobState = Completing },
+				failHandler:              func(reason string) { job.JobState = bpmn20.Failed },
+				completeHandler:          func() { job.JobState = bpmn20.Completing },
 				key:                      state.generateKey(),
 				processInstanceKey:       instance.InstanceKey,
 				bpmnProcessId:            process.BpmnProcessId,
@@ -54,8 +54,8 @@ func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *
 				variableHolder:           variableHolder,
 			}
 			if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
-				job.JobState = Failed
-				instance.State = Failed
+				job.JobState = bpmn20.Failed
+				instance.State = bpmn20.Failed
 				state.persistence.PersistJob(job)
 				return false, job
 			}
@@ -63,16 +63,16 @@ func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *
 		}
 	}
 
-	if job.JobState == Completing {
+	if job.JobState == bpmn20.Completing {
 		if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
-			job.JobState = Failed
-			instance.State = Failed
+			job.JobState = bpmn20.Failed
+			instance.State = bpmn20.Failed
 		}
-		job.JobState = Completed
+		job.JobState = bpmn20.Completed
 	}
 	state.persistence.PersistJob(job)
 
-	return job.JobState == Completed, job
+	return job.JobState == bpmn20.Completed, job
 }
 
 func (state *BpmnEngineState) JobCompleteById(jobId int64) {
@@ -81,7 +81,7 @@ func (state *BpmnEngineState) JobCompleteById(jobId int64) {
 	if len(jobs) == 0 {
 		return
 	}
-	jobs[0].JobState = Completing
+	jobs[0].JobState = bpmn20.Completing
 	state.persistence.PersistJob(jobs[0])
 
 	state.RunOrContinueInstance(jobs[0].ProcessInstanceKey)
@@ -102,7 +102,7 @@ func findOrCreateJob(state *BpmnEngineState, element bpmn20.TaskElement, instanc
 		ElementInstanceKey: elementInstanceKey,
 		ProcessInstanceKey: instance.GetInstanceKey(),
 		JobKey:             elementInstanceKey + 1,
-		JobState:           Active,
+		JobState:           bpmn20.Active,
 		CreatedAt:          time.Now(),
 		baseElement:        be,
 	}

@@ -16,22 +16,26 @@ type PersistentStorage interface {
 // PersistentStorageApi interface for reading and writing process data into a (persistent) state
 type PersistentStorageApi interface {
 
-	// FindProcessDefinitionsById returns all registered processes with given ID
+	// FindProcessDefinitionsById return zero or many registered processes with given ID
 	// result array is ordered by version number, from 1 (first) and largest version (last)
 	FindProcessDefinitionsById(ctx context.Context, processIds ...string) ([]ProcessDefinition, error)
 
-	// SaveProcessDefinition persists a ProcessDefinition and potentially overwrites prior data stored with the given ProcessKey
-	SaveProcessDefinition(ctx context.Context, definition ProcessDefinition) error
+	// FindProcessInstancesByKey return zero or many process instance by given keys
+	FindProcessInstancesByKey(ctx context.Context, processInstanceKeys ...int64) ([]ProcessInstance, error)
 
-	// Examples of how these interfaces should look like based on BpmnEnginePersistence.
+	// SaveProcessDefinition persists a ProcessDefinition
+	// and potentially overwrites prior data stored with the given ProcessKey
+	SaveProcessDefinition(ctx context.Context, definition *ProcessDefinition) error
 
-	// ReadProcessInstances(ctx context.Context, processInstanceKeys ...int64) ([]ProcessInstance, error)
+	// SaveProcessInstance persists the instance
+	// and potentially overwrites prior data stored with given process instance key
+	SaveProcessInstance(ctx context.Context, processInstance *ProcessInstance) error
+
 	// ReadMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]MessageSubscription, error)
 	// ReadTimers(ctx context.Context, state TimeState) ([]Timer, error)
 	// ReadJobs(ctx context.Context, state JobState) ([]Job, error)
 	// ReadActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]Activity, error)
 
-	// WriteProcessInstance(ctx context.Context, processInstance ProcessInstance) error
 	// WriteMessageSubscription(ctx context.Context, subscription MessageSubscription) error
 	// WriteTimer(ctx context.Context, timer Timer) error
 	// WriteJob(ctx context.Context, job Job) error

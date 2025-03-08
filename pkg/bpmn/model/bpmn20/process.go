@@ -50,7 +50,9 @@ type TGateway struct {
 	GatewayDirection GatewayDirection `xml:"gatewayDirection,attr"`
 }
 
-type TEvent = TActivity
+type TEvent struct {
+	TActivity
+}
 
 // TExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
 // BPMN 2.0 Unorthodox.
@@ -100,7 +102,9 @@ type TStartEvent struct {
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 }
 
-type TEndEvent = TEvent
+type TEndEvent struct {
+	TEvent
+}
 
 type TIntermediateCatchEvent struct {
 	TEvent

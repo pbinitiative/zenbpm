@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"testing"
 
 	"github.com/corbym/gocrest/has"
@@ -191,7 +192,7 @@ func Test_evaluation_error_percolates_up(t *testing.T) {
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
 	// then
-	then.AssertThat(t, instance.State, is.EqualTo(Failed))
+	then.AssertThat(t, instance.State, is.EqualTo(bpmn20.Failed))
 	then.AssertThat(t, err, is.Not(is.Nil()))
 	then.AssertThat(t, err.Error(), has.Prefix("Error evaluating expression in flow activity id="))
 

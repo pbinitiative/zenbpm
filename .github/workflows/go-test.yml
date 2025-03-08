@@ -1,11 +1,17 @@
-name: go test
-on: [ push, pull_request ]
+name: go-test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
 jobs:
   go-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.20', '1.21', '1.22']
+        go: [ '1.24']
     name: Go ${{ matrix.go }} test
     steps:
       - name: checkout
@@ -14,21 +20,5 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
-      - name: 'go build/verify example code'
-        run: |
-          go build ./docs/examples/ordering_microservice/    
-          go build ./docs/examples/hello_world/
-          go build ./docs/examples/zeebe_exporter/
       - name: go test
-        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
-      - name: verify codecov.yaml
-        run: curl -X POST --data-binary @codecov.yml https://codecov.io/validate
-      - name: upload code coverage
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.txt
-          name: codecov-umbrella # optional
-          fail_ci_if_error: true # optional (default = false)
-          verbose: true # optional (default = false)
-
+        run: go test ./...

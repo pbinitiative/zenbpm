@@ -213,7 +213,7 @@ func constructOriginActivity(originActivityKey int64, originActivityState int, o
 	activity := &elementActivity{
 		key:     originActivityKey,
 		state:   reverseMap(activityStateMap)[originActivityState],
-		element: bpmn20.FindBaseElementsById(&process.definitions, originActivityId)[0],
+		element: bpmn20.FindFlowNodesById(&process.definitions, originActivityId)[0],
 	}
 
 	return activity
@@ -279,7 +279,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, proce
 
 		}
 
-		bes := bpmn20.FindBaseElementsById(&processInstance.ProcessInfo.definitions, resultJob.ElementId)
+		bes := bpmn20.FindFlowNodesById(&processInstance.ProcessInfo.definitions, resultJob.ElementId)
 		if len(bes) == 0 {
 			continue
 		}

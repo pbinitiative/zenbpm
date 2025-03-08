@@ -1,6 +1,8 @@
 package bpmn
 
-import "testing"
+import (
+	"testing"
+)
 
 func Test_Activity_interfaces_implemented(t *testing.T) {
 	var _ activity = &elementActivity{}

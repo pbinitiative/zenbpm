@@ -61,23 +61,23 @@ func (startEvent TStartEvent) GetType() ElementType {
 	return StartEvent
 }
 
-func (activity TEndEvent) GetId() string {
-	return activity.Id
+func (endEvent TEndEvent) GetId() string {
+	return endEvent.Id
 }
 
-func (activity TEndEvent) GetName() string {
-	return activity.Name
+func (endEvent TEndEvent) GetName() string {
+	return endEvent.Name
 }
 
-func (activity TEndEvent) GetIncomingAssociation() []string {
-	return activity.IncomingAssociation
+func (endEvent TEndEvent) GetIncomingAssociation() []string {
+	return endEvent.IncomingAssociation
 }
 
-func (activity TEndEvent) GetOutgoingAssociation() []string {
-	return activity.OutgoingAssociation
+func (endEvent TEndEvent) GetOutgoingAssociation() []string {
+	return endEvent.OutgoingAssociation
 }
 
-func (activity TEndEvent) GetType() ElementType {
+func (endEvent TEndEvent) GetType() ElementType {
 	return EndEvent
 }
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/antonmedv/expr"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20/extensions"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 

@@ -119,9 +119,10 @@ func StartZenPartitionNode(mainCtx context.Context, cfg *config.RqLite) (*ZenPar
 				b.WriteString(fmt.Sprintf("failed to download auto-restore file: %s", err.Error()))
 				if errOK {
 					b.WriteString(", continuing with node startup anyway")
-					log.Info(b.String())
+					log.Info(b.String(), nil)
 				} else {
-					return nil, fmt.Errorf(b.String())
+					s := b.String()
+					return nil, fmt.Errorf(s, nil)
 				}
 			} else {
 				log.Info("auto-restore file downloaded in %s", time.Since(start))
@@ -378,7 +379,7 @@ func startNodeMux(cfg *config.RqLite, ln net.Listener) (*tcp.Mux, error) {
 		} else {
 			b.WriteString(", mutual TLS disabled")
 		}
-		log.Info(b.String())
+		log.Info(b.String(), nil)
 		mux, err = tcp.NewTLSMux(ln, adv, cfg.NodeX509Cert, cfg.NodeX509Key, cfg.NodeX509CACert,
 			cfg.NoNodeVerify, cfg.NodeVerifyClient)
 	} else {
@@ -459,7 +460,7 @@ func createCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool, parti
 		if err != nil {
 			return fmt.Errorf("failed to join cluster: %s", err.Error())
 		}
-		log.Info("successfully joined cluster at", j)
+		log.Info("successfully joined cluster at %s", j)
 		return nil
 	}
 
@@ -551,7 +552,7 @@ func createCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool, parti
 					}
 					continue
 				} else {
-					log.Info("successfully joined cluster at", j)
+					log.Info("successfully joined cluster at %s", j)
 					break
 				}
 			}

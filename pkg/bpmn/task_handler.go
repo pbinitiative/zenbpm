@@ -2,7 +2,7 @@ package bpmn
 
 import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 
-type taskMatcher func(element *bpmn20.TaskElement) bool
+type taskMatcher func(element bpmn20.TaskElement) bool
 
 type taskHandlerType string
 
@@ -62,8 +62,8 @@ func (state *BpmnEngineState) NewTaskHandler() NewTaskHandlerCommand1 {
 
 // Id implements NewTaskHandlerCommand1
 func (thc newTaskHandlerCommand) Id(id string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element *bpmn20.TaskElement) bool {
-		return (*element).GetId() == id
+	thc.matcher = func(element bpmn20.TaskElement) bool {
+		return element.GetId() == id
 	}
 	thc.handlerType = taskHandlerForId
 	return thc
@@ -71,8 +71,8 @@ func (thc newTaskHandlerCommand) Id(id string) NewTaskHandlerCommand2 {
 
 // Type implements NewTaskHandlerCommand1
 func (thc newTaskHandlerCommand) Type(taskType string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element *bpmn20.TaskElement) bool {
-		return (*element).GetTaskDefinitionType() == taskType
+	thc.matcher = func(element bpmn20.TaskElement) bool {
+		return element.GetTaskDefinitionType() == taskType
 	}
 	thc.handlerType = taskHandlerForType
 	return thc
@@ -90,8 +90,8 @@ func (thc newTaskHandlerCommand) Handler(f func(job ActivatedJob)) {
 
 // Assignee implements NewTaskHandlerCommand2
 func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element *bpmn20.TaskElement) bool {
-		return (*element).GetAssignmentAssignee() == assignee
+	thc.matcher = func(element bpmn20.TaskElement) bool {
+		return element.GetAssignmentAssignee() == assignee
 	}
 	thc.handlerType = taskHandlerForAssignee
 	return thc
@@ -99,9 +99,9 @@ func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand
 
 // CandidateGroups implements NewTaskHandlerCommand2
 func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element *bpmn20.TaskElement) bool {
+	thc.matcher = func(element bpmn20.TaskElement) bool {
 		for _, group := range groups {
-			if contains((*element).GetAssignmentCandidateGroups(), group) {
+			if contains(element.GetAssignmentCandidateGroups(), group) {
 				return true
 			}
 		}
@@ -111,12 +111,12 @@ func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandle
 	return thc
 }
 
-func (state *BpmnEngineState) findTaskHandler(element *bpmn20.TaskElement) func(job ActivatedJob) {
+func (state *BpmnEngineState) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
 	searchOrder := []taskHandlerType{taskHandlerForId}
-	if (*element).GetType() == bpmn20.ServiceTask {
+	if element.GetType() == bpmn20.ServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)
 	}
-	if (*element).GetType() == bpmn20.UserTask {
+	if element.GetType() == bpmn20.UserTask {
 		searchOrder = append(searchOrder, taskHandlerForAssignee, taskHandlerForCandidateGroups)
 	}
 	for _, handlerType := range searchOrder {

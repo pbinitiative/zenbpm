@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 )
 
@@ -37,10 +36,7 @@ type ZenNode struct {
 	partitions []*ZenPartitionNode
 }
 
-// make sure that the ZenNode implements PersistentStorage
-var _ storage.PersistentStorage = &ZenNode{}
-
-// Starts a cluster node
+// StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
 	rqLiteConfig := conf.RqLite
 	if conf.RqLite == nil {
@@ -71,14 +67,15 @@ func (node *ZenNode) Stop() error {
 	return joinErr
 }
 
-func (s *ZenNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return s.partitions[0].Query(ctx, req)
+func (node *ZenNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
+	return node.partitions[0].Query(ctx, req)
 }
 
-func (s *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return s.partitions[0].Execute(ctx, req)
+// Execute TODO: this needs to implement that only the leader can execute
+func (node *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
+	return node.partitions[0].Execute(ctx, req)
 }
 
-func (s *ZenNode) IsLeader(ctx context.Context) bool {
-	return s.partitions[0].IsLeader(ctx)
+func (node *ZenNode) IsLeader(ctx context.Context) bool {
+	return node.partitions[0].IsLeader(ctx)
 }

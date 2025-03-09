@@ -1,8 +1,8 @@
 package bpmn
 
 import (
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 )
 
 type BpmnEnginePersistenceService interface {

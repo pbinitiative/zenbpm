@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/has"
@@ -38,7 +39,8 @@ func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
 
@@ -55,7 +57,8 @@ func Test_simple_count_loop(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id-increaseCounter").Handler(increaseCounterHandler)
 
@@ -74,7 +77,8 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
 
 	vars := map[string]interface{}{}
@@ -115,7 +119,8 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 func Test_activated_job_data(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id").Handler(func(aj ActivatedJob) {
 		then.AssertThat(t, aj.ElementId(), is.Not(is.Empty()))
@@ -139,7 +144,8 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// give
@@ -175,7 +181,8 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// give
@@ -200,7 +207,8 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// give
@@ -225,7 +233,8 @@ func Test_task_type_handler(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// give
@@ -248,7 +257,8 @@ func Test_task_type_handler_ID_handler_has_precedence(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	calledHandler := "none"
 	idHandler := func(job ActivatedJob) {
 		calledHandler = "ID"
@@ -280,7 +290,8 @@ func Test_just_one_handler_called(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-task-with-type.bpmn")
 
@@ -305,7 +316,8 @@ func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/user-tasks-with-assignments.bpmn")
 
@@ -329,7 +341,8 @@ func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
 		job.SetVariable("aVariable", true)
@@ -349,7 +362,8 @@ func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
 		job.SetVariable("aVariable", true)
@@ -369,7 +383,8 @@ func Test_task_just_declared_output_variables_map_to_process_instance(t *testing
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-with_output_mapping.bpmn")
 	bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
 		job.SetVariable("valueFromHandler", true)
@@ -392,7 +407,8 @@ func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *te
 
 	cp := CallPath{}
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/parallel-gateway-flow.bpmn")
 
 	// given

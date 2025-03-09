@@ -194,7 +194,7 @@ func (persistence *BpmnEnginePersistenceRqlite) setQueries(queries *sql.Queries)
 }
 
 func execute(statement string, store storage.PersistentStorage, parameters ...interface{}) ([]*proto.ExecuteQueryResponse, error) {
-	stmt := generateStatment(statement, parameters...)
+	stmt := generateStatement(statement, parameters...)
 
 	er := &proto.ExecuteRequest{
 		Request: &proto.Request{
@@ -215,7 +215,7 @@ func execute(statement string, store storage.PersistentStorage, parameters ...in
 	return results, nil
 }
 
-func generateStatment(sql string, parameters ...interface{}) *proto.Statement {
+func generateStatement(sql string, parameters ...interface{}) *proto.Statement {
 	resultParams := make([]*proto.Parameter, 0)
 
 	for _, par := range parameters {
@@ -295,7 +295,7 @@ func generateStatment(sql string, parameters ...interface{}) *proto.Statement {
 
 func queryDatabase(query string, store storage.PersistentStorage, parameters ...interface{}) ([]*proto.QueryRows, error) {
 
-	stmts := generateStatment(query, parameters...)
+	stmts := generateStatement(query, parameters...)
 
 	qr := &proto.QueryRequest{
 		Request: &proto.Request{

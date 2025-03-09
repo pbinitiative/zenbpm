@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/is"
@@ -12,7 +13,8 @@ func TestForkUncontrolledJoin(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// given
@@ -36,7 +38,8 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// given
@@ -60,7 +63,8 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New().WithStorage(store).Engine()
 	cp := CallPath{}
 
 	// given

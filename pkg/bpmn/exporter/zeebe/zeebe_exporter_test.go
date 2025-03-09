@@ -1,6 +1,7 @@
 package zeebe
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/is"
@@ -12,7 +13,8 @@ var numberOfHazelcastSendToRingbufferCalls = 0
 
 func TestPublishNewProAcessEvent(t *testing.T) {
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 
@@ -24,7 +26,8 @@ func TestPublishNewProAcessEvent(t *testing.T) {
 
 func TestPublishNewProcessInstanceEvent(t *testing.T) {
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")
@@ -40,7 +43,8 @@ func TestPublishNewElementEvent(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")

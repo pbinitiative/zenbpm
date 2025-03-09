@@ -6,12 +6,9 @@ import (
 	"time"
 
 	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
-	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
-
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
 type BpmnEngine interface {
@@ -28,36 +25,6 @@ type BpmnEngine interface {
 	FindProcessesById(id string) []*ProcessInfo
 	JobCompleteById(jobId int64)
 	GetPersistence() *rqlite.BpmnEnginePersistenceRqlite
-}
-
-// New creates a new instance of the BPMN Engine;
-func New(store storage.PersistentStorage) BpmnEngineState {
-	return NewWithName(fmt.Sprintf("Bpmn-Engine-%d", getGlobalSnowflakeIdGenerator().Generate().Int64()), store)
-}
-
-// NewWithName creates an engine with an arbitrary name of the engine;
-// useful in case you have multiple ones, in order to distinguish them;
-// also stored in when marshalling a process instance state, in case you want to store some special identifier
-func NewWithName(name string, store storage.PersistentStorage) BpmnEngineState {
-	snowflakeIdGenerator := getGlobalSnowflakeIdGenerator()
-	state := BpmnEngineState{
-		name:         name,
-		taskHandlers: []*taskHandler{},
-		snowflake:    snowflakeIdGenerator,
-		exporters:    []exporter.EventExporter{},
-		persistence:  nil,
-	}
-
-	// TODO: this should be removed and replaced by calls to store
-	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(store)
-
-	var p BpmnEnginePersistenceService = NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, &state, rqliteService)
-
-	state.persistence = p // create the client
-	exporter, _ := rqliteExporter.NewExporter(rqliteService)
-	// register the exporter
-	state.AddEventExporter(&exporter)
-	return state
 }
 
 func (state *BpmnEngineState) GetPersistence() *rqlite.BpmnEnginePersistenceRqlite {

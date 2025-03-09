@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,7 +29,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	engine := bpmn_engine.New(zenNode)
+	var store storage.PersistentStorage = zenNode
+	engine := bpmn_engine.New().WithStorage(store).Engine()
 	// TODO rework handlers
 	emptyHandler := func(job bpmn_engine.ActivatedJob) {
 	}

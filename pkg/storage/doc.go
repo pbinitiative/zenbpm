@@ -1,3 +1,2 @@
-// Package storage contains interface implemented by rqlite cluster
-// and data model used by bpmn & dmn engines
+// Package storage contains types and interfaces, so that different persistence layers can be implemented.
 package storage

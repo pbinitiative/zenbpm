@@ -25,11 +25,11 @@ type PersistentStorageApi interface {
 
 	// SaveProcessDefinition persists a ProcessDefinition
 	// and potentially overwrites prior data stored with the given ProcessKey
-	SaveProcessDefinition(ctx context.Context, definition *ProcessDefinition) error
+	SaveProcessDefinition(ctx context.Context, definition ProcessDefinition) error
 
 	// SaveProcessInstance persists the instance
 	// and potentially overwrites prior data stored with given process instance key
-	SaveProcessInstance(ctx context.Context, processInstance *ProcessInstance) error
+	SaveProcessInstance(ctx context.Context, processInstance ProcessInstance) error
 
 	// ReadMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]MessageSubscription, error)
 	// ReadTimers(ctx context.Context, state TimeState) ([]Timer, error)

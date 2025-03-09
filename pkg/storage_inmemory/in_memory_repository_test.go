@@ -6,7 +6,6 @@ import (
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 	"time"
@@ -19,13 +18,13 @@ func Test_InMemoryStorage_implements_PersistentStorageApi_interface(t *testing.T
 func TestInMemoryStorage_SaveProcessDefinition_and_FindById(t *testing.T) {
 	ctx := context.TODO()
 
-	def := storage.ProcessDefinition{
-		BpmnProcessId:    "id-1",
-		Version:          1,
-		ProcessKey:       1234567890,
-		BpmnData:         "data",
-		BpmnChecksum:     "crc1234",
-		BpmnResourceName: "aResource",
+	def := processDefinition{
+		bpmnProcessId:    "id-1",
+		version:          1,
+		processKey:       1234567890,
+		bpmnData:         "data",
+		bpmnChecksum:     [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6},
+		bpmnResourceName: "aResource",
 	}
 
 	inMemory := InMemoryStorage{}
@@ -44,12 +43,12 @@ func TestInMemoryStorage_SaveProcessDefinition_and_FindById(t *testing.T) {
 func TestInMemoryStorage_SaveProcessInstance_and_FindByKey(t *testing.T) {
 	ctx := context.TODO()
 
-	instance := storage.ProcessInstance{
-		ProcessDefinition: nil,
-		InstanceKey:       123456,
-		VariableHolder:    var_holder.VariableHolder{},
-		CreatedAt:         time.Time{},
-		State:             bpmn20.Completed,
+	instance := processInstance{
+		processDefinition: nil,
+		instanceKey:       123456,
+		variableHolder:    &variableHolder{},
+		createdAt:         time.Time{},
+		state:             bpmn20.Completed,
 	}
 
 	inMemory := InMemoryStorage{}

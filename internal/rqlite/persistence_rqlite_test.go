@@ -17,6 +17,10 @@ import (
 var rqlitePersistence *BpmnEnginePersistenceRqlite
 
 func TestMain(m *testing.M) {
+	// Set environment variables
+	os.Setenv("PROFILE", "DEV")
+	os.Setenv("CONFIG_FILE", "../../conf/zenbpm/conf-dev.yaml")
+
 	// Setup
 	appContext, _ := context.WithCancel(context.Background())
 

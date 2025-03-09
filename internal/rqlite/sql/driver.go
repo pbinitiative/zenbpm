@@ -147,7 +147,7 @@ func Scan(ctx context.Context, columns []string, values *proto.Values, dest ...a
 			case *proto.Parameter_D:
 				*d = int32(x.D)
 			case *proto.Parameter_S:
-				i, err := strconv.Atoi(x.S)
+				i, err := strconv.ParseInt(x.S, 10, 32)
 				if err != nil {
 					return err
 				}

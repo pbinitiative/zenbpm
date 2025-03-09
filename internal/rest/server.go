@@ -178,11 +178,11 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
-	processDefintionKey := int64(-1)
+	processDefinitionKey := int64(-1)
 	if request.Params.ProcessDefinitionKey != nil {
-		processDefintionKey = *request.Params.ProcessDefinitionKey
+		processDefinitionKey = *request.Params.ProcessDefinitionKey
 	}
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, &processDefintionKey)
+	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, &processDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -192,13 +192,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	}
 	for _, pi := range processInstances {
 		processDefintionKey := fmt.Sprintf("%d", pi.ProcessDefinitionKey)
-		time := time.Unix(0, pi.CreatedAt*int64(time.Second))
+		createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
 		state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 		processInstanceSimple := public.ProcessInstance{
 			Key:                  pi.Key,
 			ProcessDefinitionKey: processDefintionKey,
 			State:                state,
-			CreatedAt:            &time,
+			CreatedAt:            &createdAt,
 			CaughtEvents:         &pi.CaughtEvents,
 			VariableHolder:       &pi.VariableHolder,
 			Activities:           &pi.Activities,
@@ -225,13 +225,13 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 	}
 	pi := processInstances[0]
 	processDefintionKey := fmt.Sprintf("%d", pi.ProcessDefinitionKey)
-	time := time.Unix(0, pi.CreatedAt*int64(time.Second))
+	createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
 	state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 	processInstanceSimple := public.ProcessInstance{
 		Key:                  pi.Key,
 		ProcessDefinitionKey: processDefintionKey,
 		State:                state,
-		CreatedAt:            &time,
+		CreatedAt:            &createdAt,
 		CaughtEvents:         &pi.CaughtEvents,
 		VariableHolder:       &pi.VariableHolder,
 		Activities:           &pi.Activities,
@@ -262,7 +262,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	activites, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, ptr.To(request.ProcessInstanceKey))
+	activities, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, ptr.To(request.ProcessInstanceKey))
 	if err != nil {
 		return nil, err
 	}
@@ -270,15 +270,15 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 	result := public.ActivityPage{
 		Items: &items,
 	}
-	for _, a := range activites {
+	for _, a := range activities {
 		key := fmt.Sprintf("%d", a.Key)
-		time := time.Unix(a.CreatedAt, 0)
+		createdAt := time.Unix(a.CreatedAt, 0)
 		processInstanceKey := fmt.Sprintf("%d", a.ProcessInstanceKey)
 		processDefinitionKey := fmt.Sprintf("%d", a.ProcessDefinitionKey)
 		activitySimple := public.Activity{
 			Key:                  &key,
 			ElementId:            &a.ElementID,
-			CreatedAt:            &time,
+			CreatedAt:            &createdAt,
 			BpmnElementType:      &a.BpmnElementType,
 			ProcessDefinitionKey: &processDefinitionKey,
 			ProcessInstanceKey:   &processInstanceKey,
@@ -287,8 +287,8 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 		items = append(items, activitySimple)
 	}
 	result.Items = &items
-	len := len(items)
-	result.Count = &len
+	l := len(items)
+	result.Count = &l
 	result.Offset = nil
 	result.Size = nil
 	return public.GetActivities200JSONResponse(result), nil
@@ -305,7 +305,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	}
 	for _, j := range jobs {
 		key := fmt.Sprintf("%d", j.Key)
-		time := time.Unix(j.CreatedAt, 0)
+		createdAt := time.Unix(j.CreatedAt, 0)
 		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey)
 		elementInstanceKey := fmt.Sprintf("%d", j.ElementInstanceKey)
 		//TODO: Needs propper conversion
@@ -314,15 +314,15 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			Key:                &key,
 			ElementId:          &j.ElementID,
 			ElementInstanceKey: &elementInstanceKey,
-			CreatedAt:          &time,
+			CreatedAt:          &createdAt,
 			State:              &state,
 			ProcessInstanceKey: &processInstanceKey,
 		}
 		items = append(items, jobSimple)
 	}
 	result.Items = &items
-	len := len(items)
-	result.Count = &len
+	l := len(items)
+	result.Count = &l
 	result.Offset = nil
 	result.Size = nil
 	return public.GetJobs200JSONResponse(result), nil

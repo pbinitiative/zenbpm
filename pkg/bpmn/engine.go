@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
-	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
@@ -49,7 +49,7 @@ func NewWithName(name string, store storage.PersistentStorage) BpmnEngineState {
 	}
 
 	// TODO: this should be removed and replaced by calls to store
-	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, store)
+	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(store)
 
 	var p BpmnEnginePersistenceService = NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, &state, rqliteService)
 

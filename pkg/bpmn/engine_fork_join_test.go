@@ -14,7 +14,7 @@ func TestForkUncontrolledJoin(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -39,7 +39,7 @@ func TestForkControlledParallelJoin(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -64,7 +64,7 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given

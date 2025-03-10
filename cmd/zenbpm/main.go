@@ -30,7 +30,7 @@ func main() {
 	}
 
 	var store storage.PersistentStorage = zenNode
-	engine := bpmn_engine.New().WithStorage(store).Engine()
+	engine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	// TODO rework handlers
 	emptyHandler := func(job bpmn_engine.ActivatedJob) {
 	}

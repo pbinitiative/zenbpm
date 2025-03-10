@@ -1,6 +1,9 @@
 package bpmn
 
-import rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+import (
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+)
 
 type BpmnEnginePersistenceService interface {
 	FindProcessById(processId string) *ProcessInfo
@@ -9,9 +12,9 @@ type BpmnEnginePersistenceService interface {
 	FindProcessInstanceByKey(processInstanceKey int64) *processInstanceInfo
 	FindProcessInstances(processInstanceKey int64) []*processInstanceInfo
 
-	FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...ActivityState) []*MessageSubscription
+	FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...bpmn20.ActivityState) []*MessageSubscription
 	FindTimers(originActivityKey int64, processInstanceKey int64, state ...TimerState) []*Timer
-	FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...ActivityState) []*job
+	FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...bpmn20.ActivityState) []*job
 	FindJobByKey(jobKey int64) *job
 	PersistNewProcess(process *ProcessInfo) error
 	PersistProcessInstance(processInstance *processInstanceInfo) error

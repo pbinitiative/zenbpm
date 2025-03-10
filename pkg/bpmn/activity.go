@@ -6,49 +6,15 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-// ActivityState as per BPMN 2.0 spec, section 13.2.2 Activity, page 428
-// State diagram (just partially shown):
-//
-//	 ┌─────┐
-//	 │Ready│
-//	 └──┬──┘
-//	    |
-//	┌───▽──┐
-//	│Active│
-//	└───┬──┘
-//	    |
-//	┌───▽──────┐
-//	│Completing│
-//	└────┬─────┘
-//	     |
-//	┌────▽────┐
-//	│Completed│
-//	└─────────┘
-type ActivityState string
-
-const (
-	Active       ActivityState = "ACTIVE"
-	Compensated  ActivityState = "COMPENSATED"
-	Compensating ActivityState = "COMPENSATING"
-	Completed    ActivityState = "COMPLETED"
-	Completing   ActivityState = "COMPLETING"
-	Failed       ActivityState = "FAILED"
-	Failing      ActivityState = "FAILING"
-	Ready        ActivityState = "READY"
-	Terminated   ActivityState = "TERMINATED"
-	Terminating  ActivityState = "TERMINATING"
-	WithDrawn    ActivityState = "WITHDRAWN"
-)
-
 type activity interface {
 	Key() int64
-	State() ActivityState
+	State() bpmn20.ActivityState
 	Element() bpmn20.FlowNode
 }
 
 type elementActivity struct {
-	key     int64         `json:"k"`
-	state   ActivityState `json:"s"`
+	key     int64                `json:"k"`
+	state   bpmn20.ActivityState `json:"s"`
 	element bpmn20.FlowNode
 }
 
@@ -56,7 +22,7 @@ func (a elementActivity) Key() int64 {
 	return a.key
 }
 
-func (a elementActivity) State() ActivityState {
+func (a elementActivity) State() bpmn20.ActivityState {
 	return a.state
 }
 
@@ -67,8 +33,8 @@ func (a elementActivity) Element() bpmn20.FlowNode {
 // -------------------------------------------------------------------------
 
 type gatewayActivity struct {
-	key                     int64         `json:"k"`
-	state                   ActivityState `json:"s"`
+	key                     int64                `json:"k"`
+	state                   bpmn20.ActivityState `json:"s"`
 	element                 bpmn20.FlowNode
 	parallel                bool
 	inboundFlowIdsCompleted []string
@@ -78,7 +44,7 @@ func (ga *gatewayActivity) Key() int64 {
 	return ga.key
 }
 
-func (ga *gatewayActivity) State() ActivityState {
+func (ga *gatewayActivity) State() bpmn20.ActivityState {
 	return ga.state
 }
 
@@ -99,18 +65,18 @@ func (ga *gatewayActivity) SetInboundFlowCompleted(flowId string) {
 	ga.inboundFlowIdsCompleted = append(ga.inboundFlowIdsCompleted, flowId)
 }
 
-func (ga *gatewayActivity) SetState(state ActivityState) {
+func (ga *gatewayActivity) SetState(state bpmn20.ActivityState) {
 	ga.state = state
 }
 
 func (ga gatewayActivity) MarshalJSON() ([]byte, error) {
 	type Alias gatewayActivity // Create an alias to avoid infinite recursion
 	return json.Marshal(&struct {
-		Key                     int64         `json:"key"`
-		State                   ActivityState `json:"state"`
-		ElementID               string        `json:"elementId"`
-		Parallel                bool          `json:"parallel"`
-		InboundFlowIdsCompleted []string      `json:"inboundFlowIdsCompleted"`
+		Key                     int64                `json:"key"`
+		State                   bpmn20.ActivityState `json:"state"`
+		ElementID               string               `json:"elementId"`
+		Parallel                bool                 `json:"parallel"`
+		InboundFlowIdsCompleted []string             `json:"inboundFlowIdsCompleted"`
 	}{
 		Key:                     ga.key,
 		State:                   ga.state,
@@ -124,7 +90,7 @@ func (ga gatewayActivity) MarshalJSON() ([]byte, error) {
 
 type eventBasedGatewayActivity struct {
 	key                       int64
-	state                     ActivityState
+	state                     bpmn20.ActivityState
 	element                   bpmn20.FlowNode
 	OutboundActivityCompleted string
 }
@@ -133,7 +99,7 @@ func (ebg eventBasedGatewayActivity) Key() int64 {
 	return ebg.key
 }
 
-func (ebg eventBasedGatewayActivity) State() ActivityState {
+func (ebg eventBasedGatewayActivity) State() bpmn20.ActivityState {
 	return ebg.state
 }
 

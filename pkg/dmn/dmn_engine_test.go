@@ -23,6 +23,8 @@ type configuration struct {
 	Tests []testCase `yaml:"tests"`
 }
 
+const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
+
 func TestBulkEvaluation(t *testing.T) {
 	// setup
 	dmnEngine := dmn.New()
@@ -34,7 +36,11 @@ func TestBulkEvaluation(t *testing.T) {
 	}
 
 	for _, configuration := range bulkTestConfigs {
-		dmnDefinition, _ := dmnEngine.LoadFromFile("./test-data/bulk-evaluation-test/" + configuration.DMN)
+		dmnDefinition, loadErr := dmnEngine.LoadFromFile(BulkEvaluationTestPath + "/" + configuration.DMN)
+
+		if loadErr != nil {
+			t.Fatalf("Failed to load DMN file - %v", loadErr.Error())
+		}
 
 		for i, test := range configuration.Tests {
 			result, err := dmnEngine.EvaluateDRD(dmnDefinition, test.Decision, test.Input)
@@ -66,8 +72,7 @@ func TestBulkEvaluation(t *testing.T) {
 }
 
 func loadBulkTestConfigs() ([]configuration, error) {
-	dir := "./test-data/bulk-evaluation-test"
-	files, err := os.ReadDir(dir)
+	files, err := os.ReadDir(BulkEvaluationTestPath)
 	if err != nil {
 		return nil, err
 	}
@@ -77,16 +82,16 @@ func loadBulkTestConfigs() ([]configuration, error) {
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".dmn" {
 			dmnFile := file.Name()
-			testFile := strings.TrimSuffix(dmnFile, ".dmn") + "_test.yml"
+			testFile := strings.TrimSuffix(dmnFile, ".dmn") + ".results.yml"
 
-			configFilePath := filepath.Join(dir, testFile)
+			configFilePath := filepath.Join(BulkEvaluationTestPath, testFile)
 			_, err := os.Stat(configFilePath)
 
 			if os.IsNotExist(err) {
 				return nil, errors.New("Found DMN file without corresponding test file: [" + dmnFile + "]. Create test file: [" + testFile + "] to fix this issue")
 			}
 
-			data, err := os.ReadFile(filepath.Join(dir, testFile))
+			data, err := os.ReadFile(filepath.Join(BulkEvaluationTestPath, testFile))
 			if err != nil {
 				return nil, err
 			}

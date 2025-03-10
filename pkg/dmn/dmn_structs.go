@@ -4,7 +4,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage/dmn"
 )
 
-type DmnDefinition struct {
+type DecisionDefinition struct {
 	definitions dmn.TDefinitions // parsed file content
 	rawData     string           // the raw source data, compressed and encoded via ascii85
 	checksum    [16]byte         // internal checksum to identify different versions

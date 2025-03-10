@@ -3,7 +3,7 @@ package dmn
 import (
 	"crypto/md5"
 	"encoding/xml"
-	"errors"
+	"fmt"
 	"github.com/antonmedv/expr"
 	"github.com/pbinitiative/zenbpm/pkg/storage/dmn"
 	"os"
@@ -11,10 +11,10 @@ import (
 )
 
 type DmnEngine interface {
-	LoadFromFile(filename string) (*DmnDefinition, error)
-	EvaluateDRD(dmnDefinition *DmnDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
-	EvaluateDecision(dmnDefinition *DmnDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDecisionResult, *[]EvaluatedDecisionResult, error)
-	Validate(dmnDefinition *DmnDefinition) error
+	LoadFromFile(filename string) (*DecisionDefinition, error)
+	EvaluateDRD(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
+	EvaluateDecision(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error)
+	Validate(dmnDefinition *DecisionDefinition) error
 }
 
 type ZenDmnEngine struct {
@@ -25,23 +25,23 @@ func New() DmnEngine {
 	return &ZenDmnEngine{}
 }
 
-func (engine *ZenDmnEngine) LoadFromFile(filename string) (*DmnDefinition, error) {
+func (engine *ZenDmnEngine) LoadFromFile(filename string) (*DecisionDefinition, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load dmn definition from file: %v, %w", filename, err)
 	}
 	return engine.load(xmlData, filename)
 }
 
-func (engine *ZenDmnEngine) load(xmlData []byte, resourceName string) (*DmnDefinition, error) {
+func (engine *ZenDmnEngine) load(xmlData []byte, resourceName string) (*DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions dmn.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse dmn definition from file: %v, %w", resourceName, err)
 	}
 
-	dmnDefinition := DmnDefinition{
+	dmnDefinition := DecisionDefinition{
 		definitions: definitions,
 		checksum:    md5sum,
 	}
@@ -49,18 +49,18 @@ func (engine *ZenDmnEngine) load(xmlData []byte, resourceName string) (*DmnDefin
 	return &dmnDefinition, engine.Validate(&dmnDefinition)
 }
 
-func (engine *ZenDmnEngine) Validate(dmnDefinition *DmnDefinition) error {
+func (engine *ZenDmnEngine) Validate(dmnDefinition *DecisionDefinition) error {
 	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
 	return nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDRD(dmnDefinition *DmnDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
+func (engine *ZenDmnEngine) EvaluateDRD(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
 	result, dependencies, err := engine.EvaluateDecision(dmnDefinition, decisionId, inputVariableContext)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to evaluate decision: %v, %w", decisionId, err)
 	}
 
-	evaluatedDecisions := append([]EvaluatedDecisionResult{*result}, *dependencies...)
+	evaluatedDecisions := append([]EvaluatedDecisionResult{result}, dependencies...)
 
 	return &EvaluatedDRDResult{
 		EvaluatedDecisions: evaluatedDecisions,
@@ -68,10 +68,10 @@ func (engine *ZenDmnEngine) EvaluateDRD(dmnDefinition *DmnDefinition, decisionId
 	}, nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DmnDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDecisionResult, *[]EvaluatedDecisionResult, error) {
+func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	foundDecision := findDecision(dmnDefinition, decisionId)
 	if foundDecision == nil {
-		return nil, nil, errors.New("Can't evaluate decision. Decision [" + decisionId + "] does not exist.")
+		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
 	}
 
 	evaluatedDependencies := make([]EvaluatedDecisionResult, 0)
@@ -98,8 +98,8 @@ func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DmnDefinition, decis
 		}
 
 		localVariableContext[result.decisionId] = result.decisionOutput
-		evaluatedDependencies = append(evaluatedDependencies, *result)
-		evaluatedDependencies = append(evaluatedDependencies, *dependencies...)
+		evaluatedDependencies = append(evaluatedDependencies, result)
+		evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 	}
 
 	decisionTable := foundDecision.DecisionTable
@@ -137,7 +137,7 @@ func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DmnDefinition, decis
 				value, expressionError := expr.Eval(rule.OutputEntry[i].Text, localVariableContext)
 
 				if expressionError != nil {
-					return nil, nil, expressionError
+					return EvaluatedDecisionResult{}, nil, expressionError
 				}
 
 				evaluatedOutputs[i] = EvaluatedOutput{
@@ -158,16 +158,16 @@ func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DmnDefinition, decis
 		}
 	}
 
-	return &EvaluatedDecisionResult{
-		tenantId:        "<default>", //TODO: Fill out tenantId
+	return EvaluatedDecisionResult{
+		tenantId:        "<default>", //TODO: Fill out tenantId. TenantId makes sense only in
 		decisionId:      decisionId,
-		decisionKey:     "<default>", //TODO: Fill out decisionKey
-		decisionName:    "<default>", //TODO: Fill out decisionName
-		decisionType:    "<default>", //TODO: Fill out decisionType
-		decisionVersion: 0,           //TODO: Fill out decisionVersion
+		decisionKey:     "<default>", //TODO: Fill out decisionKey. Will get implemented with persistence
+		decisionName:    "<default>", //TODO: Fill out decisionName. Will get implemented with persistence
+		decisionType:    "<default>", //TODO: Fill out decisionType. Will get implemented with persistence
+		decisionVersion: 0,           //TODO: Fill out decisionVersion. Will get implemented with persistence
 		matchedRules:    matchedRules,
 		evaluatedInputs: evaluatedInputs,
 		decisionOutput:  EvaluateHitPolicyOutput(foundDecision.DecisionTable.HitPolicy, foundDecision.DecisionTable.HitPolicyAggregation, matchedRules),
-	}, &evaluatedDependencies, nil
+	}, evaluatedDependencies, nil
 
 }

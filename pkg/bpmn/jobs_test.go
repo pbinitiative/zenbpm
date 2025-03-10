@@ -18,8 +18,8 @@ const (
 )
 
 func increaseCounterHandler(job ActivatedJob) {
-	counter := job.Variable(varCounter).(int)
-	counter++
+	counter := job.Variable(varCounter).(float64)
+	counter = counter + 1
 	job.SetVariable(varCounter, counter)
 	job.Complete()
 }
@@ -64,10 +64,10 @@ func Test_simple_count_loop(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id-increaseCounter").Handler(increaseCounterHandler)
 
 	vars := map[string]interface{}{}
-	vars[varCounter] = 0
+	vars[varCounter] = 0.0
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, vars)
 
-	then.AssertThat(t, instance.GetVariable(varCounter), is.EqualTo(4))
+	then.AssertThat(t, instance.GetVariable(varCounter), is.EqualTo(4.0))
 	then.AssertThat(t, instance.State, is.EqualTo(bpmn20.Completed))
 
 	// cleanup
@@ -83,7 +83,7 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
 
 	vars := map[string]interface{}{}
-	vars[varEngineValidationAttempts] = 0
+	vars[varEngineValidationAttempts] = 0.0
 	bpmnEngine.NewTaskHandler().Id("do-nothing").Handler(jobCompleteHandler)
 	bpmnEngine.NewTaskHandler().Id("validate").Handler(func(job ActivatedJob) {
 		attemptsVariable := job.Variable(varEngineValidationAttempts)
@@ -171,7 +171,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 		"name": "order1",
 		"id":   "1234",
 	}))
-	then.AssertThat(t, pi.GetVariable("orderId"), is.EqualTo(1234))
+	then.AssertThat(t, pi.GetVariable("orderId"), is.EqualTo(1234.0))
 	then.AssertThat(t, pi.GetVariable("orderName"), is.EqualTo("order1"))
 
 	// cleanup

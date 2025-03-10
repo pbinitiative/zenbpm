@@ -35,14 +35,14 @@ func (t Timer) Key() int64 {
 	return t.ElementInstanceKey
 }
 
-func (t Timer) State() ActivityState {
+func (t Timer) State() bpmn20.ActivityState {
 	switch t.TimerState {
 	case TimerCreated:
-		return Active
+		return bpmn20.Active
 	case TimerTriggered:
-		return Completed
+		return bpmn20.Completed
 	case TimerCancelled:
-		return WithDrawn
+		return bpmn20.WithDrawn
 	}
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }

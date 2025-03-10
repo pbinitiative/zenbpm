@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -49,7 +50,7 @@ func (state *BpmnEngineState) PublishEventForInstance(processInstanceKey int64, 
 			IsConsumed: false,
 		}
 		processInstance.CaughtEvents = append(processInstance.CaughtEvents, event)
-		state.persistence.PersistProcessInstance(processInstance)
+		state.persistence.PersistProcessInstance(context.TODO(), processInstance)
 	} else {
 		return fmt.Errorf("no process instance with key=%d found", processInstanceKey)
 	}

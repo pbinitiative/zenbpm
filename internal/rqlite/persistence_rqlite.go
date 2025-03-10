@@ -6,11 +6,11 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-
-	"log"
+	"time"
 
 	_ "embed"
 
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -53,7 +53,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(ctx context.Contex
 	// Fetch process instances
 	definitions, err := persistence.queries.FindProcessDefinitions(ctx, params)
 	if err != nil {
-		log.Fatal("Finding process instance failed", err)
+		log.Error("Finding process instance failed with error %v", err)
 		return nil, err
 	}
 
@@ -70,7 +70,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(ctx context
 	// Fetch process instances
 	instances, err := persistence.queries.FindProcessInstances(ctx, params)
 	if err != nil {
-		log.Fatal("Finding process instance failed", err)
+		log.Error("Finding process instance failed with error %v", err)
 		return nil, err
 	}
 
@@ -89,7 +89,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscriptions(ctx con
 	// Fetch subscriptions
 	messageSubscriptions, err := persistence.queries.FindMessageSubscriptions(ctx, params)
 	if err != nil {
-		log.Fatal("Finding message subscriptions failed", err)
+		log.Error("Finding message subscriptions failed with error %v", err)
 		return nil, err
 	}
 	resultSubscriptions := make([]sql.MessageSubscription, len(messageSubscriptions))
@@ -109,7 +109,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(ctx context.Context, 
 	// Fetch timers
 	timers, err := persistence.queries.FindTimers(ctx, params)
 	if err != nil {
-		log.Fatal("Finding timers failed", err)
+		log.Error("Finding timers failed with error %v", err)
 		return nil, err
 	}
 	resultTimers := make([]sql.Timer, len(timers))
@@ -137,7 +137,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(ctx context.Context, el
 	// Fetch jobs
 	jobs, err := persistence.queries.FindJobsWithStates(ctx, params)
 	if err != nil {
-		log.Fatal("Finding jobs failed", err)
+		log.Error("Finding jobs failed with error %v", err)
 		return nil, err
 	}
 	return jobs, nil
@@ -147,7 +147,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindActivitiesByProcessInstanceK
 	// Fetch activities
 	activities, err := persistence.queries.FindActivityInstances(ctx, sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil})
 	if err != nil {
-		log.Fatal("Finding activities failed", err)
+		log.Error("Finding activities failed with error %v", err)
 		return nil, err
 	}
 	resultActivities := make([]sql.ActivityInstance, len(activities))
@@ -193,25 +193,26 @@ func (persistence *BpmnEnginePersistenceRqlite) setQueries(queries *sql.Queries)
 	persistence.queries = queries
 }
 
-func execute(statement string, store storage.PersistentStorage, parameters ...interface{}) ([]*proto.ExecuteQueryResponse, error) {
-	stmt := generateStatement(statement, parameters...)
-
+func executeStatements(ctx context.Context, statements []*proto.Statement, store storage.PersistentStorage) ([]*proto.ExecuteQueryResponse, error) {
 	er := &proto.ExecuteRequest{
 		Request: &proto.Request{
 			Transaction: true,
 			DbTimeout:   int64(0),
-			Statements:  []*proto.Statement{stmt},
+			Statements:  statements,
 		},
 		Timings: false,
 	}
 
-	results, resultsErr := store.Execute(context.Background(), er)
+	results, resultsErr := store.Execute(ctx, er)
 
 	if resultsErr != nil {
-		log.Panicf("Error executing SQL statements %s", resultsErr)
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Errorf(ctx, "Deadline exceeded form statement executionId %d", ctx.Value("executionId"))
+		}
+		log.Error("Error executing SQL statements %s", resultsErr)
 		return nil, resultsErr
 	}
-	log.Printf("Result: %v", results)
+	log.Info("Result: %v", results)
 	return results, nil
 }
 
@@ -283,7 +284,7 @@ func generateStatement(sql string, parameters ...interface{}) *proto.Statement {
 				resultParams = append(resultParams, &proto.Parameter{})
 			}
 		default:
-			log.Panicf("Unknown parameter type: %T", par)
+			log.Error("Unknown parameter type: %T", par)
 		}
 
 	}
@@ -312,10 +313,10 @@ func queryDatabase(query string, store storage.PersistentStorage, parameters ...
 
 	results, resultsErr := store.Query(context.Background(), qr)
 	if resultsErr != nil {
-		log.Fatalf("Error executing SQL statements %s", resultsErr)
+		log.Error("Error executing SQL statements %s", resultsErr)
 		return nil, resultsErr
 	}
-	log.Printf("Result: %v", results)
+	log.Info("Result: %v", results)
 	return results, nil
 }
 
@@ -333,22 +334,34 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) ExecContext(ctx context.Context, sql string, args ...interface{}) (sqlc.Result, error) {
-	result, err := execute(sql, persistence.store, args...)
+	if ctx.Value("executionKey") == nil {
+		// when `ExecContext` called outside execution context identified by `executionId` do the normal execution
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
 
-	if err != nil {
-		log.Panicf("Error executing SQL statements")
-		return nil, err
-	}
+		result, err := executeStatements(ctxWithTimeout, []*proto.Statement{generateStatement(sql, args...)}, persistence.store)
 
-	lastInsertId, rowsAffected := int64(-1), int64(-1)
-	for _, r := range result {
-		err := r.GetError()
-		if err != "" {
-			return nil, errors.New(err)
+		if err != nil {
+			log.Error("Error executing SQL statements")
+			return nil, err
 		}
-		lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
+
+		lastInsertId, rowsAffected := int64(-1), int64(-1)
+		for _, r := range result {
+			err := r.GetError()
+			if err != "" {
+				return nil, errors.New(err)
+			}
+			lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
+		}
+		return rqliteResult{lastInsertId: lastInsertId, rowsAffected: rowsAffected}, nil
+
+	} else {
+		// when `ExecContext` called inside execution context identified by `executionId` add the statement to the transaction
+		persistence.addToTransaction(ctx.Value("executionKey").(int64), generateStatement(sql, args...))
+		return rqliteResult{}, nil
 	}
-	return rqliteResult{lastInsertId: lastInsertId, rowsAffected: rowsAffected}, nil
+
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) PrepareContext(ctx context.Context, sql string) (*sqlc.Stmt, error) {

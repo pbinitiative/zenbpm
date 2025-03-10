@@ -1,6 +1,10 @@
 package bpmn
 
-import rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+import (
+	"context"
+
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+)
 
 type BpmnEnginePersistenceService interface {
 	FindProcessById(processId string) *ProcessInfo
@@ -14,7 +18,7 @@ type BpmnEnginePersistenceService interface {
 	FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...ActivityState) []*job
 	FindJobByKey(jobKey int64) *job
 	PersistNewProcess(process *ProcessInfo) error
-	PersistProcessInstance(processInstance *processInstanceInfo) error
+	PersistProcessInstance(ctx context.Context, processInstance *processInstanceInfo) error
 	PersistNewMessageSubscription(subscription *MessageSubscription) error
 	PersistNewTimer(timer *Timer) error
 	PersistJob(job *job) error

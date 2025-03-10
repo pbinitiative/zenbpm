@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -55,7 +56,7 @@ func (state *BpmnEngineState) CreateInstance(process *ProcessInfo, variableConte
 		CaughtEvents:   []catchEvent{},
 		activities:     []activity{},
 	}
-	err := state.persistence.PersistProcessInstance(&processInstanceInfo)
+	err := state.persistence.PersistProcessInstance(context.Background(), &processInstanceInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +104,9 @@ func (state *BpmnEngineState) RunOrContinueInstance(processInstanceKey int64) (*
 }
 
 func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
+	ctx := context.Background()
+	executionKey := state.snowflake.Generate().Int64()
+	ctx = context.WithValue(ctx, "executionKey", executionKey)
 	process := instance.ProcessInfo
 	var commandQueue []command
 
@@ -195,7 +199,8 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 		state.exportEndProcessEvent(*process, *instance)
 	}
 	// TODO: persistently update state
-	state.persistence.PersistProcessInstance(instance)
+	state.persistence.PersistProcessInstance(ctx, instance)
+	state.persistence.GetPersistence().FlushTransaction(ctx)
 
 	return err
 }

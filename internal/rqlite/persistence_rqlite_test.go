@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -16,6 +17,8 @@ import (
 
 var rqlitePersistence *BpmnEnginePersistenceRqlite
 
+var gen *snowflake.Node
+
 func TestMain(m *testing.M) {
 	// Set environment variables
 	os.Setenv("PROFILE", "DEV")
@@ -23,6 +26,13 @@ func TestMain(m *testing.M) {
 
 	// Setup
 	appContext, _ := context.WithCancel(context.Background())
+
+	// setup
+	g, err := snowflake.NewNode(1)
+	if err != nil {
+		log.Errorf(appContext, "Error while initing snowflake: %s", err.Error())
+	}
+	gen = g
 
 	conf := config.InitConfig()
 

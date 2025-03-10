@@ -20,16 +20,14 @@ import (
 
 type BpmnEnginePersistenceRqlite struct {
 	snowflakeIdGenerator *snowflake.Node
-	state                *BpmnEngineState
 	rqlitePersistence    *rqlite.BpmnEnginePersistenceRqlite
 }
 
-func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, state *BpmnEngineState, rqlite *rqlite.BpmnEnginePersistenceRqlite) *BpmnEnginePersistenceRqlite {
+func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite *rqlite.BpmnEnginePersistenceRqlite) *BpmnEnginePersistenceRqlite {
 	gen := snowflakeIdGenerator
 
 	return &BpmnEnginePersistenceRqlite{
 		snowflakeIdGenerator: gen,
-		state:                state,
 		rqlitePersistence:    rqlite,
 	}
 }

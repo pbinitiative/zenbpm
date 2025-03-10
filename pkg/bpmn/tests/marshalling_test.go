@@ -2,6 +2,7 @@ package tests
 
 import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"testing"
 	"time"
@@ -30,7 +31,8 @@ func Test_Unmarshal_restores_processKey(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 
 	// given
 	piBefore, err := bpmnEngine.LoadFromFile("../test-cases/simple_task.bpmn")
@@ -53,7 +55,8 @@ func Test_preserve_engine_name(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	originEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	originEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 
 	// given
 	bytes := originEngine.Marshal()
@@ -72,7 +75,8 @@ func Test_Marshal_Unmarshal_Jobs(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 
 	// given
 	pi, err := bpmnEngine.LoadFromFile("../test-cases/simple_task.bpmn")
@@ -102,7 +106,8 @@ func Test_Marshal_Unmarshal_partially_executed_jobs_continue_where_left_of_befor
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	cp := CallPath{}
 	bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.CallPathHandler)
 
@@ -141,7 +146,8 @@ func Test_Marshal_Unmarshal_Remain_Handler(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -176,7 +182,8 @@ func Test_Marshal_Unmarshal_IntermediateCatchEvents(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 
 	// given
 	pi, err := bpmnEngine.LoadFromFile("../test-cases/simple-intermediate-message-catch-event.bpmn")
@@ -205,7 +212,8 @@ func Test_Marshal_Unmarshal_IntermediateTimerEvents_timer_is_completing(t *testi
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -246,7 +254,8 @@ func Test_Marshal_Unmarshal_IntermediateTimerEvents_message_is_completing(t *tes
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := bpmn_engine.New(&TestStorage{})
+	var store storage.PersistentStorage = &TestStorage{}
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	cp := CallPath{}
 
 	// given

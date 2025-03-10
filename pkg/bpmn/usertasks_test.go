@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/is"
@@ -13,7 +14,8 @@ func Test_user_tasks_can_be_handled(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	cp := CallPath{}
@@ -32,7 +34,8 @@ func Test_user_tasks_can_be_continue(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	cp := CallPath{}

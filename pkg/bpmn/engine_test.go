@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"log"
 	"testing"
 	"time"
@@ -32,7 +33,8 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	wasCalled := false
 	handler := func(job ActivatedJob) {
@@ -57,7 +59,8 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	wasCalled := false
 	handler := func(job ActivatedJob) {
@@ -84,7 +87,8 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	variableName := "variable_name"
 	taskId := "id"
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -116,7 +120,8 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	then.AssertThat(t, metadata.Version, is.EqualTo(int32(1)))
@@ -131,7 +136,8 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *te
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	keyOne := metadata.ProcessKey
@@ -151,7 +157,8 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 
 	process1, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	process2, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task_modified_taskId.bpmn")
@@ -174,7 +181,8 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	// setup
 	beforeCreation := time.Now()
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -196,7 +204,8 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -219,7 +228,8 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -240,8 +250,10 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 
 func TestMultipleEnginesCanBeCreatedWithoutAName(t *testing.T) {
 	// when
-	bpmnEngine1 := New(&tests.TestStorage{})
-	bpmnEngine2 := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine1 := New(WithStorage(store))
+	var store2 storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine2 := New(WithStorage(store2))
 
 	// then
 	then.AssertThat(t, bpmnEngine1.name, is.Not(is.EqualTo(bpmnEngine2.name).Reason("make sure the names are different")))
@@ -249,8 +261,10 @@ func TestMultipleEnginesCanBeCreatedWithoutAName(t *testing.T) {
 
 func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	// setup
-	bpmnEngine1 := New(&tests.TestStorage{})
-	bpmnEngine2 := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine1 := New(WithStorage(store))
+	var store2 storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine2 := New(WithStorage(store2))
 
 	// when
 	process1, _ := bpmnEngine1.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -268,7 +282,8 @@ func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	engine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	engine := New(WithStorage(store))
 
 	// when
 	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -294,7 +309,8 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	engine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	engine := New(WithStorage(store))
 
 	// when
 	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -318,7 +334,8 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 
 func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
 	// setup
-	engine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	engine := New(WithStorage(store))
 
 	// when
 	instance, err := engine.CreateInstanceById("Simple_Task_Process_not_existing", nil)

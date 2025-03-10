@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="drd_sports" name="drd_sports" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="5.24.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.5.0">
+  <decision id="sport" name="Sport">
+    <informationRequirement id="InformationRequirement_1kpo2dj">
+      <requiredDecision href="#location" />
+    </informationRequirement>
+    <decisionTable id="DecisionTable_11ytwif">
+      <input id="Input_1" label="equipment">
+        <inputExpression id="InputExpression_1" typeRef="string">
+          <text>equipment</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_1e9jmc5" label="location">
+        <inputExpression id="LiteralExpression_05o09sy" typeRef="string">
+          <text>location</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" label="sport" name="sport" typeRef="string" />
+      <rule id="DecisionRule_1nszbio">
+        <inputEntry id="UnaryTests_00sepg5">
+          <text>"racket"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0n98pzs">
+          <text>"indoor"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1hq27kc">
+          <text>"squash"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_03lep47">
+        <inputEntry id="UnaryTests_0d5ynj9">
+          <text>"racket"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0hvfidy">
+          <text>"outdoor"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0ua2mfv">
+          <text>"tennis"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_0vthd5c">
+        <inputEntry id="UnaryTests_0urhsza">
+          <text>"club"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_094y77h">
+          <text>"indoor"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0z9pnc4">
+          <text>"minigolf"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_07alh1e">
+        <inputEntry id="UnaryTests_0k6g8gl">
+          <text>"club"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1l4zu4p">
+          <text>"outdoor"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_19lfdc4">
+          <text>"golf"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="location" name="Location">
+    <decisionTable id="DecisionTable_10nj353">
+      <input id="InputClause_0jms81j" label="weather">
+        <inputExpression id="LiteralExpression_1fdhgp3" typeRef="string">
+          <text>weather</text>
+        </inputExpression>
+      </input>
+      <output id="OutputClause_0bsor1g" typeRef="string" />
+      <rule id="DecisionRule_13tngwo">
+        <inputEntry id="UnaryTests_0ocos80">
+          <text>"good"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0p6z5yi">
+          <text>"outdoor"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_165n4nx">
+        <inputEntry id="UnaryTests_1af4ldi">
+          <text>"bad"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_15m09nn">
+          <text>"indoor"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="clothes" name="Clothes">
+    <informationRequirement id="InformationRequirement_07t9aqm">
+      <requiredDecision href="#location" />
+    </informationRequirement>
+    <decisionTable id="DecisionTable_0y8isxr">
+      <input id="InputClause_04bybxl" label="location">
+        <inputExpression id="LiteralExpression_16ga6vd" typeRef="string">
+          <text>location</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_0u2bd4a" label="Temperature">
+        <inputExpression id="LiteralExpression_0954lxf" typeRef="string">
+          <text>temperature</text>
+        </inputExpression>
+      </input>
+      <output id="OutputClause_006erms" label="Shoes" name="shoes" typeRef="string" />
+      <output id="OutputClause_1v73xal" label="Top" name="top" typeRef="string" />
+      <output id="OutputClause_1grr946" label="Bottom" name="bottom" typeRef="string" />
+      <output id="OutputClause_077tcf0" label="Hat" name="hat" typeRef="string" />
+      <rule id="DecisionRule_0jswrge">
+        <inputEntry id="UnaryTests_0ikpx2g">
+          <text>"indoor"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_1k6vhpp">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0sx1lvy">
+          <text>"Sneakers"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1z12arw">
+          <text>"Shirt"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0mtlrec">
+          <text>"Shorts"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0n6h1ix">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_1kfsnaw">
+        <inputEntry id="UnaryTests_1c500y1">
+          <text>"outdoor"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0v89txg">
+          <text>"cold"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1pfilok">
+          <text>"Boots"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1jmxzus">
+          <text>"Sweater"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0hgxydq">
+          <text>"Pants"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0j3tie9">
+          <text>"Hat"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_01q2rff">
+        <inputEntry id="UnaryTests_00xnv9d">
+          <text>"outdoor"</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0uxgns3">
+          <text>"warm"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_12b2ygk">
+          <text>"Boots"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_19at6zb">
+          <text>"Shirt"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_047g41t">
+          <text>"Shorts"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_10mza0j">
+          <text>""</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="sport">
+        <dc:Bounds height="80" width="180" x="480" y="110" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="DMNEdge_1s6jnjx" dmnElementRef="InformationRequirement_1kpo2dj">
+        <di:waypoint x="250" y="390" />
+        <di:waypoint x="570" y="210" />
+        <di:waypoint x="570" y="190" />
+      </dmndi:DMNEdge>
+      <dmndi:DMNShape id="DMNShape_13nccsg" dmnElementRef="location">
+        <dc:Bounds height="80" width="180" x="160" y="390" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_0f8kowp" dmnElementRef="clothes">
+        <dc:Bounds height="80" width="180" x="510" y="390" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="DMNEdge_0kvtmk4" dmnElementRef="InformationRequirement_07t9aqm">
+        <di:waypoint x="340" y="430" />
+        <di:waypoint x="490" y="430" />
+        <di:waypoint x="510" y="430" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

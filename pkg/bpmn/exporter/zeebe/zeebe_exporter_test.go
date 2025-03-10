@@ -14,7 +14,7 @@ var numberOfHazelcastSendToRingbufferCalls = 0
 func TestPublishNewProAcessEvent(t *testing.T) {
 	// setup
 	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 
@@ -27,7 +27,7 @@ func TestPublishNewProAcessEvent(t *testing.T) {
 func TestPublishNewProcessInstanceEvent(t *testing.T) {
 	// setup
 	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")
@@ -44,7 +44,7 @@ func TestPublishNewElementEvent(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New().WithStorage(store).Engine()
+	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")

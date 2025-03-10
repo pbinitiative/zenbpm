@@ -15,7 +15,7 @@ func Test_exclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -42,7 +42,7 @@ func Test_exclusive_gateway_with_expressions_selects_default(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -69,7 +69,7 @@ func Test_exclusive_gateway_executes_just_one_matching_path(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -97,7 +97,7 @@ func Test_exclusive_gateway_executes_just_no_matching_path_default_is_used(t *te
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -125,7 +125,7 @@ func Test_exclusive_gateway_executes_just_no_matching_no_default_error_thrown(t 
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -188,7 +188,7 @@ func Test_evaluation_error_percolates_up(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
@@ -211,7 +211,7 @@ func Test_inclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -238,7 +238,7 @@ func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -265,7 +265,7 @@ func Test_inclusive_gateway_executes_all_paths(t *testing.T) {
 
 	// setup
 	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New().WithStorage(store).Engine()
+	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given

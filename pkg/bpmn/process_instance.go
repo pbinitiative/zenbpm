@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
@@ -12,7 +13,7 @@ type processInstanceInfo struct {
 	InstanceKey    int64                     `json:"ik"`
 	VariableHolder var_holder.VariableHolder `json:"vh,omitempty"`
 	CreatedAt      time.Time                 `json:"c"`
-	State          ActivityState             `json:"s"`
+	State          bpmn20.ActivityState      `json:"s"`
 	CaughtEvents   []catchEvent              `json:"ce,omitempty"`
 	activities     []activity
 }
@@ -28,7 +29,7 @@ type ProcessInstance interface {
 	SetVariable(key string, value interface{})
 
 	GetCreatedAt() time.Time
-	GetState() ActivityState
+	GetState() bpmn20.ActivityState
 }
 
 func (pii *processInstanceInfo) GetProcessInfo() *ProcessInfo {
@@ -52,7 +53,7 @@ func (pii *processInstanceInfo) GetCreatedAt() time.Time {
 }
 
 // GetState returns one of [ Ready, Active, Completed, Failed ]
-func (pii *processInstanceInfo) GetState() ActivityState {
+func (pii *processInstanceInfo) GetState() bpmn20.ActivityState {
 	return pii.State
 }
 
@@ -62,7 +63,7 @@ func (pii *processInstanceInfo) appendActivity(activity activity) {
 
 func (pii *processInstanceInfo) findActiveActivityByElementId(id string) activity {
 	for _, a := range pii.activities {
-		if a.Element().GetId() == id && a.State() == Active {
+		if a.Element().GetId() == id && a.State() == bpmn20.Active {
 			return a
 		}
 	}

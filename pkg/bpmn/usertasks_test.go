@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
@@ -22,7 +23,7 @@ func Test_user_tasks_can_be_handled(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(bpmn20.Completed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
 
 	// cleanup
@@ -55,7 +56,7 @@ func Test_user_tasks_can_be_continue(t *testing.T) {
 	instance, err = bpmnEngine.RunOrContinueInstance(instance.InstanceKey)
 	then.AssertThat(t, err, is.Nil())
 
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(bpmn20.Completed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
 
 	// cleanup

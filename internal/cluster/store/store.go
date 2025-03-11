@@ -256,7 +256,6 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 		if srv.ID == raft.ServerID(id) || srv.Address == raft.ServerAddress(addr) {
 			// However, if *both* the ID and the address are the same, then no
 			// join is actually needed.
-
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(id) {
 				stats.Add(numIgnoredJoins, 1)
 				s.logger.Info("node %s at %s already member of cluster, ignoring join request", id, addr)

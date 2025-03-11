@@ -9,24 +9,24 @@ option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/proto";
 service ZenService {
 	// Notify notifies this node that a remote node is ready
 	// for bootstrapping.
-  rpc Notify(NotifyRequest) returns (NotifyResponse);
+	rpc Notify(NotifyRequest) returns (NotifyResponse);
 	// Join joins a remote node to the cluster.
-  rpc Join(JoinRequest) returns (JoinResponse);
+	rpc Join(JoinRequest) returns (JoinResponse);
 
-  rpc ClusterBackup(ClusterBackupRequest) returns (ClusterBackupResponse);
-  rpc ClusterRestore(ClusterRestoreRequest) returns (ClusterRestoreResponse);
-  rpc ConfigurationUpdate(ConfigurationUpdateRequest) returns (ConfigurationUpdateResponse);
-  rpc AssignPartition(AssignPartitionRequest) returns (AssignPartitionResponse);
-  rpc UnassignPartition(UnassignPartitionRequest) returns (UnassignPartitionResponse);
-  rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
-  rpc PartitionRestore(PartitionRestoreRequest) returns (PartitionRestoreResponse);
+	rpc ClusterBackup(ClusterBackupRequest) returns (ClusterBackupResponse);
+	rpc ClusterRestore(ClusterRestoreRequest) returns (ClusterRestoreResponse);
+	rpc ConfigurationUpdate(ConfigurationUpdateRequest) returns (ConfigurationUpdateResponse);
+	rpc AssignPartition(AssignPartitionRequest) returns (AssignPartitionResponse);
+	rpc UnassignPartition(UnassignPartitionRequest) returns (UnassignPartitionResponse);
+	rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
+	rpc PartitionRestore(PartitionRestoreRequest) returns (PartitionRestoreResponse);
 
 	rpc NodeCommand(command.Command) returns (NodeCommandResponse);
 }
 
 message ErrorResult {
-  uint32 code = 1;
-  string message = 2;
+	uint32 code = 1;
+	string message = 2;
 }
 
 message NotifyRequest {
@@ -46,7 +46,7 @@ message JoinRequest {
 
 message JoinResponse {
 	optional ErrorResult error = 1;
-  string leader = 2;
+	string leader = 2;
 }
 
 message PartitionRestoreRequest{}
@@ -66,10 +66,10 @@ message ClusterBackupResponse{}
 
 message NodeCommandResponse {
 	optional ErrorResult error = 1;
-  command.Command.Type type = 2;
+	command.Command.Type type = 2;
 	oneof response {
-	  ClusterNodeChangeResponse node_change = 3;
-	  ClusterNodePartitionChangeResponse node_partition_change = 4;
+		ClusterNodeChangeResponse node_change = 3;
+		ClusterNodePartitionChangeResponse node_partition_change = 4;
 	}
 }
 

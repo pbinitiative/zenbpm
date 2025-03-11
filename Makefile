@@ -3,6 +3,24 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+##@ Build Dependencies
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+## Tool Binaries
+SQLC ?= $(LOCALBIN)/sqlc
+
+## Tool Versions
+SQLC_VERSION ?= v1.28.0
+
+.PHONY: sqlc
+sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
+$(SQLC): $(LOCALBIN)
+	test -s $(LOCALBIN)/sqlc && $(LOCALBIN)/sqlc version | grep -q $(SQLC_VERSION) || \
+	GOBIN=$(LOCALBIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -23,8 +41,9 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate:
+generate: sqlc ## Run all the generators in the project
 	go generate ./...
+	$(SQLC) generate
 	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
 	sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
 

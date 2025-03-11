@@ -8,3 +8,4 @@ _
 cmd/__debug*
 ./zenbpm
 partition-*/
+bin

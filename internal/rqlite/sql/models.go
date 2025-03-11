@@ -12,7 +12,6 @@ type ActivityInstance struct {
 	State                string      `json:"state"`
 	ElementID            string      `json:"element_id"`
 	BpmnElementType      string      `json:"bpmn_element_type"`
-	Foreign              interface{} `json:"foreign"`
 }
 
 type Job struct {
@@ -37,7 +36,6 @@ type MessageSubscription struct {
 	OriginActivityKey    int64       `json:"origin_activity_key"`
 	OriginActivityState  int         `json:"origin_activity_state"`
 	OriginActivityID     string      `json:"origin_activity_id"`
-	Foreign              interface{} `json:"foreign"`
 }
 
 type ProcessDefinition struct {
@@ -69,5 +67,4 @@ type Timer struct {
 	CreatedAt            int64       `json:"created_at"`
 	DueAt                int64       `json:"due_at"`
 	Duration             int64       `json:"duration"`
-	Foreign              interface{} `json:"foreign"`
 }

@@ -48,7 +48,7 @@ func TestInMemoryStorage_SaveProcessInstance_and_FindByKey(t *testing.T) {
 		instanceKey:       123456,
 		variableHolder:    &variableHolder{},
 		createdAt:         time.Time{},
-		state:             bpmn.Completed,
+		state:             string(bpmn.Completed), // TODO: fix me, should not type convert here
 	}
 
 	inMemory := InMemoryStorage{}

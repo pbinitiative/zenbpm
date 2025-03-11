@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"time"
 )
 
@@ -13,7 +12,7 @@ type ProcessDefinition interface {
 	Version() int32
 
 	// ProcessKey the engines key for this given BpmnProcessId with Version
-	ProcessKey() int64
+	ProcessKey() int64 // TODO: use SnowflakeId
 
 	// BpmnData the raw source data, compressed and encoded via ascii85
 	BpmnData() string
@@ -27,10 +26,10 @@ type ProcessDefinition interface {
 
 type ProcessInstance interface {
 	ProcessDefinition() ProcessDefinition
-	InstanceKey() int64
+	InstanceKey() int64             // TODO: use SnowflakeId
 	VariableHolder() VariableHolder // TODO: change type and prevent circular dependencies
 	CreatedAt() time.Time
-	State() bpmn.ActivityState
+	State() string // TODO think of type change bpmn.ActivityState
 	//CaughtEvents      []catchEvent  // TODO: check if needed
 }
 

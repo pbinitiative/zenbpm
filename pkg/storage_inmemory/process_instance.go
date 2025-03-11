@@ -1,7 +1,6 @@
 package storage_inmemory
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"time"
 )
@@ -11,7 +10,7 @@ type processInstance struct {
 	instanceKey       int64
 	variableHolder    *variableHolder
 	createdAt         time.Time
-	state             bpmn.ActivityState
+	state             string
 	//CaughtEvents   []catchEvent
 	//activities     []activity
 }
@@ -37,7 +36,7 @@ func (p *processInstance) CreatedAt() time.Time {
 	return p.createdAt
 }
 
-func (p *processInstance) State() bpmn.ActivityState {
+func (p *processInstance) State() string {
 	return p.state
 }
 

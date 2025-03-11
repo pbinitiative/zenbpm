@@ -418,7 +418,7 @@ var activityStateMap = map[ActivityState]int{
 	Ready:        8,
 	Terminated:   9,
 	Terminating:  10,
-	WithDrawn:    11,
+	Withdrawn:    11,
 }
 
 // reverse the map

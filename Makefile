@@ -25,6 +25,8 @@ help: ## Display this help.
 .PHONY: generate
 generate: gen-proto
 	go generate ./...
+	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
+	sed -i "s/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`//g" internal/rqlite/sql/models.go
 
 .PHONY: gen-proto
 gen-proto: 

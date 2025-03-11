@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"strings"
 	"testing"
@@ -12,7 +13,8 @@ import (
 )
 
 func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *testing.T) {
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	instanceInfo := bpmnEngine.FindProcessInstance(1234)
 	then.AssertThat(t, instanceInfo, is.Nil())
 
@@ -21,7 +23,8 @@ func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *tes
 }
 
 func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 	instanceInfo := bpmnEngine.FindProcessesById("unknown-id")
 	then.AssertThat(t, instanceInfo, has.Length(0))
 
@@ -30,7 +33,8 @@ func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t
 }
 
 func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
-	bpmnEngine := New(&tests.TestStorage{})
+	var store storage.PersistentStorage = &tests.TestStorage{}
+	bpmnEngine := New(WithStorage(store))
 
 	// setup
 	dataV1, err := os.ReadFile("./test-cases/simple_task.bpmn")

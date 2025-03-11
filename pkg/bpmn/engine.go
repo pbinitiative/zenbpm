@@ -5,13 +5,10 @@ import (
 	"log"
 	"time"
 
-	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
-	rqlite "github.com/pbinitiative/zenbpm/pkg/bpmn/persistence/rqlite"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
-
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
 type BpmnEngine interface {
@@ -28,36 +25,6 @@ type BpmnEngine interface {
 	FindProcessesById(id string) []*ProcessInfo
 	JobCompleteById(jobId int64)
 	GetPersistence() *rqlite.BpmnEnginePersistenceRqlite
-}
-
-// New creates a new instance of the BPMN Engine;
-func New(store storage.PersistentStorage) BpmnEngineState {
-	return NewWithName(fmt.Sprintf("Bpmn-Engine-%d", getGlobalSnowflakeIdGenerator().Generate().Int64()), store)
-}
-
-// NewWithName creates an engine with an arbitrary name of the engine;
-// useful in case you have multiple ones, in order to distinguish them;
-// also stored in when marshalling a process instance state, in case you want to store some special identifier
-func NewWithName(name string, store storage.PersistentStorage) BpmnEngineState {
-	snowflakeIdGenerator := getGlobalSnowflakeIdGenerator()
-	state := BpmnEngineState{
-		name:         name,
-		taskHandlers: []*taskHandler{},
-		snowflake:    snowflakeIdGenerator,
-		exporters:    []exporter.EventExporter{},
-		persistence:  nil,
-	}
-
-	// TODO: this should be removed and replaced by calls to store
-	rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, store)
-
-	var p BpmnEnginePersistenceService = NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator, &state, rqliteService)
-
-	state.persistence = p // create the client
-	exporter, _ := rqliteExporter.NewExporter(rqliteService)
-	// register the exporter
-	state.AddEventExporter(&exporter)
-	return state
 }
 
 func (state *BpmnEngineState) GetPersistence() *rqlite.BpmnEnginePersistenceRqlite {
@@ -143,9 +110,9 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	case Ready:
 		// use start events to start the instance
 		for _, startEvent := range process.definitions.Process.StartEvents {
-			var be bpmn20.BaseElement = startEvent
+			var be bpmn20.FlowNode = startEvent
 			commandQueue = append(commandQueue, activityCommand{
-				element: &be,
+				element: be,
 			})
 		}
 		instance.State = Active
@@ -183,7 +150,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 			sourceActivity := cmd.(flowTransitionCommand).sourceActivity
 			flowId := cmd.(flowTransitionCommand).sequenceFlowId
 			nextFlows := bpmn20.FindSequenceFlows(&process.definitions.Process.SequenceFlows, []string{flowId})
-			if bpmn20.ExclusiveGateway == (*sourceActivity.Element()).GetType() {
+			if bpmn20.ExclusiveGateway == sourceActivity.Element().GetType() {
 				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 				if err != nil {
 					instance.State = Failed
@@ -192,7 +159,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 			}
 			for _, flow := range nextFlows {
 				state.exportSequenceFlowEvent(*process, *instance, flow)
-				baseElements := bpmn20.FindBaseElementsById(&process.definitions, flow.TargetRef)
+				baseElements := bpmn20.FindFlowNodesById(&process.definitions, flow.TargetRef)
 				targetBaseElement := baseElements[0]
 				aCmd := activityCommand{
 					sourceId:       flowId,
@@ -233,13 +200,13 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	return err
 }
 
-func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.BaseElement, originActivity activity) []command {
-	state.exportElementEvent(*process, *instance, *element, exporter.ElementActivated) // FIXME: don't create event on continuation ?!?!
+func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *processInstanceInfo, element bpmn20.FlowNode, originActivity activity) []command {
+	state.exportElementEvent(*process, *instance, element, exporter.ElementActivated) // FIXME: don't create event on continuation ?!?!
 	createFlowTransitions := true
 	var activity activity
 	var nextCommands []command
 	var err error
-	switch (*element).GetType() {
+	switch element.GetType() {
 	case bpmn20.StartEvent:
 		createFlowTransitions = true
 		activity = &elementActivity{
@@ -249,7 +216,7 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 		}
 	case bpmn20.EndEvent:
 		state.handleEndEvent(process, instance)
-		state.exportElementEvent(*process, *instance, *element, exporter.ElementCompleted) // special case here, to end the instance
+		state.exportElementEvent(*process, *instance, element, exporter.ElementCompleted) // special case here, to end the instance
 		createFlowTransitions = false
 		activity = &elementActivity{
 			key:     state.generateKey(),
@@ -257,44 +224,44 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 			element: element,
 		}
 	case bpmn20.ServiceTask:
-		taskElement := (*element).(bpmn20.TaskElement)
-		_, activity = state.handleServiceTask(process, instance, &taskElement)
+		taskElement := element.(bpmn20.TaskElement)
+		_, activity = state.handleServiceTask(process, instance, taskElement)
 		createFlowTransitions = activity.State() == Completed
 	case bpmn20.UserTask:
-		taskElement := (*element).(bpmn20.TaskElement)
-		activity = state.handleUserTask(process, instance, &taskElement)
+		taskElement := element.(bpmn20.TaskElement)
+		activity = state.handleUserTask(process, instance, taskElement)
 		createFlowTransitions = activity.State() == Completed
 	case bpmn20.IntermediateCatchEvent:
-		ice := (*element).(bpmn20.TIntermediateCatchEvent)
+		ice := element.(bpmn20.TIntermediateCatchEvent)
 		createFlowTransitions, activity, err = state.handleIntermediateCatchEvent(process, instance, ice, originActivity)
 		if err != nil {
 			nextCommands = append(nextCommands, errorCommand{
 				err:         err,
-				elementId:   (*element).GetId(),
-				elementName: (*element).GetName(),
+				elementId:   element.GetId(),
+				elementName: element.GetName(),
 			})
 		} else {
 			nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
 		}
 
-		ms, err := activity.(*MessageSubscription)
+		ms, err := activity.(MessageSubscription)
 		if !err {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
 			log.Panicf("Unexpected activity type: %T", activity)
 		}
-		state.persistence.PersistNewMessageSubscription(ms)
+		state.persistence.PersistNewMessageSubscription(&ms)
 	case bpmn20.IntermediateThrowEvent:
 		activity = &elementActivity{
 			key:     state.generateKey(),
 			state:   Active, // FIXME: should be Completed?
 			element: element,
 		}
-		cmds := state.handleIntermediateThrowEvent(process, instance, (*element).(bpmn20.TIntermediateThrowEvent), activity)
+		cmds := state.handleIntermediateThrowEvent(process, instance, element.(bpmn20.TIntermediateThrowEvent), activity)
 		nextCommands = append(nextCommands, cmds...)
 		createFlowTransitions = false
 	case bpmn20.ParallelGateway:
-		createFlowTransitions, activity = state.handleParallelGateway(process, instance, (*element).(bpmn20.TParallelGateway), originActivity)
+		createFlowTransitions, activity = state.handleParallelGateway(process, instance, element.(bpmn20.TParallelGateway), originActivity)
 	case bpmn20.ExclusiveGateway:
 		activity = elementActivity{
 			key:     state.generateKey(),
@@ -318,17 +285,17 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 		}
 		createFlowTransitions = true
 	default:
-		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", (*element).GetId(), (*element).GetType()))
+		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", element.GetId(), element.GetType()))
 	}
 	if createFlowTransitions && err == nil {
-		state.exportElementEvent(*process, *instance, *element, exporter.ElementCompleted)
+		state.exportElementEvent(*process, *instance, element, exporter.ElementCompleted)
 		nextCommands = append(nextCommands, createNextCommands(process, instance, element, activity)...)
 	}
 	return nextCommands
 }
 
 func createCheckExclusiveGatewayDoneCommand(originActivity activity) (cmds []command) {
-	if (*originActivity.Element()).GetType() == bpmn20.EventBasedGateway {
+	if originActivity.Element().GetType() == bpmn20.EventBasedGateway {
 		evtBasedGatewayActivity := originActivity.(*eventBasedGatewayActivity)
 		cmds = append(cmds, checkExclusiveGatewayDoneCommand{
 			gatewayActivity: *evtBasedGatewayActivity,
@@ -337,18 +304,18 @@ func createCheckExclusiveGatewayDoneCommand(originActivity activity) (cmds []com
 	return cmds
 }
 
-func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, element *bpmn20.BaseElement, activity activity) (cmds []command) {
-	nextFlows := bpmn20.FindSequenceFlows(&process.definitions.Process.SequenceFlows, (*element).GetOutgoingAssociation())
+func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, element bpmn20.FlowNode, activity activity) (cmds []command) {
+	nextFlows := bpmn20.FindSequenceFlows(&process.definitions.Process.SequenceFlows, element.GetOutgoingAssociation())
 	var err error
-	switch (*element).GetType() {
+	switch element.GetType() {
 	case bpmn20.ExclusiveGateway:
 		nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 		if err != nil {
 			instance.State = Failed
 			cmds = append(cmds, errorCommand{
 				err:         err,
-				elementId:   (*element).GetId(),
-				elementName: (*element).GetName(),
+				elementId:   element.GetId(),
+				elementName: element.GetName(),
 			})
 			return cmds
 		}
@@ -358,8 +325,8 @@ func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, ele
 			instance.State = Failed
 			return []command{
 				errorCommand{
-					elementId:   (*element).GetId(),
-					elementName: (*element).GetName(),
+					elementId:   element.GetId(),
+					elementName: element.GetName(),
 					err:         err,
 				},
 			}
@@ -367,7 +334,7 @@ func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, ele
 	}
 	for _, flow := range nextFlows {
 		cmds = append(cmds, flowTransitionCommand{
-			sourceId:       (*element).GetId(),
+			sourceId:       element.GetId(),
 			sourceActivity: activity,
 			sequenceFlowId: flow.Id,
 		})
@@ -382,13 +349,13 @@ func (state *BpmnEngineState) handleIntermediateCatchEvent(process *ProcessInfo,
 	} else if ice.TimerEventDefinition.Id != "" {
 		continueFlow, activity, err = state.handleIntermediateTimerCatchEvent(instance, ice, originActivity)
 	} else if ice.LinkEventDefinition.Id != "" {
-		var be bpmn20.BaseElement = ice
+		var be bpmn20.FlowNode = ice
 		activity = &elementActivity{
 			key:     state.generateKey(),
 			state:   Active, // FIXME: should be Completed?
-			element: &be,
+			element: be,
 		}
-		throwLinkName := (*originActivity.Element()).(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
+		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
 		catchLinkName := ice.LinkEventDefinition.Name
 		elementVarHolder := var_holder.New(&instance.VariableHolder, nil)
 		if err := propagateProcessInstanceVariables(&elementVarHolder, ice.Output); err != nil {
@@ -419,16 +386,16 @@ func (state *BpmnEngineState) handleEndEvent(process *ProcessInfo, instance *pro
 func (state *BpmnEngineState) handleParallelGateway(process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TParallelGateway, originActivity activity) (continueFlow bool, resultActivity activity) {
 	resultActivity = instance.findActiveActivityByElementId(element.Id)
 	if resultActivity == nil {
-		var be bpmn20.BaseElement = element
+		var be bpmn20.FlowNode = element
 		resultActivity = &gatewayActivity{
 			key:      state.generateKey(),
 			state:    Active,
-			element:  &be,
+			element:  be,
 			parallel: true,
 		}
 		instance.appendActivity(resultActivity)
 	}
-	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.definitions.Process.SequenceFlows, (*originActivity.Element()).GetId(), element.GetId())
+	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.definitions.Process.SequenceFlows, originActivity.Element().GetId(), element.GetId())
 	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.Id)
 	continueFlow = resultActivity.(*gatewayActivity).parallel && resultActivity.(*gatewayActivity).AreInboundFlowsCompleted()
 	if continueFlow {
@@ -446,7 +413,7 @@ func (state *BpmnEngineState) findActiveJobsForContinuation(instance *processIns
 // if no ids are provided, all active subscriptions are returned
 func (state *BpmnEngineState) findActiveSubscriptions(instance *processInstanceInfo) (result []*MessageSubscription) {
 	for _, ms := range state.persistence.FindMessageSubscription(-1, instance, "", Active) {
-		bes := bpmn20.FindBaseElementsById(&instance.ProcessInfo.definitions, ms.ElementId)
+		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.definitions, ms.ElementId)
 		if len(bes) == 0 {
 			continue
 		}
@@ -461,7 +428,7 @@ func (state *BpmnEngineState) findActiveSubscriptions(instance *processInstanceI
 // findCreatedTimers the list of all scheduled/creates timers in the engine, not yet completed
 func (state *BpmnEngineState) findCreatedTimers(instance *processInstanceInfo) (result []*Timer) {
 	for _, t := range state.persistence.FindTimers(-1, instance.InstanceKey, TimerCreated) {
-		bes := bpmn20.FindBaseElementsById(&instance.ProcessInfo.definitions, t.ElementId)
+		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.definitions, t.ElementId)
 		if len(bes) == 0 {
 			continue
 		}

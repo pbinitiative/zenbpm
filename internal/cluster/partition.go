@@ -41,30 +41,30 @@ type ZenPartitionNode struct {
 	statuses        map[string]httpd.StatusReporter
 }
 
-func (c *ZenPartitionNode) RegisterStatus(key string, stat httpd.StatusReporter) error {
-	c.statusMu.Lock()
-	defer c.statusMu.Unlock()
+func (partitionNode *ZenPartitionNode) RegisterStatus(key string, stat httpd.StatusReporter) error {
+	partitionNode.statusMu.Lock()
+	defer partitionNode.statusMu.Unlock()
 
-	if _, ok := c.statuses[key]; ok {
+	if _, ok := partitionNode.statuses[key]; ok {
 		return fmt.Errorf("status already registered with key %s", key)
 	}
-	c.statuses[key] = stat
+	partitionNode.statuses[key] = stat
 
 	return nil
 }
 
-func (c *ZenPartitionNode) IsLeader(ctx context.Context) bool {
-	return c.store.IsLeader()
+func (partitionNode *ZenPartitionNode) IsLeader(ctx context.Context) bool {
+	return partitionNode.store.IsLeader()
 }
 
 // Execute an SQL statement on rqlite partition
-func (c *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return c.store.Execute(req)
+func (partitionNode *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
+	return partitionNode.store.Execute(req)
 }
 
 // Run an SQL query on rqlite partition
-func (c *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return c.store.Query(req)
+func (partitionNode *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
+	return partitionNode.store.Query(req)
 }
 
 func StartZenPartitionNode(mainCtx context.Context, cfg *config.RqLite) (*ZenPartitionNode, error) {
@@ -119,9 +119,10 @@ func StartZenPartitionNode(mainCtx context.Context, cfg *config.RqLite) (*ZenPar
 				b.WriteString(fmt.Sprintf("failed to download auto-restore file: %s", err.Error()))
 				if errOK {
 					b.WriteString(", continuing with node startup anyway")
-					log.Info(b.String())
+					log.Info(b.String(), nil)
 				} else {
-					return nil, fmt.Errorf(b.String())
+					s := b.String()
+					return nil, fmt.Errorf(s, nil)
 				}
 			} else {
 				log.Info("auto-restore file downloaded in %s", time.Since(start))
@@ -192,38 +193,38 @@ func StartZenPartitionNode(mainCtx context.Context, cfg *config.RqLite) (*ZenPar
 	return &zenPartitionNode, nil
 }
 
-func (partitionCluster *ZenPartitionNode) Stats() (map[string]interface{}, error) {
-	return partitionCluster.clusterClient.Stats()
+func (partitionNode *ZenPartitionNode) Stats() (map[string]interface{}, error) {
+	return partitionNode.clusterClient.Stats()
 }
 
-func (partitionCluster *ZenPartitionNode) Stop() error {
+func (partitionNode *ZenPartitionNode) Stop() error {
 	// Stop the HTTP server first, so clients get notification as soon as
 	// possible that the node is going away.
 
-	if partitionCluster.config.RaftClusterRemoveOnShutdown {
-		remover := cluster.NewRemover(partitionCluster.clusterClient, 5*time.Second, partitionCluster.store)
-		remover.SetCredentials(cluster.CredentialsFor(partitionCluster.credentialStore, partitionCluster.config.JoinAs))
+	if partitionNode.config.RaftClusterRemoveOnShutdown {
+		remover := cluster.NewRemover(partitionNode.clusterClient, 5*time.Second, partitionNode.store)
+		remover.SetCredentials(cluster.CredentialsFor(partitionNode.credentialStore, partitionNode.config.JoinAs))
 		log.Info("initiating removal of this node from cluster before shutdown")
-		if err := remover.Do(partitionCluster.config.NodeID, true); err != nil {
+		if err := remover.Do(partitionNode.config.NodeID, true); err != nil {
 			return fmt.Errorf("failed to remove this node from cluster before shutdown: %w", err)
 		}
 		log.Info("removed this node successfully from cluster before shutdown")
 	}
 
-	if partitionCluster.config.RaftStepdownOnShutdown {
-		if partitionCluster.store.IsLeader() {
+	if partitionNode.config.RaftStepdownOnShutdown {
+		if partitionNode.store.IsLeader() {
 			// Don't log a confusing message if (probably) not Leader
 			log.Info("stepping down as Leader before shutdown")
 		}
 		// Perform a stepdown, ignore any errors.
-		partitionCluster.store.Stepdown(true)
+		partitionNode.store.Stepdown(true)
 	}
 
-	if err := partitionCluster.store.Close(true); err != nil {
+	if err := partitionNode.store.Close(true); err != nil {
 		log.Info("failed to close store: %s", err.Error())
 	}
-	partitionCluster.clusterService.Close()
-	partitionCluster.muxListener.Close()
+	partitionNode.clusterService.Close()
+	partitionNode.muxListener.Close()
 	log.Info("rqlite server stopped")
 	return nil
 }
@@ -378,7 +379,7 @@ func startNodeMux(cfg *config.RqLite, ln net.Listener) (*tcp.Mux, error) {
 		} else {
 			b.WriteString(", mutual TLS disabled")
 		}
-		log.Info(b.String())
+		log.Info(b.String(), nil)
 		mux, err = tcp.NewTLSMux(ln, adv, cfg.NodeX509Cert, cfg.NodeX509Key, cfg.NodeX509CACert,
 			cfg.NoNodeVerify, cfg.NodeVerifyClient)
 	} else {
@@ -459,7 +460,7 @@ func createCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool, parti
 		if err != nil {
 			return fmt.Errorf("failed to join cluster: %s", err.Error())
 		}
-		log.Info("successfully joined cluster at", j)
+		log.Info("successfully joined cluster at %s", j)
 		return nil
 	}
 
@@ -551,7 +552,7 @@ func createCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool, parti
 					}
 					continue
 				} else {
-					log.Info("successfully joined cluster at", j)
+					log.Info("successfully joined cluster at %s", j)
 					break
 				}
 			}

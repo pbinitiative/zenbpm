@@ -13,3 +13,12 @@ func Deref[T any](ptr *T, def T) T {
 	}
 	return def
 }
+
+// ConvertSliceToPointerSlice converts a slice to a slice of pointers.
+func ConvertSliceToPointerSlice[T any](input []T) []*T {
+	result := make([]*T, len(input))
+	for i := range input {
+		result[i] = &input[i]
+	}
+	return result
+}

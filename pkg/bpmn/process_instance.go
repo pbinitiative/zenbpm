@@ -62,7 +62,7 @@ func (pii *processInstanceInfo) appendActivity(activity activity) {
 
 func (pii *processInstanceInfo) findActiveActivityByElementId(id string) activity {
 	for _, a := range pii.activities {
-		if (*a.Element()).GetId() == id && a.State() == Active {
+		if a.Element().GetId() == id && a.State() == Active {
 			return a
 		}
 	}

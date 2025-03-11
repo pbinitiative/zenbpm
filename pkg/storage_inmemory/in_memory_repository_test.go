@@ -27,7 +27,7 @@ func TestInMemoryStorage_SaveProcessDefinition_and_FindById(t *testing.T) {
 		bpmnResourceName: "aResource",
 	}
 
-	inMemory := InMemoryStorage{}
+	inMemory := New()
 
 	for i := 0; i < 3; i++ {
 		// hint: we can repeat SaveProcessDefinition and FindProcessDefinitionsById and will always get same results.
@@ -51,7 +51,7 @@ func TestInMemoryStorage_SaveProcessInstance_and_FindByKey(t *testing.T) {
 		state:             string(bpmn.Completed), // TODO: fix me, should not type convert here
 	}
 
-	inMemory := InMemoryStorage{}
+	inMemory := New()
 
 	for i := 0; i < 3; i++ {
 		// hint: we can repeat SaveProcessInstance and FindProcessInstancesByKey and will always get same results.

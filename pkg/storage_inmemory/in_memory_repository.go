@@ -7,8 +7,15 @@ import (
 )
 
 type InMemoryStorage struct {
-	processDefinitions []storage.ProcessDefinition
-	processInstances   []storage.ProcessInstance
+	processDefinitions map[string]storage.ProcessDefinition
+	processInstances   map[int64]storage.ProcessInstance
+}
+
+func New() InMemoryStorage {
+	return InMemoryStorage{
+		processDefinitions: make(map[string]storage.ProcessDefinition),
+		processInstances:   make(map[int64]storage.ProcessInstance),
+	}
 }
 
 func (mem *InMemoryStorage) FindProcessDefinitionsById(ctx context.Context, processIds ...string) (definitions []storage.ProcessDefinition, err error) {
@@ -30,7 +37,7 @@ func (mem *InMemoryStorage) SaveProcessDefinition(ctx context.Context, definitio
 			return nil
 		}
 	}
-	mem.processDefinitions = append(mem.processDefinitions, definition)
+	mem.processDefinitions[definition.BpmnChecksum()] = definition
 	return nil
 }
 
@@ -50,7 +57,7 @@ func (mem *InMemoryStorage) SaveProcessInstance(ctx context.Context, processInst
 			return nil
 		}
 	}
-	mem.processInstances = append(mem.processInstances, processInstance)
+	mem.processInstances[processInstance.InstanceKey()] = processInstance
 	return nil
 }
 

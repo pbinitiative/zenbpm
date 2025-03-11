@@ -49,7 +49,6 @@ func TestMain(m *testing.M) {
 
 	m.Run()
 
-	bpmnEngine.Stop()
 	rqlite.TeardownTestEnvironment(m)
 }
 

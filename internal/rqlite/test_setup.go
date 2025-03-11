@@ -21,6 +21,8 @@ func SetupTestEnvironment(m *testing.M) {
 	os.Setenv("PROFILE", "DEV")
 	os.Setenv("CONFIG_FILE", "../../conf/zenbpm/conf-dev.yaml")
 
+	log.Debug("Starting test environment")
+
 	// Setup
 	appContext, _ := context.WithCancel(context.Background())
 
@@ -53,9 +55,12 @@ func SetupTestEnvironment(m *testing.M) {
 
 func TeardownTestEnvironment(m *testing.M) {
 	// Cleanup: Perform any additional cleanup if needed
+	log.Debug("Stopping test environment")
+	ZenNode.Stop()
 
 	// Cleanup: Remove the partition-1 folder
 	if err := os.RemoveAll("./partition-1"); err != nil {
 		log.Errorf(context.Background(), "Error while removing partition-1 folder: %s", err.Error())
 	}
+
 }

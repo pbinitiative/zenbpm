@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"time"
 )
 
@@ -30,7 +30,7 @@ type ProcessInstance interface {
 	InstanceKey() int64
 	VariableHolder() VariableHolder // TODO: change type and prevent circular dependencies
 	CreatedAt() time.Time
-	State() bpmn20.ActivityState
+	State() bpmn.ActivityState
 	//CaughtEvents      []catchEvent  // TODO: check if needed
 }
 

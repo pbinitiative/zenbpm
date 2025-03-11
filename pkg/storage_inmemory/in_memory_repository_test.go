@@ -5,7 +5,7 @@ import (
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 	"time"
@@ -48,7 +48,7 @@ func TestInMemoryStorage_SaveProcessInstance_and_FindByKey(t *testing.T) {
 		instanceKey:       123456,
 		variableHolder:    &variableHolder{},
 		createdAt:         time.Time{},
-		state:             bpmn20.Completed,
+		state:             bpmn.Completed,
 	}
 
 	inMemory := InMemoryStorage{}

@@ -151,7 +151,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInst
 
 }
 
-func convertActivityStatesToStrings(states []bpmn20.ActivityState) []string {
+func convertActivityStatesToStrings(states []ActivityState) []string {
 	result := make([]string, 0)
 	for _, s := range states {
 		result = append(result, string(s))
@@ -167,7 +167,7 @@ func convertTimerStatesToStrings(states []TimerState) []string {
 	return result
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...bpmn20.ActivityState) []*MessageSubscription {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...ActivityState) []*MessageSubscription {
 	states := convertActivityStatesToStrings(state)
 	var pik *int64
 
@@ -246,7 +246,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int
 	return resultTimers
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...bpmn20.ActivityState) []*job {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...ActivityState) []*job {
 	states := convertActivityStatesToStrings(state)
 	var processInstanceKey *int64
 	if processInstance != nil {
@@ -407,18 +407,18 @@ func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.BpmnEng
 	return persistence.rqlitePersistence
 }
 
-var activityStateMap = map[bpmn20.ActivityState]int{
-	bpmn20.Active:       1,
-	bpmn20.Compensated:  2,
-	bpmn20.Compensating: 3,
-	bpmn20.Completed:    4,
-	bpmn20.Completing:   5,
-	bpmn20.Failed:       6,
-	bpmn20.Failing:      7,
-	bpmn20.Ready:        8,
-	bpmn20.Terminated:   9,
-	bpmn20.Terminating:  10,
-	bpmn20.WithDrawn:    11,
+var activityStateMap = map[ActivityState]int{
+	Active:       1,
+	Compensated:  2,
+	Compensating: 3,
+	Completed:    4,
+	Completing:   5,
+	Failed:       6,
+	Failing:      7,
+	Ready:        8,
+	Terminated:   9,
+	Terminating:  10,
+	WithDrawn:    11,
 }
 
 // reverse the map

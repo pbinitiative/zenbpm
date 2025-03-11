@@ -51,7 +51,7 @@ func (state *BpmnEngineState) CreateInstance(process *ProcessInfo, variableConte
 		InstanceKey:    state.generateKey(),
 		VariableHolder: var_holder.New(nil, variableContext),
 		CreatedAt:      time.Now(),
-		State:          bpmn20.Ready,
+		State:          Ready,
 		CaughtEvents:   []catchEvent{},
 		activities:     []activity{},
 	}
@@ -107,7 +107,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 	var commandQueue []command
 
 	switch instance.State {
-	case bpmn20.Ready:
+	case Ready:
 		// use start events to start the instance
 		for _, startEvent := range process.definitions.Process.StartEvents {
 			var be bpmn20.FlowNode = startEvent
@@ -115,9 +115,9 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 				element: be,
 			})
 		}
-		instance.State = bpmn20.Active
+		instance.State = Active
 		// TODO: check? export process EVENT
-	case bpmn20.Active:
+	case Active:
 		jobs := state.findActiveJobsForContinuation(instance)
 		for _, j := range jobs {
 			commandQueue = append(commandQueue, continueActivityCommand{
@@ -153,7 +153,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 			if bpmn20.ExclusiveGateway == sourceActivity.Element().GetType() {
 				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 				if err != nil {
-					instance.State = bpmn20.Failed
+					instance.State = Failed
 					return err
 				}
 			}
@@ -180,7 +180,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 			commandQueue = append(commandQueue, nextCommands...)
 		case errorType:
 			err = cmd.(errorCommand).err
-			instance.State = bpmn20.Failed
+			instance.State = Failed
 			break
 		case checkExclusiveGatewayDoneType:
 			activity := cmd.(checkExclusiveGatewayDoneCommand).gatewayActivity
@@ -190,7 +190,7 @@ func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
 		}
 	}
 
-	if instance.State == bpmn20.Completed || instance.State == bpmn20.Failed {
+	if instance.State == Completed || instance.State == Failed {
 		// TODO need to send failed State
 		state.exportEndProcessEvent(*process, *instance)
 	}
@@ -211,7 +211,7 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 		createFlowTransitions = true
 		activity = &elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Completed,
+			state:   Completed,
 			element: element,
 		}
 	case bpmn20.EndEvent:
@@ -220,17 +220,17 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 		createFlowTransitions = false
 		activity = &elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Completed,
+			state:   Completed,
 			element: element,
 		}
 	case bpmn20.ServiceTask:
 		taskElement := element.(bpmn20.TaskElement)
 		_, activity = state.handleServiceTask(process, instance, taskElement)
-		createFlowTransitions = activity.State() == bpmn20.Completed
+		createFlowTransitions = activity.State() == Completed
 	case bpmn20.UserTask:
 		taskElement := element.(bpmn20.TaskElement)
 		activity = state.handleUserTask(process, instance, taskElement)
-		createFlowTransitions = activity.State() == bpmn20.Completed
+		createFlowTransitions = activity.State() == Completed
 	case bpmn20.IntermediateCatchEvent:
 		ice := element.(bpmn20.TIntermediateCatchEvent)
 		createFlowTransitions, activity, err = state.handleIntermediateCatchEvent(process, instance, ice, originActivity)
@@ -254,7 +254,7 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 	case bpmn20.IntermediateThrowEvent:
 		activity = &elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Active, // FIXME: should be Completed?
+			state:   Active, // FIXME: should be Completed?
 			element: element,
 		}
 		cmds := state.handleIntermediateThrowEvent(process, instance, element.(bpmn20.TIntermediateThrowEvent), activity)
@@ -265,14 +265,14 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 	case bpmn20.ExclusiveGateway:
 		activity = elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Active,
+			state:   Active,
 			element: element,
 		}
 		createFlowTransitions = true
 	case bpmn20.EventBasedGateway:
 		activity = &eventBasedGatewayActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Completed,
+			state:   Completed,
 			element: element,
 		}
 		instance.appendActivity(activity)
@@ -280,7 +280,7 @@ func (state *BpmnEngineState) handleElement(process *ProcessInfo, instance *proc
 	case bpmn20.InclusiveGateway:
 		activity = elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Active,
+			state:   Active,
 			element: element,
 		}
 		createFlowTransitions = true
@@ -311,7 +311,7 @@ func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, ele
 	case bpmn20.ExclusiveGateway:
 		nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 		if err != nil {
-			instance.State = bpmn20.Failed
+			instance.State = Failed
 			cmds = append(cmds, errorCommand{
 				err:         err,
 				elementId:   element.GetId(),
@@ -322,7 +322,7 @@ func createNextCommands(process *ProcessInfo, instance *processInstanceInfo, ele
 	case bpmn20.InclusiveGateway:
 		nextFlows, err = inclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 		if err != nil {
-			instance.State = bpmn20.Failed
+			instance.State = Failed
 			return []command{
 				errorCommand{
 					elementId:   element.GetId(),
@@ -352,7 +352,7 @@ func (state *BpmnEngineState) handleIntermediateCatchEvent(process *ProcessInfo,
 		var be bpmn20.FlowNode = ice
 		activity = &elementActivity{
 			key:     state.generateKey(),
-			state:   bpmn20.Active, // FIXME: should be Completed?
+			state:   Active, // FIXME: should be Completed?
 			element: be,
 		}
 		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
@@ -371,15 +371,15 @@ func (state *BpmnEngineState) handleIntermediateCatchEvent(process *ProcessInfo,
 func (state *BpmnEngineState) handleEndEvent(process *ProcessInfo, instance *processInstanceInfo) {
 	activeMessageSubscriptions := false
 	// FIXME: check if this is correct to seems wrong i need to check if there are any tokens in this process not only messages subscriptions but elements also
-	if len(state.persistence.FindMessageSubscription(-1, instance, "", bpmn20.Active)) > 0 {
+	if len(state.persistence.FindMessageSubscription(-1, instance, "", Active)) > 0 {
 		activeMessageSubscriptions = true
 	}
-	if len(state.persistence.FindMessageSubscription(-1, instance, "", bpmn20.Ready)) > 0 {
+	if len(state.persistence.FindMessageSubscription(-1, instance, "", Ready)) > 0 {
 		activeMessageSubscriptions = true
 	}
 
 	if !activeMessageSubscriptions {
-		instance.State = bpmn20.Completed
+		instance.State = Completed
 	}
 }
 
@@ -389,7 +389,7 @@ func (state *BpmnEngineState) handleParallelGateway(process *ProcessInfo, instan
 		var be bpmn20.FlowNode = element
 		resultActivity = &gatewayActivity{
 			key:      state.generateKey(),
-			state:    bpmn20.Active,
+			state:    Active,
 			element:  be,
 			parallel: true,
 		}
@@ -399,20 +399,20 @@ func (state *BpmnEngineState) handleParallelGateway(process *ProcessInfo, instan
 	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.Id)
 	continueFlow = resultActivity.(*gatewayActivity).parallel && resultActivity.(*gatewayActivity).AreInboundFlowsCompleted()
 	if continueFlow {
-		resultActivity.(*gatewayActivity).SetState(bpmn20.Completed)
+		resultActivity.(*gatewayActivity).SetState(Completed)
 	}
 	return continueFlow, resultActivity
 }
 
 func (state *BpmnEngineState) findActiveJobsForContinuation(instance *processInstanceInfo) (ret []*job) {
-	return state.persistence.FindJobs("", instance, -1, bpmn20.Active, bpmn20.Completing)
+	return state.persistence.FindJobs("", instance, -1, Active, Completing)
 }
 
 // findActiveSubscriptions returns active subscriptions;
 // if ids are provided, the result gets filtered;
 // if no ids are provided, all active subscriptions are returned
 func (state *BpmnEngineState) findActiveSubscriptions(instance *processInstanceInfo) (result []*MessageSubscription) {
-	for _, ms := range state.persistence.FindMessageSubscription(-1, instance, "", bpmn20.Active) {
+	for _, ms := range state.persistence.FindMessageSubscription(-1, instance, "", Active) {
 		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.definitions, ms.ElementId)
 		if len(bes) == 0 {
 			continue

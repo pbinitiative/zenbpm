@@ -418,7 +418,7 @@ var activityStateMap = map[bpmn20.ActivityState]int{
 	bpmn20.Ready:        8,
 	bpmn20.Terminated:   9,
 	bpmn20.Terminating:  10,
-	bpmn20.WithDrawn:    11,
+	bpmn20.Withdrawn:    11,
 }
 
 // reverse the map

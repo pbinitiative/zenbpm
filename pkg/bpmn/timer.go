@@ -42,7 +42,7 @@ func (t Timer) State() bpmn20.ActivityState {
 	case TimerTriggered:
 		return bpmn20.Completed
 	case TimerCancelled:
-		return bpmn20.WithDrawn
+		return bpmn20.Withdrawn
 	}
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }

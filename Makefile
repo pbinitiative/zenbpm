@@ -26,7 +26,7 @@ help: ## Display this help.
 generate:
 	go generate ./...
 	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
-	sed -i "s/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`//g" internal/rqlite/sql/models.go
+	sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

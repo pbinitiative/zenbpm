@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/xml"
 	"fmt"
-	"github.com/antonmedv/expr"
+	"github.com/pbinitiative/feel"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"os"
 	"strings"
@@ -103,7 +103,8 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 	evaluatedInputs := make([]EvaluatedInput, len(decisionTable.Inputs))
 
 	for i, input := range decisionTable.Inputs {
-		value, _ := expr.Eval(input.InputExpression.Text, localVariableContext)
+
+		value, _ := feel.EvalStringWithScope(input.InputExpression.Text, localVariableContext)
 		evaluatedInputs[i] = EvaluatedInput{
 			inputId:    input.Id,
 			inputName:  input.Label,
@@ -121,7 +122,7 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 				// If the text is empty, it means any value is accepted
 				continue
 			}
-			value, _ := expr.Eval(inputEntry.Text, localVariableContext)
+			value, _ := feel.EvalStringWithScope(inputEntry.Text, localVariableContext)
 			if value != inputInstance.inputValue {
 				allColumnsMatch = false
 				break
@@ -131,7 +132,7 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 		if allColumnsMatch {
 			evaluatedOutputs := make([]EvaluatedOutput, len(decisionTable.Outputs))
 			for i, output := range decisionTable.Outputs {
-				value, expressionError := expr.Eval(rule.OutputEntry[i].Text, localVariableContext)
+				value, expressionError := feel.EvalStringWithScope(rule.OutputEntry[i].Text, localVariableContext)
 
 				if expressionError != nil {
 					return EvaluatedDecisionResult{}, nil, expressionError

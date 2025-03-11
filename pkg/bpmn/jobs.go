@@ -1,9 +1,11 @@
 package bpmn
 
 import (
+	"context"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -30,8 +32,8 @@ func (j job) Element() bpmn20.FlowNode {
 	return j.baseElement
 }
 
-func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TaskElement) (bool, *job) {
-	job := findOrCreateJob(state, element, instance, state.generateKey)
+func (state *BpmnEngineState) handleServiceTask(ctx context.Context, process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TaskElement) (bool, *job) {
+	job := findOrCreateJob(ctx, state, element, instance, state.generateKey)
 
 	//FIXME: logic of using the internal handler needs to be discussed whether it will be kept
 	// If kept needs to work in parallel with external job completion
@@ -56,7 +58,7 @@ func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *
 			if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
 				job.JobState = Failed
 				instance.State = Failed
-				state.persistence.PersistJob(job)
+				state.persistence.PersistJob(ctx, job)
 				return false, job
 			}
 			handler(activatedJob)
@@ -70,27 +72,27 @@ func (state *BpmnEngineState) handleServiceTask(process *ProcessInfo, instance *
 		}
 		job.JobState = Completed
 	}
-	state.persistence.PersistJob(job)
+	state.persistence.PersistJob(ctx, job)
 
 	return job.JobState == Completed, job
 }
 
-func (state *BpmnEngineState) JobCompleteById(jobId int64) {
-	jobs := state.persistence.FindJobs("", nil, jobId)
+func (state *BpmnEngineState) JobCompleteById(ctx context.Context, jobId int64) {
+	jobs := state.persistence.FindJobs(nil, nil, &jobId)
 
 	if len(jobs) == 0 {
 		return
 	}
 	jobs[0].JobState = Completing
-	state.persistence.PersistJob(jobs[0])
+	state.persistence.PersistJob(ctx, jobs[0])
 
 	state.RunOrContinueInstance(jobs[0].ProcessInstanceKey)
 
 }
 
-func findOrCreateJob(state *BpmnEngineState, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
+func findOrCreateJob(ctx context.Context, state *BpmnEngineState, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
 	be := element.(bpmn20.FlowNode)
-	jobs := state.persistence.FindJobs(be.GetId(), instance, -1)
+	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), instance, nil)
 	if len(jobs) > 0 {
 		jobs[0].baseElement = be
 		return jobs[0]
@@ -107,7 +109,7 @@ func findOrCreateJob(state *BpmnEngineState, element bpmn20.TaskElement, instanc
 		baseElement:        be,
 	}
 
-	state.persistence.PersistJob(&job)
+	state.persistence.PersistJob(ctx, &job)
 
 	return &job
 }

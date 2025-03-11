@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
@@ -456,7 +457,7 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	// then
 	then.AssertThat(t, instance.GetState(), is.EqualTo(Failed))
 	then.AssertThat(t, instance.GetVariable("mappedFoo"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindMessageSubscription(-1, instance, ""), is.EqualTo(Failed))
+	then.AssertThat(t, bpmnEngine.persistence.FindMessageSubscription(nil, instance, nil), is.EqualTo(Failed))
 
 	// cleanup
 	bpmnEngine.Stop()

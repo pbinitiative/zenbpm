@@ -246,11 +246,11 @@ func (state *BpmnEngineState) Marshal() []byte {
 	m := serializedBpmnEngine{
 		Version:              CurrentSerializerVersion,
 		Name:                 state.name,
-		MessageSubscriptions: state.persistence.FindMessageSubscription(-1, nil, ""),
+		MessageSubscriptions: state.persistence.FindMessageSubscription(nil, nil, nil),
 		ProcessReferences:    createReferences(state.persistence.FindProcessesById("")),
 		ProcessInstances:     state.persistence.FindProcessInstances(-1),
-		Timers:               state.persistence.FindTimers(-1, -1),
-		Jobs:                 state.persistence.FindJobs("", nil, -1),
+		Timers:               state.persistence.FindTimers(nil, nil),
+		Jobs:                 state.persistence.FindJobs(nil, nil, nil),
 	}
 	bytes, err := json.Marshal(m)
 	if err != nil {

@@ -1,10 +1,13 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"log"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/internal/rqlite"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
@@ -25,16 +28,38 @@ func (callPath *CallPath) TaskHandler(job ActivatedJob) {
 	job.Complete()
 }
 
+var bpmnEngine BpmnEngineState
+
+func TestMain(m *testing.M) {
+	storageType := os.Getenv("STORAGE_TYPE") // "in-memory" or "rqlite"
+	log.Printf("STORAGE_TYPE=%s", storageType)
+	var store storage.PersistentStorage
+	if storageType == "in-memory" {
+		store = &tests.TestStorage{}
+	} else {
+		rqlite.SetupTestEnvironment(m)
+		store = rqlite.ZenNode
+	}
+
+	bpmnEngine = New(WithStorage(store))
+	// TODO rework handlers
+	emptyHandler := func(job ActivatedJob) {
+	}
+	bpmnEngine.NewTaskHandler().Type("foo").Handler(emptyHandler)
+
+	m.Run()
+
+	bpmnEngine.Stop()
+	rqlite.TeardownTestEnvironment(m)
+}
+
 func Test_BpmnEngine_interfaces_implemented(t *testing.T) {
 	var _ BpmnEngine = &BpmnEngineState{}
 }
 
 func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	wasCalled := false
 	handler := func(job ActivatedJob) {
@@ -50,17 +75,11 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 
 	// then
 	then.AssertThat(t, wasCalled, is.True())
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	wasCalled := false
 	handler := func(job ActivatedJob) {
@@ -79,16 +98,11 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	// when
 	then.AssertThat(t, wasCalled, is.True())
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	variableName := "variable_name"
 	taskId := "id"
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -108,36 +122,26 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	// when
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variableContext)
 
-	v := bpmnEngine.persistence.FindProcessInstanceByKey(instance.GetInstanceKey())
-
+	v := bpmnEngine.GetPersistenceService().FindProcessInstanceByKey(instance.GetInstanceKey())
 	// then
 	then.AssertThat(t, v, is.Not(is.Nil()).Reason("Process isntance needs to be present"))
 	then.AssertThat(t, v.VariableHolder.GetVariable(variableName), is.EqualTo("newVal"))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	then.AssertThat(t, metadata.Version, is.EqualTo(int32(1)))
 	then.AssertThat(t, metadata.ProcessKey, is.GreaterThan(1))
 	then.AssertThat(t, metadata.BpmnProcessId, is.EqualTo("Simple_Task_Process"))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	keyOne := metadata.ProcessKey
@@ -149,17 +153,10 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *te
 
 	then.AssertThat(t, keyOne, is.EqualTo(keyTwo))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
-
 	process1, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	process2, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task_modified_taskId.bpmn")
 	process3, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -174,15 +171,11 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 
 	then.AssertThat(t, process1.ProcessKey, is.Not(is.EqualTo(process2.ProcessKey)))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	// setup
 	beforeCreation := time.Now()
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -195,17 +188,11 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	then.AssertThat(t, instance1.CreatedAt.UnixNano(), is.GreaterThanOrEqualTo(beforeCreation.UnixNano()).Reason("make sure we have creation time set"))
 	then.AssertThat(t, instance1.ProcessInfo.ProcessKey, is.EqualTo(instance2.ProcessInfo.ProcessKey))
 	then.AssertThat(t, instance2.InstanceKey, is.GreaterThan(instance1.InstanceKey).Reason("Because later created"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -220,16 +207,11 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-b-1,id-b-2"))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestParallelGateWayTwoTasks(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -244,8 +226,6 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-b-1,id-b-2"))
 
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestMultipleEnginesCanBeCreatedWithoutAName(t *testing.T) {
@@ -279,72 +259,56 @@ func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 }
 
 func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	engine := New(WithStorage(store))
 
 	// when
-	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
+	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
 	// when
-	v2, err := engine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
+	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
 
-	instance, err := engine.CreateInstanceById("Simple_Task_Process", nil)
+	instance, err := bpmnEngine.CreateInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, instance, is.Not(is.Nil()))
 
 	// ten
 	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
 
-	// cleanup
-	engine.Stop()
 }
 
 func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	engine := New(WithStorage(store))
 
 	// when
-	v1, err := engine.LoadFromFile("./test-cases/simple_task.bpmn")
+	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
 	// when
-	v2, err := engine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
+	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
 
-	instance, err := engine.CreateAndRunInstanceById("Simple_Task_Process", nil)
+	instance, err := bpmnEngine.CreateAndRunInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, instance, is.Not(is.Nil()))
 
 	// then
 	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
 
-	// cleanup
-	engine.Stop()
 }
 
 func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	engine := New(WithStorage(store))
 
 	// when
-	instance, err := engine.CreateInstanceById("Simple_Task_Process_not_existing", nil)
+	instance, err := bpmnEngine.CreateInstanceById("Simple_Task_Process_not_existing", nil)
 
 	// then
 	then.AssertThat(t, instance, is.Nil())
 	then.AssertThat(t, err, is.Not(is.Nil()))
 	then.AssertThat(t, err.Error(), has.Prefix("no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
 
-	// cleanup
-	engine.Stop()
 }

@@ -212,7 +212,7 @@ func executeStatements(ctx context.Context, statements []*proto.Statement, store
 		log.Error("Error executing SQL statements %s", resultsErr)
 		return nil, resultsErr
 	}
-	log.Info("Result: %v", results)
+	// log.Info("Result: %v", results)
 	return results, nil
 }
 
@@ -316,7 +316,7 @@ func queryDatabase(query string, store storage.PersistentStorage, parameters ...
 		log.Error("Error executing SQL statements %s", resultsErr)
 		return nil, resultsErr
 	}
-	log.Info("Result: %v", results)
+	// log.Info("Result: %v", results)
 	return results, nil
 }
 

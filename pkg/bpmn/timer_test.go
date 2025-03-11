@@ -1,22 +1,18 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 	"time"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
 )
 
 func Test_EventBasedGateway_selects_path_where_timer_occurs(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -31,17 +27,12 @@ func Test_EventBasedGateway_selects_path_where_timer_occurs(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("task-for-message"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_InvalidTimer_will_stop_execution_and_return_err(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -54,17 +45,12 @@ func Test_InvalidTimer_will_stop_execution_and_return_err(t *testing.T) {
 	then.AssertThat(t, err, is.Not(is.Nil()))
 	then.AssertThat(t, err.Error(), has.Prefix("Error evaluating expression in intermediate timer cacht event element id="))
 	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_EventBasedGateway_selects_path_where_message_received(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -80,17 +66,12 @@ func Test_EventBasedGateway_selects_path_where_message_received(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("task-for-timer"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_EventBasedGateway_selects_just_one_path(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -111,7 +92,4 @@ func Test_EventBasedGateway_selects_just_one_path(t *testing.T) {
 		has.Prefix("task-for"),
 		is.Not(is.ValueContaining(","))),
 	)
-
-	// cleanup
-	bpmnEngine.Stop()
 }

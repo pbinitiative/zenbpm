@@ -1,10 +1,11 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
@@ -17,9 +18,6 @@ func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *tes
 	bpmnEngine := New(WithStorage(store))
 	instanceInfo := bpmnEngine.FindProcessInstance(1234)
 	then.AssertThat(t, instanceInfo, is.Nil())
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
@@ -27,9 +25,6 @@ func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t
 	bpmnEngine := New(WithStorage(store))
 	instanceInfo := bpmnEngine.FindProcessesById("unknown-id")
 	then.AssertThat(t, instanceInfo, has.Length(0))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
@@ -55,7 +50,4 @@ func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
 	for i := 0; i < len(infos)-1; i++ {
 		then.AssertThat(t, infos[i].Version, is.GreaterThan(infos[i+1].Version))
 	}
-
-	// cleanup
-	bpmnEngine.Stop()
 }

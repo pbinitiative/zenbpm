@@ -3,6 +3,7 @@ package bpmn
 import (
 	"bytes"
 	"compress/flate"
+	"context"
 	"crypto/md5"
 	"encoding/ascii85"
 	"encoding/hex"
@@ -53,7 +54,7 @@ func (state *BpmnEngineState) load(xmlData []byte, resourceName string) (*Proces
 		}
 		processInfo.Version = processes[0].Version + 1
 	}
-	state.persistence.PersistNewProcess(&processInfo)
+	state.persistence.PersistNewProcess(context.TODO(), &processInfo)
 
 	state.exportNewProcessEvent(processInfo, xmlData, resourceName, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil

@@ -1,20 +1,15 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
 )
 
 func Test_user_tasks_can_be_handled(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	cp := CallPath{}
@@ -24,17 +19,10 @@ func Test_user_tasks_can_be_handled(t *testing.T) {
 
 	then.AssertThat(t, instance.State, is.EqualTo(Completed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_user_tasks_can_be_continue(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
 	then.AssertThat(t, err, is.Nil())
 	cp := CallPath{}
@@ -57,7 +45,4 @@ func Test_user_tasks_can_be_continue(t *testing.T) {
 
 	then.AssertThat(t, instance.State, is.EqualTo(Completed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }

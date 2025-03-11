@@ -1,21 +1,16 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
 )
 
 func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -27,17 +22,12 @@ func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 	then.AssertThat(t, err, is.Nil())
 	then.AssertThat(t, instance.State, is.EqualTo(Completed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("Task-A,Task-B"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given
@@ -59,8 +49,6 @@ func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
 
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
 
 	// given

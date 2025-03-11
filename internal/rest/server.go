@@ -99,7 +99,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	s.engine.JobCompleteById(request.Body.JobKey)
+	s.engine.JobCompleteById(ctx, request.Body.JobKey)
 	return public.CompleteJob201Response{}, nil
 }
 

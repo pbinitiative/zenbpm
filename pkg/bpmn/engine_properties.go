@@ -4,6 +4,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 type BpmnEngineState struct {
@@ -60,10 +61,10 @@ func (state *BpmnEngineState) checkExclusiveGatewayDone(activity eventBasedGatew
 	}
 
 	// cancel other activities started by this one
-	for _, ms := range state.persistence.FindMessageSubscription(activity.Key(), nil, "", Active) {
+	for _, ms := range state.persistence.FindMessageSubscription(ptr.To(activity.Key()), nil, nil, Active) {
 		ms.MessageState = WithDrawn
 	}
-	for _, t := range state.persistence.FindTimers(activity.Key(), -1, TimerCreated) {
+	for _, t := range state.persistence.FindTimers(ptr.To(activity.Key()), nil, TimerCreated) {
 		t.TimerState = TimerCancelled
 	}
 }

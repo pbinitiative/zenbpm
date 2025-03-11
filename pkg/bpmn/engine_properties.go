@@ -62,7 +62,7 @@ func (state *BpmnEngineState) checkExclusiveGatewayDone(activity eventBasedGatew
 
 	// cancel other activities started by this one
 	for _, ms := range state.persistence.FindMessageSubscription(ptr.To(activity.Key()), nil, nil, Active) {
-		ms.MessageState = WithDrawn
+		ms.MessageState = Withdrawn
 	}
 	for _, t := range state.persistence.FindTimers(ptr.To(activity.Key()), nil, TimerCreated) {
 		t.TimerState = TimerCancelled

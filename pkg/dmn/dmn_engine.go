@@ -1,20 +1,21 @@
 package dmn
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/xml"
 	"fmt"
 	"github.com/antonmedv/expr"
-	"github.com/pbinitiative/zenbpm/pkg/storage/dmn"
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"os"
 	"strings"
 )
 
 type DmnEngine interface {
-	LoadFromFile(filename string) (*DecisionDefinition, error)
-	EvaluateDRD(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
-	EvaluateDecision(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error)
-	Validate(dmnDefinition *DecisionDefinition) error
+	LoadFromFile(ctx context.Context, filename string) (*DecisionDefinition, error)
+	EvaluateDRD(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
+	EvaluateDecision(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error)
+	Validate(ctx context.Context, dmnDefinition *DecisionDefinition) error
 }
 
 type ZenDmnEngine struct {
@@ -25,15 +26,15 @@ func New() DmnEngine {
 	return &ZenDmnEngine{}
 }
 
-func (engine *ZenDmnEngine) LoadFromFile(filename string) (*DecisionDefinition, error) {
+func (engine *ZenDmnEngine) LoadFromFile(ctx context.Context, filename string) (*DecisionDefinition, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load dmn definition from file: %v, %w", filename, err)
 	}
-	return engine.load(xmlData, filename)
+	return engine.load(ctx, xmlData, filename)
 }
 
-func (engine *ZenDmnEngine) load(xmlData []byte, resourceName string) (*DecisionDefinition, error) {
+func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceName string) (*DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions dmn.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
@@ -46,16 +47,16 @@ func (engine *ZenDmnEngine) load(xmlData []byte, resourceName string) (*Decision
 		checksum:    md5sum,
 	}
 
-	return &dmnDefinition, engine.Validate(&dmnDefinition)
+	return &dmnDefinition, engine.Validate(ctx, &dmnDefinition)
 }
 
-func (engine *ZenDmnEngine) Validate(dmnDefinition *DecisionDefinition) error {
+func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *DecisionDefinition) error {
 	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
 	return nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDRD(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
-	result, dependencies, err := engine.EvaluateDecision(dmnDefinition, decisionId, inputVariableContext)
+func (engine *ZenDmnEngine) EvaluateDRD(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
+	result, dependencies, err := engine.EvaluateDecision(ctx, dmnDefinition, decisionId, inputVariableContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate decision: %v, %w", decisionId, err)
 	}
@@ -68,7 +69,7 @@ func (engine *ZenDmnEngine) EvaluateDRD(dmnDefinition *DecisionDefinition, decis
 	}, nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
+func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	foundDecision := findDecision(dmnDefinition, decisionId)
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
@@ -85,13 +86,9 @@ func (engine *ZenDmnEngine) EvaluateDecision(dmnDefinition *DecisionDefinition, 
 	for _, requirement := range foundDecision.InformationRequirement {
 		requiredDecisionRef := requirement.RequiredDecision.Href
 		var requiredDecision string
-		if strings.HasPrefix(requiredDecisionRef, "#") {
-			requiredDecision = requiredDecisionRef[1:]
-		} else {
-			requiredDecision = requiredDecisionRef
-		}
+		requiredDecision = strings.TrimPrefix(requiredDecisionRef, "#")
 
-		result, dependencies, err := engine.EvaluateDecision(dmnDefinition, requiredDecision, inputVariableContext)
+		result, dependencies, err := engine.EvaluateDecision(ctx, dmnDefinition, requiredDecision, inputVariableContext)
 
 		if err != nil {
 			return result, dependencies, err

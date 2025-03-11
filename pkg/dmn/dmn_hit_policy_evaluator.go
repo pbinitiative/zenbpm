@@ -1,6 +1,6 @@
 package dmn
 
-import "github.com/pbinitiative/zenbpm/pkg/storage/dmn"
+import "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 
 func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) interface{} {
 	switch hitPolicy {

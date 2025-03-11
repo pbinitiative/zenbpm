@@ -1,7 +1,9 @@
 package dmn_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"gopkg.in/yaml.v3"
 	"os"
@@ -25,9 +27,10 @@ type configuration struct {
 
 const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
 
-func TestBulkEvaluation(t *testing.T) {
+func Test_BulkEvaluateDRD(t *testing.T) {
 	// setup
 	dmnEngine := dmn.New()
+	ctx := context.Background()
 
 	bulkTestConfigs, err := loadBulkTestConfigs()
 
@@ -36,36 +39,39 @@ func TestBulkEvaluation(t *testing.T) {
 	}
 
 	for _, configuration := range bulkTestConfigs {
-		dmnDefinition, loadErr := dmnEngine.LoadFromFile(BulkEvaluationTestPath + "/" + configuration.DMN)
+		dmnDefinition, loadErr := dmnEngine.LoadFromFile(ctx, BulkEvaluationTestPath+"/"+configuration.DMN)
 
 		if loadErr != nil {
 			t.Fatalf("Failed to load DMN file - %v", loadErr.Error())
 		}
 
 		for i, test := range configuration.Tests {
-			result, err := dmnEngine.EvaluateDRD(dmnDefinition, test.Decision, test.Input)
+			testName := fmt.Sprintf("decision: '%s', input: %v", test.Decision, test.Input)
+			t.Run(testName, func(t *testing.T) {
+				result, err := dmnEngine.EvaluateDRD(ctx, dmnDefinition, test.Decision, test.Input)
 
-			if err != nil {
-				t.Fatalf("Failed: %v", err)
-				return
-			}
+				if err != nil {
+					t.Fatalf("Failed: %v", err)
+					return
+				}
 
-			if !reflect.DeepEqual(result.DecisionOutput, test.ExpectedOutput) {
-				t.Errorf("\n"+
-					"Test:      %v\n"+
-					"Decision:  %v\n"+
-					"Index:     %v\n"+
-					"Inputs:    %v\n"+
-					"Expected:  %v\n"+
-					"Got:       %v",
-					configuration.DMN,
-					test.Decision,
-					strconv.Itoa(i),
-					test.Input,
-					test.ExpectedOutput,
-					result.DecisionOutput,
-				)
-			}
+				if !reflect.DeepEqual(result.DecisionOutput, test.ExpectedOutput) {
+					t.Errorf("\n"+
+						"Test:      %v\n"+
+						"Decision:  %v\n"+
+						"Index:     %v\n"+
+						"Inputs:    %v\n"+
+						"Expected:  %v\n"+
+						"Got:       %v",
+						configuration.DMN,
+						test.Decision,
+						strconv.Itoa(i),
+						test.Input,
+						test.ExpectedOutput,
+						result.DecisionOutput,
+					)
+				}
+			})
 		}
 	}
 

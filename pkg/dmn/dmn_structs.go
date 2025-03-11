@@ -1,8 +1,6 @@
 package dmn
 
-import (
-	"github.com/pbinitiative/zenbpm/pkg/storage/dmn"
-)
+import "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 
 type DecisionDefinition struct {
 	definitions dmn.TDefinitions // parsed file content

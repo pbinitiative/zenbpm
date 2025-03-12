@@ -14,6 +14,7 @@ type PersistentStorage interface {
 }
 
 // PersistentStorageApi interface for reading and writing process data into a (persistent) state
+// TODO: discuss if we will use structs or interfaces
 type PersistentStorageApi interface {
 
 	// FindProcessDefinitionsById return zero or many registered processes with given ID

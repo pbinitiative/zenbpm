@@ -6,6 +6,8 @@ import (
 	"sort"
 )
 
+// InMemoryStorage keeps process information in memory,
+// please use New to create a new object of this type.
 type InMemoryStorage struct {
 	processDefinitions map[string]storage.ProcessDefinition
 	processInstances   map[int64]storage.ProcessInstance

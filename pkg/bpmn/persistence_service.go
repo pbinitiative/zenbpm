@@ -1,6 +1,8 @@
 package bpmn
 
-import rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+import (
+	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
+)
 
 type BpmnEnginePersistenceService interface {
 	FindProcessById(processId string) *ProcessInfo

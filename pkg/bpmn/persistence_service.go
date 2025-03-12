@@ -23,5 +23,5 @@ type BpmnEnginePersistenceService interface {
 	PersistNewTimer(ctx context.Context, timer *Timer) error
 	PersistJob(ctx context.Context, job *job) error
 
-	GetPersistence() *rqlite.BpmnEnginePersistenceRqlite
+	GetPersistence() *rqlite.PersistenceRqlite
 }

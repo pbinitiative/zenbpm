@@ -2,65 +2,81 @@ package rqlite
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path"
 	"testing"
-	"time"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/pbinitiative/zenbpm/internal/cluster"
-	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/rqlite/rqlite/v8/command/proto"
+	"github.com/rqlite/rqlite/v8/db"
+
+	"github.com/rqlite/rqlite/v8/random"
 )
 
-var gen *snowflake.Node
-var rqlitePersistence *BpmnEnginePersistenceRqlite
-var ZenNode *cluster.ZenNode
-
-func SetupTestEnvironment(m *testing.M) {
-	// Set environment variables
-	os.Setenv("PROFILE", "DEV")
-	os.Setenv("CONFIG_FILE", "../../conf/zenbpm/conf-dev.yaml")
-
-	log.Debug("Starting test environment")
-
-	// Setup
-	appContext, _ := context.WithCancel(context.Background())
-
-	// setup
-	g, err := snowflake.NewNode(1)
-	if err != nil {
-		log.Errorf(appContext, "Error while initing snowflake: %s", err.Error())
-	}
-	gen = g
-
-	conf := config.InitConfig()
-
-	zenNode, err := cluster.StartZenNode(appContext, conf)
-	if err != nil {
-		log.Error("Failed to start Zen node: %s", err)
-		os.Exit(1)
-	}
-
-	ZenNode = zenNode
-	// give time to start
-	time.Sleep(time.Second * 2)
-
-	rqlitePersistence = NewBpmnEnginePersistenceRqlite(
-		zenNode,
-	)
-	if err != nil {
-		log.Errorf(appContext, "Error while initing persistence: %s", err.Error())
-	}
+type testDatabase struct {
+	db *db.SwappableDB
 }
 
-func TeardownTestEnvironment(m *testing.M) {
-	// Cleanup: Perform any additional cleanup if needed
-	log.Debug("Stopping test environment")
-	ZenNode.Stop()
+func (s *testDatabase) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
+	return s.db.Query(req.Request, false)
+}
 
-	// Cleanup: Remove the partition-1 folder
-	if err := os.RemoveAll("./partition-1"); err != nil {
-		log.Errorf(context.Background(), "Error while removing partition-1 folder: %s", err.Error())
+func (s *testDatabase) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
+	return s.db.Execute(req.Request, false)
+}
+
+func (s *testDatabase) IsLeader(ctx context.Context) bool {
+	return true
+}
+
+type TestStorage struct {
+	gen               *snowflake.Node
+	rqlitePersistence *PersistenceRqlite
+	Store             storage.PersistentStorage
+	testDirPath       string
+}
+
+func (s *TestStorage) SetupTestEnvironment(m *testing.M) {
+	g, err := snowflake.NewNode(1)
+	if err != nil {
+		log.Errorf(context.TODO(), "Error while initing snowflake: %s", err.Error())
 	}
+	s.gen = g
+
+	wd, _ := os.Getwd()
+	s.testDirPath = path.Join(wd, random.String())
+	// dbConf := store.NewDBConfig("test", true)
+	// dbConf.FKConstraints = true
+
+	dbPath := path.Join(s.testDirPath, "db.sqlite")
+	err = os.MkdirAll(s.testDirPath, 0770)
+	if err != nil {
+		fmt.Printf("failed to test directory: %s", err)
+		os.Exit(1)
+	}
+	f, err := os.Create(dbPath)
+	if err != nil {
+		fmt.Printf("failed to create database file: %s", err)
+		os.Exit(1)
+	}
+	f.Close()
+	d, err := db.OpenSwappable(dbPath, true, false)
+	if err != nil {
+		fmt.Printf("failed to open database: %s\n", err)
+		os.Exit(1)
+	}
+	db := testDatabase{db: d}
+
+	s.Store = &db
+	s.rqlitePersistence = NewPersistenceRqlite(
+		s.Store,
+	)
+}
+
+func (s *TestStorage) TeardownTestEnvironment(m *testing.M) {
+	os.RemoveAll(s.testDirPath)
 
 }

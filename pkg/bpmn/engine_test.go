@@ -31,25 +31,17 @@ func (callPath *CallPath) TaskHandler(job ActivatedJob) {
 var bpmnEngine BpmnEngineState
 
 func TestMain(m *testing.M) {
-	storageType := os.Getenv("STORAGE_TYPE") // "in-memory" or "rqlite"
-	log.Printf("STORAGE_TYPE=%s", storageType)
-	var store storage.PersistentStorage
-	if storageType == "in-memory" {
-		store = &tests.TestStorage{}
-	} else {
-		rqlite.SetupTestEnvironment(m)
-		store = rqlite.ZenNode
-	}
 
-	bpmnEngine = New(WithStorage(store))
-	// TODO rework handlers
-	emptyHandler := func(job ActivatedJob) {
-	}
-	bpmnEngine.NewTaskHandler().Type("foo").Handler(emptyHandler)
+	testStore := rqlite.TestStorage{}
+	testStore.SetupTestEnvironment(m)
 
-	m.Run()
+	bpmnEngine = New(WithStorage(testStore.Store))
 
-	rqlite.TeardownTestEnvironment(m)
+	code := m.Run()
+
+	testStore.TeardownTestEnvironment(m)
+
+	os.Exit(code)
 }
 
 func Test_BpmnEngine_interfaces_implemented(t *testing.T) {

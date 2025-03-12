@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -26,12 +27,12 @@ type BpmnEngine interface {
 	FindProcessInstance(processInstanceKey int64) *processInstanceInfo
 	FindProcessesById(id string) []*ProcessInfo
 	JobCompleteById(ctx context.Context, jobId int64)
-	GetPersistence() *rqlite.BpmnEnginePersistenceRqlite
+	GetPersistence() *rqlite.PersistenceRqlite
 	// TODO: remove after store is implmented properly
 	GetPersistenceService() BpmnEnginePersistenceService
 }
 
-func (state *BpmnEngineState) GetPersistence() *rqlite.BpmnEnginePersistenceRqlite {
+func (state *BpmnEngineState) GetPersistence() *rqlite.PersistenceRqlite {
 	return state.persistence.GetPersistence()
 }
 
@@ -111,9 +112,9 @@ func (state *BpmnEngineState) RunOrContinueInstance(processInstanceKey int64) (*
 }
 
 func (state *BpmnEngineState) run(instance *processInstanceInfo) (err error) {
-	ctx := context.Background()
+	ctx := context.TODO()
 	executionKey := state.snowflake.Generate().Int64()
-	ctx = context.WithValue(ctx, "executionKey", executionKey)
+	ctx = context.WithValue(ctx, appcontext.ExecutionKey, executionKey)
 	process := instance.ProcessInfo
 	var commandQueue []command
 

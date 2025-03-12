@@ -19,10 +19,10 @@ import (
 
 type BpmnEnginePersistenceRqlite struct {
 	snowflakeIdGenerator *snowflake.Node
-	rqlitePersistence    *rqlite.BpmnEnginePersistenceRqlite
+	rqlitePersistence    *rqlite.PersistenceRqlite
 }
 
-func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite *rqlite.BpmnEnginePersistenceRqlite) *BpmnEnginePersistenceRqlite {
+func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite *rqlite.PersistenceRqlite) *BpmnEnginePersistenceRqlite {
 	gen := snowflakeIdGenerator
 
 	return &BpmnEnginePersistenceRqlite{
@@ -402,7 +402,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, 
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.BpmnEnginePersistenceRqlite {
+func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.PersistenceRqlite {
 	return persistence.rqlitePersistence
 }
 

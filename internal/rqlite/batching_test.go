@@ -2,87 +2,84 @@ package rqlite
 
 import (
 	"context"
+	"reflect"
 	"testing"
-	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 func Test_NormalExecution_shouldExecuteRightAway(t *testing.T) {
 	// given
 
-	processInstanceKey := gen.Generate().Int64()
-	processInstance := sql.ProcessInstance{
-		Key:                  processInstanceKey,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
+	ProcessDefinition := sql.ProcessDefinition{
+		Key:              1,
+		Version:          1,
+		BpmnProcessID:    "1",
+		BpmnData:         "",
+		BpmnChecksum:     []byte{12, 32},
+		BpmnResourceName: "",
 	}
 
-	// when
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+	err := rqlitePersistence.SaveNewProcess(t.Context(), ProcessDefinition)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), &processInstanceKey, nil)
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), ptr.To("1"), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// then
-
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	// Assert
+	if len(processDefinitions) != 1 {
+		t.Errorf("Wrong number of process definitions: %d", len(processDefinitions))
 	}
 
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+	for _, pd := range processDefinitions {
+		if !reflect.DeepEqual(pd, ProcessDefinition) {
+			t.Errorf("Wrong process definition data got: %+v expected: %+v", pd, ProcessDefinition)
 		}
 	}
 }
 
 func Test_BatchExecution_shouldExecuteAfterFlush(t *testing.T) {
 	// given
-	ctx := context.WithValue(t.Context(), "executionKey", gen.Generate().Int64())
-	processInstanceKey := gen.Generate().Int64()
-	processInstance := sql.ProcessInstance{
-		Key:                  processInstanceKey,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
+	ctx := context.WithValue(t.Context(), appcontext.ExecutionKey, gen.Generate().Int64())
+	key := gen.Generate().Int64()
+
+	ProcessDefinition := sql.ProcessDefinition{
+		Key:              key,
+		Version:          1,
+		BpmnProcessID:    "1",
+		BpmnData:         "",
+		BpmnChecksum:     []byte{12, 32},
+		BpmnResourceName: "",
 	}
-	// when
-	err := rqlitePersistence.SaveProcessInstance(ctx, processInstance)
+
+	err := rqlitePersistence.SaveNewProcess(ctx, ProcessDefinition)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), &processInstanceKey, nil)
+	processDefinitions, err := rqlitePersistence.FindProcesses(ctx, nil, &key)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// then
-
-	if len(processInstances) != 0 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	// Assert
+	if len(processDefinitions) != 0 {
+		t.Errorf("Wrong number of process definitions: %d", len(processDefinitions))
 	}
 
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+	for _, pd := range processDefinitions {
+		if !reflect.DeepEqual(pd, ProcessDefinition) {
+			t.Errorf("Wrong process definition data got: %+v expected: %+v", pd, ProcessDefinition)
 		}
 	}
 
@@ -94,14 +91,14 @@ func Test_BatchExecution_shouldExecuteAfterFlush(t *testing.T) {
 	}
 
 	// then
-	processInstances, err = rqlitePersistence.FindProcessInstances(t.Context(), &processInstanceKey, nil)
+	processDefinitions, err = rqlitePersistence.FindProcesses(ctx, nil, &key)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	if len(processDefinitions) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processDefinitions))
 	}
 
 }

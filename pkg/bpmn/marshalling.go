@@ -242,7 +242,7 @@ func (a activitySurrogate) Element() bpmn20.FlowNode {
 
 // ----------------------------------------------------------------------------
 
-func (state *BpmnEngineState) Marshal() []byte {
+func (state *Engine) Marshal() []byte {
 	m := serializedBpmnEngine{
 		Version:              CurrentSerializerVersion,
 		Name:                 state.name,
@@ -262,7 +262,7 @@ func (state *BpmnEngineState) Marshal() []byte {
 // Unmarshal loads the data byte array and creates a new instance of the BPMN Engine
 // Will return an BpmnEngineUnmarshallingError, if there was an issue AND in case of error,
 // the engine return object is only partially initialized and likely not usable
-func Unmarshal(data []byte) (BpmnEngineState, error) {
+func Unmarshal(data []byte) (Engine, error) {
 	eng := serializedBpmnEngine{}
 	err := json.Unmarshal(data, &eng)
 	if err != nil {
@@ -321,7 +321,7 @@ func Unmarshal(data []byte) (BpmnEngineState, error) {
 	// 		return state, err
 	// 	}
 	// }
-	return BpmnEngineState{}, nil
+	return Engine{}, nil
 }
 
 func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAdapters []*activityAdapter) {
@@ -379,7 +379,7 @@ func recoverProcessInstanceActivitiesPartWithBaseElements(pii *processInstanceIn
 	}
 }
 
-func recoverProcessInstanceActivitiesPart2(state *BpmnEngineState) {
+func recoverProcessInstanceActivitiesPart2(state *Engine) {
 	// for _, pi := range state.processInstances {
 	// 	for _, a := range pi.activities {
 	// 		switch activity := a.(type) {
@@ -396,7 +396,7 @@ func recoverProcessInstanceActivitiesPart2(state *BpmnEngineState) {
 
 // ----------------------------------------------------------------------------
 
-func recoverProcessInstances(state *BpmnEngineState) error {
+func recoverProcessInstances(state *Engine) error {
 	// for i, pi := range state.processInstances {
 	// 	process := state.findProcess(pi.ProcessInfo.ProcessKey)
 	// 	if process == nil {
@@ -411,7 +411,7 @@ func recoverProcessInstances(state *BpmnEngineState) error {
 	return nil
 }
 
-func recoverJobs(state *BpmnEngineState) error {
+func recoverJobs(state *Engine) error {
 	// for _, j := range state.jobs {
 	// 	pi := state.FindProcessInstance(j.ProcessInstanceKey)
 	// 	if pi == nil {
@@ -427,7 +427,7 @@ func recoverJobs(state *BpmnEngineState) error {
 	return nil
 }
 
-func recoverTimers(state *BpmnEngineState) error {
+func recoverTimers(state *Engine) error {
 	// for _, t := range state.timers {
 	// 	pi := state.FindProcessInstance(t.ProcessInstanceKey)
 	// 	if pi == nil {
@@ -449,7 +449,7 @@ func recoverTimers(state *BpmnEngineState) error {
 	return nil
 }
 
-func recoverMessageSubscriptions(state *BpmnEngineState) error {
+func recoverMessageSubscriptions(state *Engine) error {
 	// for _, ms := range state.messageSubscriptions {
 	// 	pi := state.FindProcessInstance(ms.ProcessInstanceKey)
 	// 	if pi == nil {
@@ -485,7 +485,7 @@ func createReferences(processes []*ProcessInfo) (result []processInfoReference) 
 	return result
 }
 
-func (state *BpmnEngineState) findProcess(processKey int64) *ProcessInfo {
+func (state *Engine) findProcess(processKey int64) *ProcessInfo {
 	// for i := 0; i < len(state.processes); i++ {
 	// 	process := state.processes[i]
 	// 	if process.ProcessKey == processKey {

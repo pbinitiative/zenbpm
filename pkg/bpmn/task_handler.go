@@ -51,7 +51,7 @@ type NewTaskHandlerCommand1 interface {
 }
 
 // NewTaskHandler registers a handler function to be called for service tasks with a given taskId
-func (state *BpmnEngineState) NewTaskHandler() NewTaskHandlerCommand1 {
+func (state *Engine) NewTaskHandler() NewTaskHandlerCommand1 {
 	cmd := newTaskHandlerCommand{
 		append: func(handler *taskHandler) {
 			state.taskHandlers = append(state.taskHandlers, handler)
@@ -88,6 +88,10 @@ func (thc newTaskHandlerCommand) Handler(f func(job ActivatedJob)) {
 	thc.append(&th)
 }
 
+func (state *Engine) clearTaskHandlers() {
+	state.taskHandlers = []*taskHandler{}
+}
+
 // Assignee implements NewTaskHandlerCommand2
 func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.TaskElement) bool {
@@ -111,7 +115,7 @@ func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandle
 	return thc
 }
 
-func (state *BpmnEngineState) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
+func (state *Engine) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
 	searchOrder := []taskHandlerType{taskHandlerForId}
 	if element.GetType() == bpmn20.ServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)

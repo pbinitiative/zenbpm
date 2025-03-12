@@ -25,7 +25,7 @@ import (
 
 type Server struct {
 	sync.RWMutex
-	engine *bpmn_engine.BpmnEngineState
+	engine *bpmn_engine.Engine
 	addr   string
 	server *http.Server
 }
@@ -33,7 +33,7 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(engine *bpmn_engine.BpmnEngineState, addr string) *Server {
+func NewServer(engine *bpmn_engine.Engine, addr string) *Server {
 	r := chi.NewRouter()
 	s := Server{
 		engine: engine,

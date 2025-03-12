@@ -7,14 +7,13 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 func Test_NormalExecution_shouldExecuteRightAway(t *testing.T) {
 	// given
-
+	key := gen.Generate().Int64()
 	ProcessDefinition := sql.ProcessDefinition{
-		Key:              1,
+		Key:              key,
 		Version:          1,
 		BpmnProcessID:    "1",
 		BpmnData:         "",
@@ -28,7 +27,7 @@ func Test_NormalExecution_shouldExecuteRightAway(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), ptr.To("1"), nil)
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), nil, &key)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)

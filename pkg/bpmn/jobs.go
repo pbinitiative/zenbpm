@@ -32,7 +32,7 @@ func (j job) Element() bpmn20.FlowNode {
 	return j.baseElement
 }
 
-func (state *BpmnEngineState) handleServiceTask(ctx context.Context, process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TaskElement) (bool, *job) {
+func (state *Engine) handleServiceTask(ctx context.Context, process *ProcessInfo, instance *processInstanceInfo, element bpmn20.TaskElement) (bool, *job) {
 	job := findOrCreateJob(ctx, state, element, instance, state.generateKey)
 
 	//FIXME: logic of using the internal handler needs to be discussed whether it will be kept
@@ -77,7 +77,7 @@ func (state *BpmnEngineState) handleServiceTask(ctx context.Context, process *Pr
 	return job.JobState == Completed, job
 }
 
-func (state *BpmnEngineState) JobCompleteById(ctx context.Context, jobId int64) {
+func (state *Engine) JobCompleteById(ctx context.Context, jobId int64) {
 	jobs := state.persistence.FindJobs(nil, nil, &jobId)
 
 	if len(jobs) == 0 {
@@ -90,7 +90,7 @@ func (state *BpmnEngineState) JobCompleteById(ctx context.Context, jobId int64) 
 
 }
 
-func findOrCreateJob(ctx context.Context, state *BpmnEngineState, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
+func findOrCreateJob(ctx context.Context, state *Engine, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
 	be := element.(bpmn20.FlowNode)
 	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), instance, nil)
 	if len(jobs) > 0 {

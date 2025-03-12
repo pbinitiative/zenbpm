@@ -7,7 +7,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
-type BpmnEngineState struct {
+type Engine struct {
 	name string
 	// _processes            []*ProcessInfo
 	_processInstances []*processInstanceInfo
@@ -39,23 +39,23 @@ type ProcessInfo struct {
 
 // FindProcessInstance searches for a given processInstanceKey
 // and returns the corresponding processInstanceInfo, or otherwise nil
-func (state *BpmnEngineState) FindProcessInstance(processInstanceKey int64) *processInstanceInfo {
+func (state *Engine) FindProcessInstance(processInstanceKey int64) *processInstanceInfo {
 	return state.persistence.FindProcessInstanceByKey(processInstanceKey)
 }
 
 // Name returns the name of the engine, only useful in case you control multiple ones
-func (state *BpmnEngineState) Name() string {
+func (state *Engine) Name() string {
 	return state.name
 }
 
 // FindProcessesById returns all registered processes with given ID
 // result array is ordered by version number, from 1 (first) and largest version (last)
-func (state *BpmnEngineState) FindProcessesById(id string) (infos []*ProcessInfo) {
+func (state *Engine) FindProcessesById(id string) (infos []*ProcessInfo) {
 	processes := state.persistence.FindProcessesById(id)
 	return processes
 }
 
-func (state *BpmnEngineState) checkExclusiveGatewayDone(activity eventBasedGatewayActivity) {
+func (state *Engine) checkExclusiveGatewayDone(activity eventBasedGatewayActivity) {
 	if !activity.OutboundCompleted() {
 		return
 	}
@@ -69,5 +69,5 @@ func (state *BpmnEngineState) checkExclusiveGatewayDone(activity eventBasedGatew
 	}
 }
 
-func (b *BpmnEngineState) Stop() {
+func (b *Engine) Stop() {
 }

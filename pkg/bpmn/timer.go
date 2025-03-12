@@ -53,7 +53,7 @@ func (t Timer) Element() bpmn20.FlowNode {
 	return t.baseElement
 }
 
-func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, timer *Timer, err error) {
+func (state *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, timer *Timer, err error) {
 	timer = findExistingTimerNotYetTriggered(state, ice.Id, instance)
 
 	if timer != nil && timer.originActivity != nil {
@@ -92,7 +92,7 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(ctx context.Cont
 	return false, timer, err
 }
 
-func (state *BpmnEngineState) createTimer(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (*Timer, error) {
+func (state *Engine) createTimer(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (*Timer, error) {
 	durationVal, err := findDurationValue(ice)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
@@ -116,7 +116,7 @@ func (state *BpmnEngineState) createTimer(ctx context.Context, instance *process
 	return t, _err
 }
 
-func findExistingTimerNotYetTriggered(state *BpmnEngineState, id string, instance *processInstanceInfo) *Timer {
+func findExistingTimerNotYetTriggered(state *Engine, id string, instance *processInstanceInfo) *Timer {
 	var t *Timer
 	var key *int64
 	if instance != nil {

@@ -9,7 +9,7 @@ import (
 
 var globalIdGenerator *snowflake.Node = nil
 
-func (state *BpmnEngineState) generateKey() int64 {
+func (state *Engine) generateKey() int64 {
 	return state.snowflake.Generate().Int64()
 }
 

@@ -10,6 +10,7 @@ import (
 func TestForkUncontrolledJoin(t *testing.T) {
 	// setup
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-uncontrolled-join.bpmn")
@@ -28,6 +29,7 @@ func TestForkUncontrolledJoin(t *testing.T) {
 func TestForkControlledParallelJoin(t *testing.T) {
 	// setup
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-parallel-join.bpmn")
@@ -46,6 +48,7 @@ func TestForkControlledParallelJoin(t *testing.T) {
 func TestForkControlledExclusiveJoin(t *testing.T) {
 	// setup
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-exclusive-join.bpmn")

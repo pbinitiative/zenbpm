@@ -47,7 +47,7 @@ func (s *TestStorage) SetupTestEnvironment(m *testing.M) {
 	s.gen = g
 
 	wd, _ := os.Getwd()
-	s.testDirPath = path.Join(wd, random.String())
+	s.testDirPath = path.Join(wd, "sqlite-test-data-"+random.String())
 	// dbConf := store.NewDBConfig("test", true)
 	// dbConf.FKConstraints = true
 
@@ -78,5 +78,4 @@ func (s *TestStorage) SetupTestEnvironment(m *testing.M) {
 
 func (s *TestStorage) TeardownTestEnvironment(m *testing.M) {
 	os.RemoveAll(s.testDirPath)
-
 }

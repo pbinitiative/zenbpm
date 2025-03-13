@@ -31,17 +31,21 @@ func (callPath *CallPath) TaskHandler(job ActivatedJob) {
 var bpmnEngine Engine
 
 func TestMain(m *testing.M) {
-
+	// TODO: swap for in-memory store and get rid of internal dependency
 	testStore := rqlite.TestStorage{}
 	testStore.SetupTestEnvironment(m)
 
+	var exitCode int
+
+	defer func() {
+		testStore.TeardownTestEnvironment(m)
+		os.Exit(exitCode)
+	}()
+
 	bpmnEngine = New(WithStorage(testStore.Store))
 
-	code := m.Run()
-
-	testStore.TeardownTestEnvironment(m)
-
-	os.Exit(code)
+	// Run the tests
+	exitCode = m.Run()
 }
 
 func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {

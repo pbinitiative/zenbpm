@@ -25,6 +25,7 @@ type PersistenceRqlite struct {
 	store   storage.PersistentStorage
 	queries *sql.Queries
 
+	// TODO: rework needed to support transactions without mutexes
 	cache map[int64][]*proto.Statement
 	mu    sync.Mutex // Only protects the cache map itself
 }

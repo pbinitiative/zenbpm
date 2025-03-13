@@ -16,9 +16,15 @@ var rqlitePersistence PersistenceRqlite
 var gen *snowflake.Node
 
 func TestMain(m *testing.M) {
-	// setup
 	testStore := TestStorage{}
 	testStore.SetupTestEnvironment(m)
+
+	var exitCode int
+
+	defer func() {
+		testStore.TeardownTestEnvironment(m)
+		os.Exit(exitCode)
+	}()
 
 	if testStore.rqlitePersistence == nil {
 		os.Exit(1)
@@ -26,12 +32,8 @@ func TestMain(m *testing.M) {
 	rqlitePersistence = ptr.Deref(testStore.rqlitePersistence, PersistenceRqlite{})
 	gen = testStore.gen
 
-	// run
-	exitCode := m.Run()
-
-	// teardown
-	testStore.TeardownTestEnvironment(m)
-	os.Exit(exitCode)
+	// Run the tests
+	exitCode = m.Run()
 }
 
 func Test_RqlitePersistence_ConnectionWorks(t *testing.T) {

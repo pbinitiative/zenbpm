@@ -1,21 +1,16 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
 )
 
 func TestForkUncontrolledJoin(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-uncontrolled-join.bpmn")
@@ -29,18 +24,12 @@ func TestForkUncontrolledJoin(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-a-2,id-b-1,id-b-1"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestForkControlledParallelJoin(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-parallel-join.bpmn")
@@ -54,18 +43,12 @@ func TestForkControlledParallelJoin(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-a-2,id-b-1"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }
 
 func TestForkControlledExclusiveJoin(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
 	cp := CallPath{}
+	bpmnEngine.clearTaskHandlers()
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-exclusive-join.bpmn")
@@ -78,7 +61,4 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-a-2,id-b-1,id-b-1"))
-
-	// cleanup
-	bpmnEngine.Stop()
 }

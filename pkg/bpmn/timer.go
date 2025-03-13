@@ -1,11 +1,13 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/senseyeio/duration"
 )
 
@@ -51,7 +53,7 @@ func (t Timer) Element() bpmn20.FlowNode {
 	return t.baseElement
 }
 
-func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, timer *Timer, err error) {
+func (state *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, timer *Timer, err error) {
 	timer = findExistingTimerNotYetTriggered(state, ice.Id, instance)
 
 	if timer != nil && timer.originActivity != nil {
@@ -66,7 +68,7 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *proces
 	}
 
 	if timer == nil {
-		timer, err = state.createTimer(instance, ice, originActivity)
+		timer, err = state.createTimer(ctx, instance, ice, originActivity)
 		if err != nil {
 			evalErr := &ExpressionEvaluationError{
 				Msg: fmt.Sprintf("Error evaluating expression in intermediate timer cacht event activity id='%s' name='%s'", ice.Id, ice.Name),
@@ -90,7 +92,7 @@ func (state *BpmnEngineState) handleIntermediateTimerCatchEvent(instance *proces
 	return false, timer, err
 }
 
-func (state *BpmnEngineState) createTimer(instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (*Timer, error) {
+func (state *Engine) createTimer(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (*Timer, error) {
 	durationVal, err := findDurationValue(ice)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
@@ -110,15 +112,20 @@ func (state *BpmnEngineState) createTimer(instance *processInstanceInfo, ice bpm
 		baseElement:        be,
 		originActivity:     originActivity,
 	}
-	_err := state.persistence.PersistNewTimer(t)
+	_err := state.persistence.PersistNewTimer(ctx, t)
 	return t, _err
 }
 
-func findExistingTimerNotYetTriggered(state *BpmnEngineState, id string, instance *processInstanceInfo) *Timer {
+func findExistingTimerNotYetTriggered(state *Engine, id string, instance *processInstanceInfo) *Timer {
 	var t *Timer
-	timers := state.persistence.FindTimers(-1, instance.GetInstanceKey(), TimerCreated)
+	var key *int64
+	if instance != nil {
+		key = ptr.To(instance.GetInstanceKey())
+	}
+
+	timers := state.persistence.FindTimers(nil, key, TimerCreated)
 	for _, timer := range timers {
-		if timer.ElementId == id && timer.ProcessInstanceKey == instance.GetInstanceKey() && timer.TimerState == TimerCreated {
+		if timer.ElementId == id && timer.ProcessInstanceKey == *key && timer.TimerState == TimerCreated {
 			return t
 		}
 	}

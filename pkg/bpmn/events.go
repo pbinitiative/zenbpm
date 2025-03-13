@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -39,7 +40,7 @@ type catchEvent struct {
 }
 
 // PublishEventForInstance publishes a message with a given name and also adds variables to the process instance, which fetches this event
-func (state *BpmnEngineState) PublishEventForInstance(processInstanceKey int64, messageName string, variables map[string]interface{}) error {
+func (state *Engine) PublishEventForInstance(processInstanceKey int64, messageName string, variables map[string]interface{}) error {
 	processInstance := state.FindProcessInstance(processInstanceKey)
 	if processInstance != nil {
 		event := catchEvent{
@@ -49,7 +50,7 @@ func (state *BpmnEngineState) PublishEventForInstance(processInstanceKey int64, 
 			IsConsumed: false,
 		}
 		processInstance.CaughtEvents = append(processInstance.CaughtEvents, event)
-		state.persistence.PersistProcessInstance(processInstance)
+		state.persistence.PersistProcessInstance(context.TODO(), processInstance)
 	} else {
 		return fmt.Errorf("no process instance with key=%d found", processInstanceKey)
 	}
@@ -59,8 +60,8 @@ func (state *BpmnEngineState) PublishEventForInstance(processInstanceKey int64, 
 // GetMessageSubscriptions the list of message subscriptions
 // hint: each intermediate message catch event, will create such an active subscription,
 // when a processes instance reaches such an element.
-func (state *BpmnEngineState) GetMessageSubscriptions() []MessageSubscription {
-	messageSubscriptions := state.persistence.FindMessageSubscription(-1, nil, "")
+func (state *Engine) GetMessageSubscriptions() []MessageSubscription {
+	messageSubscriptions := state.persistence.FindMessageSubscription(nil, nil, nil)
 	subscriptions := make([]MessageSubscription, len(messageSubscriptions))
 	for i, ms := range messageSubscriptions {
 		subscriptions[i] = *ms
@@ -71,8 +72,8 @@ func (state *BpmnEngineState) GetMessageSubscriptions() []MessageSubscription {
 // GetTimersScheduled the list of all scheduled timers in the engine
 // A Timer is created, when a process instance reaches a Timer Intermediate Catch Event element
 // and expresses a timestamp in the future
-func (state *BpmnEngineState) GetTimersScheduled() []Timer {
-	timersPersisted := state.persistence.FindTimers(-1, -1)
+func (state *Engine) GetTimersScheduled() []Timer {
+	timersPersisted := state.persistence.FindTimers(nil, nil)
 	timers := make([]Timer, len(timersPersisted))
 	for i, t := range timersPersisted {
 		timers[i] = *t
@@ -80,7 +81,7 @@ func (state *BpmnEngineState) GetTimersScheduled() []Timer {
 	return timers
 }
 
-func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *ProcessInfo, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, ms *MessageSubscription, err error) {
+func (state *Engine) handleIntermediateMessageCatchEvent(ctx context.Context, process *ProcessInfo, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity activity) (continueFlow bool, ms *MessageSubscription, err error) {
 	ms = findMatchingActiveSubscriptions(state, instance, ice.Id)
 
 	if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
@@ -94,7 +95,7 @@ func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *Proce
 	if ms == nil {
 		ms = state.createMessageSubscription(instance, ice)
 		ms.originActivity = originActivity
-		state.persistence.PersistNewMessageSubscription(ms)
+		state.persistence.PersistNewMessageSubscription(ctx, ms)
 	}
 
 	messages := state.findMessagesByProcessKey(process.ProcessKey)
@@ -127,7 +128,7 @@ func (state *BpmnEngineState) handleIntermediateMessageCatchEvent(process *Proce
 	return false, ms, err
 }
 
-func (state *BpmnEngineState) createMessageSubscription(instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent) *MessageSubscription {
+func (state *Engine) createMessageSubscription(instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent) *MessageSubscription {
 	var be bpmn20.FlowNode = ice
 	ms := &MessageSubscription{
 		ElementId:          ice.Id,
@@ -142,7 +143,7 @@ func (state *BpmnEngineState) createMessageSubscription(instance *processInstanc
 	return ms
 }
 
-func (state *BpmnEngineState) findMessagesByProcessKey(processKey int64) *[]bpmn20.TMessage {
+func (state *Engine) findMessagesByProcessKey(processKey int64) *[]bpmn20.TMessage {
 	p := state.persistence.FindProcessByKey(processKey)
 	if p != nil {
 		return &p.definitions.Messages
@@ -171,8 +172,8 @@ func findMessageNameById(messages *[]bpmn20.TMessage, msgId string) string {
 	return ""
 }
 
-func findMatchingActiveSubscriptions(state *BpmnEngineState, processInstance *processInstanceInfo, id string) *MessageSubscription {
-	messageSubscriptions := state.persistence.FindMessageSubscription(-1, processInstance, id, Active)
+func findMatchingActiveSubscriptions(state *Engine, processInstance *processInstanceInfo, id string) *MessageSubscription {
+	messageSubscriptions := state.persistence.FindMessageSubscription(nil, processInstance, &id, Active)
 	if len(messageSubscriptions) > 0 {
 		return messageSubscriptions[0]
 	}

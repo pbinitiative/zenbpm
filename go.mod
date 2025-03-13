@@ -30,6 +30,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/armon/go-metrics v0.5.3 // indirect
 	github.com/aws/aws-sdk-go v1.55.5 // indirect
+	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
@@ -51,6 +52,7 @@ require (
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/raft v1.7.0 // indirect
+	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/invopop/yaml v0.3.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
@@ -60,6 +62,7 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.24 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
@@ -68,6 +71,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rqlite/go-sqlite3 v1.34.0 // indirect
 	github.com/rqlite/raft-boltdb/v2 v2.0.0-20230523104317-c08e70f4de48 // indirect
+	github.com/rqlite/rqlite v4.6.0+incompatible // indirect
 	github.com/rqlite/sql v0.0.0-20240312185922-ffac88a740bd // indirect
 	github.com/shirou/gopsutil/v3 v3.22.7 // indirect
 	github.com/speakeasy-api/openapi-overlay v0.9.0 // indirect

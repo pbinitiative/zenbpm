@@ -7,67 +7,53 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/cluster"
-	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
-var rqlitePersistence *BpmnEnginePersistenceRqlite
+var rqlitePersistence PersistenceRqlite
+var gen *snowflake.Node
 
 func TestMain(m *testing.M) {
-	// Set environment variables
-	os.Setenv("PROFILE", "DEV")
-	os.Setenv("CONFIG_FILE", "../../conf/zenbpm/conf-dev.yaml")
+	testStore := TestStorage{}
+	testStore.SetupTestEnvironment(m)
 
-	// Setup
-	appContext, _ := context.WithCancel(context.Background())
+	var exitCode int
 
-	conf := config.InitConfig()
+	defer func() {
+		testStore.TeardownTestEnvironment(m)
+		os.Exit(exitCode)
+	}()
 
-	zenNode, err := cluster.StartZenNode(appContext, conf)
-	if err != nil {
-		log.Error("Failed to start Zen node: %s", err)
+	if testStore.rqlitePersistence == nil {
 		os.Exit(1)
 	}
-	// give time to start
-	time.Sleep(time.Second * 2)
+	rqlitePersistence = ptr.Deref(testStore.rqlitePersistence, PersistenceRqlite{})
+	gen = testStore.gen
 
-	rqlitePersistence = NewBpmnEnginePersistenceRqlite(
-		zenNode,
-	)
-	if err != nil {
-		log.Errorf(appContext, "Error while initing persistence: %s", err.Error())
-	}
-
-	// Run tests
-	exitCode := m.Run()
-
-	// Cleanup: Perform any additional cleanup if needed
-
-	// Cleanup: Remove the partition-1 folder
-	if err := os.RemoveAll("./partition-1"); err != nil {
-		log.Errorf(context.Background(), "Error while removing partition-1 folder: %s", err.Error())
-	}
-
-	// Exit with the appropriate code
-	os.Exit(exitCode)
+	// Run the tests
+	exitCode = m.Run()
 }
 
 func Test_RqlitePersistence_ConnectionWorks(t *testing.T) {
+	// when
 	_, err := rqlitePersistence.ExecContext(context.Background(), "SELECT 1")
+
+	//then
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func Test_ParseSimleResult_works(t *testing.T) {
+	// when
 	rows, err := rqlitePersistence.QueryContext(context.Background(), "SELECT 1")
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// then
 	if rows.Next() {
 		i := 0
 		err := rows.Scan(&i)
@@ -82,108 +68,31 @@ func Test_ParseSimleResult_works(t *testing.T) {
 	}
 }
 
-func Test_ProcessInstanceWrite_works(t *testing.T) {
-
-	processInstance := sql.ProcessInstance{
-		Key:                  1,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
-	}
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	if err != nil {
-		t.Fatalf("Failed inserting the record: %s", err)
-	}
-
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
-
-	if err != nil {
-		t.Fatalf("Failed finding the record: %s", err)
-	}
-
-	// Assert
-
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
-	}
-
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
-		}
-	}
-}
-
-func Test_ProcessInstanceUpdate_works(t *testing.T) {
-
-	processInstance := sql.ProcessInstance{
-		Key:                  1,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
-	}
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	if err != nil {
-		t.Fatalf("Failed inserting the record: %s", err)
-	}
-
-	processInstance.State = 4
-	processInstance.Activities = "[]"
-	processInstance.VariableHolder = "[]"
-	processInstance.CaughtEvents = "[]"
-
-	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
-
-	if err != nil {
-		t.Fatalf("Failed finding the record: %s", err)
-	}
-
-	// Assert
-
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
-	}
-
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
-		}
-	}
-}
-
 func Test_ProcessDefinitionWrite_works(t *testing.T) {
+	// given
 	ProcessDefinition := sql.ProcessDefinition{
 		Key:              1,
 		Version:          1,
-		BpmnProcessID:    "1",
+		BpmnProcessID:    "test-definition",
 		BpmnData:         "",
 		BpmnChecksum:     []byte{12, 32},
 		BpmnResourceName: "",
 	}
 
+	// when
 	err := rqlitePersistence.SaveNewProcess(t.Context(), ProcessDefinition)
 
 	if err != nil {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), ptr.To("1"), nil)
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), nil, ptr.To(int64(1)))
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(processDefinitions) != 1 {
 		t.Errorf("Wrong number of process definitions: %d", len(processDefinitions))
 	}
@@ -196,9 +105,116 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 
 }
 
+func setupProcessDefinition(t *testing.T) {
+	processes, err := rqlitePersistence.FindProcesses(t.Context(), nil, ptr.To(int64(1)))
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	if len(processes) == 0 {
+		Test_ProcessDefinitionWrite_works(t)
+		if err != nil {
+			t.Fatalf("Failed finding the record: %s", err)
+		}
+	}
+}
+
+func setupProcessInstance(t *testing.T) {
+	Test_ProcessInstanceWrite_works(t)
+}
+
+func Test_ProcessInstanceWrite_works(t *testing.T) {
+	// setup
+	setupProcessDefinition(t)
+
+	// given
+	processInstance := sql.ProcessInstance{
+		Key:                  1,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                1,
+		VariableHolder:       "",
+		CaughtEvents:         "",
+		Activities:           "",
+	}
+
+	// when
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// then
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
+
+	for _, pi := range processInstances {
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+		}
+	}
+}
+
+func Test_ProcessInstanceUpdate_works(t *testing.T) {
+	// setup
+	setupProcessDefinition(t)
+
+	// given
+	processInstance := sql.ProcessInstance{
+		Key:                  1,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                1,
+		VariableHolder:       "",
+		CaughtEvents:         "",
+		Activities:           "",
+	}
+
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processInstance.State = 4
+	processInstance.Activities = "[]"
+	processInstance.VariableHolder = "[]"
+	processInstance.CaughtEvents = "[]"
+
+	// when
+	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// then
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
+
+	for _, pi := range processInstances {
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+		}
+	}
+}
+
 func Test_JobFindByKey_failsProperlyWhenKeyNotFound(t *testing.T) {
+	// when
 	_, err := rqlitePersistence.queries.FindJobByKey(t.Context(), 1)
 
+	// then
 	if err == nil {
 		t.Errorf("Expected error when key not found")
 	} else if err.Error() != sql.ErrNoRows {
@@ -207,7 +223,11 @@ func Test_JobFindByKey_failsProperlyWhenKeyNotFound(t *testing.T) {
 
 }
 
-func Test_JobWrite_works(t *testing.T) {
+func Test_JobWrite_works(t *testing.T) { // We need the process definition in db
+	//setup
+	setupProcessInstance(t)
+
+	// given
 	job := sql.Job{
 		Key:                1,
 		ElementID:          "id",
@@ -217,6 +237,7 @@ func Test_JobWrite_works(t *testing.T) {
 		CreatedAt:          1,
 	}
 
+	// when
 	err := rqlitePersistence.SaveJob(t.Context(), job)
 
 	if err != nil {
@@ -229,7 +250,7 @@ func Test_JobWrite_works(t *testing.T) {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(jobs) != 1 {
 		t.Errorf("Wrong number of jobs: %d", len(jobs))
 	}
@@ -241,20 +262,30 @@ func Test_JobWrite_works(t *testing.T) {
 	}
 }
 
+func setupJob(t *testing.T) {
+	Test_JobWrite_works(t)
+}
+
 func Test_JobStateFilter_works(t *testing.T) {
+	//setup
+	setupJob(t)
+	// when
 	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), []string{"ACTIVE", "COMPLETED"})
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(jobs) != 1 {
 		t.Errorf("Wrong number of jobs: %d", len(jobs))
 	}
 }
 
 func Test_TimerWrite_works(t *testing.T) {
+	// setup
+	setupProcessInstance(t)
+	// given
 	timer := sql.Timer{
 		Key:                  1,
 		ElementID:            "id",
@@ -266,7 +297,7 @@ func Test_TimerWrite_works(t *testing.T) {
 		DueAt:                1,
 		Duration:             1,
 	}
-
+	// when
 	err := rqlitePersistence.SaveTimer(t.Context(), timer)
 
 	if err != nil {
@@ -279,7 +310,7 @@ func Test_TimerWrite_works(t *testing.T) {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(timers) != 1 {
 		t.Errorf("Wrong number of timers: %d", len(timers))
 	}
@@ -292,6 +323,9 @@ func Test_TimerWrite_works(t *testing.T) {
 }
 
 func Test_MessageSubscriptionWrite_works(t *testing.T) {
+	// setup
+	setupProcessInstance(t)
+	// given
 	messageSubscription := sql.MessageSubscription{
 		Key:                  1,
 		ElementID:            "id",
@@ -306,6 +340,7 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 		OriginActivityID:     "id",
 	}
 
+	// when
 	err := rqlitePersistence.SaveMessageSubscription(t.Context(), messageSubscription)
 
 	if err != nil {
@@ -318,7 +353,7 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(messageSubscriptions) != 1 {
 		t.Errorf("Wrong number of message subscriptions: %d", len(messageSubscriptions))
 	}
@@ -332,6 +367,10 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 }
 
 func Test_ActivityInstanceWrite_works(t *testing.T) {
+	// setup
+	setupProcessInstance(t)
+
+	// given
 	activityInstance := sql.ActivityInstance{
 		Key:                  1,
 		ElementID:            "id",
@@ -342,6 +381,7 @@ func Test_ActivityInstanceWrite_works(t *testing.T) {
 		BpmnElementType:      "Task",
 	}
 
+	// when
 	err := rqlitePersistence.SaveActivity(t.Context(), activityInstance)
 
 	if err != nil {
@@ -354,7 +394,7 @@ func Test_ActivityInstanceWrite_works(t *testing.T) {
 		t.Fatalf("Failed finding the record: %s", err)
 	}
 
-	// Assert
+	// then
 	if len(activityInstances) != 1 {
 		t.Errorf("Wrong number of activity instances: %d", len(activityInstances))
 	}

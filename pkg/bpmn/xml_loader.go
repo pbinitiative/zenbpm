@@ -3,6 +3,7 @@ package bpmn
 import (
 	"bytes"
 	"compress/flate"
+	"context"
 	"crypto/md5"
 	"encoding/ascii85"
 	"encoding/hex"
@@ -15,7 +16,7 @@ import (
 
 // LoadFromFile loads a given BPMN file by filename into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (state *BpmnEngineState) LoadFromFile(filename string) (*ProcessInfo, error) {
+func (state *Engine) LoadFromFile(filename string) (*ProcessInfo, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -25,11 +26,11 @@ func (state *BpmnEngineState) LoadFromFile(filename string) (*ProcessInfo, error
 
 // LoadFromBytes loads a given BPMN file by xmlData byte array into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (state *BpmnEngineState) LoadFromBytes(xmlData []byte) (*ProcessInfo, error) {
+func (state *Engine) LoadFromBytes(xmlData []byte) (*ProcessInfo, error) {
 	return state.load(xmlData, "")
 }
 
-func (state *BpmnEngineState) load(xmlData []byte, resourceName string) (*ProcessInfo, error) {
+func (state *Engine) load(xmlData []byte, resourceName string) (*ProcessInfo, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions bpmn20.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
@@ -53,7 +54,7 @@ func (state *BpmnEngineState) load(xmlData []byte, resourceName string) (*Proces
 		}
 		processInfo.Version = processes[0].Version + 1
 	}
-	state.persistence.PersistNewProcess(&processInfo)
+	state.persistence.PersistNewProcess(context.TODO(), &processInfo)
 
 	state.exportNewProcessEvent(processInfo, xmlData, resourceName, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil

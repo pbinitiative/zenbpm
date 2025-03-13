@@ -2,18 +2,19 @@ package bpmn
 
 import (
 	"fmt"
+
 	"github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
-type EngineOption = func(*BpmnEngineState)
+type EngineOption = func(*Engine)
 
 // New creates a new instance of the BPMN Engine;
-func New(options ...EngineOption) BpmnEngineState {
+func New(options ...EngineOption) Engine {
 
 	name := fmt.Sprintf("Bpmn-Engine-%d", getGlobalSnowflakeIdGenerator().Generate().Int64())
-	engine := BpmnEngineState{
+	engine := Engine{
 		name:         name,
 		taskHandlers: []*taskHandler{},
 		snowflake:    getGlobalSnowflakeIdGenerator(),
@@ -29,18 +30,18 @@ func New(options ...EngineOption) BpmnEngineState {
 }
 
 func WithExporter(exporter exporter.EventExporter) EngineOption {
-	return func(engine *BpmnEngineState) { engine.AddEventExporter(exporter) }
+	return func(engine *Engine) { engine.AddEventExporter(exporter) }
 }
 
 func WithStorage(persistence storage.PersistentStorage) EngineOption {
-	return func(engine *BpmnEngineState) {
-		rqliteService := rqlite.NewBpmnEnginePersistenceRqlite(persistence)
+	return func(engine *Engine) {
+		rqliteService := rqlite.NewPersistenceRqlite(persistence)
 		engine.persistence = NewBpmnEnginePersistenceRqlite(getGlobalSnowflakeIdGenerator(), rqliteService)
 	}
 }
 
 func WithName(name string) EngineOption {
-	return func(engine *BpmnEngineState) {
+	return func(engine *Engine) {
 		engine.name = name
 	}
 }

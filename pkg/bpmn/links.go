@@ -8,7 +8,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
-func (state *BpmnEngineState) handleIntermediateThrowEvent(process *ProcessInfo, instance *processInstanceInfo, ite bpmn20.TIntermediateThrowEvent, activity activity) (nextCommands []command) {
+func (state *Engine) handleIntermediateThrowEvent(process *ProcessInfo, instance *processInstanceInfo, ite bpmn20.TIntermediateThrowEvent, activity activity) (nextCommands []command) {
 	linkName := ite.LinkEventDefinition.Name
 	if len(strings.TrimSpace(linkName)) == 0 {
 		nextCommands = []command{errorCommand{

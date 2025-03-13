@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
@@ -158,7 +159,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 	then.AssertThat(t, err, is.Nil())
 
 	// then
-	for _, job := range bpmnEngine.persistence.FindJobs("", pi, -1) {
+	for _, job := range bpmnEngine.persistence.FindJobs(nil, pi, nil) {
 		then.AssertThat(t, job.JobState, is.EqualTo(Completed))
 	}
 	then.AssertThat(t, cp.CallPath, is.EqualTo("service-task-1,user-task-2"))
@@ -196,7 +197,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
 	then.AssertThat(t, pi.GetVariable("id"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindJobs("", pi, -1)[0].JobState, is.EqualTo(Failed))
+	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, pi, nil)[0].JobState, is.EqualTo(Failed))
 	then.AssertThat(t, pi.GetState(), is.EqualTo(Failed))
 
 	// cleanup
@@ -222,7 +223,7 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("invalid-output"))
 	then.AssertThat(t, pi.GetVariable("order"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindJobs("", pi, -1)[0].JobState, is.EqualTo(Failed))
+	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, pi, nil)[0].JobState, is.EqualTo(Failed))
 	then.AssertThat(t, pi.GetState(), is.EqualTo(Failed))
 
 	// cleanup

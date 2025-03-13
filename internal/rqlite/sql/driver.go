@@ -87,8 +87,6 @@ func (rs *Rows) Close() error {
 }
 
 func (qr *Rows) Scan(dest ...any) error {
-	log.Debugf(qr.ctx, "Scan() called for %d vars", len(dest))
-	// trace("%s: Scan() called for %d vars", qr.conn.ID, len(dest))
 
 	if qr.rowNumber == -1 {
 		return errors.New("you need to Next() before you Scan(), sorry, it's complicated")

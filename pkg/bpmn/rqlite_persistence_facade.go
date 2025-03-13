@@ -2,7 +2,6 @@ package bpmn
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -20,10 +19,10 @@ import (
 
 type BpmnEnginePersistenceRqlite struct {
 	snowflakeIdGenerator *snowflake.Node
-	rqlitePersistence    *rqlite.BpmnEnginePersistenceRqlite
+	rqlitePersistence    *rqlite.PersistenceRqlite
 }
 
-func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite *rqlite.BpmnEnginePersistenceRqlite) *BpmnEnginePersistenceRqlite {
+func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite *rqlite.PersistenceRqlite) *BpmnEnginePersistenceRqlite {
 	gen := snowflakeIdGenerator
 
 	return &BpmnEnginePersistenceRqlite{
@@ -44,21 +43,21 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessById(processId string
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindProcessesById(processId string) []*ProcessInfo {
-	return persistence.FindProcesses(processId, -1)
+	return persistence.FindProcesses(&processId, nil)
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindProcessByKey(processKey int64) *ProcessInfo {
-	processes := persistence.FindProcesses("", processKey)
+	processes := persistence.FindProcesses(nil, &processKey)
 	if len(processes) == 0 {
 		return nil
 	}
 	return processes[0]
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId string, processKey int64) []*ProcessInfo {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId *string, processKey *int64) []*ProcessInfo {
 	// TODO finds all processes with given ID sorted by version number
 
-	processes, err := persistence.rqlitePersistence.FindProcesses(context.Background(), &processId, &processKey)
+	processes, err := persistence.rqlitePersistence.FindProcesses(context.TODO(), processId, processKey)
 
 	if err != nil {
 		log.Fatalf("Error finding processes: %s", err)
@@ -108,7 +107,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstanceByKey(process
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInstanceKey int64) []*processInstanceInfo {
-	instances, err := persistence.rqlitePersistence.FindProcessInstances(context.Background(), &processInstanceKey, nil)
+	instances, err := persistence.rqlitePersistence.FindProcessInstances(context.TODO(), &processInstanceKey, nil)
 
 	if err != nil {
 		log.Fatal("Finding process instance failed", err)
@@ -167,14 +166,14 @@ func convertTimerStatesToStrings(states []TimerState) []string {
 	return result
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey int64, processInstance *processInstanceInfo, elementId string, state ...ActivityState) []*MessageSubscription {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey *int64, processInstance *processInstanceInfo, elementId *string, state ...ActivityState) []*MessageSubscription {
 	states := convertActivityStatesToStrings(state)
 	var pik *int64
 
 	if processInstance != nil {
 		pik = ptr.To((*processInstance).GetInstanceKey())
 	}
-	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscriptions(context.Background(), &originActivityKey, pik, &elementId, states)
+	subscriptions, err := persistence.rqlitePersistence.FindMessageSubscriptions(context.TODO(), originActivityKey, pik, elementId, states)
 
 	if err != nil {
 		log.Fatal("Finding message subscriptions failed", err)
@@ -218,9 +217,9 @@ func constructOriginActivity(originActivityKey int64, originActivityState int, o
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int64, processInstanceKey int64, state ...TimerState) []*Timer {
+func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *int64, processInstanceKey *int64, state ...TimerState) []*Timer {
 	states := convertTimerStatesToStrings(state)
-	timers, err := persistence.rqlitePersistence.FindTimers(context.Background(), &originActivityKey, &processInstanceKey, states)
+	timers, err := persistence.rqlitePersistence.FindTimers(context.TODO(), originActivityKey, processInstanceKey, states)
 
 	if err != nil {
 		log.Fatal("Finding timers failed", err)
@@ -246,14 +245,14 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey int
 	return resultTimers
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, processInstance *processInstanceInfo, jobKey int64, state ...ActivityState) []*job {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job {
 	states := convertActivityStatesToStrings(state)
 	var processInstanceKey *int64
 	if processInstance != nil {
 		processInstanceKey = ptr.To((*processInstance).GetInstanceKey())
 	}
 
-	jobs, err := persistence.rqlitePersistence.FindJobs(context.Background(), &elementId, processInstanceKey, &jobKey, states)
+	jobs, err := persistence.rqlitePersistence.FindJobs(context.TODO(), elementId, processInstanceKey, jobKey, states)
 
 	if err != nil {
 		log.Fatal("Finding jobs failed", err)
@@ -289,7 +288,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId string, proce
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job {
-	jobs := persistence.FindJobs("", nil, jobKey)
+	jobs := persistence.FindJobs(nil, nil, &jobKey)
 
 	if len(jobs) == 0 {
 		return nil
@@ -300,20 +299,20 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job 
 
 // WRITE
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(processDefinition *ProcessInfo) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(ctx context.Context, processDefinition *ProcessInfo) error {
 
-	return persistence.rqlitePersistence.SaveNewProcess(context.Background(), sql.ProcessDefinition{
+	return persistence.rqlitePersistence.SaveNewProcess(ctx, sql.ProcessDefinition{
 		Key:              processDefinition.ProcessKey,
 		Version:          processDefinition.Version,
 		BpmnProcessID:    processDefinition.BpmnProcessId,
-		BpmnData:         base64.StdEncoding.EncodeToString([]byte(processDefinition.bpmnData)),
-		BpmnChecksum:     []byte(base64.StdEncoding.EncodeToString(processDefinition.bpmnChecksum[:])),
+		BpmnData:         processDefinition.bpmnData,
+		BpmnChecksum:     []byte(processDefinition.bpmnChecksum[:]),
 		BpmnResourceName: processDefinition.bpmnResourceName,
 	})
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processInstance *processInstanceInfo) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(ctx context.Context, processInstance *processInstanceInfo) error {
 	varaiblesJson, err := json.Marshal(processInstance.VariableHolder.Variables())
 	if err != nil {
 		log.Fatalf("Error serializing variables: %s", err)
@@ -342,7 +341,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 		log.Fatalf("Error serializing activities: %s", err)
 	}
 
-	return persistence.rqlitePersistence.SaveProcessInstance(context.Background(), sql.ProcessInstance{
+	return persistence.rqlitePersistence.SaveProcessInstance(ctx, sql.ProcessInstance{
 		Key:                  processInstance.InstanceKey,
 		ProcessDefinitionKey: processInstance.ProcessInfo.ProcessKey,
 		CreatedAt:            processInstance.CreatedAt.Unix(),
@@ -354,7 +353,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(processIn
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(subscription *MessageSubscription) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ctx context.Context, subscription *MessageSubscription) error {
 
 	ms :=
 		sql.MessageSubscription{
@@ -373,12 +372,12 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(su
 		ms.OriginActivityID = subscription.originActivity.Element().GetId()
 	}
 
-	return persistence.rqlitePersistence.SaveMessageSubscription(context.Background(), ms)
+	return persistence.rqlitePersistence.SaveMessageSubscription(ctx, ms)
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(timer *Timer) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(ctx context.Context, timer *Timer) error {
 
-	return persistence.rqlitePersistence.SaveTimer(context.Background(), sql.Timer{
+	return persistence.rqlitePersistence.SaveTimer(ctx, sql.Timer{
 		Key:                  timer.Key(),
 		ElementID:            timer.ElementId,
 		ElementInstanceKey:   timer.ElementInstanceKey,
@@ -391,8 +390,8 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(timer *Timer) er
 	})
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistJob(job *job) error {
-	return persistence.rqlitePersistence.SaveJob(context.Background(), sql.Job{
+func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, job *job) error {
+	return persistence.rqlitePersistence.SaveJob(ctx, sql.Job{
 		Key:                job.JobKey,
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -403,7 +402,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistJob(job *job) error {
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.BpmnEnginePersistenceRqlite {
+func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.PersistenceRqlite {
 	return persistence.rqlitePersistence
 }
 

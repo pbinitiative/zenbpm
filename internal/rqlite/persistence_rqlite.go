@@ -139,7 +139,7 @@ func (persistence *PersistenceRqlite) FindJobs(ctx context.Context, elementId *s
 		Key:                sqlc.NullInt64{Int64: ptr.Deref(jobKey, int64(-1)), Valid: jobKey != nil},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil},
 		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
-		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: len(state) > 0},
 	}
 	// Fetch jobs
 	jobs, err := persistence.queries.FindJobsWithStates(ctx, params)

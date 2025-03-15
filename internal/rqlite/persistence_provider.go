@@ -23,5 +23,5 @@ type BpmnEnginePersistence interface {
 	SaveJob(ctx context.Context, job sql.Job) error
 	SaveActivity(ctx context.Context, activity sql.ActivityInstance) error
 
-	FlushTransaction(ctx context.Context)
+	FlushTransaction(ctx context.Context) error
 }

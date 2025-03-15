@@ -5,6 +5,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
+	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
@@ -31,6 +32,16 @@ func New(options ...EngineOption) Engine {
 
 func WithExporter(exporter exporter.EventExporter) EngineOption {
 	return func(engine *Engine) { engine.AddEventExporter(exporter) }
+}
+
+func WithRqliteExporter() EngineOption {
+	return func(engine *Engine) {
+		exp, err := rqliteExporter.NewExporter(engine.GetPersistence())
+		if err != nil {
+
+		}
+		engine.AddEventExporter(&exp)
+	}
 }
 
 func WithStorage(persistence storage.PersistentStorage) EngineOption {

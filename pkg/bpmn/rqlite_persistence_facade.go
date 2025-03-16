@@ -357,6 +357,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ct
 
 	ms :=
 		sql.MessageSubscription{
+			Key:                  subscription.Key(),
 			ElementID:            subscription.ElementId,
 			ElementInstanceKey:   subscription.ElementInstanceKey,
 			ProcessDefinitionKey: subscription.ProcessKey,

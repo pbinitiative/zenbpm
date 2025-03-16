@@ -90,7 +90,7 @@ func (persistence *PersistenceRqlite) FindMessageSubscriptions(ctx context.Conte
 		OriginActivityKey:  sqlc.NullInt64{Int64: ptr.Deref(originActivityKey, int64(0)), Valid: originActivityKey != nil},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
 		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
-		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: len(state) > 0},
 	}
 
 	// Fetch subscriptions
@@ -110,7 +110,7 @@ func (persistence *PersistenceRqlite) FindTimers(ctx context.Context, elementIns
 	params := sql.FindTimersParams{
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
 		ElementInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(elementInstanceKey, int64(0)), Valid: elementInstanceKey != nil},
-		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: state != nil},
+		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: len(state) > 0},
 	}
 
 	// Fetch timers

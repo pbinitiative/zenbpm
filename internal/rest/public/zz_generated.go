@@ -121,7 +121,15 @@ type ProcessInstancePage struct {
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey string `json:"jobKey"`
+	JobKey    string                  `json:"jobKey"`
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
+// PublishMessageJSONBody defines parameters for PublishMessage.
+type PublishMessageJSONBody struct {
+	MessageName        string                  `json:"messageName"`
+	ProcessInstanceKey string                  `json:"processInstanceKey"`
+	Variables          *map[string]interface{} `json:"variables,omitempty"`
 }
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
@@ -140,6 +148,9 @@ type GetProcessInstancesParams struct {
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
 
+// PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
+type PublishMessageJSONRequestBody PublishMessageJSONBody
+
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
 
@@ -148,6 +159,9 @@ type ServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
+	// Publish a message
+	// (POST /messages)
+	PublishMessage(w http.ResponseWriter, r *http.Request)
 	// Get list of process definitions
 	// (GET /process-definitions)
 	GetProcessDefinitions(w http.ResponseWriter, r *http.Request)
@@ -181,6 +195,12 @@ type Unimplemented struct{}
 // Complete a job
 // (POST /jobs)
 func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Publish a message
+// (POST /messages)
+func (_ Unimplemented) PublishMessage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -246,6 +266,20 @@ func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompleteJob(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishMessage operation middleware
+func (siw *ServerInterfaceWrapper) PublishMessage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishMessage(w, r)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -557,6 +591,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions", wrapper.GetProcessDefinitions)
 	})
 	r.Group(func(r chi.Router) {
@@ -596,6 +633,22 @@ type CompleteJob201Response struct {
 }
 
 func (response CompleteJob201Response) VisitCompleteJobResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type PublishMessageRequestObject struct {
+	Body *PublishMessageJSONRequestBody
+}
+
+type PublishMessageResponseObject interface {
+	VisitPublishMessageResponse(w http.ResponseWriter) error
+}
+
+type PublishMessage201Response struct {
+}
+
+func (response PublishMessage201Response) VisitPublishMessageResponse(w http.ResponseWriter) error {
 	w.WriteHeader(201)
 	return nil
 }
@@ -745,6 +798,9 @@ type StrictServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
+	// Publish a message
+	// (POST /messages)
+	PublishMessage(ctx context.Context, request PublishMessageRequestObject) (PublishMessageResponseObject, error)
 	// Get list of process definitions
 	// (GET /process-definitions)
 	GetProcessDefinitions(ctx context.Context, request GetProcessDefinitionsRequestObject) (GetProcessDefinitionsResponseObject, error)
@@ -824,6 +880,37 @@ func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompleteJobResponseObject); ok {
 		if err := validResponse.VisitCompleteJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PublishMessage operation middleware
+func (sh *strictHandler) PublishMessage(w http.ResponseWriter, r *http.Request) {
+	var request PublishMessageRequestObject
+
+	var body PublishMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PublishMessage(ctx, request.(PublishMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PublishMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PublishMessageResponseObject); ok {
+		if err := validResponse.VisitPublishMessageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1045,25 +1132,26 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, process
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/9RYTXPbNhD9Kxi0R9lU2ktGN6X2pHLrRFPnltEBJFcSHBBggKVb1aP/3gH4TYK0ZNOe",
+	"5mQZWCwW7+3uA/hII5WkSoJEQxeP1ER7SJj7uYyQP3A82N+pVilo5OBmwjSR1wISkPjlkIIdQveXGtRc",
+	"7uhxRiMNDCFeop3dKp0wpAsaM4QL5AnQWX8J5C5XsdfhNzh4x1OtIjDmCrZccuRK/jFuuJIGmYxgyMwg",
+	"Q9+RjlXEKryHCK1tCdGa7dwSJsTnLV187QLGEZL2j581bOmC/hTU8AcF9kEFfL0l05odvDGMu7KB3QKy",
+	"mCGjx43nCDcq7BM8OXnl7BPYf3s76m5UOC1rFsi3IKxl0WdOZRIbEHCJsANtF6rt1sDAnOH/gm/Gh9y6",
+	"W3BXgIyLNpKjZ+w6uONJKsBh0280V8U5n+R0c0qsxVbellYYn9l/HkAbruSz0TPTpuEwuG+Qmu0y7aPM",
+	"8s5W/NfXDJbt9nj9UIrRFKLyYtmomgrILKGLr/kh7F4WIwEIsd0XdMKlDY5uPFE8MM1ZKOB3JWLQ/nTW",
+	"8D3jGmK7h416IMYShSXSMrgTuHiVJKuIfv3ksh653CobWQwm0jxFV3X0r+u7L2S5XpGt0kTw8MKW8gXI",
+	"HZcuITjaeqcf1refyLUbJZ9TkMv1ijaKl84v313OXZtMQbKU0wX99XJ+Obc0MNw7SIJ7FbofqTIuBS2C",
+	"zMZhewb9rcgHqwQ5nWDwg4oPeWOWCHlrZmkqeOTWBfcmbx05Dv2KuVfhUGKWOdUslQqudjoVXvyw1oao",
+	"M3ADJlXS5I5/mb/rY36jQlJnv3VisiRh+tBAgTBy74BAtjNFEIZurHGQgDFsByNYrrNQcLO/zQ0ng7PY",
+	"+BNL4CUXjTOg93ictcKYjJQCK2IsLm1OCjQJI0kFaElLxUVOTRHvRVwLlN1qBx6SPgL25Yz2Yp2fRdhZ",
+	"4paLp0OsDcaf3CBRW1IchzSP08bmIyARI9Y1Uj5oNjZp/N3AdelexCen8j+JaANT6Z2d6WnMKUkzf0Hl",
+	"nKiXR282t7lZ91AmMaRCHXq95MoNE0Yk/O0h50luBhI6ePSd5nhWnjtd0CwBBG2coHJ7NqsVdEalazBD",
+	"At7madbAvIvm5i2LqbjHn8SYp4heyA8vOuSYwDZLqrp8TKUNJ98Iz+/+bZ/P6/iTE1/f3oYJL0khxc27",
+	"q/VutFOfvCamy37N8QD3wQk1uKqc+Evwewb68GQNDtfczO+neD43V8awZZlAupjPPG8/vxv30vY6eefz",
+	"snmNJr5qltpzLvy56nYv/TOKCpkYeAk3yyK325ygFaWO60xKLne9JBtT8+E1z8nMx/5N7nhGtp6jF+3L",
+	"4v9KLcaaxp19jFrgWb8X9Fkyw9bEgIAIISbhgXQwWcWTsRe0P0cMEbmsrX5wDlufq0eKrYHLcHXVRu7l",
+	"zabp/16eymf3EEM3dv4H56b8Hj1Ci4NhmBA7/UwqrE/QDyVymRZ0QfeI6SIIhIqY2CuDi/fz9/P820zu",
+	"67EDa+tyZ/WvM93o2ZvjfwEAAP//mZI5WXkaAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

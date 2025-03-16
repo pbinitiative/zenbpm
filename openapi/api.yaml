@@ -4,7 +4,7 @@ info:
     description: REST API for lib-bpmn-engine
     version: 0.1.0
 servers:
-    - url: http://localhost:8080
+    - url: http://localhost:8080/v1
 tags:
     - name: process-definitions
     - name: process-instances
@@ -204,9 +204,36 @@ paths:
                             properties:
                                 jobKey:
                                     type: string
+                                variables:
+                                    type: object
             responses:
                 201:
                     description: Job completed
+    /messages:
+        post:
+            operationId: publishMessage
+            tags:
+                - messages
+            summary: Publish a message
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - processInstanceKey
+                                - messageName
+                            properties:
+                                processInstanceKey:
+                                    type: string
+                                messageName:
+                                    type: string
+                                variables:
+                                    type: object
+            responses:
+                201:
+                    description: Message sent
 
 components:
     schemas:

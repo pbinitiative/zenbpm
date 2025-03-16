@@ -77,14 +77,28 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *ProcessInfo
 	return job.JobState == Completed, job
 }
 
-func (state *Engine) JobCompleteById(ctx context.Context, jobId int64) {
+func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables map[string]interface{}) {
 	jobs := state.persistence.FindJobs(nil, nil, &jobId)
 
 	if len(jobs) == 0 {
 		return
 	}
+
+	instance := state.persistence.FindProcessInstanceByKey(jobs[0].ProcessInstanceKey)
+	if instance == nil {
+		return
+	}
+
+	variableHolder := var_holder.New(&instance.VariableHolder, variables)
+	element := jobs[0].baseElement.(bpmn20.TaskElement)
+	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
+		jobs[0].JobState = Failed
+		instance.State = Failed
+	}
+	// TODO: variabl mapping needs to be implemented
 	jobs[0].JobState = Completing
 	state.persistence.PersistJob(ctx, jobs[0])
+	state.persistence.PersistProcessInstance(ctx, instance)
 
 	state.RunOrContinueInstance(jobs[0].ProcessInstanceKey)
 

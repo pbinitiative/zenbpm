@@ -111,8 +111,16 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	s.engine.JobCompleteById(ctx, *getKeyFromString(&request.Body.JobKey))
+	key := *getKeyFromString(&request.Body.JobKey)
+	s.engine.JobCompleteById(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
 	return public.CompleteJob201Response{}, nil
+}
+
+func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
+	key := *getKeyFromString(&request.Body.ProcessInstanceKey)
+	s.engine.PublishEventForInstance(key, request.Body.MessageName, *request.Body.Variables)
+	s.engine.RunOrContinueInstance(key)
+	return public.PublishMessage201Response{}, nil
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {

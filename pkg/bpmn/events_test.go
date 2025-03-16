@@ -18,8 +18,6 @@ func Test_creating_a_process_sets_state_to_READY(t *testing.T) {
 }
 
 func Test_running_a_process_sets_state_to_ACTIVE(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
 
@@ -36,8 +34,6 @@ func Test_running_a_process_sets_state_to_ACTIVE(t *testing.T) {
 }
 
 func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
 	pi, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
@@ -56,7 +52,6 @@ func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *test
 }
 
 func Test_IntermediateCatchEvent_message_can_be_published_before_running_the_instance(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")

@@ -134,11 +134,12 @@ func interfaceSlice(slice []string) []interface{} {
 	return ret
 }
 
-func (persistence *PersistenceRqlite) FindJobs(ctx context.Context, elementId *string, processInstanceKey *int64, jobKey *int64, state []string) ([]sql.Job, error) {
+func (persistence *PersistenceRqlite) FindJobs(ctx context.Context, elementId *string, jobType *string, processInstanceKey *int64, jobKey *int64, state []string) ([]sql.Job, error) {
 	params := sql.FindJobsWithStatesParams{
 		Key:                sqlc.NullInt64{Int64: ptr.Deref(jobKey, int64(-1)), Valid: jobKey != nil},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil},
 		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
+		Type:               sqlc.NullString{String: ptr.Deref(jobType, ""), Valid: jobType != nil},
 		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: len(state) > 0},
 	}
 	// Fetch jobs

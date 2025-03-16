@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS job (
 	element_id TEXT NOT NULL,
 	element_instance_key INTEGER NOT NULL,
 	process_instance_key INTEGER NOT NULL,
+	type TEXT NOT NULL,
 	state INTEGER NOT NULL,
 	created_at INTEGER NOT NULL,
 	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key)

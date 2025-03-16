@@ -78,7 +78,7 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *ProcessInfo
 }
 
 func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables map[string]interface{}) {
-	jobs := state.persistence.FindJobs(nil, nil, &jobId)
+	jobs := state.persistence.FindJobs(nil, nil, nil, &jobId)
 
 	if len(jobs) == 0 {
 		return
@@ -106,7 +106,7 @@ func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables
 
 func findOrCreateJob(ctx context.Context, state *Engine, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
 	be := element.(bpmn20.FlowNode)
-	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), instance, nil)
+	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), nil, instance, nil)
 	if len(jobs) > 0 {
 		jobs[0].baseElement = be
 		return jobs[0]

@@ -150,7 +150,7 @@ func (businessRuleTask TBusinessRuleTask) GetOutputMapping() []extensions.TIoMap
 }
 
 func (businessRuleTask TBusinessRuleTask) GetTaskDefinitionType() string {
-	return businessRuleTask.OperationRef
+	return businessRuleTask.TaskDefinition.TypeName
 }
 
 func (businessRuleTask TBusinessRuleTask) GetAssignmentAssignee() string {

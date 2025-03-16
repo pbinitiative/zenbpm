@@ -209,6 +209,27 @@ paths:
             responses:
                 201:
                     description: Job completed
+    /jobs/{jobType}/activate:
+        post:
+            operationId: activateJobs
+            tags:
+                - jobs
+            summary: Activate jobs
+            parameters:
+                - name: jobType
+                  in: path
+                  required: true
+                  schema:
+                      type: string
+            responses:
+                200:
+                    description: Jobs activated
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: "#/components/schemas/Job"
     /messages:
         post:
             operationId: publishMessage
@@ -327,6 +348,8 @@ components:
                 key:
                     type: string
                 elementId:
+                    type: string
+                type:
                     type: string
                 elementInstanceKey:
                     type: string

@@ -57,6 +57,7 @@ type Job struct {
 	Key                *string    `json:"key,omitempty"`
 	ProcessInstanceKey *string    `json:"processInstanceKey,omitempty"`
 	State              *string    `json:"state,omitempty"`
+	Type               *string    `json:"type,omitempty"`
 }
 
 // JobPage defines model for JobPage.
@@ -159,6 +160,9 @@ type ServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
+	// Activate jobs
+	// (POST /jobs/{jobType}/activate)
+	ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(w http.ResponseWriter, r *http.Request)
@@ -195,6 +199,12 @@ type Unimplemented struct{}
 // Complete a job
 // (POST /jobs)
 func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Activate jobs
+// (POST /jobs/{jobType}/activate)
+func (_ Unimplemented) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -266,6 +276,31 @@ func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompleteJob(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivateJobs operation middleware
+func (siw *ServerInterfaceWrapper) ActivateJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobType" -------------
+	var jobType string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobType", chi.URLParam(r, "jobType"), &jobType, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobType", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivateJobs(w, r, jobType)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -591,6 +626,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/jobs/{jobType}/activate", wrapper.ActivateJobs)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
 	})
 	r.Group(func(r chi.Router) {
@@ -635,6 +673,23 @@ type CompleteJob201Response struct {
 func (response CompleteJob201Response) VisitCompleteJobResponse(w http.ResponseWriter) error {
 	w.WriteHeader(201)
 	return nil
+}
+
+type ActivateJobsRequestObject struct {
+	JobType string `json:"jobType"`
+}
+
+type ActivateJobsResponseObject interface {
+	VisitActivateJobsResponse(w http.ResponseWriter) error
+}
+
+type ActivateJobs200JSONResponse []Job
+
+func (response ActivateJobs200JSONResponse) VisitActivateJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type PublishMessageRequestObject struct {
@@ -798,6 +853,9 @@ type StrictServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
+	// Activate jobs
+	// (POST /jobs/{jobType}/activate)
+	ActivateJobs(ctx context.Context, request ActivateJobsRequestObject) (ActivateJobsResponseObject, error)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(ctx context.Context, request PublishMessageRequestObject) (PublishMessageResponseObject, error)
@@ -880,6 +938,32 @@ func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompleteJobResponseObject); ok {
 		if err := validResponse.VisitCompleteJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ActivateJobs operation middleware
+func (sh *strictHandler) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
+	var request ActivateJobsRequestObject
+
+	request.JobType = jobType
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ActivateJobs(ctx, request.(ActivateJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ActivateJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ActivateJobsResponseObject); ok {
+		if err := validResponse.VisitActivateJobsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1132,26 +1216,27 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, process
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/9RYTXPbNhD9Kxi0R9lU2ktGN6X2pHLrRFPnltEBJFcSHBBggKVb1aP/3gH4TYK0ZNOe",
-	"5mQZWCwW7+3uA/hII5WkSoJEQxeP1ER7SJj7uYyQP3A82N+pVilo5OBmwjSR1wISkPjlkIIdQveXGtRc",
-	"7uhxRiMNDCFeop3dKp0wpAsaM4QL5AnQWX8J5C5XsdfhNzh4x1OtIjDmCrZccuRK/jFuuJIGmYxgyMwg",
-	"Q9+RjlXEKryHCK1tCdGa7dwSJsTnLV187QLGEZL2j581bOmC/hTU8AcF9kEFfL0l05odvDGMu7KB3QKy",
-	"mCGjx43nCDcq7BM8OXnl7BPYf3s76m5UOC1rFsi3IKxl0WdOZRIbEHCJsANtF6rt1sDAnOH/gm/Gh9y6",
-	"W3BXgIyLNpKjZ+w6uONJKsBh0280V8U5n+R0c0qsxVbellYYn9l/HkAbruSz0TPTpuEwuG+Qmu0y7aPM",
-	"8s5W/NfXDJbt9nj9UIrRFKLyYtmomgrILKGLr/kh7F4WIwEIsd0XdMKlDY5uPFE8MM1ZKOB3JWLQ/nTW",
-	"8D3jGmK7h416IMYShSXSMrgTuHiVJKuIfv3ksh653CobWQwm0jxFV3X0r+u7L2S5XpGt0kTw8MKW8gXI",
-	"HZcuITjaeqcf1refyLUbJZ9TkMv1ijaKl84v313OXZtMQbKU0wX99XJ+Obc0MNw7SIJ7FbofqTIuBS2C",
-	"zMZhewb9rcgHqwQ5nWDwg4oPeWOWCHlrZmkqeOTWBfcmbx05Dv2KuVfhUGKWOdUslQqudjoVXvyw1oao",
-	"M3ADJlXS5I5/mb/rY36jQlJnv3VisiRh+tBAgTBy74BAtjNFEIZurHGQgDFsByNYrrNQcLO/zQ0ng7PY",
-	"+BNL4CUXjTOg93ictcKYjJQCK2IsLm1OCjQJI0kFaElLxUVOTRHvRVwLlN1qBx6SPgL25Yz2Yp2fRdhZ",
-	"4paLp0OsDcaf3CBRW1IchzSP08bmIyARI9Y1Uj5oNjZp/N3AdelexCen8j+JaANT6Z2d6WnMKUkzf0Hl",
-	"nKiXR282t7lZ91AmMaRCHXq95MoNE0Yk/O0h50luBhI6ePSd5nhWnjtd0CwBBG2coHJ7NqsVdEalazBD",
-	"At7madbAvIvm5i2LqbjHn8SYp4heyA8vOuSYwDZLqrp8TKUNJ98Iz+/+bZ/P6/iTE1/f3oYJL0khxc27",
-	"q/VutFOfvCamy37N8QD3wQk1uKqc+Evwewb68GQNDtfczO+neD43V8awZZlAupjPPG8/vxv30vY6eefz",
-	"snmNJr5qltpzLvy56nYv/TOKCpkYeAk3yyK325ygFaWO60xKLne9JBtT8+E1z8nMx/5N7nhGtp6jF+3L",
-	"4v9KLcaaxp19jFrgWb8X9Fkyw9bEgIAIISbhgXQwWcWTsRe0P0cMEbmsrX5wDlufq0eKrYHLcHXVRu7l",
-	"zabp/16eymf3EEM3dv4H56b8Hj1Ci4NhmBA7/UwqrE/QDyVymRZ0QfeI6SIIhIqY2CuDi/fz9/P820zu",
-	"67EDa+tyZ/WvM93o2ZvjfwEAAP//mZI5WXkaAAA=",
+	"H4sIAAAAAAAC/9RZTXPbNhD9Kxi0R9mU20tGN6X2pHKbRFPnltEBJFcSFBJggKVaVaP/3gEIil+gTMmy",
+	"Jz1FIZaLxXtvPwjvaSTTTAoQqOlkT3W0hpTZn9MI+ZbjzvzOlMxAIQe7EmapeEggBYFfdhmYR2j/pRoV",
+	"Fyt6GNFIAUOIp2hWl1KlDOmExgzhBnkKdNR9BQqXs9jr8BvsvM8zJSPQ+h6WXHDkUvxx2nAmNDIRQZ+Z",
+	"Roa+Ix2OEctwAxEa2xKiOVvZV1iSfF7Sydc2YBwhbf74WcGSTuhPQQV/4LAPjsBXWzKl2M4bw2lXJrCP",
+	"gCxmyOhh4TnCowy7BF+dvHL1Gey/vQ51ZbiDOH2U4XXpNAi/BZMNiy6lMhdYg4ALhBUo86JcLjX0rGn+",
+	"L/hWfMjN25l4D8h40kTy5BnbDp54miVgselWoHt3zmc5XQyJ1W3lrXXO+MzCtAWluRQXo6evK8N+cN9A",
+	"ms387aLMipLn/tdtJixfrfFhW3apa3SbF/eTY7UBkad08rU4hNnLYJQAQmz2BZVyYYKjC08UW6Y4CxP4",
+	"XSYxKL+cFXzPuYLY7GGi7omxRGGKtAxuABevIrIj0a8vLuORi6U0kcWgI8UztFlH/3p4+kKm8xlZSkUS",
+	"Ht6YVL4BseLCCoKjyXf6fv7xE3mwT8nnDMR0PqO15KXj27vbsS2TGQiWcTqhv96Ob8eGBoZrC0mwkaH9",
+	"kUltJWgQZCYOUzPob04PphMUdILG9zLeFYVZIBSlmWVZwiP7XrDRRekocOhmzEaGfcIsNVVPlSNcTTk5",
+	"L35YK0NUOdgHOpNCF45/Gd91MX+UIanUb5zoPE2Z2tVQIIxsLBDIVtoFoenCGFscg/1GhmauPAQ2o1yW",
+	"+aGdOotH48MwolgKCEpbKXMTk2GJjqhgqTmg803bxxvVkG6n4KJz9PFZzL1gTDiMughrUuLShrhEg2wK",
+	"ODwIp6A1W8EJtc7zMOF6/bEwvJpg3cafLA2Xz3hniNvjcdQI42qyd1gRbXBpUuLQJIykR0BLWo5cFNS4",
+	"eG/iagQwW63AQ9IHwO7AQF+o07PGh2I88Sj0T66RyCVxxyH14zSx+QBIkhPWFVI+aBZGNP56a/tgJ+LB",
+	"Uv4nTZrAHCcKs9Lp4kNEM35B5gycSA5eNTe5mXdQJjFkidx1Ssm9fUwYEfC3h5xnuekRdLD3neZwls4H",
+	"1fmeEentiv5ZyeS+lAYx5kmiF/LDXYU8NcLUU+o43l2rNwyeuc+v/k2fl1X8qxNfzcf9hJekEPdt056m",
+	"7NNWfvKKmDb7Fcc93AcDcnB2dOJPwe85qN2zOdifcyO/H3dBUX8zhiXLE6ST8cjzde13Y+8yvE7ufF4W",
+	"r1HEZ/VUu+STqui67TlxRFEiS3ruGuppUdgtBvSKso+rXAguVh2Rnerm/e9cosx9d5I7nKHWc/pFc1j8",
+	"obrFqaLxZD73DfCsWwu6LOl+a6IhgQghJuGOtDCZxVdjL2he+PQROa2s/uccNv5ScCLZarj0Z1dlZO82",
+	"2HXqv5en8mKjj6HB390/MDfljf8JWiwM/YSY5QupMD5BbUvkcpXQCV0jZpMgSGTEkrXUOHk3fjcOtnfF",
+	"BVjhbt9CtjHfmRbYWq6V7cXhvwAAAP//gT0j6PcbAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

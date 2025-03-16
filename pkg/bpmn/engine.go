@@ -400,7 +400,7 @@ func (state *Engine) handleParallelGateway(process *ProcessInfo, instance *proce
 }
 
 func (state *Engine) findActiveJobsForContinuation(instance *processInstanceInfo) (ret []*job) {
-	return state.persistence.FindJobs(nil, instance, nil, Active, Completing)
+	return state.persistence.FindJobs(nil, nil, instance, nil, Active, Completing)
 }
 
 // findActiveSubscriptions returns active subscriptions;

@@ -116,6 +116,14 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 	return public.CompleteJob201Response{}, nil
 }
 
+func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRequestObject) (public.ActivateJobsResponseObject, error) {
+	jobs, err := s.getJobItems(ctx, nil, &request.JobType, nil, "ACTIVE")
+	if err != nil {
+		return nil, err
+	}
+	return public.ActivateJobs200JSONResponse(jobs), nil
+}
+
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
 	key := *getKeyFromString(&request.Body.ProcessInstanceKey)
 	s.engine.PublishEventForInstance(key, request.Body.MessageName, *request.Body.Variables)
@@ -309,15 +317,12 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 	return public.GetActivities200JSONResponse(result), nil
 }
 
-func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
-	jobs, err := s.engine.GetPersistence().FindJobs(ctx, nil, getKeyFromString(&request.ProcessInstanceKey), nil, nil)
+func (s *Server) getJobItems(ctx context.Context, elementId *string, jobType *string, processInstanceKey *string, states ...string) ([]public.Job, error) {
+	jobs, err := s.engine.GetPersistence().FindJobs(ctx, elementId, jobType, getKeyFromString(processInstanceKey), nil, states)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]public.Job, 0)
-	result := public.JobPage{
-		Items: &items,
-	}
 	for _, j := range jobs {
 		key := fmt.Sprintf("%d", j.Key)
 		createdAt := time.Unix(j.CreatedAt, 0)
@@ -328,6 +333,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		jobSimple := public.Job{
 			Key:                &key,
 			ElementId:          &j.ElementID,
+			Type:               &j.Type,
 			ElementInstanceKey: &elementInstanceKey,
 			CreatedAt:          &createdAt,
 			State:              &state,
@@ -335,7 +341,18 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		}
 		items = append(items, jobSimple)
 	}
-	result.Items = &items
+	return items, nil
+}
+
+func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
+	items, err := s.getJobItems(ctx, nil, nil, &request.ProcessInstanceKey)
+
+	if err != nil {
+		return nil, err
+	}
+	result := public.JobPage{
+		Items: &items,
+	}
 	l := len(items)
 	result.Count = &l
 	result.Offset = nil

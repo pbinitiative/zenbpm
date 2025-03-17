@@ -1,0 +1,7 @@
+tests:
+  - decision: "example_canAutoliqudateRule"
+    input:
+      claim:
+        amountOfDamage: true
+        insuranceType: "MAJ"
+    expectedOutput: true

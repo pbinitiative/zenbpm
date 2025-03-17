@@ -106,9 +106,10 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 
 		value, _ := feel.EvalStringWithScope(input.InputExpression.Text, localVariableContext)
 		evaluatedInputs[i] = EvaluatedInput{
-			inputId:    input.Id,
-			inputName:  input.Label,
-			inputValue: value,
+			inputId:         input.Id,
+			inputName:       input.Label,
+			inputExpression: input.InputExpression.Text,
+			inputValue:      value,
 		}
 	}
 
@@ -118,12 +119,9 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
 			inputInstance := evaluatedInputs[i]
-			if inputEntry.Text == "" {
-				// If the text is empty, it means any value is accepted
-				continue
-			}
-			value, _ := feel.EvalStringWithScope(inputEntry.Text, localVariableContext)
-			if value != inputInstance.inputValue {
+			match, _ := EvaluateCellMatch(inputInstance.inputExpression, inputEntry.Text, localVariableContext)
+
+			if !match {
 				allColumnsMatch = false
 				break
 			}

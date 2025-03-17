@@ -39,7 +39,8 @@ type EvaluatedOutput struct {
 }
 
 type EvaluatedInput struct {
-	inputId    string
-	inputName  string
-	inputValue interface{}
+	inputId         string
+	inputName       string
+	inputExpression string
+	inputValue      interface{}
 }

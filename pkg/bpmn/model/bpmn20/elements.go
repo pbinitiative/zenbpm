@@ -190,7 +190,7 @@ func (userTask TUserTask) GetOutputMapping() []extensions.TIoMapping {
 }
 
 func (userTask TUserTask) GetTaskDefinitionType() string {
-	return ""
+	return "user-task-type"
 }
 
 func (userTask TUserTask) GetAssignmentAssignee() string {

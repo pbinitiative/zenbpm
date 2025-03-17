@@ -263,25 +263,15 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, getKeyFromString(&request.ProcessInstanceKey), nil)
+	processInstance, err := s.getProcessInstance(ctx, *getKeyFromString(&request.ProcessInstanceKey))
 	if err != nil {
 		return nil, err
 	}
-	if len(processInstances) == 0 {
+	if processInstance == nil {
 		return nil, fmt.Errorf("process instance with key %d not found", request.ProcessInstanceKey)
 	}
-	pi := processInstances[0]
 
-	processInstanceSimple := public.ProcessInstance{
-		Key:                  string(pi.Key),
-		ProcessDefinitionKey: fmt.Sprintf("%d", pi.ProcessDefinitionKey),
-		State:                public.ProcessInstanceState(fmt.Sprintf("%d", pi.State)),
-		CreatedAt:            ptr.To(time.Unix(0, pi.CreatedAt*int64(time.Second))),
-		CaughtEvents:         &pi.CaughtEvents,
-		VariableHolder:       &pi.VariableHolder,
-		Activities:           &pi.Activities,
-	}
-	return public.GetProcessInstance200JSONResponse(processInstanceSimple), nil
+	return public.GetProcessInstance200JSONResponse(*processInstance), nil
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {

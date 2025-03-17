@@ -89,7 +89,7 @@ func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables
 		return
 	}
 
-	variableHolder := var_holder.New(&instance.VariableHolder, variables)
+	variableHolder := var_holder.NewForPropagation(&instance.VariableHolder, variables)
 	element := jobs[0].baseElement.(bpmn20.TaskElement)
 	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
 		jobs[0].JobState = Failed

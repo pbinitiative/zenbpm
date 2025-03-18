@@ -259,12 +259,9 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobT
 		return nil
 	}
 
-	if processInstance == nil && len(jobs) > 0 {
-		processInstance = persistence.FindProcessInstanceByKey(jobs[0].ProcessInstanceKey)
-	}
-
 	resultJobs := make([]*job, 0)
 	for _, j := range jobs {
+		processInstance = persistence.FindProcessInstanceByKey(j.ProcessInstanceKey)
 		resultJob := &job{
 			ElementId:          j.ElementID,
 			ElementInstanceKey: j.ElementInstanceKey,

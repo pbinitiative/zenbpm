@@ -53,6 +53,10 @@ func FindFlowNodesById(definitions *TDefinitions, id string) (elements []FlowNod
 		var be FlowNode = task
 		appender(be)
 	}
+	for _, task := range definitions.Process.SendTask {
+		var be FlowNode = task
+		appender(be)
+	}
 	for _, parallelGateway := range definitions.Process.ParallelGateway {
 		var be FlowNode = parallelGateway
 		appender(be)

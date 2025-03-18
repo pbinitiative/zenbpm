@@ -161,6 +161,46 @@ func (businessRuleTask TBusinessRuleTask) GetAssignmentCandidateGroups() []strin
 	return []string{}
 }
 
+func (sendTask TSendTask) GetId() string {
+	return sendTask.Id
+}
+
+func (sendTask TSendTask) GetName() string {
+	return sendTask.Name
+}
+
+func (sendTask TSendTask) GetIncomingAssociation() []string {
+	return sendTask.IncomingAssociation
+}
+
+func (sendTask TSendTask) GetOutgoingAssociation() []string {
+	return sendTask.OutgoingAssociation
+}
+
+func (sendTask TSendTask) GetType() ElementType {
+	return ServiceTask
+}
+
+func (sendTask TSendTask) GetInputMapping() []extensions.TIoMapping {
+	return sendTask.Input
+}
+
+func (sendTask TSendTask) GetOutputMapping() []extensions.TIoMapping {
+	return sendTask.Output
+}
+
+func (sendTask TSendTask) GetTaskDefinitionType() string {
+	return sendTask.TaskDefinition.TypeName
+}
+
+func (sendTask TSendTask) GetAssignmentAssignee() string {
+	return ""
+}
+
+func (sendTask TSendTask) GetAssignmentCandidateGroups() []string {
+	return []string{}
+}
+
 func (userTask TUserTask) GetId() string {
 	return userTask.Id
 }

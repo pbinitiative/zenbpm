@@ -117,11 +117,28 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 }
 
 func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRequestObject) (public.ActivateJobsResponseObject, error) {
-	jobs, err := s.getJobItems(ctx, nil, &request.JobType, nil, "ACTIVE")
+	jobs, err := s.engine.ActivateJobs(ctx, request.JobType)
 	if err != nil {
 		return nil, err
 	}
-	return public.ActivateJobs200JSONResponse(jobs), nil
+
+	items := make([]public.Job, 0)
+	for _, j := range jobs {
+		key := fmt.Sprintf("%d", j.Key())
+		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey())
+		//TODO: Needs propper conversion
+		vh := j.Variables()
+		jobSimple := public.Job{
+			Key:                &key,
+			ElementId:          ptr.To(j.ElementId()),
+			CreatedAt:          ptr.To(j.CreatedAt()),
+			ProcessInstanceKey: &processInstanceKey,
+			VariableHolder:     ptr.To(vh.Variables()),
+		}
+		items = append(items, jobSimple)
+	}
+
+	return public.ActivateJobs200JSONResponse(items), nil
 }
 
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {

@@ -9,6 +9,7 @@ type TFlowElementsContainer struct {
 	ServiceTasks           []TServiceTask            `xml:"serviceTask"`
 	UserTasks              []TUserTask               `xml:"userTask"`
 	BusinessRuleTask       []TBusinessRuleTask       `xml:"businessRuleTask"`
+	SendTask               []TSendTask               `xml:"sendTask"`
 	ParallelGateway        []TParallelGateway        `xml:"parallelGateway"`
 	ExclusiveGateway       []TExclusiveGateway       `xml:"exclusiveGateway"`
 	IntermediateCatchEvent []TIntermediateCatchEvent `xml:"intermediateCatchEvent"`
@@ -68,6 +69,12 @@ type TServiceTask struct {
 }
 
 type TBusinessRuleTask struct {
+	TExternallyProcessedTask
+	OperationRef   string `xml:"operationRef,attr"`
+	Implementation string `xml:"implementation,attr"`
+}
+
+type TSendTask struct {
 	TExternallyProcessedTask
 	OperationRef   string `xml:"operationRef,attr"`
 	Implementation string `xml:"implementation,attr"`

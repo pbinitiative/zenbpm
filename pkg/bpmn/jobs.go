@@ -104,6 +104,35 @@ func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables
 
 }
 
+func (state *Engine) ActivateJobs(ctx context.Context, jobType string) (activatedJobs []ActivatedJob, err error) {
+	jobs := state.persistence.FindJobs(nil, &jobType, nil, nil, Active)
+
+	activatedJobs = make([]ActivatedJob, 0)
+	for _, job := range jobs {
+
+		processInstance := state.FindProcessInstance(job.ProcessInstanceKey)
+		if processInstance == nil {
+			continue
+		}
+		variableHolder := processInstance.VariableHolder
+		if err := evaluateLocalVariables(&variableHolder, job.baseElement.(bpmn20.TaskElement).GetInputMapping()); err != nil {
+			job.JobState = Failed
+			state.persistence.PersistJob(ctx, job)
+			return nil, err
+		}
+		aj := &activatedJob{
+			processInstanceInfo: processInstance,
+			key:                 job.JobKey,
+			processInstanceKey:  job.ProcessInstanceKey,
+			elementId:           job.ElementId,
+			createdAt:           job.CreatedAt,
+			variableHolder:      variableHolder,
+		}
+		activatedJobs = append(activatedJobs, aj)
+	}
+	return activatedJobs, nil
+}
+
 func findOrCreateJob(ctx context.Context, state *Engine, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *job {
 	be := element.(bpmn20.FlowNode)
 	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), nil, instance, nil)

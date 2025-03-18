@@ -14,7 +14,7 @@ require (
 	github.com/hazelcast/hazelcast-go-client v1.4.2
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/oapi-codegen/runtime v1.1.1
-	github.com/pbinitiative/feel v0.1.1
+	github.com/pbinitiative/feel v0.1.3
 	github.com/rqlite/rqlite-disco-clients v0.0.0-20231230135307-118e35426347
 	github.com/rqlite/rqlite/v8 v8.28.4
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46

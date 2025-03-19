@@ -39,6 +39,10 @@ jobs:
         run: echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: path
         run: echo $PATH
+      - name: get protoc
+        run: make protoc
+      - name: ls
+        run: ls -al ./bin
       - name: run generate
         run: make generate
       - name: tests

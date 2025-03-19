@@ -57,7 +57,7 @@ func NewServer(engine *bpmn_engine.Engine, addr string) *Server {
 				})
 			},
 		}), appContext)
-		appContext.Mount("/", h) // ✅ Fixed: Changed "/" to "/v1"
+		appContext.Mount("/", h)
 	})
 	return &s
 }

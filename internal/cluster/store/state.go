@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-//go:generate deepcopy-gen . --output-file zz_generated.deepcopy.go
+//go:generate go tool deepcopy-gen . --output-file zz_generated.deepcopy.go
 
 // ClusterState keeps track of the cluster state and holds
 // information about currently active partition and Nodes in the cluster.
@@ -30,7 +30,7 @@ type Partition struct {
 	LeaderId string `json:"leaderId"`
 }
 
-//go:generate stringer -type=NodeState
+//go:generate go tool stringer -type=NodeState
 type NodeState int32
 
 const (
@@ -43,7 +43,7 @@ const (
 	NodeStateShutdown
 )
 
-//go:generate stringer -type=Role
+//go:generate go tool stringer -type=Role
 type Role int32
 
 const (
@@ -52,7 +52,7 @@ const (
 	RoleLeader
 )
 
-//go:generate stringer -type=NodePartitionState
+//go:generate go tool stringer -type=NodePartitionState
 type NodePartitionState int32
 
 const (

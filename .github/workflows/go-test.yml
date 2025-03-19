@@ -33,10 +33,10 @@ jobs:
         run: go mod download
       - name: show pwd
         run: echo $(pwd)
-      - name: add local bin into path
-        run: >
-          mkdir bin
-          export PATH="$PATH:$(pwd)/bin"
+      - name: make localbin dir
+        run: mkdir bin
+      - name: export localbin to path
+        run: export PATH="$PATH:$(pwd)/bin"
       - name: path
         run: echo $PATH
       - name: run generate

@@ -26,24 +26,17 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
+            ~/work/zenbpm/zenbpm/bin
           key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-golang-
       - name: download modules
         run: go mod download
-      - name: show pwd
-        run: echo $(pwd)
       - name: make localbin dir
         run: mkdir bin
       - name: export localbin to GITHUB_PATH
         run: echo "$(pwd)/bin" >> $GITHUB_PATH
-      - name: path
-        run: echo $PATH
-      - name: get protoc
-        run: make protoc
-      - name: ls
-        run: ls -al ./bin
       - name: run generate
         run: make generate
-      - name: tests
+      - name: run tests
         run: make test

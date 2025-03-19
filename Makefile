@@ -54,7 +54,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate: sqlc ## Run all the generators in the project
+generate: sqlc protoc ## Run all the generators in the project
 	@go generate ./...
 	@$(SQLC) generate
 	@cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go

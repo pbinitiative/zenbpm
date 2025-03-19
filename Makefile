@@ -17,8 +17,6 @@ PROTOC ?= $(LOCALBIN)/protoc
 SQLC_VERSION ?= v1.28.0
 PROTOC_VERSION ?= 30.0
 
-export PATH := "$(PATH):$(LOCALBIN)"
-
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
 $(SQLC): $(LOCALBIN)

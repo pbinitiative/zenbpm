@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/rqlite/rqlite/v8/random"
 )
 
 func Test_MultiNode_VerifyLeader(t *testing.T) {
@@ -199,4 +201,164 @@ func Test_MultiNodeSimple(t *testing.T) {
 	}
 	verifyChangedNodeState(t, s1)
 	verifyChangedNodeState(t, s2)
+}
+
+func Test_MultiNodePeerObservations(t *testing.T) {
+	c1 := config.Cluster{
+		RaftDir: filepath.Join(t.TempDir(), "s1"),
+		NodeId:  fmt.Sprintf("s1-%s", random.String()),
+	}
+	s1, ln1 := newMustTestStore(t, c1)
+	defer s1.Close(true)
+	defer ln1.Close()
+
+	if err := s1.Open(); err != nil {
+		t.Fatalf("failed to open store s1: %s", err.Error())
+	}
+
+	if err := s1.Bootstrap(&Node{
+		Id:         s1.ID(),
+		Addr:       s1.Addr(),
+		Partitions: map[uint32]NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err.Error())
+	}
+	if _, err := s1.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("Error waiting for leader: %s", err)
+	}
+
+	c2 := config.Cluster{
+		RaftDir: filepath.Join(t.TempDir(), "s2"),
+		NodeId:  fmt.Sprintf("s2-%s", random.String()),
+	}
+	s2, ln2 := newMustTestStore(t, c2)
+	defer s2.Close(true)
+	defer ln2.Close()
+
+	if err := s2.Open(); err != nil {
+		t.Fatalf("failed to open store s2: %s", err.Error())
+	}
+
+	if err := s1.Join(&zproto.JoinRequest{
+		Id:      s2.ID(),
+		Address: s2.Addr(),
+		Voter:   true,
+	}); err != nil {
+		t.Fatalf("failed to join single-node store: %s", err.Error())
+	}
+
+	if _, err := s2.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("Error waiting for leader: %s", err)
+	}
+
+	// Wait for log application
+	testPoll(t, func() bool {
+		return s1.raft.LastIndex() == s1.raft.AppliedIndex() &&
+			s1.raft.AppliedIndex() == s2.raft.AppliedIndex()
+	}, 50*time.Millisecond, 10*time.Second)
+
+	verifyStoreUpdatedNodeState := func(t *testing.T, s *Store) {
+		t.Helper()
+		s1, ok := s.state.Nodes[s1.ID()]
+		if !ok {
+			t.Logf("expected s1 to be present in state of %s", s.ID())
+			t.Fail()
+		}
+		if s1.Role != RoleLeader {
+			t.Logf("expected s1 to be leader in state of %s", s.ID())
+			t.Fail()
+		}
+		s2, ok := s.state.Nodes[s2.ID()]
+		if !ok {
+			t.Logf("expected s2 to be present in state of %s", s.ID())
+			t.Fail()
+		}
+		if s2.Role != RoleFollower {
+			t.Logf("expected s2 to be follower in state of %s", s.ID())
+			t.Fail()
+		}
+	}
+
+	verifyStoreUpdatedNodeState(t, s1)
+	verifyStoreUpdatedNodeState(t, s2)
+
+	c3 := config.Cluster{
+		RaftDir: filepath.Join(t.TempDir(), "s3"),
+		NodeId:  fmt.Sprintf("s3-%s", random.String()),
+	}
+	s3, ln3 := newMustTestStore(t, c3)
+	defer s3.Close(true)
+	defer ln3.Close()
+
+	if err := s3.Open(); err != nil {
+		t.Fatalf("failed to open store s3: %s", err.Error())
+	}
+
+	if err := s1.Join(&zproto.JoinRequest{
+		Id:      s3.ID(),
+		Address: s3.Addr(),
+		Voter:   true,
+	}); err != nil {
+		t.Fatalf("failed to join single-node store: %s", err.Error())
+	}
+	if _, err := s3.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("Error waiting for leader: %s", err)
+	}
+
+	// after closing s1 the leader should be s2 or s3 with correct state
+	err := s1.Close(true)
+	if err != nil {
+		t.Fatalf("failed to close s1 store: %s", err)
+	}
+
+	// Wait for leader change
+	testPoll(t, func() bool {
+		s2Leader, _ := s2.LeaderID()
+		s3Leader, _ := s3.LeaderID()
+		return s2Leader != s1.ID() && s3Leader != s1.ID()
+	}, 50*time.Millisecond, 10*time.Second)
+
+	// wait for hearbeat to mark node as shut down
+	testPoll(t, func() bool {
+		s2node, err := s2.state.GetNode(s1.ID())
+		if err != nil {
+			t.Fatalf("failed to retrieve node from the store: %s", err)
+		}
+		s3node, err := s3.state.GetNode(s1.ID())
+		return s2node.State == NodeStateShutdown && s3node.State == NodeStateShutdown
+	}, 50*time.Millisecond, 10*time.Second)
+
+	// verify that the same leader was picked
+	newLeader := ""
+	for _, n := range s2.state.Nodes {
+		if n.Role == RoleLeader {
+			newLeader = n.Id
+			break
+		}
+	}
+	for _, n := range s3.state.Nodes {
+		if n.Role == RoleLeader {
+			if newLeader != n.Id {
+				t.Fatalf("expected s2 and s3 to have the same leader")
+			}
+		}
+	}
+
+	verifyNodeIsShutdown := func(t *testing.T, node *Store, s *Store) {
+		state, ok := s.state.Nodes[node.ID()]
+		if !ok {
+			t.Logf("expected %s to be present in state of %s", node.ID(), s.ID())
+			t.Fail()
+		}
+		if state.Role != RoleFollower {
+			t.Logf("expected %s to be follower in state of %s", node.ID(), s.ID())
+			t.Fail()
+		}
+		if state.State != NodeStateShutdown {
+			t.Logf("expected %s to be shutdown in state of %s", node.ID(), s.ID())
+			t.Fail()
+		}
+	}
+	verifyNodeIsShutdown(t, s1, s2)
+	verifyNodeIsShutdown(t, s1, s3)
 }

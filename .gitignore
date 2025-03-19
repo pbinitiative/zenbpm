@@ -1,5 +1,6 @@
 .idea/
 .vscode/
+.nvim.json
 *.iml
 .DS_Store
 docs/build
@@ -12,3 +13,4 @@ partition-*/
 sqlite-test-data-*/
 cmd/zenbpm/__debug_*
 bin
+node-*

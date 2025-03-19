@@ -2,6 +2,8 @@ package rqlite
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -68,12 +70,94 @@ func Test_ParseSimleResult_works(t *testing.T) {
 	}
 }
 
+func Test_ProcessInstanceWrite_works(t *testing.T) {
+	piKey := rand.Int63()
+
+	processInstance := sql.ProcessInstance{
+		Key:                  piKey,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                1,
+		VariableHolder:       "",
+		CaughtEvents:         "",
+		Activities:           "",
+	}
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), &piKey, nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
+
+	for _, pi := range processInstances {
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+		}
+	}
+}
+
+func Test_ProcessInstanceUpdate_works(t *testing.T) {
+	piKey := rand.Int63()
+
+	processInstance := sql.ProcessInstance{
+		Key:                  piKey,
+		ProcessDefinitionKey: 1,
+		CreatedAt:            time.Now().Unix(),
+		State:                1,
+		VariableHolder:       "",
+		CaughtEvents:         "",
+		Activities:           "",
+	}
+	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	if err != nil {
+		t.Fatalf("Failed inserting the record: %s", err)
+	}
+
+	processInstance.State = 4
+	processInstance.Activities = "[]"
+	processInstance.VariableHolder = "[]"
+	processInstance.CaughtEvents = "[]"
+
+	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
+
+	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), &piKey, nil)
+
+	if err != nil {
+		t.Fatalf("Failed finding the record: %s", err)
+	}
+
+	// Assert
+
+	if len(processInstances) != 1 {
+		t.Errorf("Wrong number of process instances: %d", len(processInstances))
+	}
+
+	for _, pi := range processInstances {
+		if pi != processInstance {
+			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
+		}
+	}
+}
+
 func Test_ProcessDefinitionWrite_works(t *testing.T) {
-	// given
+	piKey := rand.Int63()
+
 	ProcessDefinition := sql.ProcessDefinition{
-		Key:              1,
+		Key:              piKey,
 		Version:          1,
-		BpmnProcessID:    "test-definition",
+		BpmnProcessID:    fmt.Sprintf("%d", piKey),
 		BpmnData:         "",
 		BpmnChecksum:     []byte{12, 32},
 		BpmnResourceName: "",
@@ -86,7 +170,7 @@ func Test_ProcessDefinitionWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), nil, ptr.To(int64(1)))
+	processDefinitions, err := rqlitePersistence.FindProcesses(t.Context(), ptr.To(fmt.Sprintf("%d", piKey)), nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -123,96 +207,10 @@ func setupProcessInstance(t *testing.T) {
 	Test_ProcessInstanceWrite_works(t)
 }
 
-func Test_ProcessInstanceWrite_works(t *testing.T) {
-	// setup
-	setupProcessDefinition(t)
-
-	// given
-	processInstance := sql.ProcessInstance{
-		Key:                  1,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
-	}
-
-	// when
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	if err != nil {
-		t.Fatalf("Failed inserting the record: %s", err)
-	}
-
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
-
-	if err != nil {
-		t.Fatalf("Failed finding the record: %s", err)
-	}
-
-	// then
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
-	}
-
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
-		}
-	}
-}
-
-func Test_ProcessInstanceUpdate_works(t *testing.T) {
-	// setup
-	setupProcessDefinition(t)
-
-	// given
-	processInstance := sql.ProcessInstance{
-		Key:                  1,
-		ProcessDefinitionKey: 1,
-		CreatedAt:            time.Now().Unix(),
-		State:                1,
-		VariableHolder:       "",
-		CaughtEvents:         "",
-		Activities:           "",
-	}
-
-	err := rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	if err != nil {
-		t.Fatalf("Failed inserting the record: %s", err)
-	}
-
-	processInstance.State = 4
-	processInstance.Activities = "[]"
-	processInstance.VariableHolder = "[]"
-	processInstance.CaughtEvents = "[]"
-
-	// when
-	err = rqlitePersistence.SaveProcessInstance(t.Context(), processInstance)
-
-	processInstances, err := rqlitePersistence.FindProcessInstances(t.Context(), ptr.To(int64(1)), nil)
-
-	if err != nil {
-		t.Fatalf("Failed finding the record: %s", err)
-	}
-
-	// then
-	if len(processInstances) != 1 {
-		t.Errorf("Wrong number of process instances: %d", len(processInstances))
-	}
-
-	for _, pi := range processInstances {
-		if pi != processInstance {
-			t.Errorf("Wrong process instance data got: %+v expected: %+v", pi, processInstance)
-		}
-	}
-}
-
 func Test_JobFindByKey_failsProperlyWhenKeyNotFound(t *testing.T) {
-	// when
-	_, err := rqlitePersistence.queries.FindJobByKey(t.Context(), 1)
+	piKey := rand.Int63()
+
+	_, err := rqlitePersistence.queries.FindJobByKey(t.Context(), piKey)
 
 	// then
 	if err == nil {
@@ -323,16 +321,17 @@ func Test_TimerWrite_works(t *testing.T) {
 }
 
 func Test_MessageSubscriptionWrite_works(t *testing.T) {
-	// setup
-	setupProcessInstance(t)
-	// given
+	msKey := rand.Int63()
+	piKey := rand.Int63()
+	oaKey := rand.Int63()
+
 	messageSubscription := sql.MessageSubscription{
-		Key:                  1,
+		Key:                  msKey,
 		ElementID:            "id",
 		ElementInstanceKey:   1,
-		ProcessInstanceKey:   1,
+		ProcessInstanceKey:   piKey,
 		ProcessDefinitionKey: 1,
-		OriginActivityKey:    1,
+		OriginActivityKey:    oaKey,
 		Name:                 "name",
 		State:                1,
 		CreatedAt:            time.Now().Unix(),
@@ -347,7 +346,7 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	messageSubscriptions, err := rqlitePersistence.FindMessageSubscriptions(t.Context(), ptr.To(int64(1)), ptr.To(int64(1)), nil, nil)
+	messageSubscriptions, err := rqlitePersistence.FindMessageSubscriptions(t.Context(), &oaKey, &piKey, nil, nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -367,14 +366,12 @@ func Test_MessageSubscriptionWrite_works(t *testing.T) {
 }
 
 func Test_ActivityInstanceWrite_works(t *testing.T) {
-	// setup
-	setupProcessInstance(t)
-
-	// given
+	aiKey := rand.Int63()
+	piKey := rand.Int63()
 	activityInstance := sql.ActivityInstance{
-		Key:                  1,
+		Key:                  aiKey,
 		ElementID:            "id",
-		ProcessInstanceKey:   1,
+		ProcessInstanceKey:   piKey,
 		ProcessDefinitionKey: 1,
 		CreatedAt:            time.Now().Unix(),
 		State:                "ACTIVATED",
@@ -388,7 +385,7 @@ func Test_ActivityInstanceWrite_works(t *testing.T) {
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	activityInstances, err := rqlitePersistence.FindActivitiesByProcessInstanceKey(t.Context(), ptr.To(int64(1)))
+	activityInstances, err := rqlitePersistence.FindActivitiesByProcessInstanceKey(t.Context(), &piKey)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)

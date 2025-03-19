@@ -42,10 +42,10 @@ help: ## Display this help.
 
 .PHONY: generate
 generate: sqlc ## Run all the generators in the project
-	go generate ./...
-	$(SQLC) generate
-	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
-	sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
+	@go generate ./...
+	@$(SQLC) generate
+	@cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
+	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

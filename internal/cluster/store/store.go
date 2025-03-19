@@ -87,6 +87,11 @@ type Store struct {
 
 	open *atomic.Bool
 
+	notifyMu        sync.Mutex
+	bootstrapExpect int
+	bootstrapped    bool
+	notifyingNodes  map[string]raft.Server
+
 	mu     sync.Mutex
 	boltDB *raftboltdb.BoltStore
 
@@ -117,17 +122,29 @@ type Config struct {
 	// Node-reaping configuration
 	ReapTimeout         time.Duration
 	ReapReadOnlyTimeout time.Duration
+
+	// Time after which the node becomes marked as shut down when it stops sending heartbeats
+	// must be lower than reap timeout if set
+	NodeHearbeatShutdownTimeout time.Duration
 }
 
 // DefaultConfig provides default store configuration based on cluster configuration.
 func DefaultConfig(c config.Cluster) Config {
 	conf := Config{
-		RetainSnapshotCount: 2,
-		RaftTimeout:         10 * time.Second,
-		RaftDir:             c.RaftDir,
-		ReapTimeout:         0,
-		ReapReadOnlyTimeout: 0,
-		NodeId:              c.NodeId,
+		RetainSnapshotCount:         2,
+		RaftDir:                     c.RaftDir,
+		ReapTimeout:                 0,
+		RaftTimeout:                 5 * time.Second,
+		ReapReadOnlyTimeout:         0,
+		NodeId:                      c.NodeId,
+		NodeHearbeatShutdownTimeout: 2 * time.Second,
+	}
+	if c.RaftDir == "" {
+		conf.RaftDir = "zenbpm_raft"
+	}
+
+	if c.NodeId == "" {
+		conf.NodeId = random.String()
 	}
 	return conf
 }
@@ -151,13 +168,6 @@ func New(layer *tcp.Layer, c Config) *Store {
 		},
 	}
 
-	if c.RaftDir == "" {
-		s.raftDir = "zenbpm_raft"
-	}
-
-	if c.NodeId == "" {
-		s.raftID = random.String()
-	}
 	ResetStats()
 	return s
 }
@@ -173,7 +183,7 @@ func (s *Store) Open() (retErr error) {
 	if s.open.Load() {
 		return ErrAlreadyOpen
 	}
-	s.logger.Info("opening store with node ID %s, listening on %s", s.raftID, s.layer.Addr().String())
+	s.logger.Info(fmt.Sprintf("opening store with node ID %s, listening on %s", s.raftID, s.layer.Addr().String()))
 
 	// Setup Raft configuration.
 	config := raft.DefaultConfig()
@@ -212,8 +222,8 @@ func (s *Store) Open() (retErr error) {
 	s.observer = raft.NewObserver(s.observerChan, blocking, func(o *raft.Observation) bool {
 		_, isLeaderChange := o.Data.(raft.LeaderObservation)
 		_, isFailedHeartBeat := o.Data.(raft.FailedHeartbeatObservation)
-		// _, isPeerChange := o.Data.(raft.PeerObservation)
-		return isLeaderChange || isFailedHeartBeat // || isPeerChange
+		_, isPeerChange := o.Data.(raft.PeerObservation)
+		return isLeaderChange || isFailedHeartBeat || isPeerChange
 	})
 	s.raft.RegisterObserver(s.observer)
 
@@ -246,7 +256,7 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		s.logger.Info("failed to get raft configuration: %v", err)
+		s.logger.Info(fmt.Sprintf("failed to get raft configuration: %v", err))
 		return err
 	}
 
@@ -258,16 +268,16 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 			// join is actually needed.
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(id) {
 				stats.Add(numIgnoredJoins, 1)
-				s.logger.Info("node %s at %s already member of cluster, ignoring join request", id, addr)
+				s.logger.Info(fmt.Sprintf("node %s at %s already member of cluster, ignoring join request", id, addr))
 				return nil
 			}
 
 			if err := s.remove(id); err != nil {
-				s.logger.Error("failed to remove node %s: %v", id, err)
+				s.logger.Error(fmt.Sprintf("failed to remove node %s: %v", id, err))
 				return err
 			}
 			stats.Add(numRemovedBeforeJoins, 1)
-			s.logger.Info("removed node %s prior to rejoin with changed ID or address", id)
+			s.logger.Info(fmt.Sprintf("removed node %s prior to rejoin with changed ID or address", id))
 		}
 	}
 
@@ -285,12 +295,15 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 	}
 
 	stats.Add(numJoins, 1)
-	s.logger.Info("node with ID %s, at %s, joined successfully as voter: %s", id, addr, voter)
+	s.logger.Info(fmt.Sprintf("node with ID %s, at %s, joined successfully as voter: %t", id, addr, voter))
 	return nil
 }
 
 // Bootstrap executes a cluster bootstrap on this node, using the given nodes.
 func (s *Store) Bootstrap(nodes ...*Node) error {
+	if !s.open.Load() {
+		return ErrNotOpen
+	}
 	raftServers := make([]raft.Server, len(nodes))
 	for i := range nodes {
 		raftServers[i] = raft.Server{
@@ -301,7 +314,73 @@ func (s *Store) Bootstrap(nodes ...*Node) error {
 	fut := s.raft.BootstrapCluster(raft.Configuration{
 		Servers: raftServers,
 	})
-	return fut.Error()
+	if fut.Error() != nil {
+		return fmt.Errorf("failed to bootstrap cluster: %w", fut.Error())
+	}
+	return nil
+}
+
+// Notify notifies this Store that a node is ready for bootstrapping at the
+// given address. Once the number of known nodes reaches the expected level
+// bootstrapping will be attempted using this Store. "Expected level" includes
+// this node, so this node must self-notify to ensure the cluster bootstraps
+// with the *advertised Raft address* which the Store doesn't know about.
+//
+// Notifying is idempotent. A node may repeatedly notify the Store without issue.
+func (s *Store) Notify(nr *zproto.NotifyRequest) error {
+	if !s.open.Load() {
+		return ErrNotOpen
+	}
+
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+
+	if s.bootstrapExpect == 0 || s.bootstrapped || s.HasLeader() {
+		// There is no reason this node will bootstrap.
+		//
+		// - Read-only nodes require that BootstrapExpect is set to 0, so this
+		// block ensures that notifying a read-only node will not cause a bootstrap.
+		// - If the node is already bootstrapped, then there is nothing to do.
+		// - If the node already has a leader, then no bootstrapping is required.
+		return nil
+	}
+
+	if _, ok := s.notifyingNodes[nr.Id]; ok {
+		return nil
+	}
+
+	// Confirm that this node can resolve the remote address. This can happen due
+	// to incomplete DNS records across the underlying infrastructure. If it can't
+	// then don't consider this Notify attempt successful -- so the notifying node
+	// will presumably try again.
+	if addr, err := resolvableAddress(nr.Address); err != nil {
+		return fmt.Errorf("failed to resolve %s: %w", addr, err)
+	}
+
+	s.notifyingNodes[nr.Id] = raft.Server{
+		Suffrage: raft.Voter,
+		ID:       raft.ServerID(nr.Id),
+		Address:  raft.ServerAddress(nr.Address),
+	}
+	if len(s.notifyingNodes) < s.bootstrapExpect {
+		return nil
+	}
+	s.logger.Info(fmt.Sprintf("reached expected bootstrap count of %d, starting cluster bootstrap", s.bootstrapExpect))
+
+	raftServers := make([]raft.Server, 0, len(s.notifyingNodes))
+	for _, n := range s.notifyingNodes {
+		raftServers = append(raftServers, n)
+	}
+	bf := s.raft.BootstrapCluster(raft.Configuration{
+		Servers: raftServers,
+	})
+	if bf.Error() != nil {
+		s.logger.Error(fmt.Sprintf("cluster bootstrap failed: %s", bf.Error()))
+	} else {
+		s.logger.Info(fmt.Sprintf("cluster bootstrap successful, servers: %s", raftServers))
+	}
+	s.bootstrapped = true
+	return nil
 }
 
 // Stepdown forces this node to relinquish leadership to another node in
@@ -383,38 +462,6 @@ func (s *Store) IsVoter() (bool, error) {
 	return false, nil
 }
 
-// RaftClusterState defines the possible Raft states the current node can be in
-type RaftClusterState int
-
-// Represents the Raft cluster states
-const (
-	Leader RaftClusterState = iota
-	Follower
-	Candidate
-	Shutdown
-	Unknown
-)
-
-// State returns the current node's Raft state
-func (s *Store) State() RaftClusterState {
-	if !s.open.Load() {
-		return Unknown
-	}
-	state := s.raft.State()
-	switch state {
-	case raft.Leader:
-		return Leader
-	case raft.Candidate:
-		return Candidate
-	case raft.Follower:
-		return Follower
-	case raft.Shutdown:
-		return Shutdown
-	default:
-		return Unknown
-	}
-}
-
 // Addr returns the address of the store.
 func (s *Store) Addr() string {
 	if !s.open.Load() {
@@ -475,11 +522,47 @@ func (s *Store) CommitIndex() (uint64, error) {
 	return s.raft.CommitIndex(), nil
 }
 
+// PartitionLeaderWithID is used to return the current leader address and ID of the partition leader.
+// It may return empty strings if there is no current leader or the leader is unknown.
+func (s *Store) PartitionLeaderWithID(partition uint32) (string, string) {
+	if !s.open.Load() {
+		return "", ""
+	}
+	partitionInfo, ok := s.state.Partitions[partition]
+	if !ok {
+		return "", ""
+	}
+	partitionLeader, ok := s.state.Nodes[partitionInfo.LeaderId]
+	if !ok {
+		return "", ""
+	}
+	return partitionLeader.Addr, partitionInfo.LeaderId
+}
+
 // Close closes the store. If wait is true, waits for a graceful shutdown.
+// Before calling Close the caller should already Notify leader that it is shutting down.
 func (s *Store) Close(wait bool) (retErr error) {
+	// if s.IsLeader() {
+	// 	node, err := s.state.GetNode(s.ID())
+	// 	if err != nil {
+	// 		s.logger.Warn(fmt.Sprintf("failed to retrieve node from state: %s", err))
+	// 	}
+	// 	s.WriteNodeChange(&proto.NodeChange{
+	// 		NodeId:   node.Id,
+	// 		Addr:     node.Addr,
+	// 		Suffrage: proto.RaftSuffrage(node.Suffrage + 1),
+	// 		State:    proto.NodeState(node.State),
+	// 		Role:     proto.Role(node.Role),
+	// 	})
+	// 	err = s.Stepdown(true)
+	// 	if err != nil {
+	// 		s.logger.Warn(fmt.Sprintf("failed to stepdown as a leader: %s", err))
+	// 	}
+	// }
+
 	defer func() {
 		if retErr == nil {
-			s.logger.Info("store closed with node ID %s, listening on %s", s.raftID, s.layer.Addr().String())
+			s.logger.Info(fmt.Sprintf("store closed with node ID %s, listening on %s", s.raftID, s.layer.Addr().String()))
 			s.open.Store(false)
 		}
 	}()
@@ -494,6 +577,7 @@ func (s *Store) Close(wait bool) (retErr error) {
 	f := s.raft.Shutdown()
 	if wait {
 		if f.Error() != nil {
+			fmt.Println("shutdown", f.Error())
 			return f.Error()
 		}
 	}
@@ -586,12 +670,16 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 			select {
 			case o := <-s.observerChan:
 				switch signal := o.Data.(type) {
+				case raft.ResumedHeartbeatObservation:
+					if err := s.resumeNode(signal.PeerID); err == nil {
+						s.logger.Info(fmt.Sprintf("node %s was removed from the state", signal.PeerID))
+					}
 				case raft.FailedHeartbeatObservation:
 					stats.Add(failedHeartbeatObserved, 1)
 
 					nodes, err := s.Nodes()
 					if err != nil {
-						s.logger.Error("failed to get nodes configuration during reap check: %s", err.Error())
+						s.logger.Error(fmt.Sprintf("failed to get nodes configuration during reap check: %s", err.Error()))
 					}
 					servers := Nodes(nodes)
 					id := string(signal.PeerID)
@@ -599,8 +687,14 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 
 					isReadOnly, found := servers.IsReadOnly(id)
 					if !found {
-						s.logger.Error("node %s (failing heartbeat) is not present in configuration", id)
+						s.logger.Error(fmt.Sprintf("node %s (failing heartbeat) is not present in configuration", id))
 						break
+					}
+
+					if s.config.NodeHearbeatShutdownTimeout > 0 && dur > s.config.NodeHearbeatShutdownTimeout {
+						if err = s.shutdownNode(signal.PeerID); err == nil {
+							s.logger.Info(fmt.Sprintf("node %s was shutdown in the state", signal.PeerID))
+						}
 					}
 
 					if (isReadOnly && s.config.ReapReadOnlyTimeout > 0 && dur > s.config.ReapReadOnlyTimeout) ||
@@ -611,22 +705,38 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 						}
 						if err := s.remove(id); err != nil {
 							stats.Add(nodesReapedFailed, 1)
-							s.logger.Error("failed to reap %s %s: %s", pn, id, err.Error())
+							s.logger.Error(fmt.Sprintf("failed to reap %s %s: %s", pn, id, err.Error()))
 						} else {
 							stats.Add(nodesReapedOK, 1)
-							s.logger.Info("successfully reaped %s %s", pn, id)
+							s.logger.Info(fmt.Sprintf("successfully reaped %s %s", pn, id))
 						}
 					}
 				case raft.LeaderObservation:
-					s.selfLeaderChange(signal.LeaderID == raft.ServerID(s.raftID))
-					if signal.LeaderID == raft.ServerID(s.raftID) {
-						s.logger.Info("this node (ID=%s) is now Leader", s.raftID)
+					isLeader := signal.LeaderID == raft.ServerID(s.raftID)
+					s.selfLeaderChange(isLeader)
+					if isLeader {
+						s.logger.Info(fmt.Sprintf("this node (ID=%s) is now Leader", s.raftID))
 					} else {
 						if signal.LeaderID == "" {
 							s.logger.Warn("Leader is now unknown")
 						} else {
-							s.logger.Info("node %s is now Leader", signal.LeaderID)
+							s.logger.Info(fmt.Sprintf("node %s is now Leader", signal.LeaderID))
 						}
+					}
+				case raft.PeerObservation:
+					// PeerObservation is invoked only when the raft replication goroutine is started/stoped
+					var err error
+					if signal.Removed {
+						if err = s.shutdownNode(signal.Peer.ID); err == nil {
+							s.logger.Info(fmt.Sprintf("node %s was shutdown in the state", signal.Peer.ID))
+						}
+					} else {
+						if err = s.addNewNode(signal.Peer); err == nil {
+							s.logger.Debug(fmt.Sprintf("node %s was updated in the state", signal.Peer.ID))
+						}
+					}
+					if err != nil {
+						s.logger.Error(fmt.Sprintf("failed to update peer observation: %s", err))
 					}
 				}
 			case <-closeCh:
@@ -637,8 +747,71 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 	return closeCh, doneCh
 }
 
+// addNewNode is called when leader observes that a node has been added
+func (s *Store) addNewNode(node raft.Server) error {
+	if !s.IsLeader() {
+		return nil
+	}
+	nodeChange := &proto.NodeChange{
+		NodeId: string(node.ID),
+		Addr:   string(node.Address),
+		State:  proto.NodeState_NODE_STATE_STARTED,
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+	}
+	switch node.Suffrage {
+	case raft.Voter:
+		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER
+	case raft.Nonvoter:
+		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_NONVOTER
+	}
+	err := s.WriteNodeChange(nodeChange)
+	if err != nil {
+		return fmt.Errorf("failed to write NodeChange update for %s: %w", node.ID, err)
+	}
+	return nil
+}
+
+// shutdownNode is called when leader observes a node change that signals that a node was removed
+func (s *Store) shutdownNode(nodeId raft.ServerID) error {
+	if !s.IsLeader() {
+		return nil
+	}
+	nodeChange := &proto.NodeChange{
+		NodeId: string(nodeId),
+		State:  proto.NodeState_NODE_STATE_SHUTDOWN,
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+	}
+	err := s.WriteNodeChange(nodeChange)
+	if err != nil {
+		return fmt.Errorf("failed to write shutdown NodeChange for %s: %w", nodeId, err)
+	}
+	return nil
+}
+
+// resumeNode is called when leader observes that a node resumed its heartbeat
+func (s *Store) resumeNode(nodeId raft.ServerID) error {
+	// skip if node is not a leader
+	if !s.IsLeader() {
+		return nil
+	}
+	nodeChange := &proto.NodeChange{
+		NodeId: string(nodeId),
+		State:  proto.NodeState_NODE_STATE_STARTED,
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+	}
+	err := s.WriteNodeChange(nodeChange)
+	if err != nil {
+		return fmt.Errorf("failed to write shutdown NodeChange for %s: %w", nodeId, err)
+	}
+	return nil
+}
+
 // remove removes the node, with the given ID, from the cluster.
 func (s *Store) remove(id string) error {
+	// TODO: should we completely remove reaped nodes from the state?
+	if err := s.shutdownNode(raft.ServerID(id)); err != nil {
+		return fmt.Errorf("failed to shutdown node %s: %w", id, err)
+	}
 	f := s.raft.RemoveServer(raft.ServerID(id), 0, 0)
 	if f.Error() != nil && f.Error() == raft.ErrNotLeader {
 		return ErrNotLeader
@@ -658,23 +831,14 @@ func (s *Store) selfLeaderChange(leader bool) error {
 	}
 
 	s.logger.Info("this node is now leader")
-	nodeChange := proto.Command{
-		Type: proto.Command_TYPE_NODE_CHANGE,
-		Request: &proto.Command_NodeChange{
-			NodeChange: &proto.NodeChange{
-				NodeId:       s.raftID,
-				PrivGrpcAddr: "",
-				State:        proto.NodeState_NODE_STATE_STARTED,
-				Role:         proto.Role_ROLE_TYPE_FOLLOWER,
-			},
-		},
-	}
-	b, err := pb.Marshal(&nodeChange)
+	err := s.WriteNodeChange(&proto.NodeChange{
+		NodeId:   s.raftID,
+		Addr:     s.Addr(),
+		State:    proto.NodeState_NODE_STATE_STARTED,
+		Role:     proto.Role_ROLE_TYPE_LEADER,
+		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to marshal NodeChange - leadership change message: %w", err)
-	}
-	f := s.raft.Apply(b, s.config.RaftTimeout)
-	if f.Error() != nil {
 		return fmt.Errorf("failed to send NodeChange - leadership change message: %w", err)
 	}
 	return nil

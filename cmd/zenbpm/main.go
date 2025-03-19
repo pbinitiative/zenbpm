@@ -9,6 +9,8 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
+	"github.com/pbinitiative/zenbpm/pkg/storage"
+
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -25,12 +27,15 @@ func main() {
 
 	conf := config.InitConfig()
 
+	// TODO: initialize cluster client
+
 	zenNode, err := cluster.StartZenNode(appContext, conf)
 	if err != nil {
 		log.Error("Failed to start Zen node: %s", err)
 		os.Exit(1)
 	}
 
+	// TODO: engine and persistence start should be moved into the controller/partition
 	var store storage.PersistentStorage = zenNode
 	time.Sleep(2 * time.Second)
 	engine := bpmn_engine.New(bpmn_engine.WithStorage(store), bpmn_engine.WithRqliteExporter())
@@ -39,6 +44,7 @@ func main() {
 	}
 	engine.NewTaskHandler().Type("foo").Handler(emptyHandler)
 
+	// Start the public API
 	svr := rest.NewServer(&engine, conf.Server.Addr)
 	svr.Start()
 

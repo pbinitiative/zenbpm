@@ -36,9 +36,6 @@ func Test_NonOpenStore(t *testing.T) {
 	if _, err := s.IsVoter(); err != ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
-	if s.State() != Unknown {
-		t.Fatalf("wrong cluster state returned for non-open store")
-	}
 	if _, err := s.CommitIndex(); err != ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
@@ -100,6 +97,69 @@ func Test_OpenStoreSingleNode(t *testing.T) {
 	}
 }
 
+// Test_StoreRestartSingleNode tests that a store shutdown and opening a new instance results in the same state.
+func Test_StoreRestartSingleNode(t *testing.T) {
+	c := config.Cluster{
+		RaftDir: t.TempDir(),
+		NodeId:  random.String(),
+	}
+
+	s, ln := newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err := s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err.Error())
+	}
+
+	if err := s.Bootstrap(&Node{
+		Id:         s.raftID,
+		Addr:       s.Addr(),
+		Partitions: map[uint32]NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err)
+	}
+
+	_, err := s.WaitForLeader(10 * time.Second)
+	if err != nil {
+		t.Fatalf("Error waiting for leader: %s", err)
+	}
+
+	testNodeId := "test-node-id"
+
+	err = s.WriteNodeChange(&proto.NodeChange{
+		NodeId: testNodeId,
+		Addr:   "",
+		State:  proto.NodeState_NODE_STATE_ERROR,
+		Role:   proto.Role_ROLE_TYPE_UNKNOWN,
+	})
+	if err != nil {
+		t.Fatalf("failed to write node change: %s", err)
+	}
+	err = s.Close(true)
+	if err != nil {
+		t.Fatalf("failed to close the store: %s", err)
+	}
+
+	s, ln = newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err = s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err.Error())
+	}
+
+	_, err = s.WaitForLeader(20 * time.Second)
+	if err != nil {
+		t.Fatalf("Error waiting for leader: %s", err)
+	}
+	testNode, ok := s.state.Nodes[testNodeId]
+	if !ok {
+		t.Fatalf("expected testNode was not found in the store")
+	}
+	if testNode.State != NodeState(proto.NodeState_NODE_STATE_ERROR) {
+		t.Fatalf("testNode is in a wrong state")
+	}
+}
+
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot
 // and recovers from it.
 func Test_SingleNodeSnapshot(t *testing.T) {
@@ -128,10 +188,10 @@ func Test_SingleNodeSnapshot(t *testing.T) {
 	testNodeId := "test-node"
 
 	s.WriteNodeChange(&proto.NodeChange{
-		NodeId:       testNodeId,
-		PrivGrpcAddr: "",
-		State:        proto.NodeState_NODE_STATE_ERROR,
-		Role:         proto.Role_ROLE_TYPE_UNKNOWN,
+		NodeId: testNodeId,
+		Addr:   "",
+		State:  proto.NodeState_NODE_STATE_ERROR,
+		Role:   proto.Role_ROLE_TYPE_UNKNOWN,
 	})
 
 	// Snap the node and write to disk.

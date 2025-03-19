@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/rqlite/rqlite/v8/random"
 )
 
 const (
@@ -20,19 +21,33 @@ type Config struct {
 	Server  Server  `yaml:"server" json:"server"` // configuration of the public REST server
 	Name    string  `yaml:"name" json:"name"`     // used for OTEL as an application identifier
 	Cluster Cluster `yaml:"cluster" json:"cluster"`
-	RqLite  *RqLite `yaml:"rqlite" json:"rqlite"`
 }
 
+// TODO: clean up cluster & rqlite configuration
 type Cluster struct {
-	BootstrapExpect int    `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_BOOTSTRAP_EXPECT"`
-	RaftAddr        string `yaml:"raftAddress" json:"raftAddress" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
-	RaftDir         string `yaml:"raftDir" json:"raftDir" env:"CLUSTER_RAFT_DIR"`
-	NodeId          string `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID"`
+	// BootstrapExpect sets expected number of servers to join into the cluster before bootstrap is called
+	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_BOOTSTRAP_EXPECT"`
+	// Bootstrap
+	Bootstrap bool    `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_BOOTSTRAP"`
+	RaftAddr  string  `yaml:"raftAddress" json:"raftAddress" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
+	RaftDir   string  `yaml:"raftDir" json:"raftDir" env:"CLUSTER_RAFT_DIR"`
+	NodeId    string  `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID"`
+	RqLite    *RqLite `yaml:"rqlite" json:"rqlite"`
 }
 
 type Server struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
+}
+
+func (c Config) defaults() Config {
+	if c.Cluster.NodeId == "" {
+		c.Cluster.NodeId = random.String()
+	}
+	if c.Cluster.RaftDir == "" {
+		c.Cluster.RaftDir = c.Cluster.NodeId
+	}
+	return c
 }
 
 func InitConfig() Config {
@@ -59,5 +74,5 @@ func InitConfig() Config {
 		fmt.Printf("Error occurred while reading the configuration: %s\n", err)
 		panic(err)
 	}
-	return c
+	return c.defaults()
 }

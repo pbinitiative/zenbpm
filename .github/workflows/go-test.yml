@@ -36,7 +36,7 @@ jobs:
       - name: make localbin dir
         run: mkdir bin
       - name: export localbin to GITHUB_PATH
-        run: echo "export PATH=$PATH:$(pwd)/bin" >> $GITHUB_ENV
+        run: echo "$(pwd)/bin" >> $GITHUB_ENV
       - name: path
         run: echo $PATH
       - name: run generate

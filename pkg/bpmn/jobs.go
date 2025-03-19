@@ -73,6 +73,7 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *ProcessInfo
 		job.JobState = Completed
 	}
 	state.persistence.PersistJob(ctx, job)
+	state.persistence.GetPersistence().FlushTransaction(ctx)
 
 	return job.JobState == Completed, job
 }

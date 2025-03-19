@@ -239,13 +239,15 @@ func (state *Engine) handleElement(ctx context.Context, process *ProcessInfo, in
 			nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
 		}
 
-		ms, err := activity.(MessageSubscription)
-		if err {
+		if ms, ok := activity.(*MessageSubscription); ok {
+			state.persistence.PersistNewMessageSubscription(ctx, ms)
+			// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
+			state.persistence.GetPersistence().FlushTransaction(ctx)
+		} else {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
 			log.Panicf("Unexpected activity type: %T", activity)
 		}
-		state.persistence.PersistNewMessageSubscription(ctx, &ms)
 	case bpmn20.IntermediateThrowEvent:
 		activity = &elementActivity{
 			key:     state.generateKey(),
@@ -364,16 +366,21 @@ func (state *Engine) handleIntermediateCatchEvent(ctx context.Context, process *
 }
 
 func (state *Engine) handleEndEvent(process *ProcessInfo, instance *processInstanceInfo) {
-	activeMessageSubscriptions := false
+	activeSubscriptions := false
 	// FIXME: check if this is correct to seems wrong i need to check if there are any tokens in this process not only messages subscriptions but elements also
 	if len(state.persistence.FindMessageSubscription(nil, instance, nil, Active)) > 0 {
-		activeMessageSubscriptions = true
+		activeSubscriptions = true
 	}
 	if len(state.persistence.FindMessageSubscription(nil, instance, nil, Ready)) > 0 {
-		activeMessageSubscriptions = true
+		activeSubscriptions = true
 	}
 
-	if !activeMessageSubscriptions {
+	jobs := state.persistence.FindJobs(nil, nil, instance, nil, Active, Completing)
+	if len(jobs) > 0 {
+		activeSubscriptions = true
+	}
+
+	if !activeSubscriptions {
 		instance.State = Completed
 	}
 }

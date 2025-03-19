@@ -11,3 +11,4 @@ cmd/__debug*
 partition-*/
 
 sqlite-test-data-*/
+cmd/zenbpm/__debug_*

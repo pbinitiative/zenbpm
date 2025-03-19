@@ -23,6 +23,19 @@ func New(parent *VariableHolder, variables map[string]interface{}) VariableHolde
 	}
 }
 
+/*
+NewForPropagation creates a new VariableHolder with a given parent and variables map. Used in job completion.
+*/
+func NewForPropagation(parent *VariableHolder, variables map[string]interface{}) VariableHolder {
+	if variables == nil {
+		variables = make(map[string]interface{})
+	}
+	return VariableHolder{
+		parent:    parent,
+		variables: variables,
+	}
+}
+
 func (vh *VariableHolder) GetVariable(key string) interface{} {
 	if v, ok := vh.variables[key]; ok {
 		return v

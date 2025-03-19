@@ -244,7 +244,7 @@ func Test_JobWrite_works(t *testing.T) { // We need the process definition in db
 		t.Fatalf("Failed inserting the record: %s", err)
 	}
 
-	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), nil)
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), nil, nil)
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)
@@ -270,7 +270,7 @@ func Test_JobStateFilter_works(t *testing.T) {
 	//setup
 	setupJob(t)
 	// when
-	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), []string{"ACTIVE", "COMPLETED"})
+	jobs, err := rqlitePersistence.FindJobs(t.Context(), nil, nil, ptr.To(int64(1)), nil, []string{"ACTIVE", "COMPLETED"})
 
 	if err != nil {
 		t.Fatalf("Failed finding the record: %s", err)

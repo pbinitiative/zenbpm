@@ -250,7 +250,7 @@ func (state *Engine) Marshal() []byte {
 		ProcessReferences:    createReferences(state.persistence.FindProcessesById("")),
 		ProcessInstances:     state.persistence.FindProcessInstances(-1),
 		Timers:               state.persistence.FindTimers(nil, nil),
-		Jobs:                 state.persistence.FindJobs(nil, nil, nil),
+		Jobs:                 state.persistence.FindJobs(nil, nil, nil, nil),
 	}
 	bytes, err := json.Marshal(m)
 	if err != nil {

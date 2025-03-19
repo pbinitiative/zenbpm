@@ -240,7 +240,7 @@ func (state *Engine) handleElement(ctx context.Context, process *ProcessInfo, in
 		}
 
 		ms, err := activity.(MessageSubscription)
-		if !err {
+		if err {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
 			log.Panicf("Unexpected activity type: %T", activity)
@@ -400,7 +400,7 @@ func (state *Engine) handleParallelGateway(process *ProcessInfo, instance *proce
 }
 
 func (state *Engine) findActiveJobsForContinuation(instance *processInstanceInfo) (ret []*job) {
-	return state.persistence.FindJobs(nil, instance, nil, Active, Completing)
+	return state.persistence.FindJobs(nil, nil, instance, nil, Active, Completing)
 }
 
 // findActiveSubscriptions returns active subscriptions;

@@ -245,26 +245,23 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *in
 	return resultTimers
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobType *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job {
 	states := convertActivityStatesToStrings(state)
 	var processInstanceKey *int64
 	if processInstance != nil {
 		processInstanceKey = ptr.To((*processInstance).GetInstanceKey())
 	}
 
-	jobs, err := persistence.rqlitePersistence.FindJobs(context.TODO(), elementId, processInstanceKey, jobKey, states)
+	jobs, err := persistence.rqlitePersistence.FindJobs(context.TODO(), elementId, jobType, processInstanceKey, jobKey, states)
 
 	if err != nil {
 		log.Fatal("Finding jobs failed", err)
 		return nil
 	}
 
-	if processInstance == nil && len(jobs) > 0 {
-		processInstance = persistence.FindProcessInstanceByKey(jobs[0].ProcessInstanceKey)
-	}
-
 	resultJobs := make([]*job, 0)
 	for _, j := range jobs {
+		processInstance = persistence.FindProcessInstanceByKey(j.ProcessInstanceKey)
 		resultJob := &job{
 			ElementId:          j.ElementID,
 			ElementInstanceKey: j.ElementInstanceKey,
@@ -288,7 +285,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, proc
 }
 
 func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job {
-	jobs := persistence.FindJobs(nil, nil, &jobKey)
+	jobs := persistence.FindJobs(nil, nil, nil, &jobKey)
 
 	if len(jobs) == 0 {
 		return nil
@@ -357,6 +354,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ct
 
 	ms :=
 		sql.MessageSubscription{
+			Key:                  subscription.Key(),
 			ElementID:            subscription.ElementId,
 			ElementInstanceKey:   subscription.ElementInstanceKey,
 			ProcessDefinitionKey: subscription.ProcessKey,
@@ -398,6 +396,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, 
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		State:              activityStateMap[job.JobState],
 		CreatedAt:          job.CreatedAt.Unix(),
+		Type:               job.baseElement.(bpmn20.TaskElement).GetTaskDefinitionType(),
 	})
 
 }

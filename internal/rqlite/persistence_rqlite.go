@@ -90,7 +90,7 @@ func (persistence *PersistenceRqlite) FindMessageSubscriptions(ctx context.Conte
 		OriginActivityKey:  sqlc.NullInt64{Int64: ptr.Deref(originActivityKey, int64(0)), Valid: originActivityKey != nil},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
 		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
-		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: len(state) > 0},
 	}
 
 	// Fetch subscriptions
@@ -110,7 +110,7 @@ func (persistence *PersistenceRqlite) FindTimers(ctx context.Context, elementIns
 	params := sql.FindTimersParams{
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(0)), Valid: processInstanceKey != nil},
 		ElementInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(elementInstanceKey, int64(0)), Valid: elementInstanceKey != nil},
-		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: state != nil},
+		States:             sqlc.NullString{String: serializeState(state, timerStateMap), Valid: len(state) > 0},
 	}
 
 	// Fetch timers
@@ -134,12 +134,13 @@ func interfaceSlice(slice []string) []interface{} {
 	return ret
 }
 
-func (persistence *PersistenceRqlite) FindJobs(ctx context.Context, elementId *string, processInstanceKey *int64, jobKey *int64, state []string) ([]sql.Job, error) {
+func (persistence *PersistenceRqlite) FindJobs(ctx context.Context, elementId *string, jobType *string, processInstanceKey *int64, jobKey *int64, state []string) ([]sql.Job, error) {
 	params := sql.FindJobsWithStatesParams{
 		Key:                sqlc.NullInt64{Int64: ptr.Deref(jobKey, int64(-1)), Valid: jobKey != nil},
 		ProcessInstanceKey: sqlc.NullInt64{Int64: ptr.Deref(processInstanceKey, int64(-1)), Valid: processInstanceKey != nil},
 		ElementID:          sqlc.NullString{String: ptr.Deref(elementId, ""), Valid: elementId != nil},
-		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: state != nil},
+		Type:               sqlc.NullString{String: ptr.Deref(jobType, ""), Valid: jobType != nil},
+		States:             sqlc.NullString{String: serializeState(state, activityStateMap), Valid: len(state) > 0},
 	}
 	// Fetch jobs
 	jobs, err := persistence.queries.FindJobsWithStates(ctx, params)

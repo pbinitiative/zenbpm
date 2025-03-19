@@ -51,12 +51,14 @@ type ActivityPage struct {
 
 // Job defines model for Job.
 type Job struct {
-	CreatedAt          *time.Time `json:"createdAt,omitempty"`
-	ElementId          *string    `json:"elementId,omitempty"`
-	ElementInstanceKey *string    `json:"elementInstanceKey,omitempty"`
-	Key                *string    `json:"key,omitempty"`
-	ProcessInstanceKey *string    `json:"processInstanceKey,omitempty"`
-	State              *string    `json:"state,omitempty"`
+	CreatedAt          *time.Time              `json:"createdAt,omitempty"`
+	ElementId          *string                 `json:"elementId,omitempty"`
+	ElementInstanceKey *string                 `json:"elementInstanceKey,omitempty"`
+	Key                *string                 `json:"key,omitempty"`
+	ProcessInstanceKey *string                 `json:"processInstanceKey,omitempty"`
+	State              *string                 `json:"state,omitempty"`
+	Type               *string                 `json:"type,omitempty"`
+	VariableHolder     *map[string]interface{} `json:"variableHolder,omitempty"`
 }
 
 // JobPage defines model for JobPage.
@@ -102,7 +104,7 @@ type ProcessInstance struct {
 	Activities           *string              `json:"activities,omitempty"`
 	CaughtEvents         *string              `json:"caughtEvents,omitempty"`
 	CreatedAt            *time.Time           `json:"createdAt,omitempty"`
-	Key                  int64                `json:"key"`
+	Key                  string               `json:"key"`
 	ProcessDefinitionKey string               `json:"processDefinitionKey"`
 	State                ProcessInstanceState `json:"state"`
 	VariableHolder       *string              `json:"variableHolder,omitempty"`
@@ -121,24 +123,35 @@ type ProcessInstancePage struct {
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey int64 `json:"jobKey"`
+	JobKey    string                  `json:"jobKey"`
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
+// PublishMessageJSONBody defines parameters for PublishMessage.
+type PublishMessageJSONBody struct {
+	MessageName        string                  `json:"messageName"`
+	ProcessInstanceKey string                  `json:"processInstanceKey"`
+	Variables          *map[string]interface{} `json:"variables,omitempty"`
 }
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
-	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
+	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
-	ProcessDefinitionKey *int64 `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
-	Offset               *int   `form:"offset,omitempty" json:"offset,omitempty"`
-	Size                 *int   `form:"size,omitempty" json:"size,omitempty"`
+	ProcessDefinitionKey *string `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+	Offset               *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	Size                 *int    `form:"size,omitempty" json:"size,omitempty"`
 }
 
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
+
+// PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
+type PublishMessageJSONRequestBody PublishMessageJSONBody
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
@@ -148,6 +161,12 @@ type ServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
+	// Activate jobs
+	// (POST /jobs/{jobType}/activate)
+	ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string)
+	// Publish a message
+	// (POST /messages)
+	PublishMessage(w http.ResponseWriter, r *http.Request)
 	// Get list of process definitions
 	// (GET /process-definitions)
 	GetProcessDefinitions(w http.ResponseWriter, r *http.Request)
@@ -156,7 +175,7 @@ type ServerInterface interface {
 	CreateProcessDefinition(w http.ResponseWriter, r *http.Request)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
-	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
+	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string)
 	// Create a new process instance
 	// (POST /process-instances)
 	CreateProcessInstance(w http.ResponseWriter, r *http.Request)
@@ -165,13 +184,13 @@ type ServerInterface interface {
 	GetProcessInstances(w http.ResponseWriter, r *http.Request, params GetProcessInstancesParams)
 	// Get state of a process instance selected by processInstanceId
 	// (GET /process-instances/{processInstanceKey})
-	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// Get list of activities for a process instance
 	// (GET /process-instances/{processInstanceKey}/activities)
-	GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
-	GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -181,6 +200,18 @@ type Unimplemented struct{}
 // Complete a job
 // (POST /jobs)
 func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Activate jobs
+// (POST /jobs/{jobType}/activate)
+func (_ Unimplemented) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Publish a message
+// (POST /messages)
+func (_ Unimplemented) PublishMessage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -198,7 +229,7 @@ func (_ Unimplemented) CreateProcessDefinition(w http.ResponseWriter, r *http.Re
 
 // Get process definition
 // (GET /process-definitions/{processDefinitionKey})
-func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -216,19 +247,19 @@ func (_ Unimplemented) GetProcessInstances(w http.ResponseWriter, r *http.Reques
 
 // Get state of a process instance selected by processInstanceId
 // (GET /process-instances/{processInstanceKey})
-func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get list of activities for a process instance
 // (GET /process-instances/{processInstanceKey}/activities)
-func (_ Unimplemented) GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (_ Unimplemented) GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
-func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -246,6 +277,45 @@ func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompleteJob(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivateJobs operation middleware
+func (siw *ServerInterfaceWrapper) ActivateJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobType" -------------
+	var jobType string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobType", chi.URLParam(r, "jobType"), &jobType, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobType", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivateJobs(w, r, jobType)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishMessage operation middleware
+func (siw *ServerInterfaceWrapper) PublishMessage(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishMessage(w, r)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -289,7 +359,7 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r
 	var err error
 
 	// ------------- Path parameter "processDefinitionKey" -------------
-	var processDefinitionKey int64
+	var processDefinitionKey string
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processDefinitionKey", chi.URLParam(r, "processDefinitionKey"), &processDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -371,7 +441,7 @@ func (siw *ServerInterfaceWrapper) GetProcessInstance(w http.ResponseWriter, r *
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey int64
+	var processInstanceKey string
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -396,7 +466,7 @@ func (siw *ServerInterfaceWrapper) GetActivities(w http.ResponseWriter, r *http.
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey int64
+	var processInstanceKey string
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -421,7 +491,7 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey int64
+	var processInstanceKey string
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -557,6 +627,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/jobs/{jobType}/activate", wrapper.ActivateJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions", wrapper.GetProcessDefinitions)
 	})
 	r.Group(func(r chi.Router) {
@@ -600,6 +676,39 @@ func (response CompleteJob201Response) VisitCompleteJobResponse(w http.ResponseW
 	return nil
 }
 
+type ActivateJobsRequestObject struct {
+	JobType string `json:"jobType"`
+}
+
+type ActivateJobsResponseObject interface {
+	VisitActivateJobsResponse(w http.ResponseWriter) error
+}
+
+type ActivateJobs200JSONResponse []Job
+
+func (response ActivateJobs200JSONResponse) VisitActivateJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PublishMessageRequestObject struct {
+	Body *PublishMessageJSONRequestBody
+}
+
+type PublishMessageResponseObject interface {
+	VisitPublishMessageResponse(w http.ResponseWriter) error
+}
+
+type PublishMessage201Response struct {
+}
+
+func (response PublishMessage201Response) VisitPublishMessageResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
 type GetProcessDefinitionsRequestObject struct {
 }
 
@@ -636,7 +745,7 @@ func (response CreateProcessDefinition200JSONResponse) VisitCreateProcessDefinit
 }
 
 type GetProcessDefinitionRequestObject struct {
-	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+	ProcessDefinitionKey string `json:"processDefinitionKey"`
 }
 
 type GetProcessDefinitionResponseObject interface {
@@ -690,7 +799,7 @@ func (response GetProcessInstances200JSONResponse) VisitGetProcessInstancesRespo
 }
 
 type GetProcessInstanceRequestObject struct {
-	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	ProcessInstanceKey string `json:"processInstanceKey"`
 }
 
 type GetProcessInstanceResponseObject interface {
@@ -707,7 +816,7 @@ func (response GetProcessInstance200JSONResponse) VisitGetProcessInstanceRespons
 }
 
 type GetActivitiesRequestObject struct {
-	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	ProcessInstanceKey string `json:"processInstanceKey"`
 }
 
 type GetActivitiesResponseObject interface {
@@ -724,7 +833,7 @@ func (response GetActivities200JSONResponse) VisitGetActivitiesResponse(w http.R
 }
 
 type GetJobsRequestObject struct {
-	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	ProcessInstanceKey string `json:"processInstanceKey"`
 }
 
 type GetJobsResponseObject interface {
@@ -745,6 +854,12 @@ type StrictServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
+	// Activate jobs
+	// (POST /jobs/{jobType}/activate)
+	ActivateJobs(ctx context.Context, request ActivateJobsRequestObject) (ActivateJobsResponseObject, error)
+	// Publish a message
+	// (POST /messages)
+	PublishMessage(ctx context.Context, request PublishMessageRequestObject) (PublishMessageResponseObject, error)
 	// Get list of process definitions
 	// (GET /process-definitions)
 	GetProcessDefinitions(ctx context.Context, request GetProcessDefinitionsRequestObject) (GetProcessDefinitionsResponseObject, error)
@@ -831,6 +946,63 @@ func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ActivateJobs operation middleware
+func (sh *strictHandler) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
+	var request ActivateJobsRequestObject
+
+	request.JobType = jobType
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ActivateJobs(ctx, request.(ActivateJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ActivateJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ActivateJobsResponseObject); ok {
+		if err := validResponse.VisitActivateJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PublishMessage operation middleware
+func (sh *strictHandler) PublishMessage(w http.ResponseWriter, r *http.Request) {
+	var request PublishMessageRequestObject
+
+	var body PublishMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PublishMessage(ctx, request.(PublishMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PublishMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PublishMessageResponseObject); ok {
+		if err := validResponse.VisitPublishMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProcessDefinitions operation middleware
 func (sh *strictHandler) GetProcessDefinitions(w http.ResponseWriter, r *http.Request) {
 	var request GetProcessDefinitionsRequestObject
@@ -882,7 +1054,7 @@ func (sh *strictHandler) CreateProcessDefinition(w http.ResponseWriter, r *http.
 }
 
 // GetProcessDefinition operation middleware
-func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string) {
 	var request GetProcessDefinitionRequestObject
 
 	request.ProcessDefinitionKey = processDefinitionKey
@@ -965,7 +1137,7 @@ func (sh *strictHandler) GetProcessInstances(w http.ResponseWriter, r *http.Requ
 }
 
 // GetProcessInstance operation middleware
-func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	var request GetProcessInstanceRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -991,7 +1163,7 @@ func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Reque
 }
 
 // GetActivities operation middleware
-func (sh *strictHandler) GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (sh *strictHandler) GetActivities(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	var request GetActivitiesRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -1017,7 +1189,7 @@ func (sh *strictHandler) GetActivities(w http.ResponseWriter, r *http.Request, p
 }
 
 // GetJobs operation middleware
-func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	var request GetJobsRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -1045,25 +1217,27 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, process
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

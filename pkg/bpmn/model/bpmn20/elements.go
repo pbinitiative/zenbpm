@@ -121,6 +121,86 @@ func (serviceTask TServiceTask) GetAssignmentCandidateGroups() []string {
 	return []string{}
 }
 
+func (businessRuleTask TBusinessRuleTask) GetId() string {
+	return businessRuleTask.Id
+}
+
+func (businessRuleTask TBusinessRuleTask) GetName() string {
+	return businessRuleTask.Name
+}
+
+func (businessRuleTask TBusinessRuleTask) GetIncomingAssociation() []string {
+	return businessRuleTask.IncomingAssociation
+}
+
+func (businessRuleTask TBusinessRuleTask) GetOutgoingAssociation() []string {
+	return businessRuleTask.OutgoingAssociation
+}
+
+func (businessRuleTask TBusinessRuleTask) GetType() ElementType {
+	return ServiceTask
+}
+
+func (businessRuleTask TBusinessRuleTask) GetInputMapping() []extensions.TIoMapping {
+	return businessRuleTask.Input
+}
+
+func (businessRuleTask TBusinessRuleTask) GetOutputMapping() []extensions.TIoMapping {
+	return businessRuleTask.Output
+}
+
+func (businessRuleTask TBusinessRuleTask) GetTaskDefinitionType() string {
+	return businessRuleTask.TaskDefinition.TypeName
+}
+
+func (businessRuleTask TBusinessRuleTask) GetAssignmentAssignee() string {
+	return ""
+}
+
+func (businessRuleTask TBusinessRuleTask) GetAssignmentCandidateGroups() []string {
+	return []string{}
+}
+
+func (sendTask TSendTask) GetId() string {
+	return sendTask.Id
+}
+
+func (sendTask TSendTask) GetName() string {
+	return sendTask.Name
+}
+
+func (sendTask TSendTask) GetIncomingAssociation() []string {
+	return sendTask.IncomingAssociation
+}
+
+func (sendTask TSendTask) GetOutgoingAssociation() []string {
+	return sendTask.OutgoingAssociation
+}
+
+func (sendTask TSendTask) GetType() ElementType {
+	return ServiceTask
+}
+
+func (sendTask TSendTask) GetInputMapping() []extensions.TIoMapping {
+	return sendTask.Input
+}
+
+func (sendTask TSendTask) GetOutputMapping() []extensions.TIoMapping {
+	return sendTask.Output
+}
+
+func (sendTask TSendTask) GetTaskDefinitionType() string {
+	return sendTask.TaskDefinition.TypeName
+}
+
+func (sendTask TSendTask) GetAssignmentAssignee() string {
+	return ""
+}
+
+func (sendTask TSendTask) GetAssignmentCandidateGroups() []string {
+	return []string{}
+}
+
 func (userTask TUserTask) GetId() string {
 	return userTask.Id
 }
@@ -150,7 +230,7 @@ func (userTask TUserTask) GetOutputMapping() []extensions.TIoMapping {
 }
 
 func (userTask TUserTask) GetTaskDefinitionType() string {
-	return ""
+	return "user-task-type"
 }
 
 func (userTask TUserTask) GetAssignmentAssignee() string {

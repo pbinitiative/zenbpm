@@ -239,13 +239,15 @@ func (state *Engine) handleElement(ctx context.Context, process *ProcessInfo, in
 			nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
 		}
 
-		ms, err := activity.(MessageSubscription)
-		if err {
+		if ms, ok := activity.(*MessageSubscription); ok {
+			state.persistence.PersistNewMessageSubscription(ctx, ms)
+			// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
+			state.persistence.GetPersistence().FlushTransaction(ctx)
+		} else {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
 			log.Panicf("Unexpected activity type: %T", activity)
 		}
-		state.persistence.PersistNewMessageSubscription(ctx, &ms)
 	case bpmn20.IntermediateThrowEvent:
 		activity = &elementActivity{
 			key:     state.generateKey(),

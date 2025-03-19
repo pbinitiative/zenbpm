@@ -11,15 +11,28 @@ $(LOCALBIN):
 
 ## Tool Binaries
 SQLC ?= $(LOCALBIN)/sqlc
+PROTOC ?= $(LOCALBIN)/protoc
 
 ## Tool Versions
 SQLC_VERSION ?= v1.28.0
+PROTOC_VERSION ?= 30.0
+
+export PATH := "$(PATH):$(LOCALBIN)"
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
 $(SQLC): $(LOCALBIN)
 	test -s $(LOCALBIN)/sqlc && $(LOCALBIN)/sqlc version | grep -q $(SQLC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+
+.PHONY: protoc
+protoc: $(PROTOC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
+$(PROTOC): $(LOCALBIN)
+	test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION) || \
+	curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
+	unzip -p protoc-$(PROTOC_VERSION)-linux-x86_64.zip bin/protoc >$(LOCALBIN)/protoc; \
+	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip;
+	
 
 ##@ General
 

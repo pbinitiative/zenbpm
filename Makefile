@@ -29,6 +29,7 @@ $(PROTOC): $(LOCALBIN)
 	test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION) || \
 	curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
 	unzip -p protoc-$(PROTOC_VERSION)-linux-x86_64.zip bin/protoc >$(LOCALBIN)/protoc; \
+	chmod +x $(LOCALBIN)/protoc
 	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip;
 	
 

@@ -29,7 +29,6 @@ require (
 tool (
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 	golang.org/x/tools/cmd/stringer
-	google.golang.org/protobuf/cmd/protoc-gen-go
 	k8s.io/code-generator/cmd/deepcopy-gen
 )
 

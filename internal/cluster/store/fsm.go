@@ -47,7 +47,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	f.s.mu.Lock()
 	defer f.s.mu.Unlock()
 
-	return &fsmSnapshot{ClusterState: f.s.state.Copy()}, nil
+	return &fsmSnapshot{ClusterState: *f.s.state.DeepCopy()}, nil
 }
 
 func (f *FSM) Restore(rc io.ReadCloser) error {
@@ -65,17 +65,43 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
 	node, ok := f.s.state.Nodes[nodeChangeCommand.NodeId]
 	// node is not yet present in the store
+	role := RoleFollower
+	leaderId, _ := f.s.LeaderID()
+	if leaderId == nodeChangeCommand.NodeId {
+		role = RoleLeader
+	}
 	if !ok {
 		// TODO: check state of the node it should be starting
-		f.s.state.Nodes[nodeChangeCommand.NodeId] = Node{
+		node = Node{
 			Id:         nodeChangeCommand.NodeId,
-			Addr:       nodeChangeCommand.PrivGrpcAddr,
+			Addr:       nodeChangeCommand.Addr,
 			State:      NodeState(nodeChangeCommand.State),
-			Role:       Role(nodeChangeCommand.Role),
 			Partitions: map[uint32]NodePartition{},
 		}
 	}
-	node.Role = Role(nodeChangeCommand.GetRole())
+	// if the leader has changed, change other nodes to be followers
+	if leaderId == node.Id && node.Role < RoleLeader && role == RoleLeader {
+		for k, n := range f.s.state.Nodes {
+			n.Role = RoleFollower
+			f.s.state.Nodes[k] = n
+		}
+	}
+	node.Role = role
+	if nodeChangeCommand.Addr != "" {
+		node.Addr = nodeChangeCommand.Addr
+	}
+	if nodeChangeCommand.Suffrage != proto.RaftSuffrage_RAFT_SUFFRAGE_UNKNOWN {
+		switch nodeChangeCommand.Suffrage {
+		case proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER:
+			node.Suffrage = raft.Voter
+		case proto.RaftSuffrage_RAFT_SUFFRAGE_NONVOTER:
+			node.Suffrage = raft.Nonvoter
+		}
+	}
+	if nodeChangeCommand.State != proto.NodeState_NODE_STATE_UNKNOWN {
+		node.State = NodeState(nodeChangeCommand.State)
+	}
+	f.s.state.Nodes[nodeChangeCommand.NodeId] = node
 	return nil
 }
 

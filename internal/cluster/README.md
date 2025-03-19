@@ -69,6 +69,9 @@ ZenBPM node is a ZenBPM application running either by itself in simplified confi
 When a node receives a query through the Public API it evaluates if its a command or query request and which Partition group needs to process it. Queries are processed by followers and Commands are executed by leaders.
 If the current node cannot handle the request, the request is proxied to the node that can handle it.
 
+## Behaviour
+
+
 ## Private GRPC communication
 Internal communication between nodes.
 - Notify - sent by a node to peers when it is ready for bootstrapping

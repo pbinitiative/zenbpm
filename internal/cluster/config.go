@@ -7,14 +7,12 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 )
 
-func GetDefaultConfig(nodeId string, raftAddr string, httpAddr string, dataPath string, joinAddresses []string) config.RqLite {
+func GetDefaultConfig(nodeId string, raftAddr string, dataPath string, joinAddresses []string) config.RqLite {
 	return config.RqLite{
 		DataPath:                    dataPath,
 		AuthFile:                    "",
 		AutoBackupFile:              "",
 		AutoRestoreFile:             "",
-		HTTPAddr:                    httpAddr,
-		HTTPAdv:                     httpAddr,
 		HTTPx509CACert:              "",
 		HTTPx509Cert:                "",
 		HTTPx509Key:                 "",
@@ -50,7 +48,7 @@ func GetDefaultConfig(nodeId string, raftAddr string, httpAddr string, dataPath 
 		RaftElectionTimeout:         1 * time.Second,
 		RaftApplyTimeout:            10 * time.Second,
 		RaftShutdownOnRemove:        false,
-		RaftClusterRemoveOnShutdown: true,
+		RaftClusterRemoveOnShutdown: false,
 		RaftStepdownOnShutdown:      true,
 		RaftReapNodeTimeout:         0,
 		RaftReapReadOnlyNodeTimeout: 0,

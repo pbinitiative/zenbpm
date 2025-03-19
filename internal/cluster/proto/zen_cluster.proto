@@ -1,7 +1,7 @@
 syntax = "proto3";
 package cluster;
 
-import "command.proto";
+import "zencommand.proto";
 
 option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/proto";
 
@@ -21,7 +21,7 @@ service ZenService {
 	rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
 	rpc PartitionRestore(PartitionRestoreRequest) returns (PartitionRestoreResponse);
 
-	rpc NodeCommand(command.Command) returns (NodeCommandResponse);
+	rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 }
 
 message ErrorResult {
@@ -66,7 +66,7 @@ message ClusterBackupResponse{}
 
 message NodeCommandResponse {
 	optional ErrorResult error = 1;
-	command.Command.Type type = 2;
+	zencommand.Command.Type type = 2;
 	oneof response {
 		ClusterNodeChangeResponse node_change = 3;
 		ClusterNodePartitionChangeResponse node_partition_change = 4;

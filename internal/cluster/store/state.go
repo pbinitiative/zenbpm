@@ -1,9 +1,14 @@
 package store
 
-import "github.com/hashicorp/raft"
+import (
+	"github.com/hashicorp/raft"
+)
+
+//go:generate deepcopy-gen . --output-file zz_generated.deepcopy.go
 
 // ClusterState keeps track of the cluster state and holds
 // information about currently active partition and Nodes in the cluster.
+// +k8s:deepcopy-gen=true
 type ClusterState struct {
 	Partitions map[uint32]Partition `json:"partitions"`
 	Nodes      map[string]Node      `json:"nodes"`
@@ -19,69 +24,39 @@ func (c *ClusterState) GetNode(nodeId string) (Node, error) {
 	return Node{}, ErrNodeNotFound
 }
 
-func (c *ClusterState) Copy() ClusterState {
-	cs := ClusterState{}
-	nodes := make(map[string]Node, len(c.Nodes))
-	for nodeId, node := range c.Nodes {
-		nodePartitions := make(map[uint32]NodePartition, len(node.Partitions))
-		for k, p := range node.Partitions {
-			nodePartitions[k] = NodePartition{
-				Id:    p.Id,
-				State: p.State,
-				Role:  p.Role,
-			}
-		}
-		nodes[nodeId] = Node{
-			Id:         node.Id,
-			Addr:       node.Addr,
-			State:      node.State,
-			Role:       node.Role,
-			Partitions: nodePartitions,
-		}
-	}
-	cs.Nodes = nodes
-
-	partitions := make(map[uint32]Partition, len(c.Partitions))
-	for i, p := range c.Partitions {
-		partitions[i] = Partition{
-			Id:       p.Id,
-			LeaderId: p.LeaderId,
-		}
-	}
-	cs.Partitions = partitions
-	return cs
-}
-
+// +k8s:deepcopy-gen=true
 type Partition struct {
 	Id       uint32 `json:"id"`
 	LeaderId string `json:"leaderId"`
 }
 
+//go:generate stringer -type=NodeState
 type NodeState int32
 
 const (
-	_ = iota
-	// node has joined the main cluster and is waiting for instructions from leader
-	// or being elected as a leader
-	NodeStateStarting
-	// node was elected as a leader or received instructions from a leader to join partition group
-	NodeStateStarted
+	_ NodeState = iota
 	// node is in an error state
 	NodeStateError
+	// node is active
+	NodeStateStarted
+	// node is not activated
+	NodeStateShutdown
 )
 
+//go:generate stringer -type=Role
 type Role int32
 
 const (
-	_ = iota
+	_ Role = iota
 	RoleFollower
 	RoleLeader
 )
 
+//go:generate stringer -type=NodePartitionState
 type NodePartitionState int32
 
 const (
-	_ = iota
+	_ NodePartitionState = iota
 	NodePartitionStateError
 	NodePartitionStateJoining
 	NodePartitionStateLeaving
@@ -91,6 +66,7 @@ const (
 
 // Node holds the information about raft server node,
 // its state in the zen cluster and assigned partitions
+// +k8s:deepcopy-gen=true
 type Node struct {
 	Id         string                   `json:"id"`
 	Addr       string                   `json:"addr"`

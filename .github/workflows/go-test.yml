@@ -31,6 +31,8 @@ jobs:
             ${{ runner.os }}-golang-
       - name: download modules
         run: go mod download
+      - name: show pwd
+        run: echo $(pwd)
       - name: add local bin into path
         run: mkdir bin; export PATH=$PATH:$(pwd)/bin
       - name: path

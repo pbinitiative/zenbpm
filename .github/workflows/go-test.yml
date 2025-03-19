@@ -31,6 +31,8 @@ jobs:
             ${{ runner.os }}-golang-
       - name: download modules
         run: go mod download
+      - name: path
+        run: echo $PATH
       - name: run generate
         run: make generate
       - name: tests

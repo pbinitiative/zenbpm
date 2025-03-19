@@ -317,6 +317,7 @@ func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
 func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
+	bpmnEngine.clearTaskHandlers()
 	bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
 		job.SetVariable("aVariable", true)
 		job.Complete()

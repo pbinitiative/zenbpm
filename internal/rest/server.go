@@ -285,7 +285,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		return nil, err
 	}
 	if processInstance == nil {
-		return nil, fmt.Errorf("process instance with key %d not found", request.ProcessInstanceKey)
+		return nil, fmt.Errorf("process instance with key %s not found", request.ProcessInstanceKey)
 	}
 
 	return public.GetProcessInstance200JSONResponse(*processInstance), nil

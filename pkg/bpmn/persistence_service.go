@@ -15,7 +15,7 @@ type BpmnEnginePersistenceService interface {
 
 	FindMessageSubscription(originActivityKey *int64, processInstance *processInstanceInfo, elementId *string, state ...ActivityState) []*MessageSubscription
 	FindTimers(originActivityKey *int64, processInstanceKey *int64, state ...TimerState) []*Timer
-	FindJobs(elementId *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job
+	FindJobs(elementId *string, jobType *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job
 	FindJobByKey(jobKey int64) *job
 	PersistNewProcess(ctx context.Context, process *ProcessInfo) error
 	PersistProcessInstance(ctx context.Context, processInstance *processInstanceInfo) error

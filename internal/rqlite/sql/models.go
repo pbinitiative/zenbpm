@@ -20,6 +20,7 @@ type Job struct {
 	ElementID          string `json:"element_id"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Type               string `json:"type"`
 	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 }

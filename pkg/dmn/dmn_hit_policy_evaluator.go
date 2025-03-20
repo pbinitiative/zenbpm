@@ -1,6 +1,29 @@
 package dmn
 
-import "github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+import (
+	"github.com/pbinitiative/feel"
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	"strings"
+)
+
+func EvaluateCellMatch(columnExpression string, cellExpression string, variables map[string]interface{}) (bool, error) {
+	if cellExpression == "" {
+		// If the text is empty, it means any value is accepted
+		return true, nil
+	}
+
+	var resultExpression string
+
+	if strings.HasPrefix(cellExpression, "=") || strings.HasPrefix(cellExpression, "<") || strings.HasPrefix(cellExpression, ">") {
+		resultExpression = columnExpression + " " + cellExpression
+	} else {
+		resultExpression = columnExpression + " = " + cellExpression
+	}
+
+	result, err := feel.EvalStringWithScope(resultExpression, variables)
+
+	return result.(bool), err
+}
 
 func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) interface{} {
 	switch hitPolicy {

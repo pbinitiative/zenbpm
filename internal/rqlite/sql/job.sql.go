@@ -11,9 +11,7 @@ import (
 )
 
 const findJobByKey = `-- name: FindJobByKey :one
-;
-
-SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE key = ?1
+SELECT "key", element_id, element_instance_key, process_instance_key, type, state, created_at FROM job WHERE key = ?1
 `
 
 func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
@@ -24,6 +22,7 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 		&i.ElementID,
 		&i.ElementInstanceKey,
 		&i.ProcessInstanceKey,
+		&i.Type,
 		&i.State,
 		&i.CreatedAt,
 	)
@@ -31,18 +30,20 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 }
 
 const findJobsWithStates = `-- name: FindJobsWithStates :many
-SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE 
+SELECT "key", element_id, element_instance_key, process_instance_key, type, state, created_at FROM job WHERE 
     COALESCE(?1, "key") = "key" AND
     COALESCE(?2, process_instance_key) = process_instance_key AND
     COALESCE(?3, "element_id") = "element_id" AND
-    (?4 IS  NULL OR
-    "state" IN (SELECT value FROM json_each(?4)))
+    COALESCE(?4, "type") = "type" AND
+    (?5 IS  NULL OR
+    "state" IN (SELECT value FROM json_each(?5)))
 `
 
 type FindJobsWithStatesParams struct {
 	Key                sql.NullInt64  `json:"key"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	ElementID          sql.NullString `json:"element_id"`
+	Type               sql.NullString `json:"type"`
 	States             interface{}    `json:"states"`
 }
 
@@ -51,6 +52,7 @@ func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStates
 		arg.Key,
 		arg.ProcessInstanceKey,
 		arg.ElementID,
+		arg.Type,
 		arg.States,
 	)
 	if err != nil {
@@ -65,49 +67,7 @@ func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStates
 			&i.ElementID,
 			&i.ElementInstanceKey,
 			&i.ProcessInstanceKey,
-			&i.State,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findJobsWithoutStates = `-- name: FindJobsWithoutStates :many
-SELECT "key", element_id, element_instance_key, process_instance_key, state, created_at FROM job WHERE 
-    COALESCE(?1, "key") = "key" AND
-    COALESCE(?2, process_instance_key) = process_instance_key AND
-    COALESCE(?3, "element_id") = "element_id"
-`
-
-type FindJobsWithoutStatesParams struct {
-	Key                sql.NullInt64  `json:"key"`
-	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
-	ElementID          sql.NullString `json:"element_id"`
-}
-
-func (q *Queries) FindJobsWithoutStates(ctx context.Context, arg FindJobsWithoutStatesParams) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findJobsWithoutStates, arg.Key, arg.ProcessInstanceKey, arg.ElementID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Job{}
-	for rows.Next() {
-		var i Job
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementID,
-			&i.ElementInstanceKey,
-			&i.ProcessInstanceKey,
+			&i.Type,
 			&i.State,
 			&i.CreatedAt,
 		); err != nil {
@@ -126,9 +86,9 @@ func (q *Queries) FindJobsWithoutStates(ctx context.Context, arg FindJobsWithout
 
 const saveJob = `-- name: SaveJob :exec
 INSERT INTO job
-(key, element_id, element_instance_key, process_instance_key, state, created_at)
+(key, element_id, element_instance_key, process_instance_key, type, state, created_at)
 VALUES
-(?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state
+(?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state
 `
 
 type SaveJobParams struct {
@@ -136,6 +96,7 @@ type SaveJobParams struct {
 	ElementID          string `json:"element_id"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Type               string `json:"type"`
 	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 }
@@ -146,6 +107,7 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.ElementID,
 		arg.ElementInstanceKey,
 		arg.ProcessInstanceKey,
+		arg.Type,
 		arg.State,
 		arg.CreatedAt,
 	)

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -78,6 +79,17 @@ func (s *Server) Stop(ctx context.Context) {
 	}
 }
 
+func getKeyFromString(s *string) *int64 {
+	if s == nil {
+		return nil
+	}
+	key, err := strconv.ParseInt(*s, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &key
+}
+
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
 	if !s.engine.GetPersistence().IsLeader() {
 		// if not leader redirect to leader
@@ -99,8 +111,41 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	s.engine.JobCompleteById(ctx, request.Body.JobKey)
+	key := *getKeyFromString(&request.Body.JobKey)
+	s.engine.JobCompleteById(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
 	return public.CompleteJob201Response{}, nil
+}
+
+func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRequestObject) (public.ActivateJobsResponseObject, error) {
+	jobs, err := s.engine.ActivateJobs(ctx, request.JobType)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]public.Job, 0)
+	for _, j := range jobs {
+		key := fmt.Sprintf("%d", j.Key())
+		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey())
+		//TODO: Needs propper conversion
+		vh := j.Variables()
+		jobSimple := public.Job{
+			Key:                &key,
+			ElementId:          ptr.To(j.ElementId()),
+			CreatedAt:          ptr.To(j.CreatedAt()),
+			ProcessInstanceKey: &processInstanceKey,
+			VariableHolder:     ptr.To(vh.Variables()),
+		}
+		items = append(items, jobSimple)
+	}
+
+	return public.ActivateJobs200JSONResponse(items), nil
+}
+
+func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
+	key := *getKeyFromString(&request.Body.ProcessInstanceKey)
+	s.engine.PublishEventForInstance(key, request.Body.MessageName, *request.Body.Variables)
+	s.engine.RunOrContinueInstance(key)
+	return public.PublishMessage201Response{}, nil
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
@@ -132,7 +177,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
-	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, &request.ProcessDefinitionKey)
+	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, getKeyFromString(&request.ProcessDefinitionKey))
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +186,6 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	}
 
 	version := int(processes[0].Version)
-	key := fmt.Sprintf("%d", processes[0].Key)
 	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(processes[0].BpmnData)))
 	deflateReader := flate.NewReader(ascii85Reader)
 	buffer := bytes.Buffer{}
@@ -153,7 +197,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	processDefinitionDetail := public.ProcessDefinitionDetail{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: &processes[0].BpmnProcessID,
-			Key:           &key,
+			Key:           ptr.To(fmt.Sprintf("%d", processes[0].Key)),
 			Version:       &version,
 		},
 		BpmnData: &bpmnData,
@@ -166,7 +210,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.engine.CreateAndRunInstance(request.Body.ProcessDefinitionKey, variables)
+	process, err := s.engine.CreateAndRunInstance(*getKeyFromString(&request.Body.ProcessDefinitionKey), variables)
 	if err != nil {
 		return nil, err
 	}
@@ -178,11 +222,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
-	processDefinitionKey := int64(-1)
-	if request.Params.ProcessDefinitionKey != nil {
-		processDefinitionKey = *request.Params.ProcessDefinitionKey
-	}
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, &processDefinitionKey)
+	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, getKeyFromString(request.Params.ProcessDefinitionKey))
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +235,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
 		state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 		processInstanceSimple := public.ProcessInstance{
-			Key:                  pi.Key,
+			Key:                  fmt.Sprintf("%d", pi.Key),
 			ProcessDefinitionKey: processDefintionKey,
 			State:                state,
 			CreatedAt:            &createdAt,
@@ -228,7 +268,7 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 	createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
 	state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 	processInstanceSimple := public.ProcessInstance{
-		Key:                  pi.Key,
+		Key:                  fmt.Sprintf("%d", pi.Key),
 		ProcessDefinitionKey: processDefintionKey,
 		State:                state,
 		CreatedAt:            &createdAt,
@@ -240,29 +280,19 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, ptr.To(int64(request.ProcessInstanceKey)), nil)
+	processInstance, err := s.getProcessInstance(ctx, *getKeyFromString(&request.ProcessInstanceKey))
 	if err != nil {
 		return nil, err
 	}
-	if len(processInstances) == 0 {
-		return nil, fmt.Errorf("process instance with key %d not found", request.ProcessInstanceKey)
+	if processInstance == nil {
+		return nil, fmt.Errorf("process instance with key %s not found", request.ProcessInstanceKey)
 	}
-	pi := processInstances[0]
 
-	processInstanceSimple := public.ProcessInstance{
-		Key:                  pi.Key,
-		ProcessDefinitionKey: fmt.Sprintf("%d", pi.ProcessDefinitionKey),
-		State:                public.ProcessInstanceState(fmt.Sprintf("%d", pi.State)),
-		CreatedAt:            ptr.To(time.Unix(0, pi.CreatedAt*int64(time.Second))),
-		CaughtEvents:         &pi.CaughtEvents,
-		VariableHolder:       &pi.VariableHolder,
-		Activities:           &pi.Activities,
-	}
-	return public.GetProcessInstance200JSONResponse(processInstanceSimple), nil
+	return public.GetProcessInstance200JSONResponse(*processInstance), nil
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	activities, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, ptr.To(request.ProcessInstanceKey))
+	activities, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, getKeyFromString(&request.ProcessInstanceKey))
 	if err != nil {
 		return nil, err
 	}
@@ -294,15 +324,12 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 	return public.GetActivities200JSONResponse(result), nil
 }
 
-func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
-	jobs, err := s.engine.GetPersistence().FindJobs(ctx, nil, ptr.To(request.ProcessInstanceKey), nil, nil)
+func (s *Server) getJobItems(ctx context.Context, elementId *string, jobType *string, processInstanceKey *string, states ...string) ([]public.Job, error) {
+	jobs, err := s.engine.GetPersistence().FindJobs(ctx, elementId, jobType, getKeyFromString(processInstanceKey), nil, states)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]public.Job, 0)
-	result := public.JobPage{
-		Items: &items,
-	}
 	for _, j := range jobs {
 		key := fmt.Sprintf("%d", j.Key)
 		createdAt := time.Unix(j.CreatedAt, 0)
@@ -313,6 +340,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		jobSimple := public.Job{
 			Key:                &key,
 			ElementId:          &j.ElementID,
+			Type:               &j.Type,
 			ElementInstanceKey: &elementInstanceKey,
 			CreatedAt:          &createdAt,
 			State:              &state,
@@ -320,7 +348,18 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		}
 		items = append(items, jobSimple)
 	}
-	result.Items = &items
+	return items, nil
+}
+
+func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
+	items, err := s.getJobItems(ctx, nil, nil, &request.ProcessInstanceKey)
+
+	if err != nil {
+		return nil, err
+	}
+	result := public.JobPage{
+		Items: &items,
+	}
 	l := len(items)
 	result.Count = &l
 	result.Offset = nil

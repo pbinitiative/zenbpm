@@ -14,7 +14,7 @@ require (
 	github.com/hazelcast/hazelcast-go-client v1.4.2
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/oapi-codegen/runtime v1.1.1
-	github.com/pbinitiative/feel v0.1.1
+	github.com/pbinitiative/feel v1.0.3
 	github.com/rqlite/rqlite-disco-clients v0.0.0-20231230135307-118e35426347
 	github.com/rqlite/rqlite/v8 v8.28.4
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46
@@ -40,7 +40,7 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/consul/api v1.29.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

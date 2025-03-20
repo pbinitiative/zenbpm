@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -30,7 +32,8 @@ func main() {
 	}
 
 	var store storage.PersistentStorage = zenNode
-	engine := bpmn_engine.New(bpmn_engine.WithStorage(store))
+	time.Sleep(2 * time.Second)
+	engine := bpmn_engine.New(bpmn_engine.WithStorage(store), bpmn_engine.WithRqliteExporter())
 	// TODO rework handlers
 	emptyHandler := func(job bpmn_engine.ActivatedJob) {
 	}

@@ -10,14 +10,20 @@ import (
 // InMemoryStorage keeps process information in memory,
 // please use NewInMemory to create a new object of this type.
 type InMemoryStorage struct {
-	processDefinitions map[string]storage.ProcessDefinition
-	processInstances   map[int64]storage.ProcessInstance
+	processDefinitions   map[string]storage.ProcessDefinition
+	processInstances     map[int64]storage.ProcessInstance
+	messageSubscriptions map[int64]storage.MessageSubscription
+	timers               map[int64]storage.Timer
+	jobs                 map[int64]storage.Job
 }
 
-func NewInMemory() InMemoryStorage {
-	return InMemoryStorage{
-		processDefinitions: make(map[string]storage.ProcessDefinition),
-		processInstances:   make(map[int64]storage.ProcessInstance),
+func NewInMemory() storage.PersistentStorageNew {
+	return &InMemoryStorage{
+		processDefinitions:   make(map[string]storage.ProcessDefinition),
+		processInstances:     make(map[int64]storage.ProcessInstance),
+		messageSubscriptions: make(map[int64]storage.MessageSubscription),
+		timers:               make(map[int64]storage.Timer),
+		jobs:                 make(map[int64]storage.Job),
 	}
 }
 
@@ -34,12 +40,6 @@ func (mem *InMemoryStorage) FindProcessDefinitionsById(ctx context.Context, proc
 }
 
 func (mem *InMemoryStorage) SaveProcessDefinition(ctx context.Context, definition storage.ProcessDefinition) error {
-	for i, d := range mem.processDefinitions {
-		if d.ProcessKey() == definition.ProcessKey() {
-			mem.processDefinitions[i] = definition
-			return nil
-		}
-	}
 	mem.processDefinitions[definition.BpmnChecksum()] = definition
 	return nil
 }
@@ -54,12 +54,68 @@ func (mem *InMemoryStorage) FindProcessInstancesByKey(ctx context.Context, proce
 }
 
 func (mem *InMemoryStorage) SaveProcessInstance(ctx context.Context, processInstance storage.ProcessInstance) error {
-	for i, d := range mem.processInstances {
-		if d.InstanceKey() == processInstance.InstanceKey() {
-			mem.processInstances[i] = processInstance
-			return nil
-		}
-	}
 	mem.processInstances[processInstance.InstanceKey()] = processInstance
 	return nil
+}
+
+func (mem *InMemoryStorage) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]storage.MessageSubscription, error) {
+
+	//TODO implement me
+	panic("implement me")
+}
+
+func (mem *InMemoryStorage) SaveMessageSubscription(ctx context.Context, subscription storage.MessageSubscription) error {
+	mem.messageSubscriptions[subscription.ElementInstanceKey()] = subscription
+	return nil
+}
+
+func (mem *InMemoryStorage) FindTimersByState(ctx context.Context, state storage.TimeState) (timers []storage.Timer, err error) {
+	for _, t := range mem.timers {
+		if t.TimerState() == state {
+			timers = append(timers, t)
+		}
+	}
+	return timers, err
+}
+
+func (mem *InMemoryStorage) SaveTimer(ctx context.Context, timer storage.Timer) error {
+	mem.timers[timer.ElementInstanceKey()] = timer
+	return nil
+}
+
+func (mem *InMemoryStorage) SaveJob(ctx context.Context, job storage.Job) error {
+	mem.jobs[job.JobKey()] = job
+	return nil
+}
+
+func (mem *InMemoryStorage) FindJobsByJobKey(ctx context.Context, jobKey int64) (jobs []storage.Job, err error) {
+	for _, j := range mem.jobs {
+		if jobKey == j.JobKey() {
+			jobs = append(jobs, j)
+		}
+	}
+	return jobs, nil
+}
+
+func (mem *InMemoryStorage) FindJobsByState(ctx context.Context, state storage.JobState) (jobs []storage.Job, err error) {
+	for _, j := range mem.jobs {
+		if j.JobState() == state {
+			jobs = append(jobs, j)
+		}
+	}
+	return jobs, err
+}
+
+func (mem *InMemoryStorage) FindActivitiesByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]storage.Activity, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (mem *InMemoryStorage) SaveActivity(ctx context.Context, activity storage.Activity) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (mem *InMemoryStorage) IsLeader(ctx context.Context) bool {
+	return true
 }

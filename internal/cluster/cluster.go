@@ -112,3 +112,11 @@ func (node *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]
 func (node *ZenNode) IsLeader(ctx context.Context) bool {
 	return node.controller.partitions[0].IsLeader(ctx)
 }
+
+func (node *ZenNode) IsPartitionLeader(ctx context.Context, partition uint32) bool {
+	return node.controller.IsPartitionLeader(ctx, partition)
+}
+
+func (node *ZenNode) IsAnyPartitionLeader(ctx context.Context) bool {
+	return node.controller.IsAnyPartitionLeader(ctx)
+}

@@ -12,7 +12,9 @@ import (
 )
 
 type controller struct {
-	partitions   []*ZenPartitionNode
+	// partitions contains a map of partition nodes on this zen node
+	// one zen node will be always working with maximum of one partition node per partition
+	partitions   map[uint32]*ZenPartitionNode
 	store        *store.Store
 	config       config.Cluster
 	rqLiteConfig config.RqLite
@@ -24,7 +26,7 @@ func NewController(s *store.Store, mux *tcp.Mux, conf config.Cluster) (*controll
 		store:      s,
 		config:     conf,
 		mux:        mux,
-		partitions: []*ZenPartitionNode{},
+		partitions: make(map[uint32]*ZenPartitionNode),
 	}
 	return &c, nil
 }
@@ -33,7 +35,7 @@ func (c *controller) Start() error {
 	rqLiteConfig := c.config.RqLite
 
 	if c.config.RqLite == nil {
-		defaultConfig := GetDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), []string{})
+		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), []string{})
 		rqLiteConfig = &defaultConfig
 	}
 	err := rqLiteConfig.Validate()
@@ -70,7 +72,7 @@ func (c *controller) startPartition(ctx context.Context, partitionId uint32) err
 	rqLiteConfig := c.config.RqLite
 
 	if c.config.RqLite == nil {
-		defaultConfig := GetDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), []string{})
+		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), []string{})
 		rqLiteConfig = &defaultConfig
 	}
 	err := rqLiteConfig.Validate()
@@ -84,7 +86,7 @@ func (c *controller) startPartition(ctx context.Context, partitionId uint32) err
 	if err != nil {
 		return fmt.Errorf("failed to start zen partition %d: %w", partitionId, err)
 	}
-	c.partitions = append(c.partitions, partition)
+	c.partitions[partitionId] = partition
 	return nil
 }
 
@@ -92,4 +94,21 @@ func (c *controller) startPartition(ctx context.Context, partitionId uint32) err
 func (c *controller) NotifyShutdown() error {
 	// TODO: call zen cluster api on a leader to notify about node shutdown
 	return nil
+}
+
+func (c *controller) IsPartitionLeader(ctx context.Context, partition uint32) bool {
+	p, ok := c.partitions[partition]
+	if !ok {
+		return false
+	}
+	return p.IsLeader(ctx)
+}
+
+func (c *controller) IsAnyPartitionLeader(ctx context.Context) bool {
+	for partitionId := range c.partitions {
+		if c.IsPartitionLeader(ctx, partitionId) {
+			return true
+		}
+	}
+	return false
 }

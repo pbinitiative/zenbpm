@@ -12,7 +12,7 @@ import (
 )
 
 func Test_InMemoryStorage_implements_PersistentStorageApi_interface(t *testing.T) {
-	var _ storage.PersistentStorageApi = &InMemoryStorage{}
+	var _ storage.PersistentStorageNew = &InMemoryStorage{}
 }
 
 func TestInMemoryStorage_SaveProcessDefinition_and_FindById(t *testing.T) {

@@ -32,7 +32,7 @@ enum NodeState {
 
 enum RaftSuffrage {
 	RAFT_SUFFRAGE_UNKNOWN = 0;
-  RAFT_SUFFRAGE_VOTER = 1;
+	RAFT_SUFFRAGE_VOTER = 1;
 	RAFT_SUFFRAGE_NONVOTER = 2;
 }
 

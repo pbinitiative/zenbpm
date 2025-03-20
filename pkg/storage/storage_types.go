@@ -70,7 +70,7 @@ type Job interface {
 	//baseElement        bpmn20.FlowNode
 }
 
-type TimeState interface {
+type TimerState interface {
 }
 
 type JobState interface {

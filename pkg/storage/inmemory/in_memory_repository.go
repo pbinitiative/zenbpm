@@ -69,7 +69,7 @@ func (mem *InMemoryStorage) SaveMessageSubscription(ctx context.Context, subscri
 	return nil
 }
 
-func (mem *InMemoryStorage) FindTimersByState(ctx context.Context, state storage.TimeState) (timers []storage.Timer, err error) {
+func (mem *InMemoryStorage) FindTimersByState(ctx context.Context, state storage.TimerState) (timers []storage.Timer, err error) {
 	for _, t := range mem.timers {
 		if t.TimerState() == state {
 			timers = append(timers, t)

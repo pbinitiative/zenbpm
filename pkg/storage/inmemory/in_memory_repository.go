@@ -8,13 +8,13 @@ import (
 )
 
 // InMemoryStorage keeps process information in memory,
-// please use New to create a new object of this type.
+// please use NewInMemory to create a new object of this type.
 type InMemoryStorage struct {
 	processDefinitions map[string]storage.ProcessDefinition
 	processInstances   map[int64]storage.ProcessInstance
 }
 
-func New() InMemoryStorage {
+func NewInMemory() InMemoryStorage {
 	return InMemoryStorage{
 		processDefinitions: make(map[string]storage.ProcessDefinition),
 		processInstances:   make(map[int64]storage.ProcessInstance),

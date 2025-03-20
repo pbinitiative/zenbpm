@@ -10,7 +10,7 @@ import (
 	"database/sql"
 )
 
-const findTimers = `-- name: FindTimersByState :many
+const findTimers = `-- name: FindTimers :many
 SELECT key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration
 FROM timer
 WHERE COALESCE(?1, process_instance_key) = process_instance_key AND

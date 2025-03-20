@@ -33,7 +33,7 @@ jobs:
       - name: download modules
         run: go mod download
       - name: make localbin dir
-        run: mkdir bin
+        run: mkdir -p bin
       - name: export localbin to GITHUB_PATH
         run: echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: run generate

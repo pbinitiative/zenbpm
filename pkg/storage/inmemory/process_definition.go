@@ -1,4 +1,4 @@
-package storage_inmemory
+package inmemory
 
 import (
 	"encoding/hex"

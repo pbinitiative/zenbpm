@@ -101,16 +101,16 @@ func (node *ZenNode) Stop() error {
 }
 
 func (node *ZenNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return node.controller.partitions[0].Query(ctx, req)
+	return node.controller.partitions[1].Query(ctx, req)
 }
 
 // Execute TODO: this needs to implement that only the leader can execute
 func (node *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return node.controller.partitions[0].Execute(ctx, req)
+	return node.controller.partitions[1].Execute(ctx, req)
 }
 
 func (node *ZenNode) IsLeader(ctx context.Context) bool {
-	return node.controller.partitions[0].IsLeader(ctx)
+	return node.controller.partitions[1].IsLeader(ctx)
 }
 
 func (node *ZenNode) IsPartitionLeader(ctx context.Context, partition uint32) bool {

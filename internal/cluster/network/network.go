@@ -81,10 +81,20 @@ func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName stri
 }
 
 func getPartitionRaftHeaderByte(partition uint32) byte {
+	// cap the max partition number at 122 to prevent byte overflow
+	// TODO: this is bad solution and we should handle this in the controller
+	if partition > 122 {
+		panic("maximum number of partition is 122")
+	}
 	headerByte := reservedBytes + partition*2 - 1
 	return byte(headerByte)
 }
 func getPartitionClusterHeaderByte(partition uint32) byte {
+	// cap the max partition number at 122 to prevent byte overflow
+	// TODO: this is bad solution and we should handle this in the controller
+	if partition > 122 {
+		panic("maximum number of partition is 122")
+	}
 	headerByte := reservedBytes + partition*2
 	return byte(headerByte)
 }

@@ -43,10 +43,10 @@ $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 protoc: $(PROTOC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
 $(PROTOC): $(LOCALBIN)
 	test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION) || \
-	curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
+	{ curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
 	unzip -p protoc-$(PROTOC_VERSION)-linux-x86_64.zip bin/protoc >$(LOCALBIN)/protoc; \
-	chmod +x $(LOCALBIN)/protoc
-	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip;
+	chmod +x $(LOCALBIN)/protoc; \
+	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip; }
 	
 
 ##@ General

@@ -20,13 +20,6 @@ type RqLite struct {
 	// DataPath is path to node data. Always set.
 	DataPath string `yaml:"dataPath" json:"dataPath" env:"RQLITE_DATA_PATH"`
 
-	// HTTPAddr is the bind network address for the HTTP Server.
-	// It never includes a trailing HTTP or HTTPS.
-	HTTPAddr string `yaml:"httpAddr" json:"httpAddr" env:"RQLITE_HTTP_ADDR"`
-
-	// HTTPAdv is the advertised HTTP server network.
-	HTTPAdv string `yaml:"httpAdv" json:"httpAdv" env:"RQLITE_HTTP_ADV"`
-
 	// HTTPAllowOrigin is the value to set for Access-Control-Allow-Origin HTTP header.
 	HTTPAllowOrigin string `yaml:"httpAllowOrigin" json:"httpAllowOrigin" env:"RQLITE_HTTP_ALLOW_ORIGIN"`
 
@@ -79,6 +72,7 @@ type RqLite struct {
 	RaftAddr string `yaml:"raftAddr" json:"raftAddr" env:"RQLITE_RAFT_ADDR"`
 
 	// RaftAdv is the advertised Raft server address.
+	// TODO: We need to set this based on the configuration of the cluster Adv
 	RaftAdv string `yaml:"raftAdv" json:"raftAdv" env:"RQLITE_RAFT_ADV"`
 
 	// JoinAddrs is the list of Raft addresses to use for a join attempt.
@@ -212,39 +206,14 @@ func (c *RqLite) Validate() error {
 
 	}
 
-	if c.RaftAddr == c.HTTPAddr {
-		return errors.New("HTTP and Raft addresses must differ")
-	}
-
 	// Enforce policies regarding addresses
 	if c.RaftAdv == "" {
 		c.RaftAdv = c.RaftAddr
-	}
-	if c.HTTPAdv == "" {
-		c.HTTPAdv = c.HTTPAddr
 	}
 
 	// Node ID policy
 	if c.NodeID == "" {
 		c.NodeID = c.RaftAdv
-	}
-
-	// Perform some address validity checks.
-	if strings.HasPrefix(strings.ToLower(c.HTTPAddr), "http") ||
-		strings.HasPrefix(strings.ToLower(c.HTTPAdv), "http") {
-		return errors.New("HTTP options should not include protocol (http:// or https://)")
-	}
-	if _, _, err := net.SplitHostPort(c.HTTPAddr); err != nil {
-		return errors.New("HTTP bind address not valid")
-	}
-
-	hadv, _, err := net.SplitHostPort(c.HTTPAdv)
-	if err != nil {
-		return errors.New("HTTP advertised HTTP address not valid")
-	}
-	if addr := net.ParseIP(hadv); addr != nil && addr.IsUnspecified() {
-		return fmt.Errorf("advertised HTTP address is not routable (%s), specify it via HTTPAdv or HTTPAddr",
-			hadv)
 	}
 
 	if _, rp, err := net.SplitHostPort(c.RaftAddr); err != nil {
@@ -263,10 +232,6 @@ func (c *RqLite) Validate() error {
 	}
 	if _, err := strconv.Atoi(rp); err != nil {
 		return errors.New("raft advertised port is not valid")
-	}
-
-	if c.RaftAdv == c.HTTPAdv {
-		return errors.New("advertised HTTP and Raft addresses must differ")
 	}
 
 	// Enforce bootstrapping policies

@@ -3,6 +3,52 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+##@ Build Dependencies
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+## Tool Binaries
+SQLC ?= $(LOCALBIN)/sqlc
+PROTOC ?= $(LOCALBIN)/protoc
+PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
+PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
+
+## Tool Versions
+SQLC_VERSION ?= v1.28.0
+PROTOC_VERSION ?= 30.0
+PROTOC_GEN_GO_VERSION ?= v1.36.5
+PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
+
+.PHONY: sqlc
+sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
+$(SQLC): $(LOCALBIN)
+	test -s $(LOCALBIN)/sqlc && $(LOCALBIN)/sqlc version | grep -q $(SQLC_VERSION) || \
+	GOBIN=$(LOCALBIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+
+.PHONY: protoc-gen-go
+protoc-gen-go: $(PROTOC_GEN_GO) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
+$(PROTOC_GEN_GO): $(LOCALBIN)
+	test -s $(LOCALBIN)/protoc-gen-go && $(LOCALBIN)/protoc-gen-go --version | grep -q $(PROTOC_GEN_GO_VERSION) || \
+	GOBIN=$(LOCALBIN) go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+
+.PHONY: protoc-gen-go-grpc
+protoc-gen-go-grpc: $(PROTOC_GEN_GO_GRPC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
+$(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
+	test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
+	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+.PHONY: protoc
+protoc: $(PROTOC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
+$(PROTOC): $(LOCALBIN)
+	test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION) || \
+	{ curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
+	unzip -p protoc-$(PROTOC_VERSION)-linux-x86_64.zip bin/protoc >$(LOCALBIN)/protoc; \
+	chmod +x $(LOCALBIN)/protoc; \
+	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip; }
+	
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -23,14 +69,11 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate: gen-proto
-	go generate ./...
-	cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
-	sed -i "s/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`//g" internal/rqlite/sql/models.go
-
-.PHONY: gen-proto
-gen-proto: 
-	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative ./internal/cluster/proto/*.proto
+generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
+	@go generate ./...
+	@$(SQLC) generate
+	@cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
+	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

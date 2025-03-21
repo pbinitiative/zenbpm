@@ -2,3 +2,6 @@ name: zenbpm
 server:
   context: /
   port: :8080
+cluster:
+  raftAddress: :8090
+  nodeId: node-1

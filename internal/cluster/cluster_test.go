@@ -1,8 +1,9 @@
 package cluster
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 func Test_ZenNode_implements_PersistentStorage(t *testing.T) {

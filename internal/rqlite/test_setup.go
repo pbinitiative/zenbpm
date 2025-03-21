@@ -12,6 +12,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/db"
+	sql "github.com/rqlite/rqlite/v8/db"
 
 	"github.com/rqlite/rqlite/v8/random"
 )
@@ -63,7 +64,9 @@ func (s *TestStorage) SetupTestEnvironment(m *testing.M) {
 		os.Exit(1)
 	}
 	f.Close()
-	d, err := db.OpenSwappable(dbPath, true, false)
+	// TODO: fix foreign keys and replace
+	// d, err := db.OpenSwappable(dbPath, sql.DefaultDriver(), true, false)
+	d, err := db.OpenSwappable(dbPath, sql.DefaultDriver(), false, false)
 	if err != nil {
 		fmt.Printf("failed to open database: %s\n", err)
 		os.Exit(1)

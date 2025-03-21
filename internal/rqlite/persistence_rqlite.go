@@ -30,8 +30,8 @@ type PersistenceRqlite struct {
 	mu    sync.Mutex // Only protects the cache map itself
 }
 
-//go:embed sql_source/schema.sql
-var ddl string
+//go:embed sql_source/migrations/schema.sql
+var ddl string //TODO: rework into directory of sqlmigrations
 
 func NewPersistenceRqlite( /*snowflakeIdGenerator *snowflake.Node, */ store storage.PersistentStorage) *PersistenceRqlite {
 	// gen := snowflakeIdGenerator

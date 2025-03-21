@@ -2,19 +2,12 @@ version: "2"
 sql:
     - engine: "sqlite"
       queries:
-          - "../sql_source/process_instance.sql"
-          - "../sql_source/process_definition.sql"
-          - "../sql_source/message_subscription.sql"
-          - "../sql_source/timer.sql"
-          - "../sql_source/job.sql"
-          - "../sql_source/activity_instance.sql"
-          #   - "../sql_source/schema.sql"
-      schema: "../sql_source/schema.sql"
-
+          - "internal/rqlite/sql_source"
+      schema: "internal/rqlite/sql_source/migrations"
       gen:
           go:
               package: "sql"
-              out: "./"
+              out: "internal/rqlite/sql"
               emit_json_tags: true
               emit_empty_slices: true
               emit_interface: true

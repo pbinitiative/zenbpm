@@ -16,17 +16,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
+	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	bpmn_engine "github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 type Server struct {
 	sync.RWMutex
-	engine *bpmn_engine.Engine
+	engine *bpmn.Engine
+	node   *cluster.ZenNode
 	addr   string
 	server *http.Server
 }
@@ -34,11 +36,13 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(engine *bpmn_engine.Engine, addr string) *Server {
+func NewServer(engine *bpmn.Engine, addr string) *Server {
+	// func NewServer(node *cluster.ZenNode, addr string) *Server {
 	r := chi.NewRouter()
 	s := Server{
 		engine: engine,
-		addr:   addr,
+		// node: node,
+		addr: addr,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           r,
@@ -91,6 +95,7 @@ func getKeyFromString(s *string) *int64 {
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
+	// if !s.node.IsAnyPartitionLeader(ctx) {
 	if !s.engine.GetPersistence().IsLeader() {
 		// if not leader redirect to leader
 		// proxyTheRequestToLeader(ctx, s)

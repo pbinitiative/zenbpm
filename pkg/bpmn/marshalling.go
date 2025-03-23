@@ -13,39 +13,39 @@ import (
 const CurrentSerializerVersion = 1
 
 type serializedBpmnEngine struct {
-	Version              int                            `json:"v"`
-	Name                 string                         `json:"n"`
-	ProcessReferences    []processInfoReference         `json:"pr,omitempty"`
-	ProcessInstances     []*processInstanceInfo         `json:"pi,omitempty"`
-	MessageSubscriptions []*runtime.MessageSubscription `json:"ms,omitempty"`
-	Timers               []*runtime.Timer               `json:"t,omitempty"`
-	Jobs                 []*runtime.Job                 `json:"j,omitempty"`
+	Version              int
+	Name                 string
+	ProcessReferences    []processInfoReference
+	ProcessInstances     []*processInstanceInfo
+	MessageSubscriptions []*runtime.MessageSubscription
+	Timers               []*runtime.Timer
+	Jobs                 []*runtime.Job
 }
 
 type processInfoReference struct {
-	BpmnProcessId    string `json:"id"`           // The ID as defined in the BPMN file
-	ProcessKey       int64  `json:"pk"`           // The engines key for this given process with version
-	BpmnData         string `json:"d"`            // the raw BPMN XML data
-	BpmnResourceName string `json:"rn,omitempty"` // the resource's name
-	BpmnChecksum     string `json:"crc"`          // internal checksum to identify different versions
+	BpmnProcessId    string // The ID as defined in the BPMN file
+	ProcessKey       int64  // The engines key for this given process with version
+	BpmnData         string // the raw BPMN XML data
+	BpmnResourceName string // the resource's name
+	BpmnChecksum     string // internal checksum to identify different versions
 }
 
 type ProcessInstanceInfoAlias processInstanceInfo // FIXME: don't export
 type processInstanceInfoAdapter struct {
-	ProcessKey       int64              `json:"pk"`
-	ActivityAdapters []*activityAdapter `json:"a,omitempty"`
+	ProcessKey       int64
+	ActivityAdapters []*activityAdapter
 	*ProcessInstanceInfoAlias
 }
 
 type timerAlias runtime.Timer
 type timerAdapter struct {
-	OriginActivitySurrogate activitySurrogate `json:"oas"`
+	OriginActivitySurrogate activitySurrogate
 	*timerAlias
 }
 
 type messageSubscriptionAlias runtime.MessageSubscription
 type messageSubscriptionAdapter struct {
-	OriginActivitySurrogate activitySurrogate `json:"oas"`
+	OriginActivitySurrogate activitySurrogate
 	*messageSubscriptionAlias
 }
 
@@ -57,21 +57,21 @@ const (
 )
 
 type activityAdapter struct {
-	Type                      activityAdapterType   `json:"t"`
-	Key                       int64                 `json:"k"`
-	State                     runtime.ActivityState `json:"s"`
-	ElementReference          string                `json:"e"`
-	Parallel                  bool                  `json:"p,omitempty"` // from gatewayActivity
-	InboundFlowIdsCompleted   []string              `json:"i,omitempty"` // from gatewayActivity
-	OutboundActivityCompleted string                `json:"o,omitempty"` // from eventBasedGatewayActivity
+	Type                      activityAdapterType
+	Key                       int64
+	State                     runtime.ActivityState
+	ElementReference          string
+	Parallel                  bool     // from gatewayActivity
+	InboundFlowIdsCompleted   []string // from gatewayActivity
+	OutboundActivityCompleted string   // from eventBasedGatewayActivity
 }
 
 // activitySurrogate only exists to have a simple way of marshalling originActivities in MessageSubscription and Timer
 // TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
 type activitySurrogate struct {
-	ActivityKey        int64                 `json:"k"`
-	ActivityState      runtime.ActivityState `json:"s"`
-	ElementReferenceId string                `json:"e"`
+	ActivityKey        int64
+	ActivityState      runtime.ActivityState
+	ElementReferenceId string
 	elementReference   bpmn20.FlowNode
 }
 

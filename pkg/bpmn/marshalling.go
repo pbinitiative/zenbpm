@@ -67,6 +67,7 @@ type activityAdapter struct {
 }
 
 // activitySurrogate only exists to have a simple way of marshalling originActivities in MessageSubscription and Timer
+// Deprecated: should be replaced by storage.PersistentStorageNew
 // TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
 type activitySurrogate struct {
 	ActivityKey        int64
@@ -75,6 +76,7 @@ type activitySurrogate struct {
 	elementReference   bpmn20.FlowNode
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 type baseElementPlaceholder struct {
 	id string
 }
@@ -104,6 +106,7 @@ func (b baseElementPlaceholder) GetType() bpmn20.ElementType {
 
 // ----------------------------------------------------------------------------
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 type activityPlaceholder struct {
 	key int64
 }
@@ -174,6 +177,7 @@ func (a activityPlaceholder) Element() bpmn20.FlowNode {
 
 // ----------------------------------------------------------------------------
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (pii *processInstanceInfo) MarshalJSON() ([]byte, error) {
 	piia := &processInstanceInfoAdapter{
 		ProcessKey:               pii.ProcessInfo.ProcessKey,
@@ -192,6 +196,7 @@ func (pii *processInstanceInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(piia)
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (pii *processInstanceInfo) UnmarshalJSON(data []byte) error {
 	adapter := &processInstanceInfoAdapter{
 		ProcessInstanceInfoAlias: (*ProcessInstanceInfoAlias)(pii),
@@ -204,6 +209,7 @@ func (pii *processInstanceInfo) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func createEventBasedGatewayActivityAdapter(ebga *eventBasedGatewayActivity) *activityAdapter {
 	aa := &activityAdapter{
 		Type:                      eventBasedGatewayActivityAdapterType,
@@ -215,6 +221,7 @@ func createEventBasedGatewayActivityAdapter(ebga *eventBasedGatewayActivity) *ac
 	return aa
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func createGatewayActivityAdapter(ga *gatewayActivity) *activityAdapter {
 	aa := &activityAdapter{
 		Type:                    gatewayActivityAdapterType,
@@ -243,6 +250,7 @@ func (a activitySurrogate) Element() bpmn20.FlowNode {
 
 // ----------------------------------------------------------------------------
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (state *Engine) Marshal() []byte {
 	m := serializedBpmnEngine{
 		Version:              CurrentSerializerVersion,
@@ -263,6 +271,7 @@ func (state *Engine) Marshal() []byte {
 // Unmarshal loads the data byte array and creates a new instance of the BPMN Engine
 // Will return an BpmnEngineUnmarshallingError, if there was an issue AND in case of error,
 // the engine return object is only partially initialized and likely not usable
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func Unmarshal(data []byte) (Engine, error) {
 	eng := serializedBpmnEngine{}
 	err := json.Unmarshal(data, &eng)

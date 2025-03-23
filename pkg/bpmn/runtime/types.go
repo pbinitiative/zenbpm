@@ -88,13 +88,13 @@ const (
 )
 
 type MessageSubscription struct {
-	ElementId          string          `json:"id"`
-	ElementInstanceKey int64           `json:"ik"`
-	ProcessKey         int64           `json:"pk"`
-	ProcessInstanceKey int64           `json:"pik"`
-	Name               string          `json:"n"`
-	MessageState       ActivityState   `json:"s"`
-	CreatedAt          time.Time       `json:"c"`
+	ElementId          string
+	ElementInstanceKey int64
+	ProcessKey         int64
+	ProcessInstanceKey int64
+	Name               string
+	MessageState       ActivityState
+	CreatedAt          time.Time
 	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
@@ -121,14 +121,14 @@ const TimerCancelled TimerState = "CANCELLED"
 // The logic is simple: CreatedAt + Duration = DueAt
 // The TimerState is one of [ TimerCreated, TimerTriggered, TimerCancelled ]
 type Timer struct {
-	ElementId          string          `json:"id"`
-	ElementInstanceKey int64           `json:"ik"`
-	ProcessKey         int64           `json:"pk"`
-	ProcessInstanceKey int64           `json:"pik"`
-	TimerState         TimerState      `json:"s"`
-	CreatedAt          time.Time       `json:"c"`
-	DueAt              time.Time       `json:"da"`
-	Duration           time.Duration   `json:"du"`
+	ElementId          string
+	ElementInstanceKey int64
+	ProcessKey         int64
+	ProcessInstanceKey int64
+	TimerState         TimerState
+	CreatedAt          time.Time
+	DueAt              time.Time
+	Duration           time.Duration
 	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
@@ -160,12 +160,12 @@ type Activity interface {
 }
 
 type Job struct {
-	ElementId          string          `json:"id"`
-	ElementInstanceKey int64           `json:"ik"`
-	ProcessInstanceKey int64           `json:"pik"`
-	JobKey             int64           `json:"jk"`
-	JobState           ActivityState   `json:"s"`
-	CreatedAt          time.Time       `json:"c"`
+	ElementId          string
+	ElementInstanceKey int64
+	ProcessInstanceKey int64
+	JobKey             int64
+	JobState           ActivityState
+	CreatedAt          time.Time
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 

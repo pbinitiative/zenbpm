@@ -59,7 +59,7 @@ func (mem *InMemoryStorage) SaveProcessInstance(ctx context.Context, processInst
 	return nil
 }
 
-func (mem *InMemoryStorage) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]runtime.MessageSubscription, error) {
+func (mem *InMemoryStorage) FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []runtime.ActivityState) ([]runtime.MessageSubscription, error) {
 
 	//TODO implement me
 	panic("implement me")

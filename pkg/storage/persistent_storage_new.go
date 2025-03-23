@@ -26,7 +26,7 @@ type PersistentStorageNew interface {
 	SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error
 
 	// FindMessageSubscription return zero or many message subscriptions by given params
-	FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []string) ([]runtime.MessageSubscription, error)
+	FindMessageSubscription(ctx context.Context, originActivityKey int64, processInstanceKey int64, elementId string, state []runtime.ActivityState) ([]runtime.MessageSubscription, error)
 
 	// SaveMessageSubscription persists the MessageSubscription
 	// and potentially overwrites prior data stored with given key

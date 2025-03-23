@@ -1,12 +1,15 @@
 package bpmn
 
-import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+)
 
 type commandType string
 
 const (
 	flowTransitionType            commandType = "flowTransition"
-	activityType                  commandType = "activity"
+	activityType                  commandType = "Activity"
 	continueActivityType          commandType = "continueActivity"
 	errorType                     commandType = "error"
 	checkExclusiveGatewayDoneType commandType = "checkExclusiveGatewayDone"
@@ -20,7 +23,7 @@ type command interface {
 
 type flowTransitionCommand struct {
 	sourceId       string
-	sourceActivity activity
+	sourceActivity runtime.Activity
 	sequenceFlowId string
 }
 
@@ -33,7 +36,7 @@ func (f flowTransitionCommand) Type() commandType {
 type activityCommand struct {
 	sourceId       string
 	element        bpmn20.FlowNode
-	originActivity activity
+	originActivity runtime.Activity
 }
 
 func (a activityCommand) Type() commandType {
@@ -43,8 +46,8 @@ func (a activityCommand) Type() commandType {
 // ---------------------------------------------------------------------
 
 type continueActivityCommand struct {
-	activity       activity
-	originActivity activity
+	activity       runtime.Activity
+	originActivity runtime.Activity
 }
 
 func (ga continueActivityCommand) Type() commandType {

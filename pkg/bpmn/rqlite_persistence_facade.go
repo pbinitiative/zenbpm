@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"time"
 
 	"log"
@@ -13,7 +14,6 @@ import (
 	rqlite "github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/internal/rqlite/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
@@ -33,7 +33,7 @@ func NewBpmnEnginePersistenceRqlite(snowflakeIdGenerator *snowflake.Node, rqlite
 
 // READ
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcessById(processId string) *ProcessInfo {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessById(processId string) *runtime.ProcessDefinition {
 	// TODO finds the latest version
 	processes := persistence.FindProcessesById(processId)
 	if len(processes) == 0 {
@@ -42,11 +42,11 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessById(processId string
 	return processes[0]
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcessesById(processId string) []*ProcessInfo {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessesById(processId string) []*runtime.ProcessDefinition {
 	return persistence.FindProcesses(&processId, nil)
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcessByKey(processKey int64) *ProcessInfo {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcessByKey(processKey int64) *runtime.ProcessDefinition {
 	processes := persistence.FindProcesses(nil, &processKey)
 	if len(processes) == 0 {
 		return nil
@@ -54,26 +54,26 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessByKey(processKey int6
 	return processes[0]
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId *string, processKey *int64) []*ProcessInfo {
+func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId *string, processKey *int64) []*runtime.ProcessDefinition {
 	// TODO finds all processes with given ID sorted by version number
 
 	processes, err := persistence.rqlitePersistence.FindProcesses(context.TODO(), processId, processKey)
 
 	if err != nil {
 		log.Fatalf("Error finding processes: %s", err)
-		return []*ProcessInfo{}
+		return []*runtime.ProcessDefinition{}
 	}
 
-	resultProcesses := make([]*ProcessInfo, 0)
+	resultProcesses := make([]*runtime.ProcessDefinition, 0)
 	for _, process := range processes {
 		// map to ProcessInfo
-		resultProcess := &ProcessInfo{
+		resultProcess := &runtime.ProcessDefinition{
 			ProcessKey:       process.Key,
 			Version:          process.Version,
 			BpmnProcessId:    process.BpmnProcessID,
-			bpmnData:         process.BpmnData,
-			bpmnChecksum:     [16]byte(process.BpmnChecksum),
-			bpmnResourceName: process.BpmnResourceName,
+			BpmnData:         process.BpmnData,
+			BpmnChecksum:     [16]byte(process.BpmnChecksum),
+			BpmnResourceName: process.BpmnResourceName,
 		}
 
 		var definitions bpmn20.TDefinitions
@@ -88,7 +88,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcesses(processId *string,
 			log.Fatalf("Error unmarshalling bpmn data: %s", err)
 			return nil
 		}
-		resultProcess.definitions = definitions
+		resultProcess.Definitions = definitions
 
 		resultProcesses = append(resultProcesses, resultProcess)
 
@@ -127,7 +127,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInst
 
 		variables := map[string]interface{}{}
 
-		varHolder := var_holder.New(nil, nil)
+		varHolder := runtime.New(nil, nil)
 		json.Unmarshal([]byte(instance.VariableHolder), &variables)
 		for key, value := range variables {
 			varHolder.SetVariable(key, value)
@@ -150,7 +150,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindProcessInstances(processInst
 
 }
 
-func convertActivityStatesToStrings(states []ActivityState) []string {
+func convertActivityStatesToStrings(states []runtime.ActivityState) []string {
 	result := make([]string, 0)
 	for _, s := range states {
 		result = append(result, string(s))
@@ -158,7 +158,7 @@ func convertActivityStatesToStrings(states []ActivityState) []string {
 	return result
 }
 
-func convertTimerStatesToStrings(states []TimerState) []string {
+func convertTimerStatesToStrings(states []runtime.TimerState) []string {
 	result := make([]string, 0)
 	for _, s := range states {
 		result = append(result, string(s))
@@ -166,7 +166,7 @@ func convertTimerStatesToStrings(states []TimerState) []string {
 	return result
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey *int64, processInstance *processInstanceInfo, elementId *string, state ...ActivityState) []*MessageSubscription {
+func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originActivityKey *int64, processInstance *processInstanceInfo, elementId *string, state ...runtime.ActivityState) []*runtime.MessageSubscription {
 	states := convertActivityStatesToStrings(state)
 	var pik *int64
 
@@ -180,7 +180,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 		return nil
 	}
 
-	resultSubscriptions := make([]*MessageSubscription, 0)
+	resultSubscriptions := make([]*runtime.MessageSubscription, 0)
 
 	for _, subscription := range subscriptions {
 
@@ -190,7 +190,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 			pi = persistence.FindProcessInstanceByKey(subscription.ProcessInstanceKey)
 		}
 
-		resultSubscriptions = append(resultSubscriptions, &MessageSubscription{
+		resultSubscriptions = append(resultSubscriptions, &runtime.MessageSubscription{
 			ElementId:          subscription.ElementID,
 			ElementInstanceKey: subscription.ElementInstanceKey,
 			ProcessKey:         subscription.ProcessDefinitionKey,
@@ -198,26 +198,26 @@ func (persistence *BpmnEnginePersistenceRqlite) FindMessageSubscription(originAc
 			Name:               subscription.Name,
 			MessageState:       reverseMap(activityStateMap)[subscription.State],
 			CreatedAt:          time.Unix(subscription.CreatedAt, 0),
-			originActivity:     constructOriginActivity(subscription.OriginActivityKey, subscription.OriginActivityState, subscription.OriginActivityID, pi.ProcessInfo),
-			baseElement:        bpmn20.FindFlowNodesById(&pi.ProcessInfo.definitions, subscription.ElementID)[0],
+			OriginActivity:     constructOriginActivity(subscription.OriginActivityKey, subscription.OriginActivityState, subscription.OriginActivityID, pi.ProcessInfo),
+			BaseElement:        bpmn20.FindFlowNodesById(&pi.ProcessInfo.Definitions, subscription.ElementID)[0],
 		})
 	}
 	return resultSubscriptions
 
 }
 
-func constructOriginActivity(originActivityKey int64, originActivityState int, originActivityId string, process *ProcessInfo) activity {
+func constructOriginActivity(originActivityKey int64, originActivityState int, originActivityId string, process *runtime.ProcessDefinition) runtime.Activity {
 	activity := &elementActivity{
 		key:     originActivityKey,
 		state:   reverseMap(activityStateMap)[originActivityState],
-		element: bpmn20.FindFlowNodesById(&process.definitions, originActivityId)[0],
+		element: bpmn20.FindFlowNodesById(&process.Definitions, originActivityId)[0],
 	}
 
 	return activity
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *int64, processInstanceKey *int64, state ...TimerState) []*Timer {
+func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *int64, processInstanceKey *int64, state ...runtime.TimerState) []*runtime.Timer {
 	states := convertTimerStatesToStrings(state)
 	timers, err := persistence.rqlitePersistence.FindTimers(context.TODO(), originActivityKey, processInstanceKey, states)
 
@@ -226,10 +226,10 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *in
 		return nil
 	}
 
-	resultTimers := make([]*Timer, 0)
+	resultTimers := make([]*runtime.Timer, 0)
 	for _, timer := range timers {
 
-		resultTimers = append(resultTimers, &Timer{
+		resultTimers = append(resultTimers, &runtime.Timer{
 			ElementId:          timer.ElementID,
 			ElementInstanceKey: timer.ElementInstanceKey,
 			ProcessKey:         timer.ProcessDefinitionKey,
@@ -245,7 +245,7 @@ func (persistence *BpmnEnginePersistenceRqlite) FindTimers(originActivityKey *in
 	return resultTimers
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobType *string, processInstance *processInstanceInfo, jobKey *int64, state ...ActivityState) []*job {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobType *string, processInstance *processInstanceInfo, jobKey *int64, state ...runtime.ActivityState) []*runtime.Job {
 	states := convertActivityStatesToStrings(state)
 	var processInstanceKey *int64
 	if processInstance != nil {
@@ -259,10 +259,10 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobT
 		return nil
 	}
 
-	resultJobs := make([]*job, 0)
+	resultJobs := make([]*runtime.Job, 0)
 	for _, j := range jobs {
 		processInstance = persistence.FindProcessInstanceByKey(j.ProcessInstanceKey)
-		resultJob := &job{
+		resultJob := &runtime.Job{
 			ElementId:          j.ElementID,
 			ElementInstanceKey: j.ElementInstanceKey,
 			ProcessInstanceKey: j.ProcessInstanceKey,
@@ -273,18 +273,18 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobs(elementId *string, jobT
 
 		}
 
-		bes := bpmn20.FindFlowNodesById(&processInstance.ProcessInfo.definitions, resultJob.ElementId)
+		bes := bpmn20.FindFlowNodesById(&processInstance.ProcessInfo.Definitions, resultJob.ElementId)
 		if len(bes) == 0 {
 			continue
 		}
-		resultJob.baseElement = bes[0]
+		resultJob.BaseElement = bes[0]
 		resultJobs = append(resultJobs, resultJob)
 	}
 
 	return resultJobs
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job {
+func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *runtime.Job {
 	jobs := persistence.FindJobs(nil, nil, nil, &jobKey)
 
 	if len(jobs) == 0 {
@@ -296,15 +296,15 @@ func (persistence *BpmnEnginePersistenceRqlite) FindJobByKey(jobKey int64) *job 
 
 // WRITE
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(ctx context.Context, processDefinition *ProcessInfo) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewProcess(ctx context.Context, processDefinition *runtime.ProcessDefinition) error {
 
 	return persistence.rqlitePersistence.SaveNewProcess(ctx, sql.ProcessDefinition{
 		Key:              processDefinition.ProcessKey,
 		Version:          processDefinition.Version,
 		BpmnProcessID:    processDefinition.BpmnProcessId,
-		BpmnData:         processDefinition.bpmnData,
-		BpmnChecksum:     []byte(processDefinition.bpmnChecksum[:]),
-		BpmnResourceName: processDefinition.bpmnResourceName,
+		BpmnData:         processDefinition.BpmnData,
+		BpmnChecksum:     []byte(processDefinition.BpmnChecksum[:]),
+		BpmnResourceName: processDefinition.BpmnResourceName,
 	})
 
 }
@@ -329,7 +329,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(ctx conte
 		case *eventBasedGatewayActivity:
 			activityAdapters = append(activityAdapters, createEventBasedGatewayActivityAdapter(activity))
 		default:
-			panic(fmt.Sprintf("[invariant check] missing activity adapter for the type %T", a))
+			panic(fmt.Sprintf("[invariant check] missing Activity adapter for the type %T", a))
 		}
 	}
 
@@ -350,7 +350,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistProcessInstance(ctx conte
 
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ctx context.Context, subscription *MessageSubscription) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ctx context.Context, subscription *runtime.MessageSubscription) error {
 
 	ms :=
 		sql.MessageSubscription{
@@ -364,16 +364,16 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewMessageSubscription(ct
 			CreatedAt:            subscription.CreatedAt.Unix(),
 		}
 
-	if subscription.originActivity != nil {
-		ms.OriginActivityKey = subscription.originActivity.Key()
-		ms.OriginActivityState = activityStateMap[subscription.originActivity.State()]
-		ms.OriginActivityID = subscription.originActivity.Element().GetId()
+	if subscription.OriginActivity != nil {
+		ms.OriginActivityKey = subscription.OriginActivity.Key()
+		ms.OriginActivityState = activityStateMap[subscription.OriginActivity.State()]
+		ms.OriginActivityID = subscription.OriginActivity.Element().GetId()
 	}
 
 	return persistence.rqlitePersistence.SaveMessageSubscription(ctx, ms)
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(ctx context.Context, timer *Timer) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(ctx context.Context, timer *runtime.Timer) error {
 
 	return persistence.rqlitePersistence.SaveTimer(ctx, sql.Timer{
 		Key:                  timer.Key(),
@@ -388,7 +388,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistNewTimer(ctx context.Cont
 	})
 }
 
-func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, job *job) error {
+func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, job *runtime.Job) error {
 	return persistence.rqlitePersistence.SaveJob(ctx, sql.Job{
 		Key:                job.JobKey,
 		ElementID:          job.ElementId,
@@ -396,7 +396,7 @@ func (persistence *BpmnEnginePersistenceRqlite) PersistJob(ctx context.Context, 
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		State:              activityStateMap[job.JobState],
 		CreatedAt:          job.CreatedAt.Unix(),
-		Type:               job.baseElement.(bpmn20.TaskElement).GetTaskDefinitionType(),
+		Type:               job.BaseElement.(bpmn20.TaskElement).GetTaskDefinitionType(),
 	})
 
 }
@@ -405,18 +405,18 @@ func (persistence *BpmnEnginePersistenceRqlite) GetPersistence() *rqlite.Persist
 	return persistence.rqlitePersistence
 }
 
-var activityStateMap = map[ActivityState]int{
-	Active:       1,
-	Compensated:  2,
-	Compensating: 3,
-	Completed:    4,
-	Completing:   5,
-	Failed:       6,
-	Failing:      7,
-	Ready:        8,
-	Terminated:   9,
-	Terminating:  10,
-	Withdrawn:    11,
+var activityStateMap = map[runtime.ActivityState]int{
+	runtime.Active:       1,
+	runtime.Compensated:  2,
+	runtime.Compensating: 3,
+	runtime.Completed:    4,
+	runtime.Completing:   5,
+	runtime.Failed:       6,
+	runtime.Failing:      7,
+	runtime.Ready:        8,
+	runtime.Terminated:   9,
+	runtime.Terminating:  10,
+	runtime.Withdrawn:    11,
 }
 
 // reverse the map
@@ -428,8 +428,8 @@ func reverseMap[K comparable, V comparable](m map[K]V) map[V]K {
 	return rm
 }
 
-var timerStateMap = map[TimerState]int{
-	TimerCreated:   1,
-	TimerTriggered: 2,
-	TimerCancelled: 3,
+var timerStateMap = map[runtime.TimerState]int{
+	runtime.TimerCreated:   1,
+	runtime.TimerTriggered: 2,
+	runtime.TimerCancelled: 3,
 }

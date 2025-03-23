@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -33,7 +34,7 @@ func jobCompleteHandler(job ActivatedJob) {
 }
 
 func Test_job_implements_Activity(t *testing.T) {
-	var _ activity = &job{}
+	var _ runtime.Activity = &runtime.Job{}
 }
 
 func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
@@ -44,7 +45,7 @@ func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
-	then.AssertThat(t, instance.State, is.EqualTo(Active))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Active))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -61,7 +62,7 @@ func Test_simple_count_loop(t *testing.T) {
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, vars)
 
 	then.AssertThat(t, instance.GetVariable(varCounter), is.EqualTo(4.0))
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -96,12 +97,12 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 
 	then.AssertThat(t, instance.GetVariable(varHasReachedMaxAttempts), is.True())
 	then.AssertThat(t, instance.GetVariable(varEngineValidationAttempts), is.EqualTo(2))
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
 
 	// internal State expected
 	then.AssertThat(t, bpmnEngine.GetMessageSubscriptions(), has.Length(2))
-	then.AssertThat(t, bpmnEngine.GetMessageSubscriptions()[0].MessageState, is.EqualTo(Completed))
-	then.AssertThat(t, bpmnEngine.GetMessageSubscriptions()[1].MessageState, is.EqualTo(Completed))
+	then.AssertThat(t, bpmnEngine.GetMessageSubscriptions()[0].MessageState, is.EqualTo(runtime.Completed))
+	then.AssertThat(t, bpmnEngine.GetMessageSubscriptions()[1].MessageState, is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -121,7 +122,7 @@ func Test_activated_job_data(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
-	then.AssertThat(t, instance.State, is.EqualTo(Active))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Active))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -143,7 +144,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 
 	// then
 	for _, job := range bpmnEngine.persistence.FindJobs(nil, nil, pi, nil) {
-		then.AssertThat(t, job.JobState, is.EqualTo(Completed))
+		then.AssertThat(t, job.JobState, is.EqualTo(runtime.Completed))
 	}
 	then.AssertThat(t, cp.CallPath, is.EqualTo("service-task-1,user-task-2"))
 	// id from input should not exist in instance scope
@@ -176,8 +177,8 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
 	then.AssertThat(t, pi.GetVariable("id"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, nil, pi, nil)[0].JobState, is.EqualTo(Failed))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Failed))
+	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, nil, pi, nil)[0].JobState, is.EqualTo(runtime.Failed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Failed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -199,8 +200,8 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("invalid-output"))
 	then.AssertThat(t, pi.GetVariable("order"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, nil, pi, nil)[0].JobState, is.EqualTo(Failed))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Failed))
+	then.AssertThat(t, bpmnEngine.persistence.FindJobs(nil, nil, pi, nil)[0].JobState, is.EqualTo(runtime.Failed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Failed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -224,7 +225,7 @@ func Test_task_type_handler(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id"))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Completed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -257,7 +258,7 @@ func Test_task_type_handler_ID_handler_has_precedence(t *testing.T) {
 
 	// then
 	then.AssertThat(t, calledHandler, is.EqualTo("ID"))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Completed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -283,7 +284,7 @@ func Test_just_one_handler_called(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id").Reason("just one execution"))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Completed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -308,7 +309,7 @@ func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
 
 	// then
 	then.AssertThat(t, cp.CallPath, is.EqualTo("assignee-task,group-task"))
-	then.AssertThat(t, pi.GetState(), is.EqualTo(Completed))
+	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
 
 	// cleanup
 	bpmnEngine.Stop()
@@ -324,7 +325,7 @@ func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T
 	})
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
 
 	then.AssertThat(t, instance.GetVariable("aVariable"), is.True())
 
@@ -345,7 +346,7 @@ func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
 	})
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, instance.State, is.EqualTo(Active))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Active))
 
 	then.AssertThat(t, instance.GetVariable("aVariable"), is.Nil())
 
@@ -367,7 +368,7 @@ func Test_task_just_declared_output_variables_map_to_process_instance(t *testing
 	})
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
 
 	then.AssertThat(t, instance.GetVariable("valueFromHandler"), is.True())
 	then.AssertThat(t, instance.GetVariable("otherVariable"), is.Nil())
@@ -389,7 +390,7 @@ func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *te
 	bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.State, is.EqualTo(Active))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Active))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1"))
 
 	// when
@@ -397,7 +398,7 @@ func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *te
 	bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 	instance, err = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 	then.AssertThat(t, instance, is.Not(is.Nil()))
-	then.AssertThat(t, instance.State, is.EqualTo(Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
 
 	// then
 	then.AssertThat(t, err, is.Nil())

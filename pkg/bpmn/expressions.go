@@ -3,7 +3,7 @@ package bpmn
 import (
 	"github.com/pbinitiative/feel"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"strings"
 )
 
@@ -23,13 +23,13 @@ func evaluateExpression(expression string, variableContext map[string]interface{
 	return res, err
 }
 
-func evaluateLocalVariables(varHolder *var_holder.VariableHolder, mappings []extensions.TIoMapping) error {
+func evaluateLocalVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping) error {
 	return mapVariables(varHolder, mappings, func(key string, value interface{}) {
 		varHolder.SetVariable(key, value)
 	})
 }
 
-func propagateProcessInstanceVariables(varHolder *var_holder.VariableHolder, mappings []extensions.TIoMapping) error {
+func propagateProcessInstanceVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping) error {
 	if len(mappings) == 0 {
 		for k, v := range varHolder.Variables() {
 			varHolder.PropagateVariable(k, v)
@@ -40,7 +40,7 @@ func propagateProcessInstanceVariables(varHolder *var_holder.VariableHolder, map
 	})
 }
 
-func mapVariables(varHolder *var_holder.VariableHolder, mappings []extensions.TIoMapping, setVarFunc func(key string, value interface{})) error {
+func mapVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping, setVarFunc func(key string, value interface{})) error {
 	for _, mapping := range mappings {
 		evalResult, err := evaluateExpression(mapping.Source, varHolder.Variables())
 		if err != nil {

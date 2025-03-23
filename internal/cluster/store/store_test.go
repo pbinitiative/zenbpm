@@ -151,13 +151,17 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error waiting for leader: %s", err)
 	}
-	testNode, ok := s.state.Nodes[testNodeId]
-	if !ok {
-		t.Fatalf("expected testNode was not found in the store")
-	}
-	if testNode.State != NodeState(proto.NodeState_NODE_STATE_ERROR) {
-		t.Fatalf("testNode is in a wrong state")
-	}
+	// wait until fsm applies the log to the state
+	testPoll(t, func() bool {
+		testNode, ok := s.state.Nodes[testNodeId]
+		if !ok {
+			t.Error("expected testNode was not found in the store")
+		}
+		if testNode.State != NodeState(proto.NodeState_NODE_STATE_ERROR) {
+			t.Error("testNode is in a wrong state")
+		}
+		return true
+	}, 100*time.Millisecond, 5*time.Second)
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot

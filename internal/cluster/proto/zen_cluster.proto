@@ -49,6 +49,7 @@ message JoinResponse {
 	string leader = 2;
 }
 
+// TODO: implement missing messages when needed by cluster communication
 message PartitionRestoreRequest{}
 message PartitionRestoreResponse{}
 message PartitionBackupRequest{}

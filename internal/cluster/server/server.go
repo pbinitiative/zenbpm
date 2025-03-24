@@ -111,26 +111,33 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 }
 
 func (s *Server) ClusterBackup(ctx context.Context, req *proto.ClusterBackupRequest) (*proto.ClusterBackupResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 
 func (s *Server) ClusterRestore(ctx context.Context, req *proto.ClusterRestoreRequest) (*proto.ClusterRestoreResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 
 func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartitionRequest) (*proto.AssignPartitionResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 func (s *Server) PartitionBackup(ctx context.Context, req *proto.PartitionBackupRequest) (*proto.PartitionBackupResponse, error) {
+	// TODO: implement
 	return nil, nil
 }
 func (s *Server) PartitionRestore(ctx context.Context, req *proto.PartitionRestoreRequest) (*proto.PartitionRestoreResponse, error) {
+	// TODO: implement
 	return nil, nil
 }

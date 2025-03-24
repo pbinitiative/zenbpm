@@ -83,7 +83,7 @@ func ResetStats() {
 }
 
 type Store struct {
-	config Config
+	cfg Config
 
 	open *atomic.Bool
 
@@ -92,8 +92,8 @@ type Store struct {
 	bootstrapped    bool
 	notifyingNodes  map[string]raft.Server
 
-	mu     sync.Mutex
-	boltDB *raftboltdb.BoltStore
+	stateMu sync.Mutex
+	boltDB  *raftboltdb.BoltStore
 
 	layer  *tcp.Layer
 	raftTn *raft.NetworkTransport
@@ -153,8 +153,8 @@ func DefaultConfig(c config.Cluster) Config {
 // The store is in closed state and needs to be opened by calling Open before usage.
 func New(layer *tcp.Layer, c Config) *Store {
 	s := &Store{
-		config:  c,
-		mu:      sync.Mutex{},
+		cfg:     c,
+		stateMu: sync.Mutex{},
 		boltDB:  &raftboltdb.BoltStore{},
 		raft:    &raft.Raft{},
 		logger:  hclog.Default().Named("zenbpm-store"),
@@ -186,14 +186,14 @@ func (s *Store) Open() (retErr error) {
 	s.logger.Info(fmt.Sprintf("opening store with node ID %s, listening on %s", s.raftID, s.layer.Addr().String()))
 
 	// Setup Raft configuration.
-	config := raft.DefaultConfig()
-	config.LocalID = raft.ServerID(s.raftID)
+	cfg := raft.DefaultConfig()
+	cfg.LocalID = raft.ServerID(s.raftID)
 
 	// Create Raft-compatible network layer.
 	s.raftTn = raft.NewNetworkTransport(NewTransport(s.layer), connectionPoolCount, connectionTimeout, nil)
 
 	// Create the snapshot store. This allows the Raft to truncate the log.
-	snapshots, err := raft.NewFileSnapshotStore(s.config.RaftDir, s.config.RetainSnapshotCount, os.Stderr)
+	snapshots, err := raft.NewFileSnapshotStore(s.cfg.RaftDir, s.cfg.RetainSnapshotCount, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("file snapshot store: %s", err)
 	}
@@ -202,7 +202,7 @@ func (s *Store) Open() (retErr error) {
 	var logStore raft.LogStore
 	var stableStore raft.StableStore
 	boltDB, err := raftboltdb.New(raftboltdb.Options{
-		Path: filepath.Join(s.config.RaftDir, "raft.db"),
+		Path: filepath.Join(s.cfg.RaftDir, "raft.db"),
 	})
 	if err != nil {
 		return fmt.Errorf("new bbolt store: %s", err)
@@ -212,7 +212,7 @@ func (s *Store) Open() (retErr error) {
 	stableStore = s.boltStore
 
 	// Instantiate the Raft systems.
-	ra, err := raft.NewRaft(config, NewFSM(s), logStore, stableStore, snapshots, s.raftTn)
+	ra, err := raft.NewRaft(cfg, NewFSM(s), logStore, stableStore, snapshots, s.raftTn)
 	if err != nil {
 		return fmt.Errorf("new raft: %s", err)
 	}
@@ -288,7 +288,7 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 		f = s.raft.AddNonvoter(raft.ServerID(id), raft.ServerAddress(addr), 0, 0)
 	}
 	if e := f.(raft.Future); e.Error() != nil {
-		if e.Error() == raft.ErrNotLeader {
+		if errors.Is(e.Error(), raft.ErrNotLeader) {
 			return ErrNotLeader
 		}
 		return e.Error()
@@ -599,7 +599,7 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal NodeChange message before applying to log: %w", err)
 	}
-	f := s.raft.Apply(b, s.config.RaftTimeout)
+	f := s.raft.Apply(b, s.cfg.RaftTimeout)
 	if f.Error() != nil && f.Response() != nil {
 		return fmt.Errorf("failed to apply NodeChange message to raft log: %w", f.Error())
 	}
@@ -617,7 +617,7 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal NodePartitionChange message before applying to log: %w", err)
 	}
-	f := s.raft.Apply(b, s.config.RaftTimeout)
+	f := s.raft.Apply(b, s.cfg.RaftTimeout)
 	if f.Error() != nil && f.Response() != nil {
 		return fmt.Errorf("failed to apply NodePartitionChange message to raft log: %w", f.Error())
 	}
@@ -691,14 +691,14 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 						break
 					}
 
-					if s.config.NodeHearbeatShutdownTimeout > 0 && dur > s.config.NodeHearbeatShutdownTimeout {
+					if s.cfg.NodeHearbeatShutdownTimeout > 0 && dur > s.cfg.NodeHearbeatShutdownTimeout {
 						if err = s.shutdownNode(signal.PeerID); err == nil {
 							s.logger.Info(fmt.Sprintf("node %s was shutdown in the state", signal.PeerID))
 						}
 					}
 
-					if (isReadOnly && s.config.ReapReadOnlyTimeout > 0 && dur > s.config.ReapReadOnlyTimeout) ||
-						(!isReadOnly && s.config.ReapTimeout > 0 && dur > s.config.ReapTimeout) {
+					if (isReadOnly && s.cfg.ReapReadOnlyTimeout > 0 && dur > s.cfg.ReapReadOnlyTimeout) ||
+						(!isReadOnly && s.cfg.ReapTimeout > 0 && dur > s.cfg.ReapTimeout) {
 						pn := "voting node"
 						if isReadOnly {
 							pn = "non-voting node"

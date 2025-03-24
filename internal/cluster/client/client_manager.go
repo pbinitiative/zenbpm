@@ -65,8 +65,6 @@ func (c *ClientManager) PartitionLeader(partition uint32) (proto.ZenServiceClien
 }
 
 func (c *ClientManager) newClient(nodeId string, nodeAddr string) (proto.ZenServiceClient, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	dialer := network.NewZenBpmClusterDialer()
 	grpcClient, err := grpc.NewClient(nodeAddr, grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 		return dialer.Dial(s, dialTimeout)
@@ -74,6 +72,8 @@ func (c *ClientManager) newClient(nodeId string, nodeAddr string) (proto.ZenServ
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new GRPC client")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	zsc := proto.NewZenServiceClient(grpcClient)
 	c.activeClients[nodeId] = zsc
 	return zsc, nil

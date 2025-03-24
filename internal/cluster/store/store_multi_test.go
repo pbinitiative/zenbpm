@@ -79,7 +79,7 @@ func Test_MultiNode_VerifyLeader(t *testing.T) {
 	}
 }
 
-// Test_MultiNodeSimple tests that a the core operation of a multi-node
+// Test_MultiNodeSimple tests that the core operation of a multi-node
 // cluster works as expected. That is, with a two node cluster, writes
 // actually replicate, and reads are consistent.
 func Test_MultiNodeSimple(t *testing.T) {

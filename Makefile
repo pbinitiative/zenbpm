@@ -3,6 +3,9 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+OS ?= $(shell go env GOOS)
+ARCH ?= $(shell go env GOARCH)
+
 ##@ Build Dependencies
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
@@ -39,14 +42,28 @@ $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 	test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
 
+PROTOC_OS:=$(OS)
+PROTOC_ARCH:=-$(ARCH)
+ifeq ("$(ARCH)", "amd64")
+	PROTOC_ARCH=-x86_64
+endif
+ifeq ("$(OS)", "darwin")
+	PROTOC_OS:=osx
+else ifeq ("$(OS)", "windows")
+	PROTOC_OS:=win64
+	PROTOC_ARCH:=
+endif
+
 .PHONY: protoc
 protoc: $(PROTOC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
 $(PROTOC): $(LOCALBIN)
-	test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION) || \
-	{ curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip; \
-	unzip -p protoc-$(PROTOC_VERSION)-linux-x86_64.zip bin/protoc >$(LOCALBIN)/protoc; \
-	chmod +x $(LOCALBIN)/protoc; \
-	rm protoc-$(PROTOC_VERSION)-linux-x86_64.zip; }
+	$(shell test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION);)
+	if [ "$(.SHELLSTATUS)" = "1" ]; then \
+		curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip; \
+		unzip -p protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip bin/protoc >$(LOCALBIN)/protoc; \
+		chmod +x $(LOCALBIN)/protoc; \
+		rm protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip; \
+	fi
 	
 
 ##@ General

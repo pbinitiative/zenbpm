@@ -40,30 +40,30 @@ type ZenPartitionNode struct {
 	logger          hclog.Logger
 }
 
-func (partitionNode *ZenPartitionNode) RegisterStatus(key string, stat httpd.StatusReporter) error {
-	partitionNode.statusMu.Lock()
-	defer partitionNode.statusMu.Unlock()
+func (zpn *ZenPartitionNode) RegisterStatus(key string, stat httpd.StatusReporter) error {
+	zpn.statusMu.Lock()
+	defer zpn.statusMu.Unlock()
 
-	if _, ok := partitionNode.statuses[key]; ok {
+	if _, ok := zpn.statuses[key]; ok {
 		return fmt.Errorf("status already registered with key %s", key)
 	}
-	partitionNode.statuses[key] = stat
+	zpn.statuses[key] = stat
 
 	return nil
 }
 
-func (partitionNode *ZenPartitionNode) IsLeader(ctx context.Context) bool {
-	return partitionNode.store.IsLeader()
+func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
+	return zpn.store.IsLeader()
 }
 
 // Execute an SQL statement on rqlite partition
-func (partitionNode *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return partitionNode.store.Execute(req)
+func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
+	return zpn.store.Execute(req)
 }
 
 // Run an SQL query on rqlite partition
-func (partitionNode *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return partitionNode.store.Query(req)
+func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
+	return zpn.store.Query(req)
 }
 
 func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite, partition uint32) (*ZenPartitionNode, error) {
@@ -162,7 +162,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes %w", err)
 	}
-	if err := zpn.createPartitionCluster(ctx, cfg, len(nodes) > 0, &zpn); err != nil {
+	if err := zpn.createPartitionCluster(ctx, cfg, len(nodes) > 0); err != nil {
 		return nil, fmt.Errorf("clustering failure: %w", err)
 	}
 
@@ -348,7 +348,7 @@ func (zpn *ZenPartitionNode) createClusterClient(cfg *config.RqLite, clstr *clus
 	return clstrClient, nil
 }
 
-func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool, partitionNode *ZenPartitionNode) error {
+func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *config.RqLite, hasPeers bool) error {
 	joins := cfg.JoinAddresses()
 	if err := zpn.networkCheckJoinAddrs(joins); err != nil {
 		return err
@@ -360,7 +360,7 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 
 		// Brand new node, told to bootstrap itself. So do it.
 		zpn.logger.Info("bootstrapping single new node")
-		if err := partitionNode.store.Bootstrap(store.NewServer(partitionNode.store.ID(), cfg.RaftAdv, true)); err != nil {
+		if err := zpn.store.Bootstrap(store.NewServer(zpn.store.ID(), cfg.RaftAdv, true)); err != nil {
 			return fmt.Errorf("failed to bootstrap single new node: %s", err.Error())
 		}
 		return nil
@@ -368,16 +368,16 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 
 	// Prepare definition of being part of a cluster.
 	bootDoneFn := func() bool {
-		leader, _ := partitionNode.store.LeaderAddr()
+		leader, _ := zpn.store.LeaderAddr()
 		return leader != ""
 	}
 	clusterSuf := cluster.VoterSuffrage(!cfg.RaftNonVoter)
 
-	joiner := cluster.NewJoiner(partitionNode.clusterClient, cfg.JoinAttempts, cfg.JoinInterval)
-	joiner.SetCredentials(cluster.CredentialsFor(partitionNode.credentialStore, cfg.JoinAs))
+	joiner := cluster.NewJoiner(zpn.clusterClient, cfg.JoinAttempts, cfg.JoinInterval)
+	joiner.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
 	if joins != nil && cfg.BootstrapExpect == 0 {
 		// Explicit join operation requested, so do it.
-		j, err := joiner.Do(ctx, joins, partitionNode.store.ID(), cfg.RaftAdv, clusterSuf)
+		j, err := joiner.Do(ctx, joins, zpn.store.ID(), cfg.RaftAdv, clusterSuf)
 		if err != nil {
 			return fmt.Errorf("failed to join cluster: %s", err.Error())
 		}
@@ -387,9 +387,9 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 
 	if joins != nil && cfg.BootstrapExpect > 0 {
 		// Bootstrap with explicit join addresses requests.
-		bs := cluster.NewBootstrapper(cluster.NewAddressProviderString(joins), partitionNode.clusterClient)
-		bs.SetCredentials(cluster.CredentialsFor(partitionNode.credentialStore, cfg.JoinAs))
-		return bs.Boot(ctx, partitionNode.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
+		bs := cluster.NewBootstrapper(cluster.NewAddressProviderString(joins), zpn.clusterClient)
+		bs.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
+		return bs.Boot(ctx, zpn.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
 	}
 
 	if cfg.DiscoMode == "" {
@@ -430,20 +430,20 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 			provider = dnssrv.New(dnssrvCfg)
 		}
 
-		bs := cluster.NewBootstrapper(provider, partitionNode.clusterClient)
-		bs.SetCredentials(cluster.CredentialsFor(partitionNode.credentialStore, cfg.JoinAs))
-		partitionNode.RegisterStatus("disco", provider)
-		return bs.Boot(ctx, partitionNode.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
+		bs := cluster.NewBootstrapper(provider, zpn.clusterClient)
+		bs.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
+		zpn.RegisterStatus("disco", provider)
+		return bs.Boot(ctx, zpn.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
 
 	case config.DiscoModeEtcdKV, config.DiscoModeConsulKV:
-		discoService, err := zpn.createDiscoService(cfg, partitionNode.store)
+		discoService, err := zpn.createDiscoService(cfg, zpn.store)
 		if err != nil {
 			return fmt.Errorf("failed to start discovery service: %s", err.Error())
 		}
 		// Safe to start reporting before doing registration. If the node hasn't bootstrapped
 		// yet, or isn't leader, reporting will just be a no-op until something changes.
 		go discoService.StartReporting(cfg.NodeID, cfg.HTTPURL(), cfg.RaftAdv)
-		partitionNode.RegisterStatus("disco", discoService)
+		zpn.RegisterStatus("disco", discoService)
 
 		if hasPeers {
 			zpn.logger.Info("preexisting node configuration detected, not registering with discovery service")
@@ -451,23 +451,23 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 		}
 		zpn.logger.Info("no preexisting nodes, registering with discovery service")
 
-		leader, addr, err := discoService.Register(partitionNode.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
+		leader, addr, err := discoService.Register(zpn.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
 		if err != nil {
 			return fmt.Errorf("failed to register with discovery service: %s", err.Error())
 		}
 		if leader {
 			zpn.logger.Info("node registered as leader using discovery service")
-			if err := partitionNode.store.Bootstrap(store.NewServer(partitionNode.store.ID(), partitionNode.store.Addr(), true)); err != nil {
+			if err := zpn.store.Bootstrap(store.NewServer(zpn.store.ID(), zpn.store.Addr(), true)); err != nil {
 				return fmt.Errorf("failed to bootstrap single new node: %s", err.Error())
 			}
 		} else {
 			for {
 				zpn.logger.Info("discovery service returned %s as join address", addr)
-				if j, err := joiner.Do(ctx, []string{addr}, partitionNode.store.ID(), cfg.RaftAdv, clusterSuf); err != nil {
+				if j, err := joiner.Do(ctx, []string{addr}, zpn.store.ID(), cfg.RaftAdv, clusterSuf); err != nil {
 					zpn.logger.Info("failed to join cluster at %s: %s", addr, err.Error())
 
 					time.Sleep(time.Second)
-					_, addr, err = discoService.Register(partitionNode.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
+					_, addr, err = discoService.Register(zpn.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
 					if err != nil {
 						zpn.logger.Info(fmt.Sprintf("failed to get updated leader: %s", err.Error()))
 					}

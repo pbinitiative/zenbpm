@@ -29,7 +29,7 @@ type Cluster struct {
 	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_BOOTSTRAP_EXPECT"`
 	// Bootstrap
 	Bootstrap bool    `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_BOOTSTRAP"`
-	RaftAddr  string  `yaml:"raftAddress" json:"raftAddress" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
+	RaftAddr  string  `yaml:"raftAddr" json:"raftAddr" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
 	RaftDir   string  `yaml:"raftDir" json:"raftDir" env:"CLUSTER_RAFT_DIR"`
 	NodeId    string  `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID"`
 	RqLite    *RqLite `yaml:"rqlite" json:"rqlite"`

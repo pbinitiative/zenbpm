@@ -3,5 +3,5 @@ server:
   context: /
   port: :8080
 cluster:
-  raftAddress: :8090
+  raftAddr: :8090
   nodeId: node-1

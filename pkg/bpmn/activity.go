@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -111,7 +112,7 @@ func (ga *gatewayActivity) Element() bpmn20.FlowNode {
 
 func (ga *gatewayActivity) AreInboundFlowsCompleted() bool {
 	for _, association := range ga.element.GetIncomingAssociation() {
-		if !contains(ga.inboundFlowIdsCompleted, association) {
+		if !slices.Contains(ga.inboundFlowIdsCompleted, association) {
 			return false
 		}
 	}

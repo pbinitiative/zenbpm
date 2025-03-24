@@ -63,11 +63,3 @@ func TestInMemoryStorage_SaveProcessInstance_and_FindByKey(t *testing.T) {
 		then.AssertThat(t, definitions, has.Length(1))
 	}
 }
-
-func Test_contains(t *testing.T) {
-	containsB := contains([]string{"a", "b", "c"}, "b")
-	then.AssertThat(t, containsB, is.True())
-
-	containsX := contains([]string{"a", "b", "c"}, "x")
-	then.AssertThat(t, containsX, is.False())
-}

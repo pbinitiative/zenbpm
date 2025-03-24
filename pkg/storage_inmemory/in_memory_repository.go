@@ -3,6 +3,7 @@ package storage_inmemory
 import (
 	"context"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"slices"
 	"sort"
 )
 
@@ -22,7 +23,7 @@ func New() InMemoryStorage {
 
 func (mem *InMemoryStorage) FindProcessDefinitionsById(ctx context.Context, processIds ...string) (definitions []storage.ProcessDefinition, err error) {
 	for _, d := range mem.processDefinitions {
-		if contains(processIds, d.BpmnProcessId()) {
+		if slices.Contains(processIds, d.BpmnProcessId()) {
 			definitions = append(definitions, d)
 		}
 	}
@@ -45,7 +46,7 @@ func (mem *InMemoryStorage) SaveProcessDefinition(ctx context.Context, definitio
 
 func (mem *InMemoryStorage) FindProcessInstancesByKey(ctx context.Context, processInstanceKeys ...int64) (instances []storage.ProcessInstance, err error) {
 	for _, i := range mem.processInstances {
-		if contains(processInstanceKeys, i.InstanceKey()) {
+		if slices.Contains(processInstanceKeys, i.InstanceKey()) {
 			instances = append(instances, i)
 		}
 	}
@@ -61,13 +62,4 @@ func (mem *InMemoryStorage) SaveProcessInstance(ctx context.Context, processInst
 	}
 	mem.processInstances[processInstance.InstanceKey()] = processInstance
 	return nil
-}
-
-func contains[T comparable](elems []T, v T) bool {
-	for _, s := range elems {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

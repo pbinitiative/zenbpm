@@ -30,7 +30,7 @@ func NewInMemory() storage.PersistentStorageNew {
 
 func (mem *InMemoryStorage) FindProcessDefinitionsById(ctx context.Context, processIds ...string) (definitions []runtime.ProcessDefinition, err error) {
 	for _, d := range mem.processDefinitions {
-		if slices.Contains(processIds, d.BpmnProcessId()) {
+		if slices.Contains(processIds, d.BpmnProcessId) {
 			definitions = append(definitions, d)
 		}
 	}
@@ -47,7 +47,7 @@ func (mem *InMemoryStorage) SaveProcessDefinition(ctx context.Context, definitio
 
 func (mem *InMemoryStorage) FindProcessInstancesByKey(ctx context.Context, processInstanceKeys ...int64) (instances []runtime.ProcessInstance, err error) {
 	for _, i := range mem.processInstances {
-		if slices.Contains(processInstanceKeys, i.InstanceKey()) {
+		if slices.Contains(processInstanceKeys, i.GetInstanceKey()) {
 			instances = append(instances, i)
 		}
 	}

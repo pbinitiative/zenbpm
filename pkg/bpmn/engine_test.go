@@ -257,11 +257,11 @@ func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v1.Definitions.Process.Name, is.EqualTo("aName"))
 	// when
 	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v2.Definitions.Process.Name, is.EqualTo("aName"))
 
 	instance, err := bpmnEngine.CreateInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())
@@ -279,11 +279,11 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v1.Definitions.Process.Name, is.EqualTo("aName"))
 	// when
 	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.definitions.Process.Name, is.EqualTo("aName"))
+	then.AssertThat(t, v2.Definitions.Process.Name, is.EqualTo("aName"))
 
 	instance, err := bpmnEngine.CreateAndRunInstanceById("Simple_Task_Process", nil)
 	then.AssertThat(t, err, is.Nil())

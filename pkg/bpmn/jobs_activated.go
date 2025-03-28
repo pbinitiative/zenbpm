@@ -1,9 +1,8 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"time"
-
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
 // ActivatedJob is a struct to provide information for registered task handler
@@ -18,7 +17,7 @@ type activatedJob struct {
 	processDefinitionKey     int64
 	elementId                string
 	createdAt                time.Time
-	variableHolder           var_holder.VariableHolder
+	variableHolder           runtime.VariableHolder
 }
 
 // ActivatedJob represents an abstraction for the activated job
@@ -46,7 +45,7 @@ type ActivatedJob interface {
 	Variable(key string) interface{}
 
 	// Variables from the jobs instance's variable context
-	Variables() var_holder.VariableHolder
+	Variables() runtime.VariableHolder
 
 	// SetVariable in the variables context of the given process instance
 	SetVariable(key string, value interface{})
@@ -111,7 +110,7 @@ func (aj *activatedJob) Variable(key string) interface{} {
 	return aj.variableHolder.GetVariable(key)
 }
 
-func (aj *activatedJob) Variables() var_holder.VariableHolder {
+func (aj *activatedJob) Variables() runtime.VariableHolder {
 	return aj.variableHolder
 }
 

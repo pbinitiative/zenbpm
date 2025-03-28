@@ -2,13 +2,13 @@ package bpmn
 
 import (
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"strings"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/var_holder"
 )
 
-func (state *Engine) handleIntermediateThrowEvent(process *ProcessInfo, instance *processInstanceInfo, ite bpmn20.TIntermediateThrowEvent, activity activity) (nextCommands []command) {
+func (state *Engine) handleIntermediateThrowEvent(process *runtime.ProcessDefinition, instance *processInstanceInfo, ite bpmn20.TIntermediateThrowEvent, activity runtime.Activity) (nextCommands []command) {
 	linkName := ite.LinkEventDefinition.Name
 	if len(strings.TrimSpace(linkName)) == 0 {
 		nextCommands = []command{errorCommand{
@@ -17,9 +17,9 @@ func (state *Engine) handleIntermediateThrowEvent(process *ProcessInfo, instance
 			elementName: ite.Name,
 		}}
 	}
-	for _, ice := range process.definitions.Process.IntermediateCatchEvent {
+	for _, ice := range process.Definitions.Process.IntermediateCatchEvent {
 		if ice.LinkEventDefinition.Name == linkName {
-			elementVarHolder := var_holder.New(&instance.VariableHolder, nil)
+			elementVarHolder := runtime.New(&instance.VariableHolder, nil)
 			if err := propagateProcessInstanceVariables(&elementVarHolder, ite.Output); err != nil {
 				msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ite.Id, ite.Name)
 				nextCommands = []command{errorCommand{

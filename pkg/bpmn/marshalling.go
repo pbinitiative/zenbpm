@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"log"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -12,39 +13,39 @@ import (
 const CurrentSerializerVersion = 1
 
 type serializedBpmnEngine struct {
-	Version              int                    `json:"v"`
-	Name                 string                 `json:"n"`
-	ProcessReferences    []processInfoReference `json:"pr,omitempty"`
-	ProcessInstances     []*processInstanceInfo `json:"pi,omitempty"`
-	MessageSubscriptions []*MessageSubscription `json:"ms,omitempty"`
-	Timers               []*Timer               `json:"t,omitempty"`
-	Jobs                 []*job                 `json:"j,omitempty"`
+	Version              int
+	Name                 string
+	ProcessReferences    []processInfoReference
+	ProcessInstances     []*processInstanceInfo
+	MessageSubscriptions []*runtime.MessageSubscription
+	Timers               []*runtime.Timer
+	Jobs                 []*runtime.Job
 }
 
 type processInfoReference struct {
-	BpmnProcessId    string `json:"id"`           // The ID as defined in the BPMN file
-	ProcessKey       int64  `json:"pk"`           // The engines key for this given process with version
-	BpmnData         string `json:"d"`            // the raw BPMN XML data
-	BpmnResourceName string `json:"rn,omitempty"` // the resource's name
-	BpmnChecksum     string `json:"crc"`          // internal checksum to identify different versions
+	BpmnProcessId    string // The ID as defined in the BPMN file
+	ProcessKey       int64  // The engines key for this given process with version
+	BpmnData         string // the raw BPMN XML data
+	BpmnResourceName string // the resource's name
+	BpmnChecksum     string // internal checksum to identify different versions
 }
 
 type ProcessInstanceInfoAlias processInstanceInfo // FIXME: don't export
 type processInstanceInfoAdapter struct {
-	ProcessKey       int64              `json:"pk"`
-	ActivityAdapters []*activityAdapter `json:"a,omitempty"`
+	ProcessKey       int64
+	ActivityAdapters []*activityAdapter
 	*ProcessInstanceInfoAlias
 }
 
-type timerAlias Timer
+type timerAlias runtime.Timer
 type timerAdapter struct {
-	OriginActivitySurrogate activitySurrogate `json:"oas"`
+	OriginActivitySurrogate activitySurrogate
 	*timerAlias
 }
 
-type messageSubscriptionAlias MessageSubscription
+type messageSubscriptionAlias runtime.MessageSubscription
 type messageSubscriptionAdapter struct {
-	OriginActivitySurrogate activitySurrogate `json:"oas"`
+	OriginActivitySurrogate activitySurrogate
 	*messageSubscriptionAlias
 }
 
@@ -56,24 +57,26 @@ const (
 )
 
 type activityAdapter struct {
-	Type                      activityAdapterType `json:"t"`
-	Key                       int64               `json:"k"`
-	State                     ActivityState       `json:"s"`
-	ElementReference          string              `json:"e"`
-	Parallel                  bool                `json:"p,omitempty"` // from gatewayActivity
-	InboundFlowIdsCompleted   []string            `json:"i,omitempty"` // from gatewayActivity
-	OutboundActivityCompleted string              `json:"o,omitempty"` // from eventBasedGatewayActivity
+	Type                      activityAdapterType
+	Key                       int64
+	State                     runtime.ActivityState
+	ElementReference          string
+	Parallel                  bool     // from gatewayActivity
+	InboundFlowIdsCompleted   []string // from gatewayActivity
+	OutboundActivityCompleted string   // from eventBasedGatewayActivity
 }
 
 // activitySurrogate only exists to have a simple way of marshalling originActivities in MessageSubscription and Timer
+// Deprecated: should be replaced by storage.PersistentStorageNew
 // TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
 type activitySurrogate struct {
-	ActivityKey        int64         `json:"k"`
-	ActivityState      ActivityState `json:"s"`
-	ElementReferenceId string        `json:"e"`
+	ActivityKey        int64
+	ActivityState      runtime.ActivityState
+	ElementReferenceId string
 	elementReference   bpmn20.FlowNode
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 type baseElementPlaceholder struct {
 	id string
 }
@@ -103,6 +106,7 @@ func (b baseElementPlaceholder) GetType() bpmn20.ElementType {
 
 // ----------------------------------------------------------------------------
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 type activityPlaceholder struct {
 	key int64
 }
@@ -111,7 +115,7 @@ func (a activityPlaceholder) Key() int64 {
 	return a.key
 }
 
-func (a activityPlaceholder) State() ActivityState {
+func (a activityPlaceholder) State() runtime.ActivityState {
 	panic("the placeholder does not implement all methods, by intent")
 }
 
@@ -121,58 +125,59 @@ func (a activityPlaceholder) Element() bpmn20.FlowNode {
 
 // ----------------------------------------------------------------------------
 
-func (t *Timer) MarshalJSON() ([]byte, error) {
-	ta := &timerAdapter{
-		timerAlias: (*timerAlias)(t),
-	}
-	// TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
-	ta.OriginActivitySurrogate = activitySurrogate{
-		ActivityKey:        t.originActivity.Key(),
-		ActivityState:      t.originActivity.State(),
-		ElementReferenceId: t.originActivity.Element().GetId(),
-	}
-	return json.Marshal(ta)
-}
-
-func (t *Timer) UnmarshalJSON(data []byte) error {
-	ta := timerAdapter{
-		timerAlias: (*timerAlias)(t),
-	}
-	if err := json.Unmarshal(data, &ta); err != nil {
-		return err
-	}
-	t.originActivity = ta.OriginActivitySurrogate
-	return nil
-}
-
-// ----------------------------------------------------------------------------
-
-func (m *MessageSubscription) MarshalJSON() ([]byte, error) {
-	msa := &messageSubscriptionAdapter{
-		messageSubscriptionAlias: (*messageSubscriptionAlias)(m),
-	}
-	// TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
-	msa.OriginActivitySurrogate = activitySurrogate{
-		ActivityKey:        m.originActivity.Key(),
-		ActivityState:      m.originActivity.State(),
-		ElementReferenceId: m.originActivity.Element().GetId(),
-	}
-	return json.Marshal(msa)
-}
-
-func (m *MessageSubscription) UnmarshalJSON(data []byte) error {
-	msa := messageSubscriptionAdapter{
-		messageSubscriptionAlias: (*messageSubscriptionAlias)(m),
-	}
-	if err := json.Unmarshal(data, &msa); err != nil {
-		return err
-	}
-	m.originActivity = msa.OriginActivitySurrogate
-	return nil
-}
+//func (t *runtime.Timer) MarshalJSON() ([]byte, error) {
+//	ta := &timerAdapter{
+//		timerAlias: (*timerAlias)(t),
+//	}
+//	// TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
+//	ta.OriginActivitySurrogate = activitySurrogate{
+//		ActivityKey:        t.OriginActivity.Key(),
+//		ActivityState:      t.OriginActivity.State(),
+//		ElementReferenceId: t.OriginActivity.Element().GetId(),
+//	}
+//	return json.Marshal(ta)
+//}
+//
+//func (t *runtime.Timer) UnmarshalJSON(data []byte) error {
+//	ta := timerAdapter{
+//		timerAlias: (*timerAlias)(t),
+//	}
+//	if err := json.Unmarshal(data, &ta); err != nil {
+//		return err
+//	}
+//	t.OriginActivity = ta.OriginActivitySurrogate
+//	return nil
+//}
 
 // ----------------------------------------------------------------------------
 
+//func (m *runtime.MessageSubscription) MarshalJSON() ([]byte, error) {
+//	msa := &messageSubscriptionAdapter{
+//		messageSubscriptionAlias: (*messageSubscriptionAlias)(m),
+//	}
+//	// TODO see issue https://github.com/pbinitiative/zenbpm/issues/190
+//	msa.OriginActivitySurrogate = activitySurrogate{
+//		ActivityKey:        m.OriginActivity.Key(),
+//		ActivityState:      m.OriginActivity.State(),
+//		ElementReferenceId: m.OriginActivity.Element().GetId(),
+//	}
+//	return json.Marshal(msa)
+//}
+//
+//func (m *runtime.MessageSubscription) UnmarshalJSON(data []byte) error {
+//	msa := messageSubscriptionAdapter{
+//		messageSubscriptionAlias: (*messageSubscriptionAlias)(m),
+//	}
+//	if err := json.Unmarshal(data, &msa); err != nil {
+//		return err
+//	}
+//	m.OriginActivity = msa.OriginActivitySurrogate
+//	return nil
+//}
+
+// ----------------------------------------------------------------------------
+
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (pii *processInstanceInfo) MarshalJSON() ([]byte, error) {
 	piia := &processInstanceInfoAdapter{
 		ProcessKey:               pii.ProcessInfo.ProcessKey,
@@ -191,6 +196,7 @@ func (pii *processInstanceInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(piia)
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (pii *processInstanceInfo) UnmarshalJSON(data []byte) error {
 	adapter := &processInstanceInfoAdapter{
 		ProcessInstanceInfoAlias: (*ProcessInstanceInfoAlias)(pii),
@@ -198,11 +204,12 @@ func (pii *processInstanceInfo) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &adapter); err != nil {
 		return err
 	}
-	pii.ProcessInfo = &ProcessInfo{ProcessKey: adapter.ProcessKey}
+	pii.ProcessInfo = &runtime.ProcessDefinition{ProcessKey: adapter.ProcessKey}
 	recoverProcessInstanceActivitiesPart1(pii, adapter.ActivityAdapters)
 	return nil
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func createEventBasedGatewayActivityAdapter(ebga *eventBasedGatewayActivity) *activityAdapter {
 	aa := &activityAdapter{
 		Type:                      eventBasedGatewayActivityAdapterType,
@@ -214,6 +221,7 @@ func createEventBasedGatewayActivityAdapter(ebga *eventBasedGatewayActivity) *ac
 	return aa
 }
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func createGatewayActivityAdapter(ga *gatewayActivity) *activityAdapter {
 	aa := &activityAdapter{
 		Type:                    gatewayActivityAdapterType,
@@ -232,7 +240,7 @@ func (a activitySurrogate) Key() int64 {
 	return a.ActivityKey
 }
 
-func (a activitySurrogate) State() ActivityState {
+func (a activitySurrogate) State() runtime.ActivityState {
 	return a.ActivityState
 }
 
@@ -242,6 +250,7 @@ func (a activitySurrogate) Element() bpmn20.FlowNode {
 
 // ----------------------------------------------------------------------------
 
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func (state *Engine) Marshal() []byte {
 	m := serializedBpmnEngine{
 		Version:              CurrentSerializerVersion,
@@ -262,6 +271,7 @@ func (state *Engine) Marshal() []byte {
 // Unmarshal loads the data byte array and creates a new instance of the BPMN Engine
 // Will return an BpmnEngineUnmarshallingError, if there was an issue AND in case of error,
 // the engine return object is only partially initialized and likely not usable
+// Deprecated: should be replaced by storage.PersistentStorageNew
 func Unmarshal(data []byte) (Engine, error) {
 	eng := serializedBpmnEngine{}
 	err := json.Unmarshal(data, &eng)
@@ -352,7 +362,7 @@ func recoverProcessInstanceActivitiesPart1(pii *processInstanceInfo, activityAda
 
 func recoverProcessInstanceActivitiesPartWithBaseElements(pii *processInstanceInfo, activityAdapters []*activityAdapter) {
 	for _, aa := range activityAdapters {
-		bes := bpmn20.FindFlowNodesById(&pii.ProcessInfo.definitions, aa.ElementReference)
+		bes := bpmn20.FindFlowNodesById(&pii.ProcessInfo.Definitions, aa.ElementReference)
 		if len(bes) == 0 {
 			log.Printf("Could not find base element with id %s", aa.ElementReference)
 			continue
@@ -471,21 +481,21 @@ func recoverMessageSubscriptions(state *Engine) error {
 	return nil
 }
 
-func createReferences(processes []*ProcessInfo) (result []processInfoReference) {
+func createReferences(processes []*runtime.ProcessDefinition) (result []processInfoReference) {
 	for _, pi := range processes {
 		ref := processInfoReference{
 			BpmnProcessId:    pi.BpmnProcessId,
 			ProcessKey:       pi.ProcessKey,
-			BpmnData:         pi.bpmnData,
-			BpmnResourceName: pi.bpmnResourceName,
-			BpmnChecksum:     hex.EncodeToString(pi.bpmnChecksum[:]),
+			BpmnData:         pi.BpmnData,
+			BpmnResourceName: pi.BpmnResourceName,
+			BpmnChecksum:     hex.EncodeToString(pi.BpmnChecksum[:]),
 		}
 		result = append(result, ref)
 	}
 	return result
 }
 
-func (state *Engine) findProcess(processKey int64) *ProcessInfo {
+func (state *Engine) findProcess(processKey int64) *runtime.ProcessDefinition {
 	// for i := 0; i < len(state.processes); i++ {
 	// 	process := state.processes[i]
 	// 	if process.ProcessKey == processKey {

@@ -38,7 +38,7 @@ type TActivity struct {
 	TFlowNode
 	CompletionQuantity int  `xml:"completionQuantity,attr"`
 	IsForCompensation  bool `xml:"isForCompensation,attr"`
-	StartQuantity      int  `xml:"startQuantity,attr"`
+	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
 }
 type TTask struct {
 	TActivity

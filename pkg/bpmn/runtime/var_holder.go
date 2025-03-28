@@ -1,4 +1,4 @@
-package var_holder
+package runtime
 
 type VariableHolder struct {
 	parent    *VariableHolder

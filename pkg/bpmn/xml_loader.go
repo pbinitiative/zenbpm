@@ -8,6 +8,7 @@ import (
 	"encoding/ascii85"
 	"encoding/hex"
 	"encoding/xml"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"io"
 	"os"
 
@@ -16,7 +17,7 @@ import (
 
 // LoadFromFile loads a given BPMN file by filename into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (state *Engine) LoadFromFile(filename string) (*ProcessInfo, error) {
+func (state *Engine) LoadFromFile(filename string) (*runtime.ProcessDefinition, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -26,11 +27,11 @@ func (state *Engine) LoadFromFile(filename string) (*ProcessInfo, error) {
 
 // LoadFromBytes loads a given BPMN file by xmlData byte array into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (state *Engine) LoadFromBytes(xmlData []byte) (*ProcessInfo, error) {
+func (state *Engine) LoadFromBytes(xmlData []byte) (*runtime.ProcessDefinition, error) {
 	return state.load(xmlData, "")
 }
 
-func (state *Engine) load(xmlData []byte, resourceName string) (*ProcessInfo, error) {
+func (state *Engine) load(xmlData []byte, resourceName string) (*runtime.ProcessDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions bpmn20.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
@@ -38,18 +39,18 @@ func (state *Engine) load(xmlData []byte, resourceName string) (*ProcessInfo, er
 		return nil, err
 	}
 
-	processInfo := ProcessInfo{
+	processInfo := runtime.ProcessDefinition{
 		Version:          1,
 		BpmnProcessId:    definitions.Process.Id,
 		ProcessKey:       state.generateKey(),
-		definitions:      definitions,
-		bpmnData:         compressAndEncode(xmlData),
-		bpmnResourceName: resourceName,
-		bpmnChecksum:     md5sum,
+		Definitions:      definitions,
+		BpmnData:         compressAndEncode(xmlData),
+		BpmnResourceName: resourceName,
+		BpmnChecksum:     md5sum,
 	}
 	processes := state.FindProcessesById(definitions.Process.Id)
 	if len(processes) > 0 {
-		if areEqual(processes[0].bpmnChecksum, md5sum) {
+		if areEqual(processes[0].BpmnChecksum, md5sum) {
 			return processes[0], nil
 		}
 		processInfo.Version = processes[0].Version + 1

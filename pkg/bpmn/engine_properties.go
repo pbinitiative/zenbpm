@@ -3,7 +3,7 @@ package bpmn
 import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
@@ -12,22 +12,12 @@ type Engine struct {
 	// _processes            []*ProcessInfo
 	_processInstances []*processInstanceInfo
 	// _messageSubscriptions []*MessageSubscription
-	_jobs []*job
+	_jobs []*runtime.Job
 	// _timers               []*Timer
 	taskHandlers []*taskHandler
 	exporters    []exporter.EventExporter
 	snowflake    *snowflake.Node
 	persistence  BpmnEnginePersistenceService
-}
-
-type ProcessInfo struct {
-	BpmnProcessId    string              // The ID as defined in the BPMN file
-	Version          int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
-	ProcessKey       int64               // The engines key for this given process with version
-	definitions      bpmn20.TDefinitions // parsed file content
-	bpmnData         string              // the raw source data, compressed and encoded via ascii85
-	bpmnResourceName string              // some name for the resource
-	bpmnChecksum     [16]byte            // internal checksum to identify different versions
 }
 
 // // ProcessInstances returns the list of process instances
@@ -50,7 +40,7 @@ func (state *Engine) Name() string {
 
 // FindProcessesById returns all registered processes with given ID
 // result array is ordered by version number, from 1 (first) and largest version (last)
-func (state *Engine) FindProcessesById(id string) (infos []*ProcessInfo) {
+func (state *Engine) FindProcessesById(id string) (infos []*runtime.ProcessDefinition) {
 	processes := state.persistence.FindProcessesById(id)
 	return processes
 }
@@ -61,11 +51,11 @@ func (state *Engine) checkExclusiveGatewayDone(activity eventBasedGatewayActivit
 	}
 
 	// cancel other activities started by this one
-	for _, ms := range state.persistence.FindMessageSubscription(ptr.To(activity.Key()), nil, nil, Active) {
-		ms.MessageState = Withdrawn
+	for _, ms := range state.persistence.FindMessageSubscription(ptr.To(activity.Key()), nil, nil, runtime.Active) {
+		ms.MessageState = runtime.Withdrawn
 	}
-	for _, t := range state.persistence.FindTimers(ptr.To(activity.Key()), nil, TimerCreated) {
-		t.TimerState = TimerCancelled
+	for _, t := range state.persistence.FindTimers(ptr.To(activity.Key()), nil, runtime.TimerCreated) {
+		t.TimerState = runtime.TimerCancelled
 	}
 }
 

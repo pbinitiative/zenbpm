@@ -3,8 +3,9 @@ package bpmn
 import (
 	"context"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -27,7 +28,7 @@ func (state *Engine) PublishEventForInstance(processInstanceKey int64, messageNa
 			IsConsumed: false,
 		}
 		processInstance.CaughtEvents = append(processInstance.CaughtEvents, event)
-		state.persistence.PersistProcessInstance(context.TODO(), processInstance)
+		state.persistence.SaveProcessInstance(context.TODO(), processInstance)
 	} else {
 		return fmt.Errorf("no process instance with key=%d found", processInstanceKey)
 	}
@@ -37,13 +38,16 @@ func (state *Engine) PublishEventForInstance(processInstanceKey int64, messageNa
 // GetMessageSubscriptions the list of message subscriptions
 // hint: each intermediate message catch event, will create such an active subscription,
 // when a processes instance reaches such an element.
-func (state *Engine) GetMessageSubscriptions() []runtime.MessageSubscription {
-	messageSubscriptions := state.persistence.FindMessageSubscription(nil, nil, nil)
+func (state *Engine) GetMessageSubscriptions() ([]runtime.MessageSubscription, error) {
+	messageSubscriptions, err := state.persistence.FindMessageSubscription(context.TODO(), nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve message subscriptions: %w", err)
+	}
 	subscriptions := make([]runtime.MessageSubscription, len(messageSubscriptions))
 	for i, ms := range messageSubscriptions {
-		subscriptions[i] = *ms
+		subscriptions[i] = ms
 	}
-	return subscriptions
+	return subscriptions, nil
 }
 
 // GetTimersScheduled the list of all scheduled timers in the engine

@@ -1,24 +1,9 @@
 package bpmn
 
 import (
-	"github.com/bwmarrin/snowflake"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
-
-type Engine struct {
-	name string
-	// _processes            []*ProcessInfo
-	_processInstances []*processInstanceInfo
-	// _messageSubscriptions []*MessageSubscription
-	_jobs []*runtime.Job
-	// _timers               []*Timer
-	taskHandlers []*taskHandler
-	exporters    []exporter.EventExporter
-	snowflake    *snowflake.Node
-	persistence  BpmnEnginePersistenceService
-}
 
 // // ProcessInstances returns the list of process instances
 // // Hint: completed instances are prone to be removed from the list,

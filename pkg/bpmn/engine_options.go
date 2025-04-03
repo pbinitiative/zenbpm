@@ -3,7 +3,6 @@ package bpmn
 import (
 	"fmt"
 
-	"github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	rqliteExporter "github.com/pbinitiative/zenbpm/pkg/bpmn/exporter/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -44,10 +43,11 @@ func WithRqliteExporter() EngineOption {
 	}
 }
 
-func WithStorage(persistence storage.PersistentStorage) EngineOption {
+func WithStorage(persistence storage.PersistentStorageNew) EngineOption {
 	return func(engine *Engine) {
-		rqliteService := rqlite.NewPersistenceRqlite(persistence)
-		engine.persistence = NewBpmnEnginePersistenceRqlite(getGlobalSnowflakeIdGenerator(), rqliteService)
+		// rqliteService := rqlite.NewPersistenceRqlite(persistence)
+		// engine.persistence = NewBpmnEnginePersistenceRqlite(getGlobalSnowflakeIdGenerator(), rqliteService)
+		engine.persistence = persistence
 	}
 }
 

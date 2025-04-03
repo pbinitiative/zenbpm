@@ -2,8 +2,9 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
 type ProcessDefinition struct {
@@ -16,18 +17,82 @@ type ProcessDefinition struct {
 	BpmnChecksum     [16]byte            // internal checksum to identify different versions
 }
 
-type ProcessInstance interface {
-	GetProcessInfo() *ProcessDefinition
-	GetInstanceKey() int64
+type CatchEvent struct {
+	Name       string
+	CaughtAt   time.Time
+	IsConsumed bool
+	Variables  map[string]interface{}
+}
 
-	// GetVariable from the process instance's variable context
-	GetVariable(key string) interface{}
+// type ProcessInstance interface {
+// 	GetProcessInfo() *ProcessDefinition
+// 	GetInstanceKey() int64
+//
+// 	// GetVariable from the process instance's variable context
+// 	GetVariable(key string) interface{}
+//
+// 	// SetVariable to the process instance's variable context
+// 	SetVariable(key string, value interface{})
+//
+// 	GetCreatedAt() time.Time
+// 	GetState() ActivityState
+// }
 
-	// SetVariable to the process instance's variable context
-	SetVariable(key string, value interface{})
+type ProcessInstance struct {
+	ProcessInfo    *ProcessDefinition `json:"-"`
+	InstanceKey    int64              `json:"ik"`
+	VariableHolder VariableHolder     `json:"vh,omitempty"`
+	CreatedAt      time.Time          `json:"c"`
+	State          ActivityState      `json:"s"`
+	CaughtEvents   []CatchEvent       `json:"ce,omitempty"`
+	Activities     []Activity
+}
 
-	GetCreatedAt() time.Time
-	GetState() ActivityState
+func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
+	return pi.ProcessInfo
+}
+
+func (pi *ProcessInstance) GetInstanceKey() int64 {
+	return pi.InstanceKey
+}
+
+func (pi *ProcessInstance) GetVariable(key string) interface{} {
+	return pi.VariableHolder.GetVariable(key)
+}
+
+func (pi *ProcessInstance) SetVariable(key string, value interface{}) {
+	pi.VariableHolder.SetVariable(key, value)
+}
+
+func (pi *ProcessInstance) GetCreatedAt() time.Time {
+	return pi.CreatedAt
+}
+
+// GetState returns one of [ Ready, Active, Completed, Failed ]
+func (pi *ProcessInstance) GetState() ActivityState {
+	return pi.State
+}
+
+func (pi *ProcessInstance) AppendActivity(activity Activity) {
+	pi.activities = append(pi.activities, activity)
+}
+
+func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
+	for _, a := range pi.activities {
+		if a.Element().GetId() == id && a.State() == Active {
+			return a
+		}
+	}
+	return nil
+}
+
+func (pi *ProcessInstance) FindActivity(key int64) Activity {
+	for _, a := range pi.activities {
+		if a.Key() == key {
+			return a
+		}
+	}
+	return nil
 }
 
 // ActivityState as per BPMN 2.0 spec, section 13.2.2 Activity, page 428, State diagram:

@@ -117,7 +117,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
 	key := *getKeyFromString(&request.Body.JobKey)
-	s.engine.JobCompleteById(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
+	s.engine.JobCompleteByKey(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
 	return public.CompleteJob201Response{}, nil
 }
 

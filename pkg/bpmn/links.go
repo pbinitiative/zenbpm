@@ -2,13 +2,14 @@ package bpmn
 
 import (
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"strings"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (state *Engine) handleIntermediateThrowEvent(process *runtime.ProcessDefinition, instance *processInstanceInfo, ite bpmn20.TIntermediateThrowEvent, activity runtime.Activity) (nextCommands []command) {
+func (engine *Engine) handleIntermediateThrowEvent(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, ite bpmn20.TIntermediateThrowEvent, activity runtime.Activity) (nextCommands []command) {
 	linkName := ite.LinkEventDefinition.Name
 	if len(strings.TrimSpace(linkName)) == 0 {
 		nextCommands = []command{errorCommand{

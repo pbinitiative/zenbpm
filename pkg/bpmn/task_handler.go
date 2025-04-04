@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"slices"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
 type taskMatcher func(element bpmn20.TaskElement) bool
@@ -54,10 +55,10 @@ type NewTaskHandlerCommand1 interface {
 }
 
 // NewTaskHandler registers a handler function to be called for service tasks with a given taskId
-func (state *Engine) NewTaskHandler() NewTaskHandlerCommand1 {
+func (engine *Engine) NewTaskHandler() NewTaskHandlerCommand1 {
 	cmd := newTaskHandlerCommand{
 		append: func(handler *taskHandler) {
-			state.taskHandlers = append(state.taskHandlers, handler)
+			engine.taskHandlers = append(engine.taskHandlers, handler)
 		},
 	}
 	return cmd
@@ -91,8 +92,8 @@ func (thc newTaskHandlerCommand) Handler(f func(job ActivatedJob)) {
 	thc.append(&th)
 }
 
-func (state *Engine) clearTaskHandlers() {
-	state.taskHandlers = []*taskHandler{}
+func (engine *Engine) clearTaskHandlers() {
+	engine.taskHandlers = []*taskHandler{}
 }
 
 // Assignee implements NewTaskHandlerCommand2
@@ -118,7 +119,7 @@ func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandle
 	return thc
 }
 
-func (state *Engine) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
+func (engine *Engine) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
 	searchOrder := []taskHandlerType{taskHandlerForId}
 	if element.GetType() == bpmn20.ServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)
@@ -127,7 +128,7 @@ func (state *Engine) findTaskHandler(element bpmn20.TaskElement) func(job Activa
 		searchOrder = append(searchOrder, taskHandlerForAssignee, taskHandlerForCandidateGroups)
 	}
 	for _, handlerType := range searchOrder {
-		for _, handler := range state.taskHandlers {
+		for _, handler := range engine.taskHandlers {
 			if handler.handlerType == handlerType {
 				if handler.matches(element) {
 					return handler.handler

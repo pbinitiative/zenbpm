@@ -178,7 +178,7 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 
 	// then
 	then.AssertThat(t, instance1.CreatedAt.UnixNano(), is.GreaterThanOrEqualTo(beforeCreation.UnixNano()).Reason("make sure we have creation time set"))
-	then.AssertThat(t, instance1.ProcessInfo.ProcessKey, is.EqualTo(instance2.ProcessInfo.ProcessKey))
+	then.AssertThat(t, instance1.Definition.ProcessKey, is.EqualTo(instance2.Definition.ProcessKey))
 	then.AssertThat(t, instance2.InstanceKey, is.GreaterThan(instance1.InstanceKey).Reason("Because later created"))
 }
 
@@ -268,7 +268,7 @@ func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
 	then.AssertThat(t, instance, is.Not(is.Nil()))
 
 	// ten
-	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
+	then.AssertThat(t, instance.Definition.Version, is.EqualTo(int32(v2.Version)))
 
 }
 
@@ -290,7 +290,7 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 	then.AssertThat(t, instance, is.Not(is.Nil()))
 
 	// then
-	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
+	then.AssertThat(t, instance.Definition.Version, is.EqualTo(int32(v2.Version)))
 
 }
 

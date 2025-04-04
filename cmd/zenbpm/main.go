@@ -36,7 +36,7 @@ func main() {
 	// TODO: engine and persistence start should be moved into the controller/partition
 	var store storage.PersistentStorage = zenNode
 	time.Sleep(2 * time.Second)
-	engine := bpmn_engine.New(bpmn_engine.WithStorage(store), bpmn_engine.WithRqliteExporter())
+	engine := bpmn_engine.New(bpmn_engine.WithStorage(store))
 	// TODO rework handlers
 	emptyHandler := func(job bpmn_engine.ActivatedJob) {
 	}

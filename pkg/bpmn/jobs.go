@@ -2,20 +2,25 @@ package bpmn
 
 import (
 	"context"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (state *Engine) handleServiceTask(ctx context.Context, process *runtime.ProcessDefinition, instance *processInstanceInfo, element bpmn20.TaskElement) (bool, *runtime.Job) {
-	job := findOrCreateJob(ctx, state, element, instance, state.generateKey)
+func (engine *Engine) handleServiceTask(ctx context.Context, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.TaskElement) (*runtime.Job, error) {
+	job, err := findOrCreateJob(ctx, engine, element, instance, engine.generateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find or create job: %w", err)
+	}
 
 	//FIXME: logic of using the internal handler needs to be discussed whether it will be kept
 	// If kept needs to work in parallel with external job completion
-	handler := state.findTaskHandler(element)
+	handler := engine.findTaskHandler(element)
 	variableHolder := runtime.New(&instance.VariableHolder, nil)
 	if handler != nil {
 		if job.JobState != runtime.Completing {
@@ -24,7 +29,7 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *runtime.Pro
 				processInstanceInfo:      instance,
 				failHandler:              func(reason string) { job.JobState = runtime.Failed },
 				completeHandler:          func() { job.JobState = runtime.Completing },
-				key:                      state.generateKey(),
+				key:                      engine.generateKey(),
 				processInstanceKey:       instance.InstanceKey,
 				bpmnProcessId:            process.BpmnProcessId,
 				processDefinitionVersion: process.Version,
@@ -36,8 +41,8 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *runtime.Pro
 			if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
 				job.JobState = runtime.Failed
 				instance.State = runtime.Failed
-				state.persistence.PersistJob(ctx, job)
-				return false, job
+				engine.persistence.SaveJob(ctx, *job)
+				return job, nil
 			}
 			handler(activatedJob)
 		}
@@ -50,22 +55,25 @@ func (state *Engine) handleServiceTask(ctx context.Context, process *runtime.Pro
 		}
 		job.JobState = runtime.Completed
 	}
-	state.persistence.PersistJob(ctx, job)
-	state.persistence.GetPersistence().FlushTransaction(ctx)
+	engine.persistence.SaveJob(ctx, *job)
+	// state.persistence.GetPersistence().FlushTransaction(ctx)
 
-	return job.JobState == runtime.Completed, job
+	return job, nil
 }
 
-func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables map[string]interface{}) {
-	jobs := state.persistence.FindJobs(nil, nil, nil, &jobId)
-
-	if len(jobs) == 0 {
-		return
+func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
+	jobs, err := engine.persistence.FindJobsByJobKey(ctx, jobKey)
+	if err != nil {
+		return newEngineErrorf("failed to find job with key: %d: %w", jobKey, err)
 	}
 
-	instance := state.persistence.FindProcessInstanceByKey(jobs[0].ProcessInstanceKey)
-	if instance == nil {
-		return
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, jobs[0].ProcessInstanceKey)
+	if err != nil {
+		return newEngineErrorf("failed to find process instance with key: %d: %w", jobs[0].ProcessInstanceKey, err)
 	}
 
 	variableHolder := runtime.NewForPropagation(&instance.VariableHolder, variables)
@@ -74,33 +82,37 @@ func (state *Engine) JobCompleteById(ctx context.Context, jobId int64, variables
 		jobs[0].JobState = runtime.Failed
 		instance.State = runtime.Failed
 	}
-	// TODO: variabl mapping needs to be implemented
+	// TODO: variable mapping needs to be implemented
 	jobs[0].JobState = runtime.Completing
-	state.persistence.PersistJob(ctx, jobs[0])
-	state.persistence.PersistProcessInstance(ctx, instance)
+	engine.persistence.SaveJob(ctx, jobs[0])
+	engine.persistence.SaveProcessInstance(ctx, instance)
 
-	state.RunOrContinueInstance(jobs[0].ProcessInstanceKey)
+	engine.RunOrContinueInstance(jobs[0].ProcessInstanceKey)
 
+	return nil
 }
 
-func (state *Engine) ActivateJobs(ctx context.Context, jobType string) (activatedJobs []ActivatedJob, err error) {
-	jobs := state.persistence.FindJobs(nil, &jobType, nil, nil, runtime.Active)
+func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {
+	jobs, err := engine.persistence.FindActiveJobsByType(ctx, jobType)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("failed to find active jobs by type"), err)
+	}
 
-	activatedJobs = make([]ActivatedJob, 0)
+	activatedJobs := make([]ActivatedJob, 0)
 	for _, job := range jobs {
 
-		processInstance := state.FindProcessInstance(job.ProcessInstanceKey)
-		if processInstance == nil {
-			continue
+		processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.JobKey, err)
 		}
 		variableHolder := processInstance.VariableHolder
 		if err := evaluateLocalVariables(&variableHolder, job.BaseElement.(bpmn20.TaskElement).GetInputMapping()); err != nil {
 			job.JobState = runtime.Failed
-			state.persistence.PersistJob(ctx, job)
+			engine.persistence.SaveJob(ctx, job)
 			return nil, err
 		}
 		aj := &activatedJob{
-			processInstanceInfo: processInstance,
+			processInstanceInfo: &processInstance,
 			key:                 job.JobKey,
 			processInstanceKey:  job.ProcessInstanceKey,
 			elementId:           job.ElementId,
@@ -112,16 +124,19 @@ func (state *Engine) ActivateJobs(ctx context.Context, jobType string) (activate
 	return activatedJobs, nil
 }
 
-func findOrCreateJob(ctx context.Context, state *Engine, element bpmn20.TaskElement, instance *processInstanceInfo, generateKey func() int64) *runtime.Job {
+func findOrCreateJob(ctx context.Context, engine *Engine, element bpmn20.TaskElement, instance *runtime.ProcessInstance, generateKey func() int64) (*runtime.Job, error) {
 	be := element.(bpmn20.FlowNode)
-	jobs := state.persistence.FindJobs(ptr.To(be.GetId()), nil, instance, nil)
-	if len(jobs) > 0 {
-		jobs[0].BaseElement = be
-		return jobs[0]
+	job, err := engine.persistence.FindJobByElementID(ctx, instance.InstanceKey, be.GetId())
+
+	if err == nil {
+		return &job, nil
+	}
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, fmt.Errorf("failed to find job by element id: %s for process instance: %d: %w", be.GetId(), instance.InstanceKey, err)
 	}
 
 	elementInstanceKey := generateKey()
-	job := runtime.Job{
+	job = runtime.Job{
 		ElementId:          be.GetId(),
 		ElementInstanceKey: elementInstanceKey,
 		ProcessInstanceKey: instance.GetInstanceKey(),
@@ -130,8 +145,7 @@ func findOrCreateJob(ctx context.Context, state *Engine, element bpmn20.TaskElem
 		CreatedAt:          time.Now(),
 		BaseElement:        be,
 	}
+	engine.persistence.SaveJob(ctx, job)
 
-	state.persistence.PersistJob(ctx, &job)
-
-	return &job
+	return &job, nil
 }

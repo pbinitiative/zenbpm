@@ -1,13 +1,14 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
 // ActivatedJob is a struct to provide information for registered task handler
 type activatedJob struct {
-	processInstanceInfo      *processInstanceInfo
+	processInstanceInfo      *runtime.ProcessInstance
 	completeHandler          func()
 	failHandler              func(reason string)
 	key                      int64

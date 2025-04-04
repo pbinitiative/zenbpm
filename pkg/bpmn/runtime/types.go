@@ -39,7 +39,7 @@ type CatchEvent struct {
 // }
 
 type ProcessInstance struct {
-	ProcessInfo    *ProcessDefinition `json:"-"`
+	Definition     *ProcessDefinition `json:"-"`
 	InstanceKey    int64              `json:"ik"`
 	VariableHolder VariableHolder     `json:"vh,omitempty"`
 	CreatedAt      time.Time          `json:"c"`
@@ -49,7 +49,7 @@ type ProcessInstance struct {
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
-	return pi.ProcessInfo
+	return pi.Definition
 }
 
 func (pi *ProcessInstance) GetInstanceKey() int64 {
@@ -74,11 +74,11 @@ func (pi *ProcessInstance) GetState() ActivityState {
 }
 
 func (pi *ProcessInstance) AppendActivity(activity Activity) {
-	pi.activities = append(pi.activities, activity)
+	pi.Activities = append(pi.Activities, activity)
 }
 
 func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
-	for _, a := range pi.activities {
+	for _, a := range pi.Activities {
 		if a.Element().GetId() == id && a.State() == Active {
 			return a
 		}
@@ -87,7 +87,7 @@ func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
 }
 
 func (pi *ProcessInstance) FindActivity(key int64) Activity {
-	for _, a := range pi.activities {
+	for _, a := range pi.Activities {
 		if a.Key() == key {
 			return a
 		}

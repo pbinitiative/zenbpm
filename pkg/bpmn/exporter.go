@@ -7,11 +7,11 @@ import (
 )
 
 // AddEventExporter registers an EventExporter instance
-func (state *Engine) AddEventExporter(exporter exporter.EventExporter) {
-	state.exporters = append(state.exporters, exporter)
+func (engine *Engine) AddEventExporter(exporter exporter.EventExporter) {
+	engine.exporters = append(engine.exporters, exporter)
 }
 
-func (state *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, resourceName string, checksum string) {
+func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, resourceName string, checksum string) {
 	event := exporter.ProcessEvent{
 		ProcessId:    processInfo.BpmnProcessId,
 		ProcessKey:   processInfo.ProcessKey,
@@ -20,36 +20,36 @@ func (state *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition
 		ResourceName: resourceName,
 		Checksum:     checksum,
 	}
-	for _, exp := range state.exporters {
+	for _, exp := range engine.exporters {
 		exp.NewProcessEvent(&event)
 	}
 }
 
-func (state *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, processInstance processInstanceInfo) {
+func (engine *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.ProcessKey,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.InstanceKey,
 	}
-	for _, exp := range state.exporters {
+	for _, exp := range engine.exporters {
 		exp.EndProcessEvent(&event)
 	}
 }
 
-func (state *Engine) exportProcessInstanceEvent(process runtime.ProcessDefinition, processInstance processInstanceInfo) {
+func (engine *Engine) exportProcessInstanceEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.ProcessKey,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.InstanceKey,
 	}
-	for _, exp := range state.exporters {
+	for _, exp := range engine.exporters {
 		exp.NewProcessInstanceEvent(&event)
 	}
 }
 
-func (state *Engine) exportElementEvent(process runtime.ProcessDefinition, processInstance processInstanceInfo, element bpmn20.FlowNode, intent exporter.Intent) {
+func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, element bpmn20.FlowNode, intent exporter.Intent) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.ProcessKey,
@@ -61,12 +61,12 @@ func (state *Engine) exportElementEvent(process runtime.ProcessDefinition, proce
 		ElementId:       element.GetId(),
 		Intent:          string(intent),
 	}
-	for _, exp := range state.exporters {
+	for _, exp := range engine.exporters {
 		exp.NewElementEvent(&event, &info)
 	}
 }
 
-func (state *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, processInstance processInstanceInfo, flow bpmn20.TSequenceFlow) {
+func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, flow bpmn20.TSequenceFlow) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.ProcessKey,
@@ -78,7 +78,7 @@ func (state *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, 
 		ElementId:       flow.Id,
 		Intent:          string(exporter.SequenceFlowTaken),
 	}
-	for _, exp := range state.exporters {
+	for _, exp := range engine.exporters {
 		exp.NewElementEvent(&event, &info)
 	}
 }

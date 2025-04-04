@@ -14,7 +14,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 type Engine struct {
@@ -49,7 +48,7 @@ func (engine *Engine) CreateInstanceById(processId string, variableContext map[s
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
-		ProcessInfo:    process,
+		Definition:     process,
 		InstanceKey:    engine.generateKey(),
 		VariableHolder: runtime.New(nil, variableContext),
 		CreatedAt:      time.Now(),
@@ -114,11 +113,54 @@ func (engine *Engine) RunOrContinueInstance(processInstanceKey int64) (*runtime.
 	return &pi, nil
 }
 
+// FindProcessInstance searches for a given processInstanceKey
+// and returns the corresponding processInstanceInfo, or otherwise nil
+func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
+	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
+}
+
+// Name returns the name of the engine, only useful in case you control multiple ones
+func (engine *Engine) Name() string {
+	return engine.name
+}
+
+// FindProcessesById returns all registered processes with given ID
+// result array is ordered by version number, from 1 (first) and largest version (last)
+func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
+	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
+}
+
+func (engine *Engine) checkExclusiveGatewayDone(activity eventBasedGatewayActivity) error {
+	if !activity.OutboundCompleted() {
+		return nil
+	}
+
+	// cancel other activities started by this one
+	msgSubs, err := engine.persistence.FindActivityMessageSubscription(context.TODO(), activity.Key(), runtime.Active)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance message subscriptions by activity key: %d: %w", activity.Key(), err)
+	}
+	for _, ms := range msgSubs {
+		ms.MessageState = runtime.Withdrawn
+	}
+	timers, err := engine.persistence.FindActivityTimers(context.TODO(), activity.Key(), runtime.TimerCreated)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance timers by activity key: %d: %w", activity.Key(), err)
+	}
+	for _, t := range timers {
+		t.TimerState = runtime.TimerCancelled
+	}
+	return nil
+}
+
+func (b *Engine) Stop() {
+}
+
 func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 	ctx := context.TODO()
 	executionKey := engine.snowflake.Generate().Int64()
 	ctx = context.WithValue(ctx, appcontext.ExecutionKey, executionKey)
-	process := instance.ProcessInfo
+	process := instance.Definition
 	var commandQueue []command
 
 	switch instance.State {
@@ -142,14 +184,20 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 				activity: j,
 			})
 		}
-		activeSubscriptions := engine.findActiveSubscriptions(instance)
+		activeSubscriptions, err := engine.findActiveSubscriptions(instance)
+		if err != nil {
+			return errors.Join(newEngineErrorf("failed to find active subscriptions for key: %d", instance.InstanceKey), err)
+		}
 		for _, subscr := range activeSubscriptions {
 			commandQueue = append(commandQueue, continueActivityCommand{
 				activity:       subscr,
 				originActivity: subscr.OriginActivity,
 			})
 		}
-		createdTimers := engine.findCreatedTimers(instance)
+		createdTimers, err := engine.findCreatedTimers(instance)
+		if err != nil {
+			return errors.Join(newEngineErrorf("failed to find active subscriptions for key: %d", instance.InstanceKey), err)
+		}
 		for _, timer := range createdTimers {
 			commandQueue = append(commandQueue, continueActivityCommand{
 				activity:       timer,
@@ -189,12 +237,18 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 		case activityType:
 			element := cmd.(activityCommand).element
 			originActivity := cmd.(activityCommand).originActivity
-			nextCommands := engine.handleElement(ctx, process, instance, element, originActivity)
+			nextCommands, err := engine.handleElement(ctx, process, instance, element, originActivity)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to handle activity type element (%+v)", element), err)
+			}
 			commandQueue = append(commandQueue, nextCommands...)
 		case continueActivityType:
 			element := cmd.(continueActivityCommand).activity.Element()
 			originActivity := cmd.(continueActivityCommand).originActivity
-			nextCommands := engine.handleElement(ctx, process, instance, element, originActivity)
+			nextCommands, err := engine.handleElement(ctx, process, instance, element, originActivity)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to handle continue activity type element (%+v)", element), err)
+			}
 			commandQueue = append(commandQueue, nextCommands...)
 		case errorType:
 			err = cmd.(errorCommand).err
@@ -202,7 +256,10 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 			break
 		case checkExclusiveGatewayDoneType:
 			activity := cmd.(checkExclusiveGatewayDoneCommand).gatewayActivity
-			engine.checkExclusiveGatewayDone(activity)
+			err := engine.checkExclusiveGatewayDone(activity)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to check exclusive gateway"), err)
+			}
 		default:
 			panic("[invariant check] command type check not fully implemented")
 		}
@@ -215,12 +272,18 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 	engine.persistence.SaveProcessInstance(ctx, *instance)
 
 	// TODO: create a way to control batches of sql statements
-	engine.persistence.GetPersistence().FlushTransaction(ctx)
+	// engine.persistence.GetPersistence().FlushTransaction(ctx)
 
 	return err
 }
 
-func (engine *Engine) handleElement(ctx context.Context, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.FlowNode, originActivity runtime.Activity) []command {
+func (engine *Engine) handleElement(
+	ctx context.Context,
+	process *runtime.ProcessDefinition,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	originActivity runtime.Activity,
+) ([]command, error) {
 	engine.exportElementEvent(*process, *instance, element, exporter.ElementActivated) // FIXME: don't create event on continuation ?!?!
 	createFlowTransitions := true
 	var activity runtime.Activity
@@ -245,11 +308,17 @@ func (engine *Engine) handleElement(ctx context.Context, process *runtime.Proces
 		}
 	case bpmn20.ServiceTask:
 		taskElement := element.(bpmn20.TaskElement)
-		_, activity = engine.handleServiceTask(ctx, process, instance, taskElement)
+		activity, err = engine.handleServiceTask(ctx, process, instance, taskElement)
+		if err != nil {
+			return nil, fmt.Errorf("failed to handle service task: %w", err)
+		}
 		createFlowTransitions = activity.State() == runtime.Completed
 	case bpmn20.UserTask:
 		taskElement := element.(bpmn20.TaskElement)
-		activity = engine.handleUserTask(ctx, process, instance, taskElement)
+		activity, err = engine.handleUserTask(ctx, process, instance, taskElement)
+		if err != nil {
+			return nil, fmt.Errorf("failed to handle user task: %w", err)
+		}
 		createFlowTransitions = activity.State() == runtime.Completed
 	case bpmn20.IntermediateCatchEvent:
 		ice := element.(bpmn20.TIntermediateCatchEvent)
@@ -267,7 +336,7 @@ func (engine *Engine) handleElement(ctx context.Context, process *runtime.Proces
 		if ms, ok := activity.(*runtime.MessageSubscription); ok {
 			engine.persistence.SaveMessageSubscription(ctx, *ms)
 			// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
-			engine.persistence.GetPersistence().FlushTransaction(ctx)
+			// engine.persistence.GetPersistence().FlushTransaction(ctx)
 		} else {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
@@ -313,7 +382,7 @@ func (engine *Engine) handleElement(ctx context.Context, process *runtime.Proces
 		engine.exportElementEvent(*process, *instance, element, exporter.ElementCompleted)
 		nextCommands = append(nextCommands, createNextCommands(process, instance, element, activity)...)
 	}
-	return nextCommands
+	return nextCommands, nil
 }
 
 func createCheckExclusiveGatewayDoneCommand(originActivity runtime.Activity) (cmds []command) {
@@ -446,13 +515,14 @@ func (engine *Engine) handleParallelGateway(process *runtime.ProcessDefinition, 
 // findActiveSubscriptions returns active subscriptions;
 // if ids are provided, the result gets filtered;
 // if no ids are provided, all active subscriptions are returned
-func (engine *Engine) findActiveSubscriptions(instance *runtime.ProcessInstance) (result []*runtime.MessageSubscription, error) {
+func (engine *Engine) findActiveSubscriptions(instance *runtime.ProcessInstance) ([]runtime.MessageSubscription, error) {
 	subs, err := engine.persistence.FindProcessInstanceMessageSubscription(context.TODO(), instance.InstanceKey, runtime.Active)
 	if err != nil {
-		return nil, errors.Join(newEngineErrorf("failed to load process instance message subscriptions for key %d", instance.InstanceKey), err)
+		return nil, fmt.Errorf("failed to load process instance message subscriptions for key %d: %w", instance.InstanceKey, err)
 	}
+	result := make([]runtime.MessageSubscription, 0, len(subs))
 	for _, ms := range subs {
-		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.Definitions, ms.ElementId)
+		bes := bpmn20.FindFlowNodesById(&instance.Definition.Definitions, ms.ElementId)
 		if len(bes) == 0 {
 			continue
 		}
@@ -465,14 +535,19 @@ func (engine *Engine) findActiveSubscriptions(instance *runtime.ProcessInstance)
 }
 
 // findCreatedTimers the list of all scheduled/creates timers in the engine, not yet completed
-func (engine *Engine) findCreatedTimers(instance *runtime.ProcessInstance) (result []*runtime.Timer) {
-	for _, t := range engine.persistence.FindTimers(nil, ptr.To(instance.InstanceKey), runtime.TimerCreated) {
-		bes := bpmn20.FindFlowNodesById(&instance.ProcessInfo.Definitions, t.ElementId)
+func (engine *Engine) findCreatedTimers(instance *runtime.ProcessInstance) ([]runtime.Timer, error) {
+	timers, err := engine.persistence.FindTimersByState(context.TODO(), instance.InstanceKey, runtime.TimerCreated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load process instance timers for key %d: %w", instance.InstanceKey, err)
+	}
+	result := make([]runtime.Timer, 0, len(timers))
+	for _, t := range timers {
+		bes := bpmn20.FindFlowNodesById(&instance.Definition.Definitions, t.ElementId)
 		if len(bes) == 0 {
 			continue
 		}
 		t.BaseElement = bes[0]
 		result = append(result, t)
 	}
-	return result
+	return result, nil
 }

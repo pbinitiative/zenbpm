@@ -1,8 +1,10 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
@@ -15,7 +17,7 @@ func Test_creating_a_process_sets_state_to_READY(t *testing.T) {
 	// when
 	pi, _ := bpmnEngine.CreateInstance(process, nil)
 	// then
-	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Ready))
+	assert.Equal(t, runtime.ActivityStateReady, pi.GetState())
 }
 
 func Test_running_a_process_sets_state_to_ACTIVE(t *testing.T) {
@@ -27,11 +29,8 @@ func Test_running_a_process_sets_state_to_ACTIVE(t *testing.T) {
 	procInst, _ := bpmnEngine.RunOrContinueInstance(pi.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, procInst.GetState(), is.EqualTo(runtime.Active).
-		Reason("Since the BPMN contains an intermediate catch event, the process instance must be active and can't complete."))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateActive, procInst.GetState(),
+		"Since the BPMN contains an intermediate catch event, the process instance must be active and can't complete.")
 }
 
 func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *testing.T) {
@@ -41,19 +40,15 @@ func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *test
 
 	// when
 	err := bpmnEngine.PublishEventForInstance(pi.GetInstanceKey(), "globalMsgRef", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	pi, err = bpmnEngine.RunOrContinueInstance(pi.GetInstanceKey())
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
 func Test_IntermediateCatchEvent_message_can_be_published_before_running_the_instance(t *testing.T) {
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
 	pi, _ := bpmnEngine.CreateInstance(process, nil)
@@ -63,25 +58,27 @@ func Test_IntermediateCatchEvent_message_can_be_published_before_running_the_ins
 	pi, _ = bpmnEngine.RunOrContinueInstance(pi.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, pi.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
 func Test_IntermediateCatchEvent_a_catch_event_produces_an_active_subscription(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	assert.Nil(t, err)
 
-	subscriptions := bpmnEngine.GetMessageSubscriptions()
+	subscriptions := engineStorage.MessageSubscriptions
+	var subscription runtime.MessageSubscription
+	for _, sub := range subscriptions {
+		if sub.ProcessInstanceKey == pi.Key {
+			subscription = sub
+			break
+		}
+	}
 
-	subscription := subscriptions[len(subscriptions)-1]
-	then.AssertThat(t, subscription.Name, is.EqualTo("event-1"))
-	then.AssertThat(t, subscription.ElementId, is.EqualTo("id-1"))
-	then.AssertThat(t, subscription.MessageState, is.EqualTo(runtime.Active))
+	assert.Equal(t, "event-1", subscription.Name)
+	assert.Equal(t, "id-1", subscription.ElementId)
+	assert.Equal(t, runtime.ActivityStateActive, subscription.MessageState)
 }
 
 func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_the_instance(t *testing.T) {
@@ -98,8 +95,8 @@ func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_t
 	bpmnEngine.RunOrContinueInstance(pi2.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, pi1.GetState(), is.EqualTo(runtime.Completed))
-	then.AssertThat(t, pi2.GetState(), is.EqualTo(runtime.Active))
+	assert.Equal(t, runtime.ActivityStateCompleted, pi1.GetState())
+	assert.Equal(t, runtime.ActivityStateActive, pi2.GetState())
 
 	// when
 	bpmnEngine.PublishEventForInstance(pi2.GetInstanceKey(), "globalMsgRef", nil)
@@ -107,16 +104,11 @@ func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_t
 	bpmnEngine.RunOrContinueInstance(pi2.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, pi1.GetState(), is.EqualTo(runtime.Completed))
-	then.AssertThat(t, pi2.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, pi1.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, pi2.GetState())
 }
 
 func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_state_is_maintained(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
 	cp := CallPath{}
 
@@ -130,18 +122,15 @@ func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 
 	// when
 	bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "event-1", nil)
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("task-2,task-1"))
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, "task-2,task-1", cp.CallPath)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
 func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
@@ -156,118 +145,88 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("task2").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task3").Handler(cp.TaskHandler)
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	_, err = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("task2"))
+	assert.Equal(t, "task2", cp.CallPath)
 	// then still active, since there's an implicit fork
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
 func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-1", nil)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-3", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
 func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
-
-	// cleanup
-
+	assert.Equal(t, instance.GetState(), runtime.ActivityStateActive)
 }
 
 func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_COMPLETED(t *testing.T) {
 	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-1", nil)
+	assert.Nil(t, err)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
+	assert.Nil(t, err)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-3", nil)
-	then.AssertThat(t, err, is.Nil())
-	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
+	assert.Nil(t, err)
+	instance, _ = bpmnEngine.RunOrContinueInstance(instance.Key)
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted.String(), instance.State.String())
 }
 
 func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_ACTIVE(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
+
 func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_COMPLETED(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
@@ -275,66 +234,49 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-1", nil)
+	assert.Nil(t, err)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
+	assert.Nil(t, err)
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-3", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
 func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_ACTIVE(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-2", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
 func Test_publishing_a_random_message_does_no_harm(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
 	instance, err := bpmnEngine.CreateInstance(process, nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "random-message", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	instance, err = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Active))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
 func Test_eventBasedGateway_just_fires_one_event_and_instance_COMPLETED(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
 	cp := CallPath{}
 
@@ -347,21 +289,14 @@ func Test_eventBasedGateway_just_fires_one_event_and_instance_COMPLETED(t *testi
 	// when
 	_ = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-b", nil)
 	instance, err := bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("task-b"))
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-
-	// cleanup
-
+	assert.Equal(t, "task-b", cp.CallPath)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
 func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-intermediate-message-catch-event.bpmn")
 	instance, _ := bpmnEngine.CreateInstance(process, nil)
@@ -372,19 +307,12 @@ func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Completed))
-	then.AssertThat(t, instance.GetVariable("foo"), is.EqualTo("bar"))
-	then.AssertThat(t, instance.GetVariable("mappedFoo"), is.EqualTo("bar"))
-
-	// cleanup
-
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+	assert.Equal(t, "bar", instance.GetVariable("foo"))
+	assert.Equal(t, "bar", instance.GetVariable("mappedFoo"))
 }
 
 func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
-	// setup
-
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-intermediate-message-catch-event-broken.bpmn")
 	instance, _ := bpmnEngine.CreateInstance(process, nil)
@@ -394,10 +322,10 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	instance, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, instance.GetState(), is.EqualTo(runtime.Failed))
-	then.AssertThat(t, instance.GetVariable("mappedFoo"), is.Nil())
-	then.AssertThat(t, bpmnEngine.persistence.FindMessageSubscription(nil, instance, nil), is.EqualTo(runtime.Failed))
+	message, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateFailed)
+	assert.Nil(t, err)
 
-	// cleanup
-
+	assert.Equal(t, instance.GetState(), runtime.ActivityStateFailed)
+	assert.Nil(t, instance.GetVariable("mappedFoo"))
+	assert.Equal(t, message[0].State(), runtime.ActivityStateFailed)
 }

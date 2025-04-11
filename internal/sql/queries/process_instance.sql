@@ -20,4 +20,4 @@ ORDER BY created_at DESC;
 -- name: GetProcessInstance :one
 SELECT * 
 FROM process_instance
-WHERE key = sqlc.arg('key');
+WHERE key = @key;

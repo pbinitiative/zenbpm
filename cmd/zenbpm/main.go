@@ -5,16 +5,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/rest"
-	bpmn_engine "github.com/pbinitiative/zenbpm/pkg/bpmn"
 )
 
 func main() {
@@ -33,17 +29,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: engine and persistence start should be moved into the controller/partition
-	var store storage.PersistentStorage = zenNode
-	time.Sleep(2 * time.Second)
-	engine := bpmn_engine.New(bpmn_engine.WithStorage(store))
-	// TODO rework handlers
-	emptyHandler := func(job bpmn_engine.ActivatedJob) {
-	}
-	engine.NewTaskHandler().Type("foo").Handler(emptyHandler)
-
 	// Start the public API
-	svr := rest.NewServer(&engine, conf.Server.Addr)
+	svr := rest.NewServer(zenNode, conf.Server.Addr)
 	svr.Start()
 
 	appStop := make(chan os.Signal, 2)

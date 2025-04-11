@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS message_subscription (
 	origin_activity_key INTEGER NOT NULL,
 	origin_activity_state INTEGER NOT NULL,
 	origin_activity_id TEXT NOT NULL,
-	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key)
+	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key),
 	FOREIGN KEY(process_definition_key) REFERENCES process_definition(key)
 	);
 
@@ -45,8 +45,8 @@ CREATE TABLE IF NOT EXISTS timer (
 	state INTEGER NOT NULL,
 	created_at INTEGER NOT NULL,
 	due_at INTEGER NOT NULL,
-	duration INTEGER NOT NULL,
-	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key)
+	duration INTEGER NOT NULL, -- saved in milliseconds
+	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key),
 	FOREIGN KEY(process_definition_key) REFERENCES process_definition(key)
 	);
 
@@ -71,6 +71,6 @@ CREATE TABLE IF NOT EXISTS activity_instance (
 	element_id TEXT NOT NULL,
 	bpmn_element_type TEXT NOT NULL,
 
-	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key)
+	FOREIGN KEY(process_instance_key) REFERENCES process_instance(key),
 	FOREIGN KEY(process_definition_key) REFERENCES process_definition(key)
 	);

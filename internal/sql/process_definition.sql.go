@@ -10,10 +10,39 @@ import (
 	"database/sql"
 )
 
+const findLatestProcessDefinitionById = `-- name: FindLatestProcessDefinitionById :one
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = ?1
+ORDER BY
+    version DESC
+LIMIT 1
+`
+
+func (q *Queries) FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestProcessDefinitionById, bpmnProcessID)
+	var i ProcessDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.BpmnProcessID,
+		&i.BpmnData,
+		&i.BpmnChecksum,
+		&i.BpmnResourceName,
+	)
+	return i, err
+}
+
 const findProcessDefinitionByKey = `-- name: FindProcessDefinitionByKey :one
-SELECT "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name 
-FROM process_definition
-WHERE key = ?1
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    key = ?1
 `
 
 func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error) {
@@ -31,11 +60,15 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 }
 
 const findProcessDefinitions = `-- name: FindProcessDefinitions :many
-SELECT "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name 
-FROM process_definition
-WHERE COALESCE(?1, "key") = "key" 
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    COALESCE(?1, "key") = "key"
     AND COALESCE(?2, bpmn_process_id) = bpmn_process_id
-ORDER BY version DESC
+ORDER BY
+    version DESC
 `
 
 type FindProcessDefinitionsParams struct {
@@ -73,11 +106,51 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 	return items, nil
 }
 
+const findProcessDefinitionsByIds = `-- name: FindProcessDefinitionsByIds :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    bpmn_process_id IN (?1)
+ORDER BY
+    version asc
+LIMIT 1
+`
+
+func (q *Queries) FindProcessDefinitionsByIds(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsByIds, bpmnProcessIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessDefinition{}
+	for rows.Next() {
+		var i ProcessDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnData,
+			&i.BpmnChecksum,
+			&i.BpmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
-INSERT INTO process_definition
-(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
-VALUES
-(?, ?, ?, ?, ?, ?)
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
+    VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type SaveProcessDefinitionParams struct {

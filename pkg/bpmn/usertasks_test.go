@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/corbym/gocrest/is"
 	"github.com/corbym/gocrest/then"
@@ -18,7 +19,7 @@ func Test_user_tasks_can_be_handled(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
 }
 
@@ -39,16 +40,16 @@ func Test_user_tasks_can_be_continue(t *testing.T) {
 			cp.TaskHandler(job)
 		}
 	})
-	_, err = bpmnEngine.RunOrContinueInstance(instance.InstanceKey)
+	_, err = bpmnEngine.RunOrContinueInstance(instance.Key)
 	then.AssertThat(t, err, is.Nil())
 
 	//when
 	userConfirm = true
-	instance, err = bpmnEngine.RunOrContinueInstance(instance.InstanceKey)
+	instance, err = bpmnEngine.RunOrContinueInstance(instance.Key)
 
 	// then
 	then.AssertThat(t, err, is.Nil())
 
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
 }

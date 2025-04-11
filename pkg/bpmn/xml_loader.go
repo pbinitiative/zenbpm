@@ -52,13 +52,14 @@ func (engine *Engine) load(xmlData []byte, resourceName string) (*runtime.Proces
 	}
 	processes, err := engine.FindProcessesById(definitions.Process.Id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load processes by id %d: %w", definitions.Process.Id, err)
+		return nil, fmt.Errorf("failed to load processes by id %s: %w", definitions.Process.Id, err)
 	}
 	if len(processes) > 0 {
-		if processes[0].BpmnChecksum == md5sum {
-			return &processes[0], nil
+		latestIndex := len(processes) - 1
+		if processes[latestIndex].BpmnChecksum == md5sum {
+			return &processes[latestIndex], nil
 		}
-		processInfo.Version = processes[0].Version + 1
+		processInfo.Version = processes[latestIndex].Version + 1
 	}
 	engine.persistence.SaveProcessDefinition(context.TODO(), processInfo)
 

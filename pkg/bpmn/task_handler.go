@@ -121,10 +121,10 @@ func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandle
 
 func (engine *Engine) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
 	searchOrder := []taskHandlerType{taskHandlerForId}
-	if element.GetType() == bpmn20.ServiceTask {
+	if element.GetType() == bpmn20.ElementTypeServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)
 	}
-	if element.GetType() == bpmn20.UserTask {
+	if element.GetType() == bpmn20.ElementTypeUserTask {
 		searchOrder = append(searchOrder, taskHandlerForAssignee, taskHandlerForCandidateGroups)
 	}
 	for _, handlerType := range searchOrder {

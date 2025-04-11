@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -23,26 +24,32 @@ func (engine *Engine) PublishEventForInstance(processInstanceKey int64, messageN
 		IsConsumed: false,
 	}
 	processInstance.CaughtEvents = append(processInstance.CaughtEvents, event)
-	engine.persistence.SaveProcessInstance(context.TODO(), processInstance)
+	err = engine.persistence.SaveProcessInstance(context.TODO(), processInstance)
+	if err != nil {
+		return fmt.Errorf("failed to save process instance: %w", err)
+	}
+	// TODO: should we run the instance after event is published otherwise caller needs to do it
+
 	return nil
 }
 
 func (engine *Engine) handleIntermediateMessageCatchEvent(
 	ctx context.Context,
+	messageWriter storage.MessageStorageWriter,
 	process *runtime.ProcessDefinition,
 	instance *runtime.ProcessInstance,
 	ice bpmn20.TIntermediateCatchEvent,
 	originActivity runtime.Activity,
 ) (continueFlow bool, ms *runtime.MessageSubscription, err error) {
-	messageSubscriptions, err := engine.persistence.FindMessageSubscription(ctx, originActivity.Key(), process.ProcessKey, runtime.Active)
+	messageSubscriptions, err := engine.persistence.FindActivityMessageSubscriptions(ctx, originActivity.Key(), runtime.ActivityStateActive)
 	if len(messageSubscriptions) > 0 {
 		ms = &messageSubscriptions[0]
 	}
 
-	if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+	if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 		ebgActivity := originActivity.(*eventBasedGatewayActivity)
 		if ebgActivity.OutboundCompleted() {
-			ms.MessageState = runtime.Withdrawn // FIXME: is this correct?
+			ms.MessageState = runtime.ActivityStateWithdrawn // FIXME: is this correct?
 			return false, ms, err
 		}
 	}
@@ -50,7 +57,7 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 	if ms == nil {
 		ms = engine.createMessageSubscription(instance, ice)
 		ms.OriginActivity = originActivity
-		engine.persistence.SaveMessageSubscription(ctx, *ms)
+		messageWriter.SaveMessageSubscription(ctx, *ms)
 	}
 
 	messages := process.Definitions.Messages
@@ -62,18 +69,18 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 			instance.SetVariable(k, v)
 		}
 		if err := evaluateLocalVariables(&instance.VariableHolder, ice.Output); err != nil {
-			ms.MessageState = runtime.Failed
-			instance.State = runtime.Failed
+			ms.MessageState = runtime.ActivityStateFailed
+			instance.State = runtime.ActivityStateFailed
 			evalErr := &ExpressionEvaluationError{
 				Msg: fmt.Sprintf("Error evaluating expression in intermediate message catch event element id='%s' name='%s'", ice.Id, ice.Name),
 				Err: err,
 			}
 			return false, ms, evalErr
 		}
-		ms.MessageState = runtime.Completed
+		ms.MessageState = runtime.ActivityStateCompleted
 		if ms.OriginActivity != nil {
 			originActivity := instance.FindActivity(ms.OriginActivity.Key())
-			if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+			if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 				ebgActivity := originActivity.(*eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
 			}
@@ -86,14 +93,14 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.MessageSubscription {
 	var be bpmn20.FlowNode = ice
 	ms := &runtime.MessageSubscription{
-		ElementId:          ice.Id,
-		ElementInstanceKey: engine.generateKey(),
-		ProcessKey:         instance.Definition.ProcessKey,
-		ProcessInstanceKey: instance.GetInstanceKey(),
-		Name:               ice.Name,
-		CreatedAt:          time.Now(),
-		MessageState:       runtime.Active,
-		BaseElement:        be,
+		ElementId:            ice.Id,
+		ElementInstanceKey:   engine.generateKey(),
+		ProcessDefinitionKey: instance.Definition.ProcessKey,
+		ProcessInstanceKey:   instance.GetInstanceKey(),
+		Name:                 ice.Name,
+		CreatedAt:            time.Now(),
+		MessageState:         runtime.ActivityStateActive,
+		BaseElement:          be,
 	}
 	return ms
 }

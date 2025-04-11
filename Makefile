@@ -27,19 +27,19 @@ PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
 $(SQLC): $(LOCALBIN)
-	test -s $(LOCALBIN)/sqlc && $(LOCALBIN)/sqlc version | grep -q $(SQLC_VERSION) || \
+	@test -s $(LOCALBIN)/sqlc && $(LOCALBIN)/sqlc version | grep -q $(SQLC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
 .PHONY: protoc-gen-go
 protoc-gen-go: $(PROTOC_GEN_GO) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
 $(PROTOC_GEN_GO): $(LOCALBIN)
-	test -s $(LOCALBIN)/protoc-gen-go && $(LOCALBIN)/protoc-gen-go --version | grep -q $(PROTOC_GEN_GO_VERSION) || \
+	@test -s $(LOCALBIN)/protoc-gen-go && $(LOCALBIN)/protoc-gen-go --version | grep -q $(PROTOC_GEN_GO_VERSION) || \
 	GOBIN=$(LOCALBIN) go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 
 .PHONY: protoc-gen-go-grpc
 protoc-gen-go-grpc: $(PROTOC_GEN_GO_GRPC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
 $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
-	test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
+	@test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
 
 PROTOC_OS:=$(OS)
@@ -58,7 +58,7 @@ endif
 protoc: $(PROTOC) ## Download protoc locally if necessary. If wrong version is installed, it will be overwritten.
 $(PROTOC): $(LOCALBIN)
 	$(shell test -s $(LOCALBIN)/protoc && $(LOCALBIN)/protoc --version | grep -q $(PROTOC_VERSION);)
-	if [ "$(.SHELLSTATUS)" = "1" ]; then \
+	@if [ "$(.SHELLSTATUS)" = "1" ]; then \
 		curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip; \
 		unzip -p protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip bin/protoc >$(LOCALBIN)/protoc; \
 		chmod +x $(LOCALBIN)/protoc; \
@@ -89,8 +89,8 @@ help: ## Display this help.
 generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
 	@go generate ./...
 	@$(SQLC) generate
-	@cp internal/rqlite/sql/db.go.template internal/rqlite/sql/db.go
-	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/rqlite/sql/models.go
+	@cp internal/sql/db.go.template internal/sql/db.go
+	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/sql/models.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

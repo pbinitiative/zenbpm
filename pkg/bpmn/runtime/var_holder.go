@@ -5,10 +5,10 @@ type VariableHolder struct {
 	variables map[string]interface{}
 }
 
-// New creates a new VariableHolder with a given parent and variables map.
+// NewVariableHolder creates a new VariableHolder with a given parent and variables map.
 // All variables from parent holder are copied into this one.
 // (hint: the copy is necessary, due to the fact we need to have all variables for expression evaluation in one map)
-func New(parent *VariableHolder, variables map[string]interface{}) VariableHolder {
+func NewVariableHolder(parent *VariableHolder, variables map[string]interface{}) VariableHolder {
 	if variables == nil {
 		variables = make(map[string]interface{})
 	}
@@ -24,9 +24,9 @@ func New(parent *VariableHolder, variables map[string]interface{}) VariableHolde
 }
 
 /*
-NewForPropagation creates a new VariableHolder with a given parent and variables map. Used in job completion.
+NewVariableHolderForPropagation creates a new VariableHolder with a given parent and variables map. Used in job completion.
 */
-func NewForPropagation(parent *VariableHolder, variables map[string]interface{}) VariableHolder {
+func NewVariableHolderForPropagation(parent *VariableHolder, variables map[string]interface{}) VariableHolder {
 	if variables == nil {
 		variables = make(map[string]interface{})
 	}

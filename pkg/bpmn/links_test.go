@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/corbym/gocrest/has"
 	"github.com/corbym/gocrest/is"
@@ -21,7 +22,7 @@ func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 
 	// then
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("Task-A,Task-B"))
 }
 
@@ -39,7 +40,7 @@ func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testi
 	// then
 	then.AssertThat(t, err, is.Not(is.Nil()))
 	then.AssertThat(t, err.Error(), has.Prefix("missing link intermediate catch event with linkName="))
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Failed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateFailed))
 	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
 
 	// cleanup
@@ -58,7 +59,7 @@ func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
 	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
 
 	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
+	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
 	then.AssertThat(t, cp.CallPath, is.EqualTo("Task"))
 
 	// then

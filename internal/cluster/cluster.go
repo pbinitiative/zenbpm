@@ -9,7 +9,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/rqlite/rqlite/v8/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 
@@ -100,23 +101,28 @@ func (node *ZenNode) Stop() error {
 	return joinErr
 }
 
-func (node *ZenNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return node.controller.partitions[1].Query(ctx, req)
-}
-
-// Execute TODO: this needs to implement that only the leader can execute
-func (node *ZenNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return node.controller.partitions[1].Execute(ctx, req)
-}
-
-func (node *ZenNode) IsLeader(ctx context.Context) bool {
-	return node.controller.partitions[1].IsLeader(ctx)
-}
-
 func (node *ZenNode) IsPartitionLeader(ctx context.Context, partition uint32) bool {
 	return node.controller.IsPartitionLeader(ctx, partition)
 }
 
 func (node *ZenNode) IsAnyPartitionLeader(ctx context.Context) bool {
 	return node.controller.IsAnyPartitionLeader(ctx)
+}
+
+// GetPartitionStore exposes Storage interface for use in engines
+func (node *ZenNode) GetPartitionStore(ctx context.Context, partition uint32) (storage.Storage, error) {
+	partitionNode, ok := node.controller.partitions[partition]
+	if !ok {
+		return nil, fmt.Errorf("partition %d storage not available in zen node", partition)
+	}
+	return partitionNode.rqliteDB, nil
+}
+
+// GetPartitionDB exposes DBTX interface for use in internal packages
+func (node *ZenNode) GetPartitionDB(ctx context.Context, partition uint32) (sql.DBTX, error) {
+	partitionNode, ok := node.controller.partitions[partition]
+	if !ok {
+		return nil, fmt.Errorf("partition %d storage not available in zen node", partition)
+	}
+	return partitionNode.rqliteDB, nil
 }

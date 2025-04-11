@@ -1,3 +1,5 @@
 package storage
 
-var ErrNotFound error
+import "fmt"
+
+var ErrNotFound error = fmt.Errorf("ErrNotFound")

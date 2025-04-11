@@ -38,9 +38,10 @@ type CatchEvent struct {
 // 	GetState() ActivityState
 // }
 
+// TODO: do we need json tags here?
 type ProcessInstance struct {
 	Definition     *ProcessDefinition `json:"-"`
-	InstanceKey    int64              `json:"ik"`
+	Key            int64              `json:"ik"`
 	VariableHolder VariableHolder     `json:"vh,omitempty"`
 	CreatedAt      time.Time          `json:"c"`
 	State          ActivityState      `json:"s"`
@@ -53,7 +54,7 @@ func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
 }
 
 func (pi *ProcessInstance) GetInstanceKey() int64 {
-	return pi.InstanceKey
+	return pi.Key
 }
 
 func (pi *ProcessInstance) GetVariable(key string) interface{} {
@@ -79,7 +80,7 @@ func (pi *ProcessInstance) AppendActivity(activity Activity) {
 
 func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
 	for _, a := range pi.Activities {
-		if a.Element().GetId() == id && a.State() == Active {
+		if a.Element().GetId() == id && a.State() == ActivityStateActive {
 			return a
 		}
 	}
@@ -136,32 +137,35 @@ func (pi *ProcessInstance) FindActivity(key int64) Activity {
 //	                  v      / The Process Ends               / Process Ends /              |
 //	                  O<--------------------------------------------------------------------+
 //	             (Closed)
-type ActivityState string
+type ActivityState int
+
+//go:generate go tool stringer -type=ActivityState
 
 const (
-	Active       ActivityState = "ACTIVE"
-	Compensated  ActivityState = "COMPENSATED"
-	Compensating ActivityState = "COMPENSATING"
-	Completed    ActivityState = "COMPLETED"
-	Completing   ActivityState = "COMPLETING"
-	Failed       ActivityState = "FAILED"
-	Failing      ActivityState = "FAILING"
-	Ready        ActivityState = "READY"
-	Terminated   ActivityState = "TERMINATED"
-	Terminating  ActivityState = "TERMINATING"
-	Withdrawn    ActivityState = "WITHDRAWN"
+	_ ActivityState = iota
+	ActivityStateActive
+	ActivityStateCompensated
+	ActivityStateCompensating
+	ActivityStateCompleted
+	ActivityStateCompleting
+	ActivityStateFailed
+	ActivityStateFailing
+	ActivityStateReady
+	ActivityStateTerminated
+	ActivityStateTerminating
+	ActivityStateWithdrawn
 )
 
 type MessageSubscription struct {
-	ElementId          string
-	ElementInstanceKey int64
-	ProcessKey         int64
-	ProcessInstanceKey int64
-	Name               string
-	MessageState       ActivityState
-	CreatedAt          time.Time
-	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
-	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	ElementId            string
+	ElementInstanceKey   int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	Name                 string
+	MessageState         ActivityState
+	CreatedAt            time.Time
+	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
+	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
 func (m MessageSubscription) Key() int64 {
@@ -176,26 +180,30 @@ func (m MessageSubscription) Element() bpmn20.FlowNode {
 	return m.BaseElement
 }
 
-type TimerState string
+//go:generate go tool stringer -type=TimerState
+type TimerState int
 
-const TimerCreated TimerState = "CREATED"
-const TimerTriggered TimerState = "TRIGGERED"
-const TimerCancelled TimerState = "CANCELLED"
+const (
+	_ TimerState = iota
+	TimerStateCreated
+	TimerStateTriggered
+	TimerStateCancelled
+)
 
 // Timer is created, when a process instance reaches a Timer Intermediate Message Event.
 // The logic is simple: CreatedAt + Duration = DueAt
 // The TimerState is one of [ TimerCreated, TimerTriggered, TimerCancelled ]
 type Timer struct {
-	ElementId          string
-	ElementInstanceKey int64
-	ProcessKey         int64
-	ProcessInstanceKey int64
-	TimerState         TimerState
-	CreatedAt          time.Time
-	DueAt              time.Time
-	Duration           time.Duration
-	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
-	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	ElementId            string
+	ElementInstanceKey   int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	TimerState           TimerState
+	CreatedAt            time.Time
+	DueAt                time.Time
+	Duration             time.Duration
+	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
+	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
 func (t Timer) Key() int64 {
@@ -204,12 +212,12 @@ func (t Timer) Key() int64 {
 
 func (t Timer) State() ActivityState {
 	switch t.TimerState {
-	case TimerCreated:
-		return Active
-	case TimerTriggered:
-		return Completed
-	case TimerCancelled:
-		return Withdrawn
+	case TimerStateCreated:
+		return ActivityStateActive
+	case TimerStateTriggered:
+		return ActivityStateCompleted
+	case TimerStateCancelled:
+		return ActivityStateWithdrawn
 	}
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }
@@ -228,8 +236,8 @@ type Job struct {
 	ElementId          string
 	ElementInstanceKey int64
 	ProcessInstanceKey int64
-	JobKey             int64
-	JobState           ActivityState
+	JobKey             int64         // TODO: rename to Key
+	JobState           ActivityState // TODO: rename to State
 	CreatedAt          time.Time
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }

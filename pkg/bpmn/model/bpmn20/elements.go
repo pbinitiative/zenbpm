@@ -6,18 +6,17 @@ type ElementType string
 type GatewayDirection string
 
 const (
-	StartEvent             ElementType = "START_EVENT"
-	EndEvent               ElementType = "END_EVENT"
-	ServiceTask            ElementType = "SERVICE_TASK"
-	UserTask               ElementType = "USER_TASK"
-	ParallelGateway        ElementType = "PARALLEL_GATEWAY"
-	ExclusiveGateway       ElementType = "EXCLUSIVE_GATEWAY"
-	IntermediateCatchEvent ElementType = "INTERMEDIATE_CATCH_EVENT"
-	IntermediateThrowEvent ElementType = "INTERMEDIATE_THROW_EVENT"
-	EventBasedGateway      ElementType = "EVENT_BASED_GATEWAY"
-	InclusiveGateway       ElementType = "INCLUSIVE_GATEWAY"
-
-	SequenceFlow ElementType = "SEQUENCE_FLOW"
+	ElementTypeStartEvent             ElementType = "START_EVENT"
+	ElementTypeEndEvent               ElementType = "END_EVENT"
+	ElementTypeServiceTask            ElementType = "SERVICE_TASK"
+	ElementTypeUserTask               ElementType = "USER_TASK"
+	ElementTypeParallelGateway        ElementType = "PARALLEL_GATEWAY"
+	ElementTypeExclusiveGateway       ElementType = "EXCLUSIVE_GATEWAY"
+	ElementTypeIntermediateCatchEvent ElementType = "INTERMEDIATE_CATCH_EVENT"
+	ElementTypeIntermediateThrowEvent ElementType = "INTERMEDIATE_THROW_EVENT"
+	ElementTypeEventBasedGateway      ElementType = "EVENT_BASED_GATEWAY"
+	ElementTypeInclusiveGateway       ElementType = "INCLUSIVE_GATEWAY"
+	ElementTypeSequenceFlow           ElementType = "SEQUENCE_FLOW"
 
 	Unspecified GatewayDirection = "Unspecified"
 	Converging  GatewayDirection = "Converging"
@@ -58,7 +57,7 @@ func (startEvent TStartEvent) GetOutgoingAssociation() []string {
 }
 
 func (startEvent TStartEvent) GetType() ElementType {
-	return StartEvent
+	return ElementTypeStartEvent
 }
 
 func (endEvent TEndEvent) GetId() string {
@@ -78,7 +77,7 @@ func (endEvent TEndEvent) GetOutgoingAssociation() []string {
 }
 
 func (endEvent TEndEvent) GetType() ElementType {
-	return EndEvent
+	return ElementTypeEndEvent
 }
 
 func (serviceTask TServiceTask) GetId() string {
@@ -98,7 +97,7 @@ func (serviceTask TServiceTask) GetOutgoingAssociation() []string {
 }
 
 func (serviceTask TServiceTask) GetType() ElementType {
-	return ServiceTask
+	return ElementTypeServiceTask
 }
 
 func (serviceTask TServiceTask) GetInputMapping() []extensions.TIoMapping {
@@ -138,7 +137,7 @@ func (businessRuleTask TBusinessRuleTask) GetOutgoingAssociation() []string {
 }
 
 func (businessRuleTask TBusinessRuleTask) GetType() ElementType {
-	return ServiceTask
+	return ElementTypeServiceTask
 }
 
 func (businessRuleTask TBusinessRuleTask) GetInputMapping() []extensions.TIoMapping {
@@ -178,7 +177,7 @@ func (sendTask TSendTask) GetOutgoingAssociation() []string {
 }
 
 func (sendTask TSendTask) GetType() ElementType {
-	return ServiceTask
+	return ElementTypeServiceTask
 }
 
 func (sendTask TSendTask) GetInputMapping() []extensions.TIoMapping {
@@ -218,7 +217,7 @@ func (userTask TUserTask) GetOutgoingAssociation() []string {
 }
 
 func (userTask TUserTask) GetType() ElementType {
-	return UserTask
+	return ElementTypeUserTask
 }
 
 func (userTask TUserTask) GetInputMapping() []extensions.TIoMapping {
@@ -258,7 +257,7 @@ func (parallelGateway TParallelGateway) GetOutgoingAssociation() []string {
 }
 
 func (parallelGateway TParallelGateway) GetType() ElementType {
-	return ParallelGateway
+	return ElementTypeParallelGateway
 }
 
 func (parallelGateway TParallelGateway) IsParallel() bool {
@@ -289,7 +288,7 @@ func (exclusiveGateway TExclusiveGateway) GetOutgoingAssociation() []string {
 }
 
 func (exclusiveGateway TExclusiveGateway) GetType() ElementType {
-	return ExclusiveGateway
+	return ElementTypeExclusiveGateway
 }
 
 func (exclusiveGateway TExclusiveGateway) IsParallel() bool {
@@ -320,7 +319,7 @@ func (intermediateCatchEvent TIntermediateCatchEvent) GetOutgoingAssociation() [
 }
 
 func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
-	return IntermediateCatchEvent
+	return ElementTypeIntermediateCatchEvent
 }
 
 // -------------------------------------------------------------------------
@@ -342,7 +341,7 @@ func (eventBasedGateway TEventBasedGateway) GetOutgoingAssociation() []string {
 }
 
 func (eventBasedGateway TEventBasedGateway) GetType() ElementType {
-	return EventBasedGateway
+	return ElementTypeEventBasedGateway
 }
 
 func (eventBasedGateway TEventBasedGateway) IsParallel() bool {
@@ -377,7 +376,7 @@ func (intermediateThrowEvent TIntermediateThrowEvent) GetOutgoingAssociation() [
 }
 
 func (intermediateThrowEvent TIntermediateThrowEvent) GetType() ElementType {
-	return IntermediateThrowEvent
+	return ElementTypeIntermediateThrowEvent
 }
 
 func (inclusiveGateway TInclusiveGateway) GetId() string {
@@ -397,7 +396,7 @@ func (inclusiveGateway TInclusiveGateway) GetOutgoingAssociation() []string {
 }
 
 func (inclusiveGateway TInclusiveGateway) GetType() ElementType {
-	return InclusiveGateway
+	return ElementTypeInclusiveGateway
 }
 
 func (inclusiveGateway TInclusiveGateway) IsParallel() bool {

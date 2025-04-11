@@ -20,7 +20,7 @@ func (engine *Engine) handleIntermediateThrowEvent(process *runtime.ProcessDefin
 	}
 	for _, ice := range process.Definitions.Process.IntermediateCatchEvent {
 		if ice.LinkEventDefinition.Name == linkName {
-			elementVarHolder := runtime.New(&instance.VariableHolder, nil)
+			elementVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 			if err := propagateProcessInstanceVariables(&elementVarHolder, ite.Output); err != nil {
 				msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ite.Id, ite.Name)
 				nextCommands = []command{errorCommand{

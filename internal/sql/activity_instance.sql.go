@@ -7,37 +7,28 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 )
 
 const findActivityInstances = `-- name: FindActivityInstances :many
-;
-
-SELECT key, process_instance_key, process_definition_key, created_at, state, element_id, bpmn_element_type 
-FROM activity_instance 
-WHERE  COALESCE(?1, process_instance_key) = process_instance_key
-ORDER BY key ASC
+SELECT
+    "key", process_instance_key, process_definition_key, created_at, state, element_id, bpmn_element_type
+FROM
+    activity_instance
+WHERE
+    process_instance_key = ?1
+ORDER BY
+    key ASC
 `
 
-type FindActivityInstancesRow struct {
-	Key                  int64  `json:"key"`
-	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	CreatedAt            int64  `json:"created_at"`
-	State                string `json:"state"`
-	ElementID            string `json:"element_id"`
-	BpmnElementType      string `json:"bpmn_element_type"`
-}
-
-func (q *Queries) FindActivityInstances(ctx context.Context, processInstanceKey sql.NullInt64) ([]FindActivityInstancesRow, error) {
+func (q *Queries) FindActivityInstances(ctx context.Context, processInstanceKey int64) ([]ActivityInstance, error) {
 	rows, err := q.db.QueryContext(ctx, findActivityInstances, processInstanceKey)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FindActivityInstancesRow{}
+	items := []ActivityInstance{}
 	for rows.Next() {
-		var i FindActivityInstancesRow
+		var i ActivityInstance
 		if err := rows.Scan(
 			&i.Key,
 			&i.ProcessInstanceKey,
@@ -61,10 +52,8 @@ func (q *Queries) FindActivityInstances(ctx context.Context, processInstanceKey 
 }
 
 const saveActivityInstance = `-- name: SaveActivityInstance :exec
-INSERT INTO activity_instance
-	(key, process_instance_key, process_definition_key, created_at, state, element_id, bpmn_element_type)
-	VALUES
-	(?, ?, ?, ?, ?, ?, ?)
+INSERT INTO activity_instance(key, process_instance_key, process_definition_key, created_at, state, element_id, bpmn_element_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveActivityInstanceParams struct {

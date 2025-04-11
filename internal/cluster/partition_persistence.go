@@ -173,10 +173,7 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 }
 
 func (rq *RqLiteDB) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	result, err := rq.executeStatements(ctxWithTimeout, []*proto.Statement{rq.generateStatement(sql, args...)})
+	result, err := rq.executeStatements(ctx, []*proto.Statement{rq.generateStatement(sql, args...)})
 
 	if err != nil {
 		rq.logger.Error("Error executing SQL statements")
@@ -232,10 +229,13 @@ func (rq *RqLiteDB) QueryRowContext(ctx context.Context, query string, args ...i
 var _ storage.Storage = &RqLiteDB{}
 
 func (rq *RqLiteDB) NewBatch() storage.Batch {
-	return &RqLiteDBBatch{
+	batch := &RqLiteDBBatch{
 		db:        rq,
-		stmtToRun: make([]func() error, 0, 10),
+		stmtToRun: make([]*proto.Statement, 0, 10),
 	}
+	queries := sql.New(batch)
+	batch.queries = queries
+	return batch
 }
 
 var _ storage.ProcessDefinitionStorageReader = &RqLiteDB{}
@@ -303,7 +303,11 @@ func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId st
 var _ storage.ProcessDefinitionStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
-	err := rq.queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
+	return SaveProcessDefinitionWith(ctx, rq.queries, definition)
+}
+
+func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition runtime.ProcessDefinition) error {
+	err := db.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
 		Key:              definition.ProcessKey,
 		Version:          definition.Version,
 		BpmnProcessID:    definition.BpmnProcessId,
@@ -368,11 +372,15 @@ func getActivity(act sql.ActivityInstance) runtime.Activity {
 var _ storage.ProcessInstanceStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+	return SaveProcessInstanceWith(ctx, rq.queries, processInstance)
+}
+
+func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstance runtime.ProcessInstance) error {
 	varStr, err := json.Marshal(processInstance.VariableHolder)
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
 	}
-	err = rq.queries.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
+	err = db.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.ProcessKey,
 		CreatedAt:            processInstance.CreatedAt.Unix(),
@@ -444,7 +452,11 @@ func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey in
 var _ storage.TimerStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveTimer(ctx context.Context, timer runtime.Timer) error {
-	err := rq.queries.SaveTimer(ctx, sql.SaveTimerParams{
+	return SaveTimerWith(ctx, rq.queries, timer)
+}
+
+func SaveTimerWith(ctx context.Context, db *sql.Queries, timer runtime.Timer) error {
+	err := db.SaveTimer(ctx, sql.SaveTimerParams{
 		Key:                  timer.Key(),
 		ElementID:            timer.ElementId,
 		ElementInstanceKey:   timer.ElementInstanceKey,
@@ -548,7 +560,11 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 var _ storage.JobStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveJob(ctx context.Context, job runtime.Job) error {
-	err := rq.queries.SaveJob(ctx, sql.SaveJobParams{
+	return SaveJobWith(ctx, rq.queries, job)
+}
+
+func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
+	err := db.SaveJob(ctx, sql.SaveJobParams{
 		Key:                job.Key(),
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -618,7 +634,10 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 var _ storage.MessageStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
-	err := rq.queries.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
+	return SaveMessageSubscriptionWith(ctx, rq.queries, subscription)
+}
+func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription runtime.MessageSubscription) error {
+	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.Key(),
 		ElementInstanceKey:   subscription.ElementInstanceKey,
 		ElementID:            subscription.ElementId,
@@ -639,65 +658,63 @@ func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription ru
 
 type RqLiteDBBatch struct {
 	db        *RqLiteDB
-	stmtToRun []func() error
+	stmtToRun []*proto.Statement
+	queries   *sql.Queries
+}
+
+func (rq *RqLiteDBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+	stmt := rq.db.generateStatement(sql, args...)
+	rq.stmtToRun = append(rq.stmtToRun, stmt)
+	return rqliteResult{}, nil
+}
+
+func (rq *RqLiteDBBatch) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {
+	panic("PrepareContext not supported by RqLiteDBBatch")
+}
+
+func (rq *RqLiteDBBatch) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	panic("QueryContext not supported by RqLiteDBBatch")
+}
+
+func (rq *RqLiteDBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	panic("QueryRowContext not supported by RqLiteDBBatch")
 }
 
 var _ storage.Batch = &RqLiteDBBatch{}
 
 // TODO: for now close just calls the functions
 // in the future we want to actually execute this as one statement into rqlite
-func (b *RqLiteDBBatch) Close() error {
-	var joinErr error
-	for _, stmt := range b.stmtToRun {
-		err := stmt()
-		if err != nil {
-			errors.Join(joinErr, err)
-		}
-	}
-	return joinErr
+func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
+	_, err := b.db.executeStatements(ctx, b.stmtToRun)
+	return err
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveProcessDefinition(ctx, definition)
-	})
-	return nil
+	return SaveProcessDefinitionWith(ctx, b.queries, definition)
 }
 
 var _ storage.ProcessInstanceStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveProcessInstance(ctx, processInstance)
-	})
-	return nil
+	return SaveProcessInstanceWith(ctx, b.queries, processInstance)
 }
 
 var _ storage.TimerStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveTimer(ctx, timer)
-	})
-	return nil
+	return SaveTimerWith(ctx, b.queries, timer)
 }
 
 var _ storage.JobStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveJob(ctx context.Context, job runtime.Job) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveJob(ctx, job)
-	})
-	return nil
+	return SaveJobWith(ctx, b.queries, job)
 }
 
 var _ storage.MessageStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
-	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveMessageSubscription(ctx, subscription)
-	})
-	return nil
+	return SaveMessageSubscriptionWith(ctx, b.queries, subscription)
 }

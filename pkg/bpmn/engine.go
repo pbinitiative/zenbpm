@@ -322,7 +322,7 @@ mainLoop:
 		return errors.Join(newEngineErrorf("failed to add save process instance %d into batch", instance.Key), err)
 	}
 
-	err = batch.Close()
+	err = batch.Flush(ctx)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to close batch for %d", instance.Key), err)
 	}
@@ -389,7 +389,7 @@ func (engine *Engine) handleElement(
 		if ms, ok := activity.(*runtime.MessageSubscription); ok {
 			batch.SaveMessageSubscription(ctx, *ms)
 			// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
-			batch.Close()
+			batch.Flush(ctx)
 		} else {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message

@@ -247,7 +247,7 @@ var _ storage.Batch = &InMemoryStorageBatch{}
 
 // TODO: for now close just calls the functions
 // in the future we want to actually execute this as one statement into memlite
-func (b *InMemoryStorageBatch) Close() error {
+func (b *InMemoryStorageBatch) Flush(ctx context.Context) error {
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
 		err := stmt()

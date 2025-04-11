@@ -33,7 +33,7 @@ type Batch interface {
 	MessageStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
-	Close() error
+	Flush(ctx context.Context) error
 }
 
 type ProcessDefinitionStorageReader interface {

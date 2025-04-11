@@ -61,7 +61,7 @@ func (engine *Engine) handleServiceTask(ctx context.Context, batch storage.Batch
 	if err != nil {
 		return nil, fmt.Errorf("failed to add save job into batch: %w", err)
 	}
-	err = batch.Close()
+	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to close batch for handle service task: %w", err)
 	}

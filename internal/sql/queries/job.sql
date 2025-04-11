@@ -62,4 +62,4 @@ FROM
     job
 WHERE
     process_instance_key = @process_instance_key
-		AND state IN CAST(@states AS text[]);
+    AND state IN CAST(@states AS text[]);

@@ -24,28 +24,13 @@ type CatchEvent struct {
 	Variables  map[string]interface{}
 }
 
-// type ProcessInstance interface {
-// 	GetProcessInfo() *ProcessDefinition
-// 	GetInstanceKey() int64
-//
-// 	// GetVariable from the process instance's variable context
-// 	GetVariable(key string) interface{}
-//
-// 	// SetVariable to the process instance's variable context
-// 	SetVariable(key string, value interface{})
-//
-// 	GetCreatedAt() time.Time
-// 	GetState() ActivityState
-// }
-
-// TODO: do we need json tags here?
 type ProcessInstance struct {
-	Definition     *ProcessDefinition `json:"-"`
-	Key            int64              `json:"ik"`
-	VariableHolder VariableHolder     `json:"vh,omitempty"`
-	CreatedAt      time.Time          `json:"c"`
-	State          ActivityState      `json:"s"`
-	CaughtEvents   []CatchEvent       `json:"ce,omitempty"`
+	Definition     *ProcessDefinition
+	Key            int64
+	VariableHolder VariableHolder
+	CreatedAt      time.Time
+	State          ActivityState
+	CaughtEvents   []CatchEvent
 	Activities     []Activity
 }
 
@@ -236,8 +221,8 @@ type Job struct {
 	ElementId          string
 	ElementInstanceKey int64
 	ProcessInstanceKey int64
-	JobKey             int64         // TODO: rename to Key
-	JobState           ActivityState // TODO: rename to State
+	JobKey             int64
+	JobState           ActivityState
 	CreatedAt          time.Time
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }

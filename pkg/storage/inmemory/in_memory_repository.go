@@ -10,7 +10,7 @@ import (
 )
 
 // Storage keeps process information in memory,
-// please use NewInMemory to create a new object of this type.
+// please use NewStorage to create a new object of this type.
 type Storage struct {
 	ProcessDefinitions   map[int64]runtime.ProcessDefinition
 	ProcessInstances     map[int64]runtime.ProcessInstance

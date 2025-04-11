@@ -682,8 +682,6 @@ func (rq *RqLiteDBBatch) QueryRowContext(ctx context.Context, query string, args
 
 var _ storage.Batch = &RqLiteDBBatch{}
 
-// TODO: for now close just calls the functions
-// in the future we want to actually execute this as one statement into rqlite
 func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
 	_, err := b.db.executeStatements(ctx, b.stmtToRun)
 	return err

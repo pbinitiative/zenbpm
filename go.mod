@@ -22,7 +22,7 @@ require (
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
 )
 

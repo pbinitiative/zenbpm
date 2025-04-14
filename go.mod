@@ -11,7 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-chi/cors v1.2.1
 	github.com/hashicorp/go-hclog v1.6.3
-	github.com/hashicorp/raft v1.7.2
+	github.com/hashicorp/raft v1.7.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea
 	github.com/hazelcast/hazelcast-go-client v1.4.2
 	github.com/ilyakaznacheev/cleanenv v1.5.0

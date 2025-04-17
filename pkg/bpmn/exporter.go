@@ -14,7 +14,7 @@ func (engine *Engine) AddEventExporter(exporter exporter.EventExporter) {
 func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, resourceName string, checksum string) {
 	event := exporter.ProcessEvent{
 		ProcessId:    processInfo.BpmnProcessId,
-		ProcessKey:   processInfo.ProcessKey,
+		ProcessKey:   processInfo.Key,
 		Version:      processInfo.Version,
 		XmlData:      xmlData,
 		ResourceName: resourceName,
@@ -28,7 +28,7 @@ func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinitio
 func (engine *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
-		ProcessKey:         process.ProcessKey,
+		ProcessKey:         process.Key,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.Key,
 	}
@@ -40,7 +40,7 @@ func (engine *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, p
 func (engine *Engine) exportProcessInstanceEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
-		ProcessKey:         process.ProcessKey,
+		ProcessKey:         process.Key,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.Key,
 	}
@@ -52,7 +52,7 @@ func (engine *Engine) exportProcessInstanceEvent(process runtime.ProcessDefiniti
 func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, element bpmn20.FlowNode, intent exporter.Intent) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
-		ProcessKey:         process.ProcessKey,
+		ProcessKey:         process.Key,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.Key,
 	}
@@ -69,7 +69,7 @@ func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, proc
 func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, flow bpmn20.TSequenceFlow) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
-		ProcessKey:         process.ProcessKey,
+		ProcessKey:         process.Key,
 		Version:            process.Version,
 		ProcessInstanceKey: processInstance.Key,
 	}

@@ -5,9 +5,6 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
 )
 
 func Test_creating_a_process_sets_state_to_READY(t *testing.T) {
@@ -36,7 +33,7 @@ func Test_running_a_process_sets_state_to_ACTIVE(t *testing.T) {
 func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	pi, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	err := bpmnEngine.PublishEventForInstance(pi.GetInstanceKey(), "globalMsgRef", nil)
@@ -64,7 +61,7 @@ func Test_IntermediateCatchEvent_message_can_be_published_before_running_the_ins
 func Test_IntermediateCatchEvent_a_catch_event_produces_an_active_subscription(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	subscriptions := engineStorage.MessageSubscriptions
@@ -86,8 +83,8 @@ func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_t
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	pi1, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, map[string]interface{}{})
-	pi2, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, map[string]interface{}{})
+	pi1, _ := bpmnEngine.CreateAndRunInstance(process.Key, map[string]interface{}{})
+	pi2, _ := bpmnEngine.CreateAndRunInstance(process.Key, map[string]interface{}{})
 
 	// when
 	bpmnEngine.PublishEventForInstance(pi1.GetInstanceKey(), "globalMsgRef", nil)
@@ -144,7 +141,7 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("task1").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task2").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task3").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -162,7 +159,7 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -179,7 +176,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(
 func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -195,7 +192,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	t.Skip("TODO: re-enable once refactoring is done")
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -214,7 +211,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_ACTIVE(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -229,8 +226,8 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_COMPLETED(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
-	then.AssertThat(t, err, is.Nil())
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
+	assert.Nil(t, err)
 
 	// when
 	err = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg-event-1", nil)
@@ -248,7 +245,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_ACTIVE(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// when
@@ -327,5 +324,5 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 
 	assert.Equal(t, instance.GetState(), runtime.ActivityStateFailed)
 	assert.Nil(t, instance.GetVariable("mappedFoo"))
-	assert.Equal(t, message[0].State(), runtime.ActivityStateFailed)
+	assert.Equal(t, message[0].GetState(), runtime.ActivityStateFailed)
 }

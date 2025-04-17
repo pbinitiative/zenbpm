@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	ssql "database/sql"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
@@ -85,6 +86,12 @@ func (rq *RqLiteDB) generateStatement(sql string, parameters ...interface{}) *pr
 					I: int64(par),
 				},
 			})
+		case []int:
+			resultParams = append(resultParams, &proto.Parameter{
+				Value: &proto.Parameter_S{
+					S: strings.Trim(strings.Join(strings.Fields(fmt.Sprint(par)), ","), "[]"),
+				},
+			})
 		case float64:
 			resultParams = append(resultParams, &proto.Parameter{
 				Value: &proto.Parameter_D{
@@ -125,6 +132,9 @@ func (rq *RqLiteDB) generateStatement(sql string, parameters ...interface{}) *pr
 			}
 		default:
 			rq.logger.Error(fmt.Sprintf("Unknown parameter type: %T", par))
+			if profile.Current == profile.DEV || profile.Current == profile.TEST {
+				panic(fmt.Sprintf("Unknown parameter type: %T", par))
+			}
 		}
 
 	}
@@ -250,7 +260,7 @@ func (rq *RqLiteDB) FindLatestProcessDefinitionById(ctx context.Context, process
 	res = runtime.ProcessDefinition{
 		BpmnProcessId: dbDefinition.BpmnProcessID,
 		Version:       dbDefinition.Version,
-		ProcessKey:    dbDefinition.Key,
+		Key:           dbDefinition.Key,
 		// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 		BpmnData:         dbDefinition.BpmnData,
 		BpmnResourceName: dbDefinition.BpmnResourceName,
@@ -270,7 +280,7 @@ func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	res = runtime.ProcessDefinition{
 		BpmnProcessId: dbDefinition.BpmnProcessID,
 		Version:       dbDefinition.Version,
-		ProcessKey:    dbDefinition.Key,
+		Key:           dbDefinition.Key,
 		// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 		BpmnData:         dbDefinition.BpmnData,
 		BpmnResourceName: dbDefinition.BpmnResourceName,
@@ -290,7 +300,7 @@ func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId st
 		res[i] = runtime.ProcessDefinition{
 			BpmnProcessId: def.BpmnProcessID,
 			Version:       def.Version,
-			ProcessKey:    def.Key,
+			Key:           def.Key,
 			// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 			BpmnData:         def.BpmnData,
 			BpmnResourceName: def.BpmnResourceName,
@@ -308,7 +318,7 @@ func (rq *RqLiteDB) SaveProcessDefinition(ctx context.Context, definition runtim
 
 func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition runtime.ProcessDefinition) error {
 	err := db.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
-		Key:              definition.ProcessKey,
+		Key:              definition.Key,
 		Version:          definition.Version,
 		BpmnProcessID:    definition.BpmnProcessId,
 		BpmnData:         definition.BpmnData,
@@ -331,42 +341,28 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	}
 
 	variables := map[string]any{}
-	err = json.Unmarshal([]byte(dbInstance.VariableHolder), &variables)
+	err = json.Unmarshal([]byte(dbInstance.Variables), &variables)
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 
-	dbActivities, err := rq.queries.FindActivityInstances(ctx, dbInstance.Key)
-	if err != nil {
-		return res, fmt.Errorf("failed to find activities for process instance key (%d): %w", dbInstance.Key, err)
-	}
+	// TODO: load all activities from DB
+	// dbActivities, err := rq.queries.FindActivityInstances(ctx, dbInstance.Key)
+	// if err != nil {
+	// 	return res, fmt.Errorf("failed to find activities for process instance key (%d): %w", dbInstance.Key, err)
+	// }
 
 	res = runtime.ProcessInstance{
 		// Definition:     &runtime.ProcessDefinition{}, //TODO: load from cache
 		Key:            dbInstance.Key,
 		VariableHolder: runtime.NewVariableHolder(nil, variables),
-		CreatedAt:      time.Unix(dbInstance.CreatedAt, 0),
+		CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 		State:          runtime.ActivityState(dbInstance.State),
 		// CaughtEvents:   []runtime.CatchEvent{}, //TODO: do something
-		Activities: make([]runtime.Activity, len(dbActivities)),
-	}
-	for i, act := range dbActivities {
-		res.Activities[i] = getActivity(act)
+		// Activities: make([]runtime.Activity, len(dbActivities)),
 	}
 
 	return res, nil
-}
-
-// TODO: add activity parsing from storage
-func getActivity(act sql.ActivityInstance) runtime.Activity {
-	var res runtime.Activity
-	switch bpmn20.ElementType(act.BpmnElementType) {
-	case bpmn20.ElementTypeServiceTask:
-		res = runtime.Job{}
-	default:
-		res = nil
-	}
-	return res
 }
 
 var _ storage.ProcessInstanceStorageWriter = &RqLiteDB{}
@@ -376,16 +372,16 @@ func (rq *RqLiteDB) SaveProcessInstance(ctx context.Context, processInstance run
 }
 
 func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstance runtime.ProcessInstance) error {
-	varStr, err := json.Marshal(processInstance.VariableHolder)
+	varStr, err := json.Marshal(processInstance.VariableHolder.Variables())
 	if err != nil {
-		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
+		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
 	err = db.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
-		ProcessDefinitionKey: processInstance.Definition.ProcessKey,
-		CreatedAt:            processInstance.CreatedAt.Unix(),
+		ProcessDefinitionKey: processInstance.Definition.Key,
+		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
 		State:                int(processInstance.State),
-		VariableHolder:       string(varStr),
+		Variables:            string(varStr),
 		// CaughtEvents:         "",
 		// Activities:           , //TODO: what do we save here? we have activity_instance table
 	})
@@ -409,12 +405,12 @@ func (rq *RqLiteDB) FindActivityTimers(ctx context.Context, activityKey int64, s
 	for i, timer := range dbTimers {
 		res[i] = runtime.Timer{
 			ElementId:            timer.ElementID,
-			ElementInstanceKey:   timer.ElementInstanceKey,
+			Key:                  timer.ElementInstanceKey,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
 			TimerState:           runtime.TimerState(timer.State),
-			CreatedAt:            time.Unix(timer.CreatedAt, 0),
-			DueAt:                time.Unix(timer.DueAt, 0),
+			CreatedAt:            time.UnixMilli(timer.CreatedAt),
+			DueAt:                time.UnixMilli(timer.DueAt),
 			// OriginActivity:     timer.ElementID, // TODO: load process from cache and find its activity by id
 			// BaseElement:        nil,
 		}
@@ -435,13 +431,13 @@ func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey in
 	for i, timer := range dbTimers {
 		res[i] = runtime.Timer{
 			ElementId:            timer.ElementID,
-			ElementInstanceKey:   timer.ElementInstanceKey,
+			Key:                  timer.ElementInstanceKey,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
 			TimerState:           runtime.TimerState(timer.State),
-			CreatedAt:            time.Unix(timer.CreatedAt, 0),
-			DueAt:                time.Unix(timer.DueAt, 0),
-			Duration:             time.Duration(timer.Duration * int64(time.Millisecond)),
+			CreatedAt:            time.UnixMilli(timer.CreatedAt),
+			DueAt:                time.UnixMilli(timer.DueAt),
+			Duration:             time.Millisecond * time.Duration(timer.DueAt-timer.CreatedAt),
 			// OriginActivity:     timer.ElementID, // TODO: load process from cache and find its activity by id
 			// BaseElement:        nil,
 		}
@@ -457,18 +453,17 @@ func (rq *RqLiteDB) SaveTimer(ctx context.Context, timer runtime.Timer) error {
 
 func SaveTimerWith(ctx context.Context, db *sql.Queries, timer runtime.Timer) error {
 	err := db.SaveTimer(ctx, sql.SaveTimerParams{
-		Key:                  timer.Key(),
+		Key:                  timer.GetKey(),
 		ElementID:            timer.ElementId,
-		ElementInstanceKey:   timer.ElementInstanceKey,
+		ElementInstanceKey:   timer.Key,
 		ProcessDefinitionKey: timer.ProcessDefinitionKey,
 		ProcessInstanceKey:   timer.ProcessInstanceKey,
-		State:                int(timer.State()),
-		CreatedAt:            timer.CreatedAt.Unix(),
-		DueAt:                timer.DueAt.Unix(),
-		Duration:             timer.Duration.Milliseconds(),
+		State:                int(timer.GetState()),
+		CreatedAt:            timer.CreatedAt.UnixMilli(),
+		DueAt:                timer.DueAt.UnixMilli(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save timer %d: %w", timer.Key(), err)
+		return fmt.Errorf("failed to save timer %d: %w", timer.GetKey(), err)
 	}
 	return nil
 }
@@ -486,9 +481,9 @@ func (rq *RqLiteDB) FindActiveJobsByType(ctx context.Context, jobType string) ([
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
-			JobKey:             job.Key,
-			JobState:           runtime.ActivityState(job.State),
-			CreatedAt:          time.Unix(job.CreatedAt, 0),
+			Key:                job.Key,
+			State:              runtime.ActivityState(job.State),
+			CreatedAt:          time.UnixMilli(job.CreatedAt),
 			// BaseElement:        ,
 		}
 	}
@@ -508,9 +503,9 @@ func (rq *RqLiteDB) FindJobByElementID(ctx context.Context, processInstanceKey i
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
-		JobKey:             job.Key,
-		JobState:           runtime.ActivityState(job.State),
-		CreatedAt:          time.Unix(job.CreatedAt, 0),
+		Key:                job.Key,
+		State:              runtime.ActivityState(job.State),
+		CreatedAt:          time.UnixMilli(job.CreatedAt),
 		// BaseElement:        nil,
 	}
 	return res, nil
@@ -526,9 +521,9 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
-		JobKey:             job.Key,
-		JobState:           runtime.ActivityState(job.State),
-		CreatedAt:          time.Unix(job.CreatedAt, 0),
+		Key:                job.Key,
+		State:              runtime.ActivityState(job.State),
+		CreatedAt:          time.UnixMilli(job.CreatedAt),
 		// BaseElement:        nil,
 	}
 	return res, nil
@@ -548,9 +543,9 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
-			JobKey:             job.Key,
-			JobState:           runtime.ActivityState(job.State),
-			CreatedAt:          time.Unix(job.CreatedAt, 0),
+			Key:                job.Key,
+			State:              runtime.ActivityState(job.State),
+			CreatedAt:          time.UnixMilli(job.CreatedAt),
 			// BaseElement:        nil,
 		}
 	}
@@ -560,21 +555,30 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 var _ storage.JobStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveJob(ctx context.Context, job runtime.Job) error {
-	return SaveJobWith(ctx, rq.queries, job)
+	err := SaveJobWith(ctx, rq.queries, job)
+	if err != nil {
+		rows, err := rq.QueryContext(ctx, "select * from process_instance")
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("%+v\n", rows)
+	}
+	return err
 }
 
 func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
 	err := db.SaveJob(ctx, sql.SaveJobParams{
-		Key:                job.Key(),
+		Key:                job.GetKey(),
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		// Type:               job.Type, // TODO: add type to runtime.Job
-		State:     int(job.State()),
-		CreatedAt: job.CreatedAt.Unix(),
+		State:     int(job.GetState()),
+		CreatedAt: job.CreatedAt.UnixMilli(),
+		Variables: "{}", // TODO: add variables to job
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save job %d: %w", job.Key(), err)
+		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
 	}
 	return nil
 }
@@ -598,7 +602,7 @@ func (rq *RqLiteDB) FindActivityMessageSubscriptions(ctx context.Context, origin
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
 			MessageState:         runtime.ActivityState(mes.State),
-			CreatedAt:            time.Unix(mes.CreatedAt, 0),
+			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			// OriginActivity:     mes.OriginActivityID,
 			// BaseElement:        nil,
 		}
@@ -623,7 +627,7 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
 			MessageState:         runtime.ActivityState(mes.State),
-			CreatedAt:            time.Unix(mes.CreatedAt, 0),
+			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			// OriginActivity:     mes.OriginActivityID,
 			// BaseElement:        nil,
 		}
@@ -638,20 +642,21 @@ func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription ru
 }
 func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription runtime.MessageSubscription) error {
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
-		Key:                  subscription.Key(),
+		Key:                  subscription.GetKey(),
 		ElementInstanceKey:   subscription.ElementInstanceKey,
 		ElementID:            subscription.ElementId,
 		ProcessDefinitionKey: subscription.ProcessDefinitionKey,
 		ProcessInstanceKey:   subscription.ProcessInstanceKey,
 		Name:                 subscription.Name,
-		State:                int(subscription.State()),
-		CreatedAt:            subscription.CreatedAt.Unix(),
-		OriginActivityKey:    subscription.OriginActivity.Key(),
-		OriginActivityState:  int(subscription.OriginActivity.State()),
+		State:                int(subscription.GetState()),
+		CreatedAt:            subscription.CreatedAt.UnixMilli(),
+		OriginActivityKey:    subscription.OriginActivity.GetKey(),
+		OriginActivityState:  int(subscription.OriginActivity.GetState()),
+		CorrelationKey:       "", // TODO: add message correlation keys into message subscription
 		// OriginActivityID:     subscription.OriginActivity.Id(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save message subscription %d: %w", subscription.Key(), err)
+		return fmt.Errorf("failed to save message subscription %d: %w", subscription.GetKey(), err)
 	}
 	return nil
 }

@@ -39,7 +39,7 @@ func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
 	bpmnEngine.clearTaskHandlers()
 	bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
@@ -52,7 +52,7 @@ func Test_simple_count_loop(t *testing.T) {
 
 	vars := map[string]interface{}{}
 	vars[varCounter] = 0.0
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, vars)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, vars)
 
 	assert.Equal(t, 4.0, instance.GetVariable(varCounter))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
@@ -75,7 +75,7 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 		job.Complete()
 	})
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, vars) // should stop at the intermediate message catch event
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, vars) // should stop at the intermediate message catch event
 
 	_ = bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "msg", nil)
 	_, _ = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey()) // again, should stop at the intermediate message catch event
@@ -114,7 +114,7 @@ func Test_activated_job_data(t *testing.T) {
 		assert.NotEqual(t, int64(0), aj.ProcessInstanceKey())
 	})
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
@@ -129,7 +129,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("user-task-2").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -140,7 +140,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 		}
 	}
 	for _, job := range jobs {
-		assert.Equal(t, runtime.ActivityStateCompleted, job.JobState)
+		assert.Equal(t, runtime.ActivityStateCompleted, job.State)
 	}
 	assert.Equal(t, "service-task-1,user-task-2", cp.CallPath)
 	// id from input should not exist in instance scope
@@ -164,7 +164,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("invalid-input").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -176,7 +176,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	}
 	assert.Equal(t, "", cp.CallPath)
 	assert.Nil(t, pi.GetVariable("id"))
-	assert.Equal(t, runtime.ActivityStateFailed, jobs[0].JobState)
+	assert.Equal(t, runtime.ActivityStateFailed, jobs[0].State)
 	assert.Equal(t, runtime.ActivityStateFailed, pi.GetState())
 }
 
@@ -189,7 +189,7 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("invalid-output").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -202,7 +202,7 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 			jobs = append(jobs, job)
 		}
 	}
-	assert.Equal(t, runtime.ActivityStateFailed.String(), jobs[0].JobState.String())
+	assert.Equal(t, runtime.ActivityStateFailed.String(), jobs[0].State.String())
 	assert.Equal(t, runtime.ActivityStateFailed.String(), pi.GetState().String())
 }
 
@@ -217,7 +217,7 @@ func Test_task_type_handler(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Type("foobar").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -245,7 +245,7 @@ func Test_task_type_handler_ID_handler_has_precedence(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id").Handler(idHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -266,7 +266,7 @@ func Test_just_one_handler_called(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Type("foobar").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -286,7 +286,7 @@ func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
 	bpmnEngine.NewTaskHandler().CandidateGroups("marketing", "support").Handler(cp.TaskHandler)
 
 	// when
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -303,7 +303,7 @@ func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T
 		job.Complete()
 	})
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 
 	assert.True(t, instance.GetVariable("aVariable").(bool))
@@ -319,7 +319,7 @@ func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
 		job.Fail("because I can")
 	})
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 	assert.Nil(t, instance.GetVariable("aVariable"))
 }
@@ -335,7 +335,7 @@ func Test_task_just_declared_output_variables_map_to_process_instance(t *testing
 		job.Complete()
 	})
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 
 	assert.True(t, instance.GetVariable("valueFromHandler").(bool))
@@ -354,7 +354,7 @@ func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *te
 
 	// given
 	bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	assert.Nil(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 	assert.Equal(t, "id-a-1", cp.CallPath)

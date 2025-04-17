@@ -85,7 +85,7 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
-	mem.ProcessDefinitions[definition.ProcessKey] = definition
+	mem.ProcessDefinitions[definition.Key] = definition
 	return nil
 }
 
@@ -111,7 +111,7 @@ var _ storage.TimerStorageReader = &Storage{}
 func (mem *Storage) FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
 	res := make([]runtime.Timer, 0)
 	for _, timer := range mem.Timers {
-		if timer.OriginActivity.Key() != activityKey {
+		if timer.OriginActivity.GetKey() != activityKey {
 			continue
 		}
 		if timer.TimerState != state {
@@ -139,7 +139,7 @@ func (mem *Storage) FindTimersByState(ctx context.Context, processInstanceKey in
 var _ storage.TimerStorageWriter = &Storage{}
 
 func (mem *Storage) SaveTimer(ctx context.Context, timer runtime.Timer) error {
-	mem.Timers[timer.Key()] = timer
+	mem.Timers[timer.GetKey()] = timer
 	return nil
 }
 
@@ -186,7 +186,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		if job.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if job.State() != runtime.ActivityStateActive && job.State() != runtime.ActivityStateCompleting {
+		if job.GetState() != runtime.ActivityStateActive && job.GetState() != runtime.ActivityStateCompleting {
 			continue
 		}
 		res = append(res, job)
@@ -197,7 +197,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 var _ storage.JobStorageWriter = &Storage{}
 
 func (mem *Storage) SaveJob(ctx context.Context, job runtime.Job) error {
-	mem.Jobs[job.Key()] = job
+	mem.Jobs[job.GetKey()] = job
 	return nil
 }
 
@@ -206,10 +206,10 @@ var _ storage.MessageStorageReader = &Storage{}
 func (mem *Storage) FindActivityMessageSubscriptions(ctx context.Context, originActivityKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
 	res := make([]runtime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.OriginActivity.Key() != originActivityKey {
+		if sub.OriginActivity.GetKey() != originActivityKey {
 			continue
 		}
-		if sub.State() != state {
+		if sub.GetState() != state {
 			continue
 		}
 		res = append(res, sub)
@@ -223,7 +223,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 		if sub.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if sub.State() != state {
+		if sub.GetState() != state {
 			continue
 		}
 		res = append(res, sub)
@@ -234,7 +234,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
-	mem.MessageSubscriptions[subscription.Key()] = subscription
+	mem.MessageSubscriptions[subscription.GetKey()] = subscription
 	return nil
 }
 

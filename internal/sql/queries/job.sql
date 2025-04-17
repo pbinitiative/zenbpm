@@ -1,9 +1,10 @@
 -- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
-        state = excluded.state;
+        state = excluded.state,
+				variables = excluded.variables;
 
 -- name: FindJobsWithStates :many
 SELECT
@@ -62,4 +63,11 @@ FROM
     job
 WHERE
     process_instance_key = @process_instance_key
-    AND state IN CAST(@states AS text[]);
+    AND state IN (sqlc.slice('states'));
+
+-- name: FindAllJobs :many
+SELECT
+    *
+FROM
+    job
+LIMIT @size offset @offset;

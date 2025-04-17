@@ -23,23 +23,23 @@ func (engine *Engine) handleServiceTask(ctx context.Context, batch storage.Batch
 	handler := engine.findTaskHandler(element)
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if handler != nil {
-		if job.JobState != runtime.ActivityStateCompleting {
-			job.JobState = runtime.ActivityStateActive
+		if job.State != runtime.ActivityStateCompleting {
+			job.State = runtime.ActivityStateActive
 			activatedJob := &activatedJob{
 				processInstanceInfo:      instance,
-				failHandler:              func(reason string) { job.JobState = runtime.ActivityStateFailed },
-				completeHandler:          func() { job.JobState = runtime.ActivityStateCompleting },
+				failHandler:              func(reason string) { job.State = runtime.ActivityStateFailed },
+				completeHandler:          func() { job.State = runtime.ActivityStateCompleting },
 				key:                      engine.generateKey(),
 				processInstanceKey:       instance.Key,
 				bpmnProcessId:            process.BpmnProcessId,
 				processDefinitionVersion: process.Version,
-				processDefinitionKey:     process.ProcessKey,
+				processDefinitionKey:     process.Key,
 				elementId:                job.ElementId,
 				createdAt:                job.CreatedAt,
 				variableHolder:           variableHolder,
 			}
 			if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
-				job.JobState = runtime.ActivityStateFailed
+				job.State = runtime.ActivityStateFailed
 				instance.State = runtime.ActivityStateFailed
 				batch.SaveJob(ctx, *job)
 				return job, nil
@@ -48,13 +48,13 @@ func (engine *Engine) handleServiceTask(ctx context.Context, batch storage.Batch
 		}
 	}
 
-	if job.JobState == runtime.ActivityStateCompleting {
+	if job.State == runtime.ActivityStateCompleting {
 		err = propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping())
 		if err != nil {
-			job.JobState = runtime.ActivityStateFailed
+			job.State = runtime.ActivityStateFailed
 			instance.State = runtime.ActivityStateFailed
 		} else {
-			job.JobState = runtime.ActivityStateCompleted
+			job.State = runtime.ActivityStateCompleted
 		}
 	}
 	err = batch.SaveJob(ctx, *job)
@@ -83,11 +83,11 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
 	element := job.BaseElement.(bpmn20.TaskElement)
 	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
-		job.JobState = runtime.ActivityStateFailed
+		job.State = runtime.ActivityStateFailed
 		instance.State = runtime.ActivityStateFailed
 	}
 	// TODO: variable mapping needs to be implemented
-	job.JobState = runtime.ActivityStateCompleting
+	job.State = runtime.ActivityStateCompleting
 	engine.persistence.SaveJob(ctx, job)
 	engine.persistence.SaveProcessInstance(ctx, instance)
 
@@ -107,17 +107,17 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 
 		processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.JobKey, err)
+			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.Key, err)
 		}
 		variableHolder := processInstance.VariableHolder
 		if err := evaluateLocalVariables(&variableHolder, job.BaseElement.(bpmn20.TaskElement).GetInputMapping()); err != nil {
-			job.JobState = runtime.ActivityStateFailed
+			job.State = runtime.ActivityStateFailed
 			engine.persistence.SaveJob(ctx, job)
 			return nil, err
 		}
 		aj := &activatedJob{
 			processInstanceInfo: &processInstance,
-			key:                 job.JobKey,
+			key:                 job.Key,
 			processInstanceKey:  job.ProcessInstanceKey,
 			elementId:           job.ElementId,
 			createdAt:           job.CreatedAt,
@@ -144,8 +144,8 @@ func findOrCreateJob(ctx context.Context, engine *Engine, jobWriter storage.JobS
 		ElementId:          be.GetId(),
 		ElementInstanceKey: elementInstanceKey,
 		ProcessInstanceKey: instance.GetInstanceKey(),
-		JobKey:             elementInstanceKey + 1,
-		JobState:           runtime.ActivityStateActive,
+		Key:                elementInstanceKey + 1,
+		State:              runtime.ActivityStateActive,
 		CreatedAt:          time.Now(),
 		BaseElement:        be,
 	}

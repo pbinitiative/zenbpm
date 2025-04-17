@@ -1,24 +1,14 @@
 -- name: SaveMessageSubscription :exec
 INSERT INTO message_subscription(key, element_instance_key, element_id, process_definition_key, process_instance_key, name, state,
-    created_at, origin_activity_key, origin_activity_state, origin_activity_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, origin_activity_key, origin_activity_state, origin_activity_id, correlation_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state;
 
 -- name: FindMessageSubscriptions :many
 SELECT
-    key,
-    element_instance_key,
-    element_id,
-    process_definition_key,
-    process_instance_key,
-    name,
-    state,
-    created_at,
-    origin_activity_key,
-    origin_activity_state,
-    origin_activity_id
+    *
 FROM
     message_subscription
 WHERE

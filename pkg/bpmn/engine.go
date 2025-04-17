@@ -181,16 +181,16 @@ func (engine *Engine) checkExclusiveGatewayDone(activity eventBasedGatewayActivi
 	}
 
 	// cancel other activities started by this one
-	msgSubs, err := engine.persistence.FindActivityMessageSubscriptions(context.TODO(), activity.Key(), runtime.ActivityStateActive)
+	msgSubs, err := engine.persistence.FindActivityMessageSubscriptions(context.TODO(), activity.GetKey(), runtime.ActivityStateActive)
 	if err != nil {
-		return fmt.Errorf("failed to find process instance message subscriptions by activity key: %d: %w", activity.Key(), err)
+		return fmt.Errorf("failed to find process instance message subscriptions by activity key: %d: %w", activity.GetKey(), err)
 	}
 	for _, ms := range msgSubs {
 		ms.MessageState = runtime.ActivityStateWithdrawn
 	}
-	timers, err := engine.persistence.FindActivityTimers(context.TODO(), activity.Key(), runtime.TimerStateCreated)
+	timers, err := engine.persistence.FindActivityTimers(context.TODO(), activity.GetKey(), runtime.TimerStateCreated)
 	if err != nil {
-		return fmt.Errorf("failed to find process instance timers by activity key: %d: %w", activity.Key(), err)
+		return fmt.Errorf("failed to find process instance timers by activity key: %d: %w", activity.GetKey(), err)
 	}
 	for _, t := range timers {
 		t.TimerState = runtime.TimerStateCancelled
@@ -253,7 +253,6 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 	}
 
 	// *** MAIN LOOP ***
-mainLoop:
 	for len(commandQueue) > 0 {
 		cmd := commandQueue[0]
 		commandQueue = commandQueue[1:]
@@ -301,7 +300,6 @@ mainLoop:
 			err = tCmd.err
 			// TODO: do something with the error?
 			instance.State = runtime.ActivityStateFailed
-			break mainLoop
 		case checkExclusiveGatewayDoneCommand:
 			activity := tCmd.gatewayActivity
 			err = engine.checkExclusiveGatewayDone(activity)
@@ -365,14 +363,14 @@ func (engine *Engine) handleElement(
 		if err != nil {
 			return nil, fmt.Errorf("failed to handle service task: %w", err)
 		}
-		createFlowTransitions = activity.State() == runtime.ActivityStateCompleted
+		createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
 	case bpmn20.ElementTypeUserTask:
 		taskElement := element.(bpmn20.TaskElement)
 		activity, err = engine.handleUserTask(ctx, batch, process, instance, taskElement)
 		if err != nil {
 			return nil, fmt.Errorf("failed to handle user task: %w", err)
 		}
-		createFlowTransitions = activity.State() == runtime.ActivityStateCompleted
+		createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
 	case bpmn20.ElementTypeIntermediateCatchEvent:
 		ice := element.(bpmn20.TIntermediateCatchEvent)
 		createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)

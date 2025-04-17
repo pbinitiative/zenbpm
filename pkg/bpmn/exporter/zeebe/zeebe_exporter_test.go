@@ -53,7 +53,7 @@ func TestPublishNewElementEvent(t *testing.T) {
 	})
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	assert.Less(t, 1, numberOfHazelcastSendToRingbufferCalls)
 }

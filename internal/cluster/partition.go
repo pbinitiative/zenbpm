@@ -194,6 +194,10 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 	return &zpn, nil
 }
 
+func (zpn *ZenPartitionNode) WaitForLeader(timeout time.Duration) (string, error) {
+	return zpn.store.WaitForLeader(timeout)
+}
+
 func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 	return zpn.clusterClient.Stats()
 }

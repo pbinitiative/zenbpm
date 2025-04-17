@@ -20,7 +20,7 @@ func (engine *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, tim
 	}
 
 	if timer != nil && timer.OriginActivity != nil {
-		originActivity := instance.FindActivity(timer.OriginActivity.Key())
+		originActivity := instance.FindActivity(timer.OriginActivity.GetKey())
 		if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 			ebgActivity := originActivity.(eventBasedGatewayActivity)
 			if ebgActivity.OutboundCompleted() {
@@ -44,7 +44,7 @@ func (engine *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, tim
 	if time.Now().After(timer.DueAt) {
 		timer.TimerState = runtime.TimerStateTriggered
 		if timer.OriginActivity != nil {
-			originActivity := instance.FindActivity(timer.OriginActivity.Key())
+			originActivity := instance.FindActivity(timer.OriginActivity.GetKey())
 			if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 				ebgActivity := originActivity.(eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
@@ -71,8 +71,8 @@ func (engine *Engine) createTimer(
 	now := time.Now()
 	t := runtime.Timer{
 		ElementId:            ice.Id,
-		ElementInstanceKey:   engine.generateKey(),
-		ProcessDefinitionKey: instance.Definition.ProcessKey,
+		Key:                  engine.generateKey(),
+		ProcessDefinitionKey: instance.Definition.Key,
 		ProcessInstanceKey:   instance.Key,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            now,

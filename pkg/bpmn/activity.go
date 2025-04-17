@@ -2,8 +2,9 @@ package bpmn
 
 import (
 	"encoding/json"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"slices"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -14,11 +15,11 @@ type elementActivity struct {
 	element bpmn20.FlowNode
 }
 
-func (a elementActivity) Key() int64 {
+func (a elementActivity) GetKey() int64 {
 	return a.key
 }
 
-func (a elementActivity) State() runtime.ActivityState {
+func (a elementActivity) GetState() runtime.ActivityState {
 	return a.state
 }
 
@@ -36,11 +37,11 @@ type gatewayActivity struct {
 	inboundFlowIdsCompleted []string
 }
 
-func (ga *gatewayActivity) Key() int64 {
+func (ga *gatewayActivity) GetKey() int64 {
 	return ga.key
 }
 
-func (ga *gatewayActivity) State() runtime.ActivityState {
+func (ga *gatewayActivity) GetState() runtime.ActivityState {
 	return ga.state
 }
 
@@ -91,11 +92,11 @@ type eventBasedGatewayActivity struct {
 	OutboundActivityCompleted string
 }
 
-func (ebg eventBasedGatewayActivity) Key() int64 {
+func (ebg eventBasedGatewayActivity) GetKey() int64 {
 	return ebg.key
 }
 
-func (ebg eventBasedGatewayActivity) State() runtime.ActivityState {
+func (ebg eventBasedGatewayActivity) GetState() runtime.ActivityState {
 	return ebg.state
 }
 

@@ -24,7 +24,7 @@ func Test_exclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -46,7 +46,7 @@ func Test_exclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -69,7 +69,7 @@ func Test_exclusive_gateway_executes_just_one_matching_path(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -92,7 +92,7 @@ func Test_exclusive_gateway_executes_just_no_matching_path_default_is_used(t *te
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -117,7 +117,7 @@ func Test_exclusive_gateway_executes_just_no_matching_no_default_error_thrown(t 
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 
 	// then
 	assert.NotNil(t, err)
@@ -171,7 +171,7 @@ func Test_evaluation_error_percolates_up(t *testing.T) {
 
 	// when
 	// don't provide variables, for execution to get an evaluation error
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
@@ -194,7 +194,7 @@ func Test_inclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -216,7 +216,7 @@ func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then
@@ -239,7 +239,7 @@ func Test_inclusive_gateway_executes_all_paths(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variables)
+	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
 	assert.Nil(t, err)
 
 	// then

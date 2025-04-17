@@ -12,7 +12,7 @@ import (
 
 const findActivityMessageSubscriptions = `-- name: FindActivityMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, origin_activity_key, origin_activity_state, origin_activity_id
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
 FROM
     message_subscription
 WHERE
@@ -43,6 +43,7 @@ func (q *Queries) FindActivityMessageSubscriptions(ctx context.Context, arg Find
 			&i.Name,
 			&i.State,
 			&i.CreatedAt,
+			&i.CorrelationKey,
 			&i.OriginActivityKey,
 			&i.OriginActivityState,
 			&i.OriginActivityID,
@@ -62,17 +63,7 @@ func (q *Queries) FindActivityMessageSubscriptions(ctx context.Context, arg Find
 
 const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
 SELECT
-    key,
-    element_instance_key,
-    element_id,
-    process_definition_key,
-    process_instance_key,
-    name,
-    state,
-    created_at,
-    origin_activity_key,
-    origin_activity_state,
-    origin_activity_id
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
 FROM
     message_subscription
 WHERE
@@ -117,6 +108,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 			&i.Name,
 			&i.State,
 			&i.CreatedAt,
+			&i.CorrelationKey,
 			&i.OriginActivityKey,
 			&i.OriginActivityState,
 			&i.OriginActivityID,
@@ -136,7 +128,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 
 const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, origin_activity_key, origin_activity_state, origin_activity_id
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
 FROM
     message_subscription
 WHERE
@@ -167,6 +159,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 			&i.Name,
 			&i.State,
 			&i.CreatedAt,
+			&i.CorrelationKey,
 			&i.OriginActivityKey,
 			&i.OriginActivityState,
 			&i.OriginActivityID,
@@ -186,8 +179,8 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec
 INSERT INTO message_subscription(key, element_instance_key, element_id, process_definition_key, process_instance_key, name, state,
-    created_at, origin_activity_key, origin_activity_state, origin_activity_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, origin_activity_key, origin_activity_state, origin_activity_id, correlation_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
@@ -205,6 +198,7 @@ type SaveMessageSubscriptionParams struct {
 	OriginActivityKey    int64  `json:"origin_activity_key"`
 	OriginActivityState  int    `json:"origin_activity_state"`
 	OriginActivityID     string `json:"origin_activity_id"`
+	CorrelationKey       string `json:"correlation_key"`
 }
 
 func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error {
@@ -220,6 +214,7 @@ func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSu
 		arg.OriginActivityKey,
 		arg.OriginActivityState,
 		arg.OriginActivityID,
+		arg.CorrelationKey,
 	)
 	return err
 }

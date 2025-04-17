@@ -55,7 +55,7 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
 	assert.True(t, wasCalled)
@@ -72,7 +72,7 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	}
 	bpmnEngine.clearTaskHandlers()
 	// // given
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id(taskId).Handler(handler)
 
 	// when
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variableContext)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, variableContext)
 
 	v := engineStorage.ProcessInstances[instance.Key]
 	// then
@@ -117,18 +117,18 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	assert.Equal(t, int32(1), metadata.Version)
-	assert.Greater(t, metadata.ProcessKey, int64(1))
+	assert.Greater(t, metadata.Key, int64(1))
 	assert.Equal(t, "Simple_Task_Process", metadata.BpmnProcessId)
 }
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *testing.T) {
 	// setup
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	keyOne := metadata.ProcessKey
+	keyOne := metadata.Key
 	assert.Equal(t, int32(1), metadata.Version)
 
 	metadata, _ = bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	keyTwo := metadata.ProcessKey
+	keyTwo := metadata.Key
 	assert.Equal(t, int32(1), metadata.Version)
 	assert.Equal(t, keyTwo, keyOne)
 }
@@ -140,13 +140,13 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	process3, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	assert.Equal(t, process1.BpmnProcessId, process2.BpmnProcessId, "both prepared files should have equal IDs")
-	assert.Greater(t, process2.ProcessKey, process1.ProcessKey, "Because later created")
+	assert.Greater(t, process2.Key, process1.Key, "Because later created")
 
 	assert.Equal(t, int32(1), process1.Version)
 	assert.Equal(t, int32(2), process2.Version)
 	assert.Equal(t, int32(3), process3.Version)
 
-	assert.NotEqual(t, process2.ProcessKey, process1.ProcessKey)
+	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
@@ -162,7 +162,7 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 
 	// then
 	assert.GreaterOrEqual(t, instance1.CreatedAt.UnixNano(), beforeCreation.UnixNano(), "make sure we have creation time set")
-	assert.Equal(t, instance2.Definition.ProcessKey, instance1.Definition.ProcessKey)
+	assert.Equal(t, instance2.Definition.Key, instance1.Definition.Key)
 	assert.Greater(t, instance2.Key, instance1.Key, "Because later created")
 }
 
@@ -178,7 +178,7 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
 	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
@@ -196,7 +196,7 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
 	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
@@ -225,7 +225,7 @@ func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	process2, _ := bpmnEngine2.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	// then
-	assert.NotEqual(t, process2.ProcessKey, process1.ProcessKey)
+	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
 func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {

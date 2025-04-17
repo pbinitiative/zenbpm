@@ -11,7 +11,7 @@ import (
 )
 
 const findProcessInstances = `-- name: FindProcessInstances :many
-SELECT "key", process_definition_key, created_at, state, variable_holder, caught_events, activities 
+SELECT "key", process_definition_key, created_at, state, variables 
 FROM process_instance
 WHERE COALESCE(?1, "key") = "key"
     AND COALESCE(?2, process_definition_key) = process_definition_key
@@ -37,9 +37,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 			&i.ProcessDefinitionKey,
 			&i.CreatedAt,
 			&i.State,
-			&i.VariableHolder,
-			&i.CaughtEvents,
-			&i.Activities,
+			&i.Variables,
 		); err != nil {
 			return nil, err
 		}
@@ -55,7 +53,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 }
 
 const getProcessInstance = `-- name: GetProcessInstance :one
-SELECT "key", process_definition_key, created_at, state, variable_holder, caught_events, activities 
+SELECT "key", process_definition_key, created_at, state, variables 
 FROM process_instance
 WHERE key = ?1
 `
@@ -68,24 +66,20 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.ProcessDefinitionKey,
 		&i.CreatedAt,
 		&i.State,
-		&i.VariableHolder,
-		&i.CaughtEvents,
-		&i.Activities,
+		&i.Variables,
 	)
 	return i, err
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
 INSERT INTO process_instance (
-    key, process_definition_key, created_at, state, variable_holder, caught_events, activities
+    key, process_definition_key, created_at, state, variables
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?
 )
  ON CONFLICT(key) DO UPDATE SET 
     state = excluded.state,
-    variable_holder = excluded.variable_holder,
-    caught_events = excluded.caught_events,
-    activities = excluded.activities
+    variables = excluded.variables
 `
 
 type SaveProcessInstanceParams struct {
@@ -93,9 +87,7 @@ type SaveProcessInstanceParams struct {
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	CreatedAt            int64  `json:"created_at"`
 	State                int    `json:"state"`
-	VariableHolder       string `json:"variable_holder"`
-	CaughtEvents         string `json:"caught_events"`
-	Activities           string `json:"activities"`
+	Variables            string `json:"variables"`
 }
 
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
@@ -104,9 +96,7 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.ProcessDefinitionKey,
 		arg.CreatedAt,
 		arg.State,
-		arg.VariableHolder,
-		arg.CaughtEvents,
-		arg.Activities,
+		arg.Variables,
 	)
 	return err
 }

@@ -36,7 +36,7 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		DiscoKey:                    "",
 		DiscoConfig:                 "",
 		OnDiskPath:                  "",
-		FKConstraints:               false,
+		FKConstraints:               true,
 		AutoVacInterval:             12 * time.Hour,
 		RaftLogLevel:                "WARN",
 		RaftNonVoter:                false,

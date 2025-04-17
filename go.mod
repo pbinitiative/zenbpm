@@ -6,7 +6,6 @@ toolchain go1.24.0
 
 require (
 	github.com/bwmarrin/snowflake v0.3.0
-	github.com/corbym/gocrest v1.0.5
 	github.com/getkin/kin-openapi v0.127.0
 	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-chi/cors v1.2.1

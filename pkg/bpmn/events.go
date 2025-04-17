@@ -41,7 +41,7 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 	ice bpmn20.TIntermediateCatchEvent,
 	originActivity runtime.Activity,
 ) (continueFlow bool, ms *runtime.MessageSubscription, err error) {
-	messageSubscriptions, err := engine.persistence.FindActivityMessageSubscriptions(ctx, originActivity.Key(), runtime.ActivityStateActive)
+	messageSubscriptions, err := engine.persistence.FindActivityMessageSubscriptions(ctx, originActivity.GetKey(), runtime.ActivityStateActive)
 	if len(messageSubscriptions) > 0 {
 		ms = &messageSubscriptions[0]
 	}
@@ -79,7 +79,7 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 		}
 		ms.MessageState = runtime.ActivityStateCompleted
 		if ms.OriginActivity != nil {
-			originActivity := instance.FindActivity(ms.OriginActivity.Key())
+			originActivity := instance.FindActivity(ms.OriginActivity.GetKey())
 			if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 				ebgActivity := originActivity.(*eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
@@ -95,7 +95,7 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 	ms := &runtime.MessageSubscription{
 		ElementId:            ice.Id,
 		ElementInstanceKey:   engine.generateKey(),
-		ProcessDefinitionKey: instance.Definition.ProcessKey,
+		ProcessDefinitionKey: instance.Definition.Key,
 		ProcessInstanceKey:   instance.GetInstanceKey(),
 		Name:                 ice.Name,
 		CreatedAt:            time.Now(),

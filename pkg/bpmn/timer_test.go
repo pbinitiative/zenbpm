@@ -19,7 +19,7 @@ func Test_EventBasedGateway_selects_path_where_timer_occurs(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "message", nil)
@@ -38,7 +38,7 @@ func Test_InvalidTimer_will_stop_execution_and_return_err(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-invalid-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
@@ -57,7 +57,7 @@ func Test_EventBasedGateway_selects_path_where_message_received(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	time.Sleep((1 * time.Second) + (1 * time.Millisecond))
@@ -78,7 +78,7 @@ func Test_EventBasedGateway_selects_just_one_path(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	time.Sleep((1 * time.Second) + (1 * time.Millisecond))

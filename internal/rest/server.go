@@ -168,7 +168,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for _, p := range processes {
 		version := int(p.Version)
-		key := fmt.Sprintf("%d", p.ProcessKey)
+		key := fmt.Sprintf("%d", p.Key)
 		processDefinitionSimple := public.ProcessDefinitionSimple{
 			Key:           &key,
 			Version:       &version,
@@ -212,7 +212,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	processDefinitionDetail := public.ProcessDefinitionDetail{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: &processes[0].BpmnProcessId,
-			Key:           ptr.To(fmt.Sprintf("%d", processes[0].ProcessKey)),
+			Key:           ptr.To(fmt.Sprintf("%d", processes[0].Key)),
 			Version:       &version,
 		},
 		BpmnData: &bpmnData,
@@ -252,7 +252,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		Items: &[]public.ProcessInstance{},
 	}
 	for _, pi := range processInstances {
-		processDefintionKey := fmt.Sprintf("%d", pi.Definition.ProcessKey)
+		processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
 		state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 		processInstanceSimple := public.ProcessInstance{
 			Key:                  fmt.Sprintf("%d", pi.Key),
@@ -290,7 +290,7 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 		return nil, fmt.Errorf("process instance with key %d not found", key)
 	}
 	pi := processInstances[0]
-	processDefintionKey := fmt.Sprintf("%d", pi.Definition.ProcessKey)
+	processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
 	state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 	processInstanceSimple := public.ProcessInstance{
 		Key:                  fmt.Sprintf("%d", pi.Key),
@@ -369,11 +369,11 @@ func (s *Server) getJobItems(ctx context.Context, elementId *string, jobType *st
 	}
 	items := make([]public.Job, 0)
 	for _, j := range jobs {
-		key := fmt.Sprintf("%d", j.Key())
+		key := fmt.Sprintf("%d", j.GetKey())
 		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey)
 		elementInstanceKey := fmt.Sprintf("%d", j.ElementInstanceKey)
 		//TODO: Needs propper conversion
-		state := fmt.Sprintf("%d", j.State())
+		state := fmt.Sprintf("%d", j.GetState())
 		jobSimple := public.Job{
 			Key: &key,
 			// ElementId:          &j.ElementID,

@@ -1,13 +1,11 @@
 package bpmn
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-
-	"github.com/corbym/gocrest/has"
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
@@ -18,12 +16,12 @@ func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-events.bpmn")
 	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
-	then.AssertThat(t, cp.CallPath, is.EqualTo("Task-A,Task-B"))
+	assert.Nil(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, "Task-A,Task-B", cp.CallPath)
 }
 
 func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testing.T) {
@@ -35,16 +33,13 @@ func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testi
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-broken.bpmn")
 	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, err, is.Not(is.Nil()))
-	then.AssertThat(t, err.Error(), has.Prefix("missing link intermediate catch event with linkName="))
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateFailed))
-	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
-
-	// cleanup
-	bpmnEngine.Stop()
+	assert.NotNil(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "missing link intermediate catch event with linkName="))
+	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.Equal(t, "", cp.CallPath)
 }
 
 func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
@@ -56,19 +51,16 @@ func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-output-variables.bpmn")
 	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.ActivityStateCompleted))
-	then.AssertThat(t, cp.CallPath, is.EqualTo("Task"))
+	assert.Nil(t, err)
+	assert.Equal(t, instance.State, runtime.ActivityStateCompleted)
+	assert.Equal(t, "Task", cp.CallPath)
 
 	// then
-	then.AssertThat(t, instance.GetVariable("throw"), is.Not(is.Nil()))
-	then.AssertThat(t, instance.GetVariable("throw").(string), is.EqualTo("throw"))
+	assert.NotNil(t, instance.GetVariable("throw"))
+	assert.Equal(t, "throw", instance.GetVariable("throw").(string))
 	// then
-	then.AssertThat(t, instance.GetVariable("catch"), is.Not(is.Nil()))
-	then.AssertThat(t, instance.GetVariable("catch").(string), is.EqualTo("catch"))
-
-	// cleanup
-	bpmnEngine.Stop()
+	assert.NotNil(t, instance.GetVariable("catch"))
+	assert.Equal(t, "catch", instance.GetVariable("catch").(string))
 }

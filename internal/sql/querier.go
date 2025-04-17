@@ -10,8 +10,8 @@ import (
 
 type Querier interface {
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
-	FindActivityInstances(ctx context.Context, processInstanceKey int64) ([]ActivityInstance, error)
 	FindActivityMessageSubscriptions(ctx context.Context, arg FindActivityMessageSubscriptionsParams) ([]MessageSubscription, error)
+	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
@@ -28,7 +28,6 @@ type Querier interface {
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
 	FindTimersInState(ctx context.Context, arg FindTimersInStateParams) ([]Timer, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
-	SaveActivityInstance(ctx context.Context, arg SaveActivityInstanceParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error

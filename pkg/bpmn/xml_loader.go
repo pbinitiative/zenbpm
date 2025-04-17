@@ -44,7 +44,7 @@ func (engine *Engine) load(xmlData []byte, resourceName string) (*runtime.Proces
 	processInfo := runtime.ProcessDefinition{
 		Version:          1,
 		BpmnProcessId:    definitions.Process.Id,
-		ProcessKey:       engine.generateKey(),
+		Key:              engine.generateKey(),
 		Definitions:      definitions,
 		BpmnData:         compressAndEncode(xmlData),
 		BpmnResourceName: resourceName,

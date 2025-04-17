@@ -3,8 +3,7 @@ package bpmn20
 import (
 	"testing"
 
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_no_expression_when_only_blanks(t *testing.T) {
@@ -17,7 +16,7 @@ func Test_no_expression_when_only_blanks(t *testing.T) {
 	// when
 	result := flow.HasConditionExpression()
 	// then
-	then.AssertThat(t, result, is.False())
+	assert.False(t, result)
 }
 
 func Test_has_expression_when_some_characters_present(t *testing.T) {
@@ -30,5 +29,5 @@ func Test_has_expression_when_some_characters_present(t *testing.T) {
 	// when
 	result := flow.HasConditionExpression()
 	// then
-	then.AssertThat(t, result, is.True())
+	assert.True(t, result)
 }

@@ -12,7 +12,7 @@ import (
 
 const findElementTimers = `-- name: FindElementTimers :many
 SELECT
-    "key", element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at
 FROM
     timer
 WHERE
@@ -36,14 +36,13 @@ func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersPa
 		var i Timer
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
 			&i.State,
 			&i.CreatedAt,
 			&i.DueAt,
-			&i.Duration,
 		); err != nil {
 			return nil, err
 		}
@@ -60,7 +59,7 @@ func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersPa
 
 const findTimers = `-- name: FindTimers :many
 SELECT
-    "key", element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at
 FROM
     timer
 WHERE
@@ -91,14 +90,13 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer
 		var i Timer
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
 			&i.State,
 			&i.CreatedAt,
 			&i.DueAt,
-			&i.Duration,
 		); err != nil {
 			return nil, err
 		}
@@ -115,7 +113,7 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer
 
 const findTimersInState = `-- name: FindTimersInState :many
 SELECT
-    "key", element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at
 FROM
     timer
 WHERE
@@ -139,14 +137,13 @@ func (q *Queries) FindTimersInState(ctx context.Context, arg FindTimersInStatePa
 		var i Timer
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
 			&i.State,
 			&i.CreatedAt,
 			&i.DueAt,
-			&i.Duration,
 		); err != nil {
 			return nil, err
 		}
@@ -162,8 +159,8 @@ func (q *Queries) FindTimersInState(ctx context.Context, arg FindTimersInStatePa
 }
 
 const saveTimer = `-- name: SaveTimer :exec
-INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, duration)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
@@ -178,7 +175,6 @@ type SaveTimerParams struct {
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	DueAt                int64  `json:"due_at"`
-	Duration             int64  `json:"duration"`
 }
 
 func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
@@ -191,7 +187,6 @@ func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
 		arg.State,
 		arg.CreatedAt,
 		arg.DueAt,
-		arg.Duration,
 	)
 	return err
 }

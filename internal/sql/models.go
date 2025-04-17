@@ -4,24 +4,15 @@
 
 package sql
 
-type ActivityInstance struct {
-	Key                  int64  `json:"key"`
-	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	CreatedAt            int64  `json:"created_at"`
-	State                string `json:"state"`
-	ElementID            string `json:"element_id"`
-	BpmnElementType      string `json:"bpmn_element_type"`
-}
-
 type Job struct {
 	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
+	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 	Type               string `json:"type"`
 	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
+	Variables          string `json:"variables"`
 }
 
 type MessageSubscription struct {
@@ -33,6 +24,7 @@ type MessageSubscription struct {
 	Name                 string `json:"name"`
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
+	CorrelationKey       string `json:"correlation_key"`
 	OriginActivityKey    int64  `json:"origin_activity_key"`
 	OriginActivityState  int    `json:"origin_activity_state"`
 	OriginActivityID     string `json:"origin_activity_id"`
@@ -52,19 +44,16 @@ type ProcessInstance struct {
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	CreatedAt            int64  `json:"created_at"`
 	State                int    `json:"state"`
-	VariableHolder       string `json:"variable_holder"`
-	CaughtEvents         string `json:"caught_events"`
-	Activities           string `json:"activities"`
+	Variables            string `json:"variables"`
 }
 
 type Timer struct {
 	Key                  int64  `json:"key"`
-	ElementID            string `json:"element_id"`
 	ElementInstanceKey   int64  `json:"element_instance_key"`
+	ElementID            string `json:"element_id"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	DueAt                int64  `json:"due_at"`
-	Duration             int64  `json:"duration"`
 }

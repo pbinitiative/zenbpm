@@ -65,6 +65,7 @@ type ProcessInstanceStorageWriter interface {
 type TimerStorageReader interface {
 	FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error)
 
+	// TODO: in runtime.Timer there is a comment about not exposing OriginActivity outside of package. How do we want to satisfy this method if we do that?
 	FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error)
 }
 
@@ -103,3 +104,51 @@ type MessageStorageWriter interface {
 	// and potentially overwrites prior data stored with given key
 	SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error
 }
+
+// type ProcessDefinition struct {
+// 	BpmnProcessId    string
+// 	Version          int32
+// 	Key              int64
+// 	BpmnData         string
+// 	BpmnResourceName string
+// 	BpmnChecksum     [16]byte
+// }
+//
+// type ProcessInstance struct {
+// 	DefinitionKey int64
+// 	Key           int64
+// 	Variables     map[string]any
+// 	CreatedAt     time.Time
+// 	State         runtime.ActivityState
+// }
+//
+// type MessageSubscription struct {
+// 	ElementId            string
+// 	ElementInstanceKey   int64
+// 	ProcessDefinitionKey int64
+// 	ProcessInstanceKey   int64
+// 	Name                 string
+// 	State                runtime.ActivityState
+// 	CreatedAt            time.Time
+// 	OriginActivityKey    int64
+// }
+//
+// type Timer struct {
+// 	ElementId            string
+// 	ElementInstanceKey   int64
+// 	ProcessDefinitionKey int64
+// 	ProcessInstanceKey   int64
+// 	TimerState           runtime.TimerState
+// 	CreatedAt            time.Time
+// 	DueAt                time.Time
+// 	OriginActivityKey    int64
+// }
+//
+// type Job struct {
+// 	ElementId          string
+// 	ElementInstanceKey int64
+// 	ProcessInstanceKey int64
+// 	Key                int64
+// 	State              runtime.ActivityState
+// 	CreatedAt          time.Time
+// }

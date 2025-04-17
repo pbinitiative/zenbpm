@@ -8,11 +8,12 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
@@ -30,12 +31,58 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 		var i Job
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessInstanceKey,
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
+			&i.Variables,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findAllJobs = `-- name: FindAllJobs :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
+FROM
+    job
+LIMIT ?2 offset ?1
+`
+
+type FindAllJobsParams struct {
+	Offset int64 `json:"offset"`
+	Size   int64 `json:"size"`
+}
+
+func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, findAllJobs, arg.Offset, arg.Size)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
 		); err != nil {
 			return nil, err
 		}
@@ -52,7 +99,7 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 
 const findJobByElementId = `-- name: FindJobByElementId :one
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
@@ -70,19 +117,20 @@ func (q *Queries) FindJobByElementId(ctx context.Context, arg FindJobByElementId
 	var i Job
 	err := row.Scan(
 		&i.Key,
-		&i.ElementID,
 		&i.ElementInstanceKey,
+		&i.ElementID,
 		&i.ProcessInstanceKey,
 		&i.Type,
 		&i.State,
 		&i.CreatedAt,
+		&i.Variables,
 	)
 	return i, err
 }
 
 const findJobByJobKey = `-- name: FindJobByJobKey :one
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
@@ -94,19 +142,20 @@ func (q *Queries) FindJobByJobKey(ctx context.Context, key int64) (Job, error) {
 	var i Job
 	err := row.Scan(
 		&i.Key,
-		&i.ElementID,
 		&i.ElementInstanceKey,
+		&i.ElementID,
 		&i.ProcessInstanceKey,
 		&i.Type,
 		&i.State,
 		&i.CreatedAt,
+		&i.Variables,
 	)
 	return i, err
 }
 
 const findJobByKey = `-- name: FindJobByKey :one
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
@@ -118,19 +167,20 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 	var i Job
 	err := row.Scan(
 		&i.Key,
-		&i.ElementID,
 		&i.ElementInstanceKey,
+		&i.ElementID,
 		&i.ProcessInstanceKey,
 		&i.Type,
 		&i.State,
 		&i.CreatedAt,
+		&i.Variables,
 	)
 	return i, err
 }
 
 const findJobsWithStates = `-- name: FindJobsWithStates :many
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
@@ -171,12 +221,13 @@ func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStates
 		var i Job
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessInstanceKey,
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
+			&i.Variables,
 		); err != nil {
 			return nil, err
 		}
@@ -193,21 +244,32 @@ func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStates
 
 const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
 SELECT
-    "key", element_id, element_instance_key, process_instance_key, type, state, created_at
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables
 FROM
     job
 WHERE
     process_instance_key = ?1
-		AND state IN CAST(?2 AS text[])
+    AND state IN (/*SLICE:states*/?)
 `
 
 type FindProcessInstanceJobsInStateParams struct {
-	ProcessInstanceKey int64       `json:"process_instance_key"`
-	States             interface{} `json:"states"`
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	States             []int `json:"states"`
 }
 
 func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessInstanceJobsInState, arg.ProcessInstanceKey, arg.States)
+	query := findProcessInstanceJobsInState
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,12 +279,13 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 		var i Job
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementID,
 			&i.ElementInstanceKey,
+			&i.ElementID,
 			&i.ProcessInstanceKey,
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
+			&i.Variables,
 		); err != nil {
 			return nil, err
 		}
@@ -238,11 +301,12 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 }
 
 const saveJob = `-- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
-        state = excluded.state
+        state = excluded.state,
+				variables = excluded.variables
 `
 
 type SaveJobParams struct {
@@ -253,6 +317,7 @@ type SaveJobParams struct {
 	Type               string `json:"type"`
 	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
+	Variables          string `json:"variables"`
 }
 
 func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
@@ -264,6 +329,7 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.Type,
 		arg.State,
 		arg.CreatedAt,
+		arg.Variables,
 	)
 	return err
 }

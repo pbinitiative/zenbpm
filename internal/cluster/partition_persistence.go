@@ -555,15 +555,7 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 var _ storage.JobStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveJob(ctx context.Context, job runtime.Job) error {
-	err := SaveJobWith(ctx, rq.queries, job)
-	if err != nil {
-		rows, err := rq.QueryContext(ctx, "select * from process_instance")
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("%+v\n", rows)
-	}
-	return err
+	return SaveJobWith(ctx, rq.queries, job)
 }
 
 func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {

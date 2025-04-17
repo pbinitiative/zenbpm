@@ -3,31 +3,35 @@ package bpmn
 import (
 	"context"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"strings"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/senseyeio/duration"
 )
 
-func (state *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (continueFlow bool, timer *runtime.Timer, err error) {
-	timer = findExistingTimerNotYetTriggered(state, ice.Id, instance)
+func (engine *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, timerWriter storage.TimerStorageWriter, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (continueFlow bool, timer *runtime.Timer, err error) {
+	timer, err = findExistingTimerNotYetTriggered(engine, ice.Id, instance)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to find not triggered timer: %w", err)
+	}
 
 	if timer != nil && timer.OriginActivity != nil {
-		originActivity := instance.findActivity(timer.OriginActivity.Key())
-		if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+		originActivity := instance.FindActivity(timer.OriginActivity.GetKey())
+		if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 			ebgActivity := originActivity.(eventBasedGatewayActivity)
 			if ebgActivity.OutboundCompleted() {
-				timer.TimerState = runtime.TimerCancelled
+				timer.TimerState = runtime.TimerStateCancelled
 				return false, timer, err
 			}
 		}
 	}
 
 	if timer == nil {
-		timer, err = state.createTimer(ctx, instance, ice, originActivity)
+		timer, err = engine.createTimer(ctx, timerWriter, instance, ice, originActivity)
 		if err != nil {
 			evalErr := &ExpressionEvaluationError{
 				Msg: fmt.Sprintf("Error evaluating expression in intermediate timer cacht event Activity id='%s' name='%s'", ice.Id, ice.Name),
@@ -38,10 +42,10 @@ func (state *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, inst
 	}
 
 	if time.Now().After(timer.DueAt) {
-		timer.TimerState = runtime.TimerTriggered
+		timer.TimerState = runtime.TimerStateTriggered
 		if timer.OriginActivity != nil {
-			originActivity := instance.findActivity(timer.OriginActivity.Key())
-			if originActivity != nil && originActivity.Element().GetType() == bpmn20.EventBasedGateway {
+			originActivity := instance.FindActivity(timer.OriginActivity.GetKey())
+			if originActivity != nil && originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
 				ebgActivity := originActivity.(eventBasedGatewayActivity)
 				ebgActivity.SetOutboundCompleted(ice.Id)
 			}
@@ -51,7 +55,13 @@ func (state *Engine) handleIntermediateTimerCatchEvent(ctx context.Context, inst
 	return false, timer, err
 }
 
-func (state *Engine) createTimer(ctx context.Context, instance *processInstanceInfo, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (*runtime.Timer, error) {
+func (engine *Engine) createTimer(
+	ctx context.Context,
+	timerStorageWriter storage.TimerStorageWriter,
+	instance *runtime.ProcessInstance,
+	ice bpmn20.TIntermediateCatchEvent,
+	originActivity runtime.Activity,
+) (*runtime.Timer, error) {
 	durationVal, err := findDurationValue(ice)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
@@ -59,36 +69,35 @@ func (state *Engine) createTimer(ctx context.Context, instance *processInstanceI
 	}
 	var be bpmn20.FlowNode = ice
 	now := time.Now()
-	t := &runtime.Timer{
-		ElementId:          ice.Id,
-		ElementInstanceKey: state.generateKey(),
-		ProcessKey:         instance.ProcessInfo.ProcessKey,
-		ProcessInstanceKey: instance.InstanceKey,
-		TimerState:         runtime.TimerCreated,
-		CreatedAt:          now,
-		DueAt:              durationVal.Shift(now),
-		Duration:           time.Duration(durationVal.TS) * time.Second,
-		BaseElement:        be,
-		OriginActivity:     originActivity,
+	t := runtime.Timer{
+		ElementId:            ice.Id,
+		Key:                  engine.generateKey(),
+		ProcessDefinitionKey: instance.Definition.Key,
+		ProcessInstanceKey:   instance.Key,
+		TimerState:           runtime.TimerStateCreated,
+		CreatedAt:            now,
+		DueAt:                durationVal.Shift(now),
+		Duration:             time.Duration(durationVal.TS) * time.Second,
+		BaseElement:          be,
+		OriginActivity:       originActivity,
 	}
-	_err := state.persistence.PersistNewTimer(ctx, t)
-	return t, _err
+	_err := timerStorageWriter.SaveTimer(ctx, t)
+	return &t, _err
 }
 
-func findExistingTimerNotYetTriggered(state *Engine, id string, instance *processInstanceInfo) *runtime.Timer {
-	var t *runtime.Timer
-	var key *int64
-	if instance != nil {
-		key = ptr.To(instance.GetInstanceKey())
-	}
+func findExistingTimerNotYetTriggered(engine *Engine, id string, instance *runtime.ProcessInstance) (*runtime.Timer, error) {
+	key := instance.GetInstanceKey()
 
-	timers := state.persistence.FindTimers(nil, key, runtime.TimerCreated)
+	timers, err := engine.persistence.FindTimersByState(context.TODO(), key, runtime.TimerStateCreated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers by engine for key: %d: %w", key, err)
+	}
 	for _, timer := range timers {
-		if timer.ElementId == id && timer.ProcessInstanceKey == *key && timer.TimerState == runtime.TimerCreated {
-			return t
+		if timer.ElementId == id && timer.ProcessInstanceKey == key && timer.TimerState == runtime.TimerStateCreated {
+			return &timer, nil
 		}
 	}
-	return t
+	return nil, nil
 }
 
 func findDurationValue(ice bpmn20.TIntermediateCatchEvent) (duration.Duration, error) {

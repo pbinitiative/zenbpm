@@ -3,17 +3,13 @@ package bpmn
 import (
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/rqlite"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
-
-	"github.com/corbym/gocrest/has"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
-
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"github.com/stretchr/testify/assert"
 )
 
 type CallPath struct {
@@ -29,27 +25,24 @@ func (callPath *CallPath) TaskHandler(job ActivatedJob) {
 }
 
 var bpmnEngine Engine
+var engineStorage *inmemory.Storage
 
 func TestMain(m *testing.M) {
-	// TODO: swap for in-memory store and get rid of internal dependency
-	testStore := rqlite.TestStorage{}
-	testStore.SetupTestEnvironment(m)
+	engineStorage = inmemory.NewStorage()
 
 	var exitCode int
 
 	defer func() {
-		testStore.TeardownTestEnvironment(m)
 		os.Exit(exitCode)
 	}()
 
-	bpmnEngine = New(WithStorage(testStore.Store))
+	bpmnEngine = NewEngine(EngineWithStorage(engineStorage))
 
 	// Run the tests
 	exitCode = m.Run()
 }
 
 func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
-
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	wasCalled := false
@@ -62,10 +55,10 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, wasCalled, is.True())
+	assert.True(t, wasCalled)
 }
 
 func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
@@ -79,20 +72,19 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	}
 	bpmnEngine.clearTaskHandlers()
 	// // given
-	pi, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
-	bpmnEngine.RunOrContinueInstance(pi.InstanceKey)
+	bpmnEngine.RunOrContinueInstance(pi.Key)
 
 	// when
-	then.AssertThat(t, wasCalled, is.True())
+	assert.True(t, wasCalled)
 
 }
 
 func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
-
 	// setup
 	variableName := "variable_name"
 	taskId := "id"
@@ -102,7 +94,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 
 	handler := func(job ActivatedJob) {
 		v := job.Variable(variableName)
-		then.AssertThat(t, v, is.EqualTo("oldVal").Reason("one should be able to read variables"))
+		assert.Equal(t, "oldVal", v, "one should be able to read variables")
 		job.SetVariable(variableName, "newVal")
 		job.Complete()
 	}
@@ -112,39 +104,33 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id(taskId).Handler(handler)
 
 	// when
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, variableContext)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, variableContext)
 
-	v := bpmnEngine.GetPersistenceService().FindProcessInstanceByKey(instance.GetInstanceKey())
+	v := engineStorage.ProcessInstances[instance.Key]
 	// then
-	then.AssertThat(t, v, is.Not(is.Nil()).Reason("Process isntance needs to be present"))
-	then.AssertThat(t, v.VariableHolder.GetVariable(variableName), is.EqualTo("newVal"))
-
+	assert.NotNil(t, v, "Process isntance needs to be present")
+	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
-	then.AssertThat(t, metadata.Version, is.EqualTo(int32(1)))
-	then.AssertThat(t, metadata.ProcessKey, is.GreaterThan(1))
-	then.AssertThat(t, metadata.BpmnProcessId, is.EqualTo("Simple_Task_Process"))
-
+	assert.Equal(t, int32(1), metadata.Version)
+	assert.Greater(t, metadata.Key, int64(1))
+	assert.Equal(t, "Simple_Task_Process", metadata.BpmnProcessId)
 }
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *testing.T) {
-
 	// setup
-
 	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	keyOne := metadata.ProcessKey
-	then.AssertThat(t, metadata.Version, is.EqualTo(int32(1)))
+	keyOne := metadata.Key
+	assert.Equal(t, int32(1), metadata.Version)
 
 	metadata, _ = bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	keyTwo := metadata.ProcessKey
-	then.AssertThat(t, metadata.Version, is.EqualTo(int32(1)))
-
-	then.AssertThat(t, keyOne, is.EqualTo(keyTwo))
-
+	keyTwo := metadata.Key
+	assert.Equal(t, int32(1), metadata.Version)
+	assert.Equal(t, keyTwo, keyOne)
 }
 
 func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T) {
@@ -153,16 +139,14 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	process2, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task_modified_taskId.bpmn")
 	process3, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
-	then.AssertThat(t, process1.BpmnProcessId, is.EqualTo(process2.BpmnProcessId).Reason("both prepared files should have equal IDs"))
-	then.AssertThat(t, process2.ProcessKey, is.GreaterThan(process1.ProcessKey).Reason("Because later created"))
-	// then.AssertThat(t, process3.ProcessKey, is.EqualTo(process1.ProcessKey).Reason("Same processKey return for same input file, means already registered"))
+	assert.Equal(t, process1.BpmnProcessId, process2.BpmnProcessId, "both prepared files should have equal IDs")
+	assert.Greater(t, process2.Key, process1.Key, "Because later created")
 
-	then.AssertThat(t, process1.Version, is.EqualTo(int32(1)))
-	then.AssertThat(t, process2.Version, is.EqualTo(int32(2)))
-	then.AssertThat(t, process3.Version, is.EqualTo(int32(3)))
+	assert.Equal(t, int32(1), process1.Version)
+	assert.Equal(t, int32(2), process2.Version)
+	assert.Equal(t, int32(3), process3.Version)
 
-	then.AssertThat(t, process1.ProcessKey, is.Not(is.EqualTo(process2.ProcessKey)))
-
+	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
@@ -177,13 +161,12 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	instance2, _ := bpmnEngine.CreateInstance(process, nil)
 
 	// then
-	then.AssertThat(t, instance1.CreatedAt.UnixNano(), is.GreaterThanOrEqualTo(beforeCreation.UnixNano()).Reason("make sure we have creation time set"))
-	then.AssertThat(t, instance1.ProcessInfo.ProcessKey, is.EqualTo(instance2.ProcessInfo.ProcessKey))
-	then.AssertThat(t, instance2.InstanceKey, is.GreaterThan(instance1.InstanceKey).Reason("Because later created"))
+	assert.GreaterOrEqual(t, instance1.CreatedAt.UnixNano(), beforeCreation.UnixNano(), "make sure we have creation time set")
+	assert.Equal(t, instance2.Definition.Key, instance1.Definition.Key)
+	assert.Greater(t, instance2.Key, instance1.Key, "Because later created")
 }
 
 func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
-
 	// setup
 	cp := CallPath{}
 	bpmnEngine.clearTaskHandlers()
@@ -195,15 +178,13 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-b-1,id-b-2"))
-
+	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
 }
 
 func TestParallelGateWayTwoTasks(t *testing.T) {
-
 	// setup
 	cp := CallPath{}
 	bpmnEngine.clearTaskHandlers()
@@ -215,94 +196,78 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("id-a-1,id-b-1,id-b-2"))
-
+	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
 }
 
 func TestMultipleEnginesCanBeCreatedWithoutAName(t *testing.T) {
 	// when
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine1 := New(WithStorage(store))
-	var store2 storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine2 := New(WithStorage(store2))
+	var store storage.Storage = &inmemory.Storage{}
+	bpmnEngine1 := NewEngine(EngineWithStorage(store))
+	var store2 storage.Storage = &inmemory.Storage{}
+	bpmnEngine2 := NewEngine(EngineWithStorage(store2))
 
 	// then
-	then.AssertThat(t, bpmnEngine1.name, is.Not(is.EqualTo(bpmnEngine2.name).Reason("make sure the names are different")))
+	assert.NotEqual(t, bpmnEngine1.name, bpmnEngine2.name, "make sure the names are different")
 }
 
 func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	// setup
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine1 := New(WithStorage(store))
-	var store2 storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine2 := New(WithStorage(store2))
+	store := inmemory.NewStorage()
+	bpmnEngine1 := NewEngine(EngineWithStorage(store))
+	store2 := inmemory.NewStorage()
+	bpmnEngine2 := NewEngine(EngineWithStorage(store2))
 
 	// when
 	process1, _ := bpmnEngine1.LoadFromFile("./test-cases/simple_task.bpmn")
 	process2, _ := bpmnEngine2.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	// then
-	then.AssertThat(t, process1.ProcessKey, is.Not(is.EqualTo(process2.ProcessKey)))
-
-	// cleanup
-	bpmnEngine1.Stop()
-	bpmnEngine2.Stop()
+	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
 func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
-
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.Definitions.Process.Name, is.EqualTo("aName"))
+	assert.Nil(t, err)
+	assert.Equal(t, "aName", v1.Definitions.Process.Name)
 	// when
 	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.Definitions.Process.Name, is.EqualTo("aName"))
+	assert.Nil(t, err)
+	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
 	instance, err := bpmnEngine.CreateInstanceById("Simple_Task_Process", nil)
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance, is.Not(is.Nil()))
-
-	// ten
-	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
-
+	assert.Nil(t, err)
+	assert.NotNil(t, instance)
+	assert.Equal(t, int32(v2.Version), instance.Definition.Version)
 }
 
 func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
-
-	// setup
-
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v1.Definitions.Process.Name, is.EqualTo("aName"))
+	assert.Nil(t, err)
+	assert.Equal(t, "aName", v1.Definitions.Process.Name)
 	// when
 	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, v2.Definitions.Process.Name, is.EqualTo("aName"))
+	assert.Nil(t, err)
+	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
 	instance, err := bpmnEngine.CreateAndRunInstanceById("Simple_Task_Process", nil)
-	then.AssertThat(t, err, is.Nil())
-	then.AssertThat(t, instance, is.Not(is.Nil()))
+	assert.Nil(t, err)
+	assert.NotNil(t, instance)
 
 	// then
-	then.AssertThat(t, instance.ProcessInfo.Version, is.EqualTo(int32(v2.Version)))
-
+	assert.Equal(t, int32(v2.Version), instance.Definition.Version)
 }
 
 func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
-	// setup
-
 	// when
 	instance, err := bpmnEngine.CreateInstanceById("Simple_Task_Process_not_existing", nil)
 
 	// then
-	then.AssertThat(t, instance, is.Nil())
-	then.AssertThat(t, err, is.Not(is.Nil()))
-	then.AssertThat(t, err.Error(), has.Prefix("no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
-
+	assert.Nil(t, instance)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
 }

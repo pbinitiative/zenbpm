@@ -1,31 +1,30 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"testing"
 
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_user_tasks_can_be_handled(t *testing.T) {
 
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	cp := CallPath{}
 	bpmnEngine.NewTaskHandler().Id("user-task").Handler(cp.TaskHandler)
 
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
-	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, "user-task", cp.CallPath)
 }
 
 func Test_user_tasks_can_be_continue(t *testing.T) {
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	cp := CallPath{}
 	bpmnEngine.clearTaskHandlers()
 
@@ -39,16 +38,15 @@ func Test_user_tasks_can_be_continue(t *testing.T) {
 			cp.TaskHandler(job)
 		}
 	})
-	_, err = bpmnEngine.RunOrContinueInstance(instance.InstanceKey)
-	then.AssertThat(t, err, is.Nil())
+	_, err = bpmnEngine.RunOrContinueInstance(instance.Key)
+	assert.Nil(t, err)
 
 	//when
 	userConfirm = true
-	instance, err = bpmnEngine.RunOrContinueInstance(instance.InstanceKey)
+	instance, err = bpmnEngine.RunOrContinueInstance(instance.Key)
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, err, is.Nil())
-
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Completed))
-	then.AssertThat(t, cp.CallPath, is.EqualTo("user-task"))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, "user-task", cp.CallPath)
 }

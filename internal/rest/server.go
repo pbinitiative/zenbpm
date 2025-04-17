@@ -22,12 +22,13 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 type Server struct {
 	sync.RWMutex
-	engine *bpmn.Engine
+	engine *bpmn.Engine // TODO: remove engine
 	node   *cluster.ZenNode
 	addr   string
 	server *http.Server
@@ -36,12 +37,10 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(engine *bpmn.Engine, addr string) *Server {
-	// func NewServer(node *cluster.ZenNode, addr string) *Server {
+func NewServer(node *cluster.ZenNode, addr string) *Server {
 	r := chi.NewRouter()
 	s := Server{
-		engine: engine,
-		// node: node,
+		node: node,
 		addr: addr,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
@@ -95,8 +94,7 @@ func getKeyFromString(s *string) *int64 {
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
-	// if !s.node.IsAnyPartitionLeader(ctx) {
-	if !s.engine.GetPersistence().IsLeader() {
+	if !s.node.IsAnyPartitionLeader(ctx) {
 		// if not leader redirect to leader
 		// proxyTheRequestToLeader(ctx, s)
 		return nil, fmt.Errorf("not leader")
@@ -117,7 +115,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
 	key := *getKeyFromString(&request.Body.JobKey)
-	s.engine.JobCompleteById(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
+	s.engine.JobCompleteByKey(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
 	return public.CompleteJob201Response{}, nil
 }
 
@@ -154,7 +152,13 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, nil)
+	store, err := s.node.GetPartitionStore(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	_ = store
+	// processes, err := store.FindAllProcessDefinitions(ctx, nil, nil)
+	var processes []runtime.ProcessDefinition
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +172,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		processDefinitionSimple := public.ProcessDefinitionSimple{
 			Key:           &key,
 			Version:       &version,
-			BpmnProcessId: &p.BpmnProcessID,
+			BpmnProcessId: &p.BpmnProcessId,
 		}
 		items = append(items, processDefinitionSimple)
 	}
@@ -182,7 +186,13 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
-	processes, err := s.engine.GetPersistence().FindProcesses(ctx, nil, getKeyFromString(&request.ProcessDefinitionKey))
+	store, err := s.node.GetPartitionStore(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	_ = store
+	// processes, err := store.FindProcesses(ctx, nil, getKeyFromString(&request.ProcessDefinitionKey))
+	var processes []runtime.ProcessDefinition
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +211,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	bpmnData := base64.StdEncoding.EncodeToString(buffer.Bytes())
 	processDefinitionDetail := public.ProcessDefinitionDetail{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
-			BpmnProcessId: &processes[0].BpmnProcessID,
+			BpmnProcessId: &processes[0].BpmnProcessId,
 			Key:           ptr.To(fmt.Sprintf("%d", processes[0].Key)),
 			Version:       &version,
 		},
@@ -219,7 +229,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if err != nil {
 		return nil, err
 	}
-	instanceDetail, err := s.getProcessInstance(ctx, process.InstanceKey)
+	instanceDetail, err := s.getProcessInstance(ctx, process.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +237,13 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, nil, getKeyFromString(request.Params.ProcessDefinitionKey))
+	store, err := s.node.GetPartitionStore(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	_ = store
+	// processInstances, err := store.FindProcessInstances(ctx, nil, getKeyFromString(request.Params.ProcessDefinitionKey))
+	processInstances := []runtime.ProcessInstance{}
 	if err != nil {
 		return nil, err
 	}
@@ -236,17 +252,16 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		Items: &[]public.ProcessInstance{},
 	}
 	for _, pi := range processInstances {
-		processDefintionKey := fmt.Sprintf("%d", pi.ProcessDefinitionKey)
-		createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
+		processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
 		state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 		processInstanceSimple := public.ProcessInstance{
 			Key:                  fmt.Sprintf("%d", pi.Key),
 			ProcessDefinitionKey: processDefintionKey,
 			State:                state,
-			CreatedAt:            &createdAt,
-			CaughtEvents:         &pi.CaughtEvents,
-			VariableHolder:       &pi.VariableHolder,
-			Activities:           &pi.Activities,
+			CreatedAt:            &pi.CreatedAt,
+			// CaughtEvents:         &pi.CaughtEvents,
+			// VariableHolder:       &pi.VariableHolder,
+			// Activities:           &pi.Activities,
 		}
 		*processInstancesPage.Items = append(*processInstancesPage.Items, processInstanceSimple)
 	}
@@ -261,7 +276,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 }
 
 func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.ProcessInstance, error) {
-	processInstances, err := s.engine.GetPersistence().FindProcessInstances(ctx, &key, nil)
+	store, err := s.node.GetPartitionStore(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	_ = store
+	// processInstances, err := store.FindProcessInstances(ctx, &key, nil)
+	processInstances := []runtime.ProcessInstance{}
 	if err != nil {
 		return nil, err
 	}
@@ -269,17 +290,16 @@ func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.Pro
 		return nil, fmt.Errorf("process instance with key %d not found", key)
 	}
 	pi := processInstances[0]
-	processDefintionKey := fmt.Sprintf("%d", pi.ProcessDefinitionKey)
-	createdAt := time.Unix(0, pi.CreatedAt*int64(time.Second))
+	processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
 	state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
 	processInstanceSimple := public.ProcessInstance{
 		Key:                  fmt.Sprintf("%d", pi.Key),
 		ProcessDefinitionKey: processDefintionKey,
 		State:                state,
-		CreatedAt:            &createdAt,
-		CaughtEvents:         &pi.CaughtEvents,
-		VariableHolder:       &pi.VariableHolder,
-		Activities:           &pi.Activities,
+		CreatedAt:            &pi.CreatedAt,
+		// CaughtEvents:         &pi.CaughtEvents,
+		// VariableHolder:       &pi.VariableHolder,
+		// Activities:           &pi.Activities,
 	}
 	return &processInstanceSimple, nil
 }
@@ -297,57 +317,69 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	activities, err := s.engine.GetPersistence().FindActivitiesByProcessInstanceKey(ctx, getKeyFromString(&request.ProcessInstanceKey))
+	store, err := s.node.GetPartitionStore(ctx, 1)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]public.Activity, 0)
-	result := public.ActivityPage{
-		Items: &items,
-	}
-	for _, a := range activities {
-		key := fmt.Sprintf("%d", a.Key)
-		createdAt := time.Unix(a.CreatedAt, 0)
-		processInstanceKey := fmt.Sprintf("%d", a.ProcessInstanceKey)
-		processDefinitionKey := fmt.Sprintf("%d", a.ProcessDefinitionKey)
-		activitySimple := public.Activity{
-			Key:                  &key,
-			ElementId:            &a.ElementID,
-			CreatedAt:            &createdAt,
-			BpmnElementType:      &a.BpmnElementType,
-			ProcessDefinitionKey: &processDefinitionKey,
-			ProcessInstanceKey:   &processInstanceKey,
-			State:                &a.State,
-		}
-		items = append(items, activitySimple)
-	}
-	result.Items = &items
-	l := len(items)
-	result.Count = &l
-	result.Offset = nil
-	result.Size = nil
-	return public.GetActivities200JSONResponse(result), nil
+	_ = store
+	// activities, err := store.FindActivitiesByProcessInstanceKey(ctx, getKeyFromString(&request.ProcessInstanceKey))
+	// activities := []runtime.Activity
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// items := make([]public.Activity, 0)
+	// result := public.ActivityPage{
+	// 	Items: &items,
+	// }
+	// for _, a := range activities {
+	// 	key := fmt.Sprintf("%d", a.Key)
+	// 	createdAt := time.Unix(a.CreatedAt, 0)
+	// 	processInstanceKey := fmt.Sprintf("%d", a.ProcessInstanceKey)
+	// 	processDefinitionKey := fmt.Sprintf("%d", a.ProcessDefinitionKey)
+	// 	activitySimple := public.Activity{
+	// 		Key:                  &key,
+	// 		ElementId:            &a.ElementID,
+	// 		CreatedAt:            &createdAt,
+	// 		BpmnElementType:      &a.BpmnElementType,
+	// 		ProcessDefinitionKey: &processDefinitionKey,
+	// 		ProcessInstanceKey:   &processInstanceKey,
+	// 		State:                &a.State,
+	// 	}
+	// 	items = append(items, activitySimple)
+	// }
+	// result.Items = &items
+	// l := len(items)
+	// result.Count = &l
+	// result.Offset = nil
+	// result.Size = nil
+	// return public.GetActivities200JSONResponse(result), nil
+	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
 }
 
 func (s *Server) getJobItems(ctx context.Context, elementId *string, jobType *string, processInstanceKey *string, states ...string) ([]public.Job, error) {
-	jobs, err := s.engine.GetPersistence().FindJobs(ctx, elementId, jobType, getKeyFromString(processInstanceKey), nil, states)
+	store, err := s.node.GetPartitionStore(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	_ = store
+	// jobs, err := store.FindJobs(ctx, elementId, jobType, getKeyFromString(processInstanceKey), nil, states)
+	jobs := []runtime.Job{}
 	if err != nil {
 		return nil, err
 	}
 	items := make([]public.Job, 0)
 	for _, j := range jobs {
-		key := fmt.Sprintf("%d", j.Key)
-		createdAt := time.Unix(j.CreatedAt, 0)
+		key := fmt.Sprintf("%d", j.GetKey())
 		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey)
 		elementInstanceKey := fmt.Sprintf("%d", j.ElementInstanceKey)
 		//TODO: Needs propper conversion
-		state := fmt.Sprintf("%d", j.State)
+		state := fmt.Sprintf("%d", j.GetState())
 		jobSimple := public.Job{
-			Key:                &key,
-			ElementId:          &j.ElementID,
-			Type:               &j.Type,
+			Key: &key,
+			// ElementId:          &j.ElementID,
+			// Type:               &j.Type,
 			ElementInstanceKey: &elementInstanceKey,
-			CreatedAt:          &createdAt,
+			CreatedAt:          &j.CreatedAt,
 			State:              &state,
 			ProcessInstanceKey: &processInstanceKey,
 		}

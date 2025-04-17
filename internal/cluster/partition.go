@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/rqlite/rqlite-disco-clients/consul"
 	"github.com/rqlite/rqlite-disco-clients/dns"
 	"github.com/rqlite/rqlite-disco-clients/dnssrv"
@@ -32,6 +33,7 @@ type ZenPartitionNode struct {
 	partitionId     uint32
 	config          *config.RqLite
 	store           *store.Store
+	rqliteDB        *RqLiteDB
 	credentialStore *auth.CredentialsStore
 	clusterClient   *cluster.Client
 	clusterService  *cluster.Service
@@ -56,12 +58,12 @@ func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
 	return zpn.store.IsLeader()
 }
 
-// Execute an SQL statement on rqlite partition
+// Execute an SQL statement on rqlite partition node
 func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
 	return zpn.store.Execute(req)
 }
 
-// Run an SQL query on rqlite partition
+// Run an SQL query on rqlite partition node
 func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
 	return zpn.store.Query(req)
 }
@@ -90,6 +92,11 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 	zpn.store = str
+
+	zpn.rqliteDB = NewRqLiteDB(
+		zpn.store,
+		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
+	)
 
 	// Install the auto-restore data, if necessary.
 	if cfg.AutoRestoreFile != "" {
@@ -177,7 +184,18 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 
 	// TODO: remove once engine and persistence start when they should
 	str.WaitForLeader(10 * time.Second)
+	if str.IsLeader() {
+		engine := bpmn.NewEngine(bpmn.EngineWithStorage(zpn.rqliteDB))
+		// TODO rework handlers
+		emptyHandler := func(job bpmn.ActivatedJob) {
+		}
+		engine.NewTaskHandler().Type("foo").Handler(emptyHandler)
+	}
 	return &zpn, nil
+}
+
+func (zpn *ZenPartitionNode) WaitForLeader(timeout time.Duration) (string, error) {
+	return zpn.store.WaitForLeader(timeout)
 }
 
 func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {

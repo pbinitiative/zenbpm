@@ -2,32 +2,83 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
 type ProcessDefinition struct {
 	BpmnProcessId    string              // The ID as defined in the BPMN file
 	Version          int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
-	ProcessKey       int64               // The engines key for this given process with version
+	Key              int64               // The engines key for this given process with version
 	Definitions      bpmn20.TDefinitions // parsed file content
 	BpmnData         string              // the raw source data, compressed and encoded via ascii85
 	BpmnResourceName string              // some name for the resource
 	BpmnChecksum     [16]byte            // internal checksum to identify different versions
 }
 
-type ProcessInstance interface {
-	GetProcessInfo() *ProcessDefinition
-	GetInstanceKey() int64
+type CatchEvent struct {
+	Name       string
+	CaughtAt   time.Time
+	IsConsumed bool
+	Variables  map[string]interface{}
+}
 
-	// GetVariable from the process instance's variable context
-	GetVariable(key string) interface{}
+type ProcessInstance struct {
+	Definition     *ProcessDefinition
+	Key            int64
+	VariableHolder VariableHolder
+	CreatedAt      time.Time
+	State          ActivityState
+	CaughtEvents   []CatchEvent
+	Activities     []Activity
+}
 
-	// SetVariable to the process instance's variable context
-	SetVariable(key string, value interface{})
+func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
+	return pi.Definition
+}
 
-	GetCreatedAt() time.Time
-	GetState() ActivityState
+func (pi *ProcessInstance) GetInstanceKey() int64 {
+	return pi.Key
+}
+
+func (pi *ProcessInstance) GetVariable(key string) interface{} {
+	return pi.VariableHolder.GetVariable(key)
+}
+
+func (pi *ProcessInstance) SetVariable(key string, value interface{}) {
+	pi.VariableHolder.SetVariable(key, value)
+}
+
+func (pi *ProcessInstance) GetCreatedAt() time.Time {
+	return pi.CreatedAt
+}
+
+// GetState returns one of [ Ready, Active, Completed, Failed ]
+func (pi *ProcessInstance) GetState() ActivityState {
+	return pi.State
+}
+
+func (pi *ProcessInstance) AppendActivity(activity Activity) {
+	pi.Activities = append(pi.Activities, activity)
+}
+
+func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
+	for _, a := range pi.Activities {
+		if a.Element().GetId() == id && a.GetState() == ActivityStateActive {
+			return a
+		}
+	}
+	return nil
+}
+
+func (pi *ProcessInstance) FindActivity(key int64) Activity {
+	for _, a := range pi.Activities {
+		if a.GetKey() == key {
+			return a
+		}
+	}
+	return nil
 }
 
 // ActivityState as per BPMN 2.0 spec, section 13.2.2 Activity, page 428, State diagram:
@@ -71,39 +122,55 @@ type ProcessInstance interface {
 //	                  v      / The Process Ends               / Process Ends /              |
 //	                  O<--------------------------------------------------------------------+
 //	             (Closed)
-type ActivityState string
+type ActivityState int
+
+//go:generate go tool stringer -type=ActivityState
 
 const (
-	Active       ActivityState = "ACTIVE"
-	Compensated  ActivityState = "COMPENSATED"
-	Compensating ActivityState = "COMPENSATING"
-	Completed    ActivityState = "COMPLETED"
-	Completing   ActivityState = "COMPLETING"
-	Failed       ActivityState = "FAILED"
-	Failing      ActivityState = "FAILING"
-	Ready        ActivityState = "READY"
-	Terminated   ActivityState = "TERMINATED"
-	Terminating  ActivityState = "TERMINATING"
-	Withdrawn    ActivityState = "WITHDRAWN"
+	_ ActivityState = iota
+	ActivityStateActive
+	ActivityStateCompensated
+	ActivityStateCompensating
+	ActivityStateCompleted
+	ActivityStateCompleting
+	ActivityStateFailed
+	ActivityStateFailing
+	ActivityStateReady
+	ActivityStateTerminated
+	ActivityStateTerminating
+	ActivityStateWithdrawn
 )
 
 type MessageSubscription struct {
-	ElementId          string
-	ElementInstanceKey int64
-	ProcessKey         int64
-	ProcessInstanceKey int64
-	Name               string
-	MessageState       ActivityState
-	CreatedAt          time.Time
-	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
-	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	ElementId            string
+	ElementInstanceKey   int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	Name                 string
+	MessageState         ActivityState
+	CreatedAt            time.Time
+	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
+	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
-func (m MessageSubscription) Key() int64 {
+func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
+	if m.ElementId == m2.ElementId &&
+		m.ElementInstanceKey == m2.ElementInstanceKey &&
+		m.ProcessDefinitionKey == m2.ProcessDefinitionKey &&
+		m.ProcessInstanceKey == m2.ProcessInstanceKey &&
+		m.Name == m2.Name &&
+		m.MessageState == m2.MessageState &&
+		m.CreatedAt.Truncate(time.Millisecond).Equal(m2.CreatedAt.Truncate(time.Millisecond)) {
+		return true
+	}
+	return false
+}
+
+func (m MessageSubscription) GetKey() int64 {
 	return m.ElementInstanceKey
 }
 
-func (m MessageSubscription) State() ActivityState {
+func (m MessageSubscription) GetState() ActivityState {
 	return m.MessageState
 }
 
@@ -111,40 +178,57 @@ func (m MessageSubscription) Element() bpmn20.FlowNode {
 	return m.BaseElement
 }
 
-type TimerState string
+//go:generate go tool stringer -type=TimerState
+type TimerState int
 
-const TimerCreated TimerState = "CREATED"
-const TimerTriggered TimerState = "TRIGGERED"
-const TimerCancelled TimerState = "CANCELLED"
+const (
+	_ TimerState = iota
+	TimerStateCreated
+	TimerStateTriggered
+	TimerStateCancelled
+)
 
 // Timer is created, when a process instance reaches a Timer Intermediate Message Event.
 // The logic is simple: CreatedAt + Duration = DueAt
 // The TimerState is one of [ TimerCreated, TimerTriggered, TimerCancelled ]
 type Timer struct {
-	ElementId          string
-	ElementInstanceKey int64
-	ProcessKey         int64
-	ProcessInstanceKey int64
-	TimerState         TimerState
-	CreatedAt          time.Time
-	DueAt              time.Time
-	Duration           time.Duration
-	OriginActivity     Activity        // Deprecated: FIXME, should not be public, nor serialized
-	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	ElementId            string
+	Key                  int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	TimerState           TimerState
+	CreatedAt            time.Time
+	DueAt                time.Time
+	Duration             time.Duration
+	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
+	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
-func (t Timer) Key() int64 {
-	return t.ElementInstanceKey
+func (t Timer) GetKey() int64 {
+	return t.Key
 }
 
-func (t Timer) State() ActivityState {
+func (t Timer) EqualTo(t2 Timer) bool {
+	if t.Key == t2.Key &&
+		t.ElementId == t2.ElementId &&
+		t.ProcessDefinitionKey == t2.ProcessDefinitionKey &&
+		t.TimerState == t2.TimerState &&
+		t.CreatedAt.Truncate(time.Millisecond).Equal(t2.CreatedAt.Truncate(time.Millisecond)) &&
+		t.DueAt.Truncate(time.Millisecond).Equal(t2.DueAt.Truncate(time.Millisecond)) &&
+		t.Duration == t2.Duration {
+		return true
+	}
+	return false
+}
+
+func (t Timer) GetState() ActivityState {
 	switch t.TimerState {
-	case TimerCreated:
-		return Active
-	case TimerTriggered:
-		return Completed
-	case TimerCancelled:
-		return Withdrawn
+	case TimerStateCreated:
+		return ActivityStateActive
+	case TimerStateTriggered:
+		return ActivityStateCompleted
+	case TimerStateCancelled:
+		return ActivityStateWithdrawn
 	}
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
 }
@@ -154,8 +238,8 @@ func (t Timer) Element() bpmn20.FlowNode {
 }
 
 type Activity interface {
-	Key() int64
-	State() ActivityState
+	GetKey() int64
+	GetState() ActivityState
 	Element() bpmn20.FlowNode
 }
 
@@ -163,18 +247,18 @@ type Job struct {
 	ElementId          string
 	ElementInstanceKey int64
 	ProcessInstanceKey int64
-	JobKey             int64
-	JobState           ActivityState
+	Key                int64
+	State              ActivityState
 	CreatedAt          time.Time
 	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
-func (j Job) Key() int64 {
-	return j.JobKey
+func (j Job) GetKey() int64 {
+	return j.Key
 }
 
-func (j Job) State() ActivityState {
-	return j.JobState
+func (j Job) GetState() ActivityState {
+	return j.State
 }
 
 func (j Job) Element() bpmn20.FlowNode {

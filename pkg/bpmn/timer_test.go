@@ -1,13 +1,12 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/corbym/gocrest/has"
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_EventBasedGateway_selects_path_where_timer_occurs(t *testing.T) {
@@ -20,14 +19,14 @@ func Test_EventBasedGateway_selects_path_where_timer_occurs(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "message", nil)
 	bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("task-for-message"))
+	assert.Equal(t, "task-for-message", cp.CallPath)
 }
 
 func Test_InvalidTimer_will_stop_execution_and_return_err(t *testing.T) {
@@ -39,13 +38,13 @@ func Test_InvalidTimer_will_stop_execution_and_return_err(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-invalid-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// then
-	then.AssertThat(t, instance.State, is.EqualTo(runtime.Failed))
-	then.AssertThat(t, err, is.Not(is.Nil()))
-	then.AssertThat(t, err.Error(), has.Prefix("Error evaluating expression in intermediate timer cacht event element id="))
-	then.AssertThat(t, cp.CallPath, is.EqualTo(""))
+	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.NotNil(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "Error evaluating expression in intermediate timer cacht event element id="))
+	assert.Equal(t, "", cp.CallPath)
 }
 
 func Test_EventBasedGateway_selects_path_where_message_received(t *testing.T) {
@@ -58,15 +57,15 @@ func Test_EventBasedGateway_selects_path_where_message_received(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	time.Sleep((1 * time.Second) + (1 * time.Millisecond))
 	_, err := bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.EqualTo("task-for-timer"))
+	assert.Equal(t, "task-for-timer", cp.CallPath)
 }
 
 func Test_EventBasedGateway_selects_just_one_path(t *testing.T) {
@@ -79,18 +78,16 @@ func Test_EventBasedGateway_selects_just_one_path(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
 	bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
-	instance, _ := bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	instance, _ := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
 	// when
 	time.Sleep((1 * time.Second) + (1 * time.Millisecond))
 	err := bpmnEngine.PublishEventForInstance(instance.GetInstanceKey(), "message", nil)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	_, err = bpmnEngine.RunOrContinueInstance(instance.GetInstanceKey())
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// then
-	then.AssertThat(t, cp.CallPath, is.AllOf(
-		has.Prefix("task-for"),
-		is.Not(is.ValueContaining(","))),
-	)
+	assert.True(t, strings.HasPrefix(cp.CallPath, "task-for"))
+	assert.False(t, strings.Contains(cp.CallPath, ","))
 }

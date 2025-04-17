@@ -9,8 +9,8 @@ import (
 
 var globalIdGenerator *snowflake.Node = nil
 
-func (state *Engine) generateKey() int64 {
-	return state.snowflake.Generate().Int64()
+func (engine *Engine) generateKey() int64 {
+	return engine.snowflake.Generate().Int64()
 }
 
 // getGlobalSnowflakeIdGenerator the global ID generator

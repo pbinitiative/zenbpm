@@ -6,48 +6,50 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/storage"
-
-	"github.com/corbym/gocrest/has"
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/tests"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *testing.T) {
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
-	instanceInfo := bpmnEngine.FindProcessInstance(1234)
-	then.AssertThat(t, instanceInfo, is.Nil())
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
+	_, err := bpmnEngine.FindProcessInstance(1234)
+
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, storage.ErrNotFound, "expected ErrNotFound for not existing process")
 }
 
 func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
-	instanceInfo := bpmnEngine.FindProcessesById("unknown-id")
-	then.AssertThat(t, instanceInfo, has.Length(0))
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
+	instanceInfos, err := bpmnEngine.FindProcessesById("unknown-id")
+
+	assert.Empty(t, instanceInfos)
+	assert.Nil(t, err)
 }
 
 func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
-	var store storage.PersistentStorage = &tests.TestStorage{}
-	bpmnEngine := New(WithStorage(store))
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
 
 	// setup
 	dataV1, err := os.ReadFile("./test-cases/simple_task.bpmn")
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 	_, err = bpmnEngine.LoadFromBytes(dataV1)
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// given
 	dataV2 := strings.Replace(string(dataV1), "StartEvent_1", "StartEvent_2", -1)
-	then.AssertThat(t, dataV2, is.Not(is.EqualTo(string(dataV1))))
+	assert.NotEqual(t, dataV2, string(dataV1))
 	_, err = bpmnEngine.LoadFromBytes([]byte(dataV2))
-	then.AssertThat(t, err, is.Nil())
+	assert.Nil(t, err)
 
 	// when
-	infos := bpmnEngine.FindProcessesById("Simple_Task_Process")
+	infos, err := bpmnEngine.FindProcessesById("Simple_Task_Process")
+	assert.Nil(t, err)
 
 	// then
-	for i := 0; i < len(infos)-1; i++ {
-		then.AssertThat(t, infos[i].Version, is.GreaterThan(infos[i+1].Version))
+	for i := range len(infos) - 1 {
+		assert.Less(t, infos[i].Version, infos[i+1].Version)
 	}
 }

@@ -2,12 +2,12 @@ version: "2"
 sql:
     - engine: "sqlite"
       queries:
-          - "internal/rqlite/sql_source"
-      schema: "internal/rqlite/sql_source/migrations"
+          - "internal/sql/queries"
+      schema: "internal/sql/migrations"
       gen:
           go:
               package: "sql"
-              out: "internal/rqlite/sql"
+              out: "internal/sql"
               emit_json_tags: true
               emit_empty_slices: true
               emit_interface: true

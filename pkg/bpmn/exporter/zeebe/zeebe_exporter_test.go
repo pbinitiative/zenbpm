@@ -1,11 +1,11 @@
 package zeebe
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"testing"
 
-	"github.com/corbym/gocrest/is"
-	"github.com/corbym/gocrest/then"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"github.com/stretchr/testify/assert"
+
 	bpmn_engine "github.com/pbinitiative/zenbpm/pkg/bpmn"
 )
 
@@ -13,21 +13,21 @@ var numberOfHazelcastSendToRingbufferCalls = 0
 
 func TestPublishNewProAcessEvent(t *testing.T) {
 	// setup
-	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
+	store := inmemory.NewStorage()
+	bpmnEngine := bpmn_engine.NewEngine(bpmn_engine.EngineWithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 
 	// when
 	bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")
 
-	then.AssertThat(t, numberOfHazelcastSendToRingbufferCalls, is.EqualTo(1))
+	assert.Equal(t, 1, numberOfHazelcastSendToRingbufferCalls)
 }
 
 func TestPublishNewProcessInstanceEvent(t *testing.T) {
 	// setup
-	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
+	store := inmemory.NewStorage()
+	bpmnEngine := bpmn_engine.NewEngine(bpmn_engine.EngineWithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")
@@ -36,15 +36,13 @@ func TestPublishNewProcessInstanceEvent(t *testing.T) {
 	// when
 	bpmnEngine.CreateInstance(process, nil)
 
-	then.AssertThat(t, numberOfHazelcastSendToRingbufferCalls, is.EqualTo(1))
+	assert.Equal(t, 1, numberOfHazelcastSendToRingbufferCalls)
 }
 
 func TestPublishNewElementEvent(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
-	var store storage.PersistentStorage = &TestStorage{}
-	bpmnEngine := bpmn_engine.New(bpmn_engine.WithStorage(store))
+	store := inmemory.NewStorage()
+	bpmnEngine := bpmn_engine.NewEngine(bpmn_engine.EngineWithStorage(store))
 	zeebeExporter := createExporterWithHazelcastMock()
 	bpmnEngine.AddEventExporter(&zeebeExporter)
 	process, _ := bpmnEngine.LoadFromFile("../.././test-cases/simple_task.bpmn")
@@ -55,9 +53,9 @@ func TestPublishNewElementEvent(t *testing.T) {
 	})
 
 	// when
-	bpmnEngine.CreateAndRunInstance(process.ProcessKey, nil)
+	bpmnEngine.CreateAndRunInstance(process.Key, nil)
 
-	then.AssertThat(t, numberOfHazelcastSendToRingbufferCalls, is.GreaterThan(1))
+	assert.Less(t, 1, numberOfHazelcastSendToRingbufferCalls)
 }
 
 func createExporterWithHazelcastMock() exporter {

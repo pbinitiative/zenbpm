@@ -76,7 +76,7 @@ func (thc newTaskHandlerCommand) Id(id string) NewTaskHandlerCommand2 {
 // Type implements NewTaskHandlerCommand1
 func (thc newTaskHandlerCommand) Type(taskType string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.TaskElement) bool {
-		return element.GetTaskDefinitionType() == taskType
+		return element.GetTaskType() == taskType
 	}
 	thc.handlerType = taskHandlerForType
 	return thc
@@ -97,19 +97,29 @@ func (engine *Engine) clearTaskHandlers() {
 }
 
 // Assignee implements NewTaskHandlerCommand2
+// TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.TaskElement) bool {
-		return element.GetAssignmentAssignee() == assignee
+		utl, isUserTask := element.(bpmn20.UserTaskElement)
+		if !isUserTask {
+			return false
+		}
+		return utl.GetAssignmentAssignee() == assignee
 	}
 	thc.handlerType = taskHandlerForAssignee
 	return thc
 }
 
 // CandidateGroups implements NewTaskHandlerCommand2
+// TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.TaskElement) bool {
+		utl, isUserTask := element.(bpmn20.UserTaskElement)
+		if !isUserTask {
+			return false
+		}
 		for _, group := range groups {
-			if slices.Contains(element.GetAssignmentCandidateGroups(), group) {
+			if slices.Contains(utl.GetAssignmentCandidateGroups(), group) {
 				return true
 			}
 		}

@@ -63,6 +63,7 @@ func (s *Server) Notify(ctx context.Context, req *proto.NotifyRequest) (*proto.N
 	}
 	return &proto.NotifyResponse{}, nil
 }
+
 func (s *Server) Join(ctx context.Context, req *proto.JoinRequest) (*proto.JoinResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

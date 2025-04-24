@@ -14,7 +14,9 @@ import (
 
 func Test_MultiNode_VerifyLeader(t *testing.T) {
 	c1 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s1"),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s1"),
+		},
 	}
 	s1, ln1 := newMustTestStore(t, c1)
 	defer s1.Close(true)
@@ -40,7 +42,9 @@ func Test_MultiNode_VerifyLeader(t *testing.T) {
 	}
 
 	c2 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s2"),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s2"),
+		},
 	}
 
 	s2, ln2 := newMustTestStore(t, c2)
@@ -86,7 +90,9 @@ func Test_MultiNodeSimple(t *testing.T) {
 	testPartitionId := uint32(1)
 
 	c1 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s1"),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s1"),
+		},
 	}
 	s1, ln1 := newMustTestStore(t, c1)
 	defer s1.Close(true)
@@ -108,7 +114,9 @@ func Test_MultiNodeSimple(t *testing.T) {
 	}
 
 	c2 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s2"),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s2"),
+		},
 	}
 	s2, ln2 := newMustTestStore(t, c2)
 	defer s2.Close(true)
@@ -205,8 +213,10 @@ func Test_MultiNodeSimple(t *testing.T) {
 
 func Test_MultiNodePeerObservations(t *testing.T) {
 	c1 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s1"),
-		NodeId:  fmt.Sprintf("s1-%s", random.String()),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s1"),
+		},
+		NodeId: fmt.Sprintf("s1-%s", random.String()),
 	}
 	s1, ln1 := newMustTestStore(t, c1)
 	defer s1.Close(true)
@@ -228,8 +238,10 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 	}
 
 	c2 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s2"),
-		NodeId:  fmt.Sprintf("s2-%s", random.String()),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s2"),
+		},
+		NodeId: fmt.Sprintf("s2-%s", random.String()),
 	}
 	s2, ln2 := newMustTestStore(t, c2)
 	defer s2.Close(true)
@@ -283,8 +295,10 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 	verifyStoreUpdatedNodeState(t, s2)
 
 	c3 := config.Cluster{
-		RaftDir: filepath.Join(t.TempDir(), "s3"),
-		NodeId:  fmt.Sprintf("s3-%s", random.String()),
+		Raft: config.ClusterRaft{
+			Dir: filepath.Join(t.TempDir(), "s2"),
+		},
+		NodeId: fmt.Sprintf("s3-%s", random.String()),
 	}
 	s3, ln3 := newMustTestStore(t, c3)
 	defer s3.Close(true)

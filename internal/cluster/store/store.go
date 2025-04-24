@@ -126,20 +126,23 @@ type Config struct {
 	// Time after which the node becomes marked as shut down when it stops sending heartbeats
 	// must be lower than reap timeout if set
 	NodeHearbeatShutdownTimeout time.Duration
+
+	BootstrapExpect int
 }
 
 // DefaultConfig provides default store configuration based on cluster configuration.
 func DefaultConfig(c config.Cluster) Config {
 	conf := Config{
 		RetainSnapshotCount:         2,
-		RaftDir:                     c.RaftDir,
+		RaftDir:                     c.Raft.Dir,
 		ReapTimeout:                 0,
 		RaftTimeout:                 5 * time.Second,
 		ReapReadOnlyTimeout:         0,
 		NodeId:                      c.NodeId,
 		NodeHearbeatShutdownTimeout: 2 * time.Second,
+		BootstrapExpect:             c.Raft.BootstrapExpect,
 	}
-	if c.RaftDir == "" {
+	if c.Raft.Dir == "" {
 		conf.RaftDir = "zenbpm_raft"
 	}
 
@@ -153,19 +156,29 @@ func DefaultConfig(c config.Cluster) Config {
 // The store is in closed state and needs to be opened by calling Open before usage.
 func New(layer *tcp.Layer, c Config) *Store {
 	s := &Store{
-		cfg:     c,
-		stateMu: sync.Mutex{},
-		boltDB:  &raftboltdb.BoltStore{},
-		raft:    &raft.Raft{},
-		logger:  hclog.Default().Named("zenbpm-store"),
-		open:    &atomic.Bool{},
-		raftID:  c.NodeId,
-		layer:   layer,
-		raftDir: c.RaftDir,
+		cfg:             c,
+		stateMu:         sync.Mutex{},
+		boltDB:          &raftboltdb.BoltStore{},
+		raft:            &raft.Raft{},
+		logger:          hclog.Default().Named("zenbpm-store"),
+		open:            &atomic.Bool{},
+		raftID:          c.NodeId,
+		layer:           layer,
+		raftDir:         c.RaftDir,
+		bootstrapExpect: c.BootstrapExpect,
+		notifyingNodes:  map[string]raft.Server{},
+		notifyMu:        sync.Mutex{},
+		bootstrapped:    false,
 		state: ClusterState{
 			Partitions: map[uint32]Partition{},
 			Nodes:      map[string]Node{},
 		},
+		raftTn:        &raft.NetworkTransport{},
+		boltStore:     &raftboltdb.BoltStore{},
+		observer:      &raft.Observer{},
+		observerChan:  make(chan raft.Observation),
+		observerClose: make(chan struct{}),
+		observerDone:  make(chan struct{}),
 	}
 
 	ResetStats()

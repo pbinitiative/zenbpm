@@ -17,7 +17,7 @@ import (
 func TestServer(t *testing.T) {
 	ctx := t.Context()
 
-	mux, err := network.NewMux("")
+	mux, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create new mux: %s", err)
 	}
@@ -69,7 +69,7 @@ func TestServer(t *testing.T) {
 func TestServerTCPHeaderMux(t *testing.T) {
 	ctx := t.Context()
 
-	mux, err := network.NewMux("")
+	mux, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create new mux: %s", err)
 	}

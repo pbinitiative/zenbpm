@@ -59,7 +59,9 @@ func Test_NonOpenStore(t *testing.T) {
 // Test_OpenStoreSingleNode tests that a single node basically operates.
 func Test_OpenStoreSingleNode(t *testing.T) {
 	c := config.Cluster{
-		RaftDir: t.TempDir(),
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
 	}
 
 	s, ln := newMustTestStore(t, c)
@@ -100,8 +102,10 @@ func Test_OpenStoreSingleNode(t *testing.T) {
 // Test_StoreRestartSingleNode tests that a store shutdown and opening a new instance results in the same state.
 func Test_StoreRestartSingleNode(t *testing.T) {
 	c := config.Cluster{
-		RaftDir: t.TempDir(),
-		NodeId:  random.String(),
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
+		NodeId: random.String(),
 	}
 
 	s, ln := newMustTestStore(t, c)
@@ -168,7 +172,9 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 // and recovers from it.
 func Test_SingleNodeSnapshot(t *testing.T) {
 	c := config.Cluster{
-		RaftDir: t.TempDir(),
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
 	}
 
 	s, ln := newMustTestStore(t, c)
@@ -287,10 +293,10 @@ func (m *mockSnapshotSink) Cancel() error {
 
 func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	addr := ""
-	if c.RaftAddr != "" {
-		addr = c.RaftAddr
+	if c.Addr != "" {
+		addr = c.Addr
 	}
-	mux, err := network.NewMux(addr)
+	mux, err := network.NewNodeMux(addr)
 	if err != nil {
 		t.Fatalf("failed to start network mux: %s", err)
 	}

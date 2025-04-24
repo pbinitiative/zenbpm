@@ -35,7 +35,7 @@ func (c *controller) Start() error {
 	rqLiteConfig := c.config.RqLite
 
 	if c.config.RqLite == nil {
-		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), []string{})
+		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
 		rqLiteConfig = &defaultConfig
 	}
 	err := rqLiteConfig.Validate()
@@ -81,7 +81,7 @@ func (c *controller) startPartition(ctx context.Context, partitionId uint32) err
 	}
 	partitionConf := *rqLiteConfig
 	partitionConf.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.DataPath = path.Join(c.config.RaftDir, fmt.Sprintf("partition-%d", partitionId))
+	partitionConf.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
 	partition, err := StartZenPartitionNode(ctx, c.mux, &partitionConf, partitionId)
 	if err != nil {
 		return fmt.Errorf("failed to start zen partition %d: %w", partitionId, err)

@@ -193,7 +193,7 @@ func (c *RqLite) Validate() error {
 	}
 	c.DataPath = dataPath
 
-	err = c.CheckFilePaths()
+	err = CheckFilePaths(c)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (c *RqLite) Validate() error {
 		return errors.New("raft advertised address not valid")
 	}
 	if addr := net.ParseIP(radv); addr != nil && addr.IsUnspecified() {
-		return fmt.Errorf("advertised Raft address is not routable (%s), specify it via RaftAddr or RaftAdv",
+		return fmt.Errorf("advertised Raft address is not routable (%s), specify it via cluster.raft.addr or cluster.raft.adv",
 			radv)
 	}
 	if _, err := strconv.Atoi(rp); err != nil {
@@ -336,11 +336,11 @@ func (c *RqLite) DiscoConfigReader() io.ReadCloser {
 
 // CheckFilePaths checks that all file paths in the config exist.
 // Empty filepaths are ignored.
-func (c *RqLite) CheckFilePaths() error {
-	v := reflect.ValueOf(c).Elem()
+func CheckFilePaths(s any) error {
+	v := reflect.ValueOf(s).Elem()
 
 	// Iterate through the fields of the struct
-	for i := 0; i < v.NumField(); i++ {
+	for i := range v.NumField() {
 		field := v.Type().Field(i)
 		fieldValue := v.Field(i)
 

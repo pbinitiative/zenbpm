@@ -13,7 +13,7 @@ import (
 
 func TestRqLiteStorage(t *testing.T) {
 	ctx := context.Background()
-	mux, err := network.NewMux("")
+	mux, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create mux: %s", err)
 	}

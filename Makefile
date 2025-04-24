@@ -106,6 +106,18 @@ run: ## Start this project locally with dev configuration
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev.yaml; \
 	go run cmd/zenbpm/*.go
 
+.PHONY: run1
+run1: ## Start 1st node
+	export PROFILE=DEV; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node1.yaml; \
+	go run cmd/zenbpm/*.go
+
+.PHONY: run2
+run2: ## Start 2nd node
+	export PROFILE=DEV; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
+	go run cmd/zenbpm/*.go
+
 .PHONY: test
 test: ## Run tests
 	LOG_LEVEL=INFO go test ./...

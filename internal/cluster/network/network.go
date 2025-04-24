@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	httpd "github.com/rqlite/rqlite/v8/http"
 	"github.com/rqlite/rqlite/v8/rtls"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
@@ -27,7 +28,7 @@ const (
 	muxHeaderZenBpmRaft
 
 	// ZenBpmMuxClusterHeader is the byte used to indicate ZenBPM internode Raft communication
-	muxheaderZenBpmCluster // ZenBPM Cluster state communications
+	muxHeaderZenBpmCluster // ZenBPM Cluster state communications
 
 	reservedBytes = 10
 )
@@ -37,7 +38,7 @@ func NewZenBpmRaftListener(mux *tcp.Mux) net.Listener {
 }
 
 func NewZenBpmClusterListener(mux *tcp.Mux) net.Listener {
-	return mux.Listen(byte(muxheaderZenBpmCluster))
+	return mux.Listen(byte(muxHeaderZenBpmCluster))
 }
 
 func NewZenBpmRaftDialer() *tcp.Dialer {
@@ -45,7 +46,7 @@ func NewZenBpmRaftDialer() *tcp.Dialer {
 }
 
 func NewZenBpmClusterDialer() *tcp.Dialer {
-	return tcp.NewDialer(byte(muxheaderZenBpmCluster), nil)
+	return tcp.NewDialer(byte(muxHeaderZenBpmCluster), nil)
 }
 
 func NewRqLiteRaftListener(partition uint32, mux *tcp.Mux) net.Listener {
@@ -97,4 +98,13 @@ func getPartitionClusterHeaderByte(partition uint32) byte {
 	}
 	headerByte := reservedBytes + partition*2
 	return byte(headerByte)
+}
+
+func CheckJoinAddrs(joinAddrs []string) error {
+	if len(joinAddrs) > 0 {
+		if addr, ok := httpd.AnyServingHTTP(joinAddrs); ok {
+			return fmt.Errorf("join address %s appears to be serving HTTP when it should be Raft", addr)
+		}
+	}
+	return nil
 }

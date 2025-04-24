@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
+	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/rqlite/rqlite/v8/cluster"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 
@@ -45,15 +49,19 @@ type ZenNode struct {
 	store      *store.Store
 	controller *controller
 	server     *server.Server
+	client     *client.ClientManager
+	logger     hclog.Logger
 }
 
 // StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
-	node := ZenNode{}
+	node := ZenNode{
+		logger: hclog.Default().Named(fmt.Sprintf("zen-node-%s", conf.Cluster.NodeId)),
+	}
 
-	mux, err := network.NewMux(conf.Cluster.RaftAddr)
+	mux, err := network.NewNodeMux(conf.Cluster.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.RaftAddr, err)
+		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.Addr, err)
 	}
 
 	zenRaftLn := network.NewZenBpmRaftListener(mux)
@@ -63,8 +71,8 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
 
-	sLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(sLn, node.store)
+	clusterSrvLn := network.NewZenBpmClusterListener(mux)
+	clusterSrv := server.New(clusterSrvLn, node.store)
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}
@@ -74,9 +82,52 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node controller: %w", err)
 	}
+
 	err = node.controller.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
+	}
+
+	node.client = client.NewClientManager(node.store)
+
+	// bootstrapping logic
+	nodes, err := node.store.Nodes()
+	if err != nil {
+		errInfo := fmt.Errorf("failed to get nodes %s", err.Error())
+		node.logger.Error(errInfo.Error())
+		return nil, errInfo
+	}
+	if len(nodes) > 0 {
+		node.logger.Info("Preexisting configuration detected. Skipping bootstrap.")
+		return &node, nil
+	}
+
+	bootDoneFn := func() bool {
+		leader, _ := node.store.LeaderAddr()
+		return leader != ""
+	}
+	clusterSuf := cluster.VoterSuffrage(!conf.Cluster.Raft.NonVoter)
+
+	joiner := NewJoiner(node.client, conf.Cluster.Raft.JoinAttempts, conf.Cluster.Raft.JoinInterval)
+	if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect == 0 {
+		// Explicit join operation requested, so do it.
+		j, err := joiner.Do(mainCtx, conf.Cluster.Raft.JoinAddresses, node.store.ID(), conf.Cluster.Adv, clusterSuf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to join cluster: %s", err.Error())
+		}
+		log.Println("successfully joined cluster at", j)
+		return &node, nil
+	}
+
+	if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect > 0 {
+		// Bootstrap with explicit join addresses requests.
+		bs := NewBootstrapper(
+			cluster.NewAddressProviderString(conf.Cluster.Raft.JoinAddresses),
+			node.client,
+		)
+		err := bs.Boot(mainCtx, node.store.ID(), conf.Cluster.Adv, clusterSuf, bootDoneFn, conf.Cluster.Raft.BootstrapExpectTimeout)
+		return &node, err
+
 	}
 
 	return &node, nil
@@ -96,8 +147,14 @@ func (node *ZenNode) Stop() error {
 	if err != nil {
 		joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop grpc server: %w", err))
 	}
+	err = node.client.Close()
+	if err != nil {
+		joinErr = errors.Join(joinErr, fmt.Errorf("failed to close client manager: %w", err))
+	}
 	err = node.store.Close(true)
-	joinErr = errors.Join(joinErr, err)
+	if err != nil {
+		joinErr = errors.Join(joinErr, fmt.Errorf("failed to close zen node store: %w", err))
+	}
 	return joinErr
 }
 

@@ -7,9 +7,10 @@ import (
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 
-// NewMux creates a new instance of TCP multiplexer.
+// NewNodeMux creates a new instance of TCP multiplexer.
 // Multiplexer can route its connections based on a header byte.
-func NewMux(address string) (*tcp.Mux, error) {
+// Providing empty string to the address will start on a random free port.
+func NewNodeMux(address string) (*tcp.Mux, error) {
 	// Create internode network mux and configure it.
 	muxLn, err := net.Listen("tcp", address)
 	if err != nil {

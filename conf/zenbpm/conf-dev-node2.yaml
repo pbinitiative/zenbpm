@@ -1,0 +1,16 @@
+name: zenbpm
+server:
+  context: /
+  addr: :8082
+cluster:
+  addr: localhost:8092
+  adv: localhost:8092
+  raft:
+    dir: node-2
+    bootstrapExpectTimeout: 30m
+    bootstrapExpect: 2
+    joinAttempts: 5
+    joinAddresses: 
+      - localhost:8091
+      - localhost:8092
+  nodeId: node-2

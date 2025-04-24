@@ -170,7 +170,8 @@ func (l *HcLogger) GetLevel() hclog.Level {
 }
 
 func (l *HcLogger) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger {
-	return log.New(l.StandardWriter(opts), "", log.LstdFlags)
+	logger := NewHcLog(l.slog, 5)
+	return log.New(logger.StandardWriter(opts), "", log.LstdFlags)
 }
 
 func (l *HcLogger) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writer {

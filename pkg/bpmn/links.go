@@ -29,7 +29,7 @@ func (engine *Engine) handleIntermediateThrowEvent(process *runtime.ProcessDefin
 					elementName: ite.Name,
 				}}
 			} else {
-				var element bpmn20.FlowNode = ice
+				var element bpmn20.FlowNode = &ice
 				nextCommands = []command{activityCommand{
 					sourceId:       ice.Id,
 					element:        element,

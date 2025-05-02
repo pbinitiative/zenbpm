@@ -67,7 +67,7 @@ func (engine *Engine) createTimer(
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
 			"from Activity with ID=%s. Error:%s", ice.Id, err.Error())}
 	}
-	var be bpmn20.FlowNode = ice
+	var be bpmn20.FlowNode = &ice
 	now := time.Now()
 	t := runtime.Timer{
 		ElementId:            ice.Id,

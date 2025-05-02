@@ -1,96 +1,126 @@
 package bpmn20
 
 import (
-	"html"
-	"strings"
+	"encoding/xml"
+	"fmt"
 )
 
-func FindSequenceFlows(sequenceFlows *[]TSequenceFlow, ids []string) (ret []TSequenceFlow) {
-	for _, flow := range *sequenceFlows {
-		for _, id := range ids {
-			if id == flow.Id {
-				ret = append(ret, flow)
-			}
+func (definitions *TDefinitions) ResolveReferences() error {
+	// Map to store FlowNodes by their IDs
+	baseElementMap := make(map[string]BaseElement)
+	err := collectBaseElements(definitions, &baseElementMap)
+	if err != nil {
+		return fmt.Errorf("failed to collect references: %w", err)
+	}
+	definitions.baseElements = baseElementMap
+	// Try to resolve references for each base element implementing ResolvableReferences
+	for _, baseElement := range baseElementMap {
+		// Check if the baseElement implements ResolvableReferences
+		resolvable, ok := baseElement.(ResolvableReferences)
+		if !ok {
+			continue // Skip if it doesn't implement the interface
+		}
+		err := resolvable.resolveReferences(&baseElementMap)
+		if err != nil {
+			return err
 		}
 	}
-	return ret
+	return nil
+}
+
+func (definitions *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	// Create an alias to avoid recursion
+	type Alias TDefinitions
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(definitions),
+	}
+
+	// Unmarshal into the alias
+	if err := d.DecodeElement(aux, &start); err != nil {
+		return fmt.Errorf("failed to unmarshal TDefinitions: %w", err)
+	}
+
+	// Resolve references after unmarshalling
+	if err := definitions.ResolveReferences(); err != nil {
+		return fmt.Errorf("failed to resolve references: %w", err)
+	}
+	return nil
+}
+
+func (flowNode *TFlowNode) resolveReferences(refs *map[string]BaseElement) error {
+
+	var incomingRefs, errIn = resolveSequenceFlows(&(flowNode.IncomingAssociation), refs)
+	if errIn != nil {
+		return fmt.Errorf("failed to resolve incoming references for FlowNode with ID [%s]", flowNode.GetId())
+	}
+
+	flowNode.incomingRefs = incomingRefs
+	var outgoingRefs, errOut = resolveSequenceFlows(&(flowNode.OutgoingAssociation), refs)
+	if errOut != nil {
+		return fmt.Errorf("failed to resolve outgoing references for FlowNode with ID [%s]", flowNode.GetId())
+	}
+	flowNode.outgoingRefs = outgoingRefs
+
+	return nil
+}
+func (sequenceFlow *TSequenceFlow) resolveReferences(refs *map[string]BaseElement) error {
+	var srcRef, err1 = (*refs)[sequenceFlow.SourceRefId]
+	if !err1 {
+		return fmt.Errorf("failed to resolve incoming references for FlowNode with ID [%s]", sequenceFlow.GetId())
+	}
+	var srcRefFlowNode, err2 = srcRef.(FlowNode)
+	if !err2 {
+		return fmt.Errorf("resolved reference with ID [%s] is expected to be of FLowNode type", srcRef.GetId())
+	}
+	sequenceFlow.sourceRef = srcRefFlowNode
+
+	var targetRef, err3 = (*refs)[sequenceFlow.TargetRefId]
+	if !err3 {
+		return fmt.Errorf("failed to resolve outgoing references for FlowNode with ID [%s]", sequenceFlow.GetId())
+	}
+	var targetRefFlowNode, err4 = targetRef.(FlowNode)
+	if !err4 {
+		return fmt.Errorf("resolved reference with ID [%s] is expected to be of FLowNode type", targetRef.GetId())
+	}
+	sequenceFlow.targetRef = targetRefFlowNode
+	return nil
+}
+
+func resolveSequenceFlows(ids *[]string, refs *map[string]BaseElement) ([]SequenceFlow, error) {
+	var flows []SequenceFlow
+	for _, value := range *ids {
+		ref, ok := (*refs)[value]
+		if !ok {
+			return nil, fmt.Errorf("no registered reference with ID [%s]", value)
+		}
+		sf, ok := ref.(SequenceFlow)
+		if !ok {
+			return nil, fmt.Errorf("found reference with ID [%s] is not of SequenceFlow type", value)
+		}
+
+		flows = append(flows, sf)
+	}
+	return flows, nil
 }
 
 // FindFirstSequenceFlow returns the first flow definition for any given source and target element ID
-func FindFirstSequenceFlow(sequenceFlows *[]TSequenceFlow, sourceId string, targetId string) (result *TSequenceFlow) {
-	for _, flow := range *sequenceFlows {
-		if flow.SourceRef == sourceId && flow.TargetRef == targetId {
-			result = &flow
+func FindFirstSequenceFlow(source FlowNode, target FlowNode) (result SequenceFlow) {
+	for _, flow := range source.GetOutgoingAssociation() {
+		if flow.GetTargetRef().GetId() == target.GetId() {
+			result = flow
 			break
 		}
 	}
 	return result
 }
 
-func FindFlowNodesById(definitions *TDefinitions, id string) (elements []FlowNode) {
-	appender := func(element FlowNode) {
-		if element.GetId() == id {
-			elements = append(elements, element)
+func FindFlowNodesById(definitions *TDefinitions, id string) (element FlowNode) {
+	if baseElement, ok := definitions.baseElements[id]; ok {
+		if flowNode, ok := baseElement.(FlowNode); ok {
+			element = flowNode
 		}
 	}
-	for _, startEvent := range definitions.Process.StartEvents {
-		var be FlowNode = startEvent
-		appender(be)
-	}
-	for _, endEvent := range definitions.Process.EndEvents {
-		var be FlowNode = endEvent
-		appender(be)
-	}
-	for _, task := range definitions.Process.ServiceTasks {
-		var be FlowNode = task
-		appender(be)
-	}
-	for _, task := range definitions.Process.UserTasks {
-		var be FlowNode = task
-		appender(be)
-	}
-	for _, task := range definitions.Process.BusinessRuleTask {
-		var be FlowNode = task
-		appender(be)
-	}
-	for _, task := range definitions.Process.SendTask {
-		var be FlowNode = task
-		appender(be)
-	}
-	for _, parallelGateway := range definitions.Process.ParallelGateway {
-		var be FlowNode = parallelGateway
-		appender(be)
-	}
-	for _, exclusiveGateway := range definitions.Process.ExclusiveGateway {
-		var be FlowNode = exclusiveGateway
-		appender(be)
-	}
-	for _, eventBasedGateway := range definitions.Process.EventBasedGateway {
-		var be FlowNode = eventBasedGateway
-		appender(be)
-	}
-	for _, intermediateCatchEvent := range definitions.Process.IntermediateCatchEvent {
-		var be FlowNode = intermediateCatchEvent
-		appender(be)
-	}
-	for _, intermediateCatchEvent := range definitions.Process.IntermediateThrowEvent {
-		var be FlowNode = intermediateCatchEvent
-		appender(be)
-	}
-	for _, inclusiveGateway := range definitions.Process.InclusiveGateway {
-		var be FlowNode = inclusiveGateway
-		appender(be)
-	}
-	return elements
-}
-
-// HasConditionExpression returns true, if there's exactly 1 expression present (as by the spec)
-// and there's some non-whitespace-characters available
-func (sequenceFlow TSequenceFlow) HasConditionExpression() bool {
-	return len(sequenceFlow.ConditionExpression) == 1 && len(strings.TrimSpace(sequenceFlow.GetConditionExpression())) > 0
-}
-
-// GetConditionExpression returns the embedded expression. There will be a panic thrown, in case none exists!
-func (sequenceFlow TSequenceFlow) GetConditionExpression() string {
-	return html.UnescapeString(sequenceFlow.ConditionExpression[0].Text)
+	return element
 }

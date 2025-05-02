@@ -66,7 +66,7 @@ func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, proc
 	}
 }
 
-func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, flow bpmn20.TSequenceFlow) {
+func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition, processInstance runtime.ProcessInstance, flow bpmn20.SequenceFlow) {
 	event := exporter.ProcessInstanceEvent{
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
@@ -75,7 +75,7 @@ func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition,
 	}
 	info := exporter.ElementInfo{
 		BpmnElementType: string(bpmn20.ElementTypeSequenceFlow),
-		ElementId:       flow.Id,
+		ElementId:       flow.GetId(),
 		Intent:          string(exporter.SequenceFlowTaken),
 	}
 	for _, exp := range engine.exporters {

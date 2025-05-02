@@ -51,7 +51,7 @@ func (ga *gatewayActivity) Element() bpmn20.FlowNode {
 
 func (ga *gatewayActivity) AreInboundFlowsCompleted() bool {
 	for _, association := range ga.element.GetIncomingAssociation() {
-		if !slices.Contains(ga.inboundFlowIdsCompleted, association) {
+		if !slices.Contains(ga.inboundFlowIdsCompleted, association.GetId()) {
 			return false
 		}
 	}

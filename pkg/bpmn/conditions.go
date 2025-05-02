@@ -19,17 +19,17 @@ import (
 // evaluates to true, a runtime exception occurs.
 // A converging Exclusive Gateway is used to merge alternative paths. Each incoming Sequence Flow token is routed
 // to the outgoing Sequence Flow without synchronization.
-func exclusivelyFilterByConditionExpression(flows []bpmn20.TSequenceFlow, variableContext map[string]interface{}) ([]bpmn20.TSequenceFlow, error) {
-	var ret []bpmn20.TSequenceFlow
+func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+	var ret []bpmn20.SequenceFlow
 	flowIds := strings.Builder{}
 	for _, flow := range flows {
-		if flow.HasConditionExpression() {
-			flowIds.WriteString(fmt.Sprintf("[id='%s',name='%s']", flow.Id, flow.Name))
+		if !(flow.IsDefault()) {
+			flowIds.WriteString(fmt.Sprintf("[id='%s',name='%s']", flow.GetId(), flow.GetName()))
 			expression := flow.GetConditionExpression()
 			out, err := evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
-					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.Id, flow.Name),
+					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.GetId(), flow.GetName()),
 					Err: err,
 				}
 			}
@@ -58,15 +58,15 @@ func exclusivelyFilterByConditionExpression(flows []bpmn20.TSequenceFlow, variab
 // condition Expression does not exclude the evaluation of other condition Expressions. All Sequence Flows with
 // a true evaluation will be traversed by a token. Since each path is considered to be independent, all combinations of the
 // paths MAY be taken, from zero to all.
-func inclusivelyFilterByConditionExpression(flows []bpmn20.TSequenceFlow, variableContext map[string]interface{}) ([]bpmn20.TSequenceFlow, error) {
-	var ret []bpmn20.TSequenceFlow
+func inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+	var ret []bpmn20.SequenceFlow
 	for _, flow := range flows {
-		if flow.HasConditionExpression() {
+		if !flow.IsDefault() {
 			expression := flow.GetConditionExpression()
 			out, err := evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
-					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.Id, flow.Name),
+					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.GetId(), flow.GetName()),
 					Err: err,
 				}
 			}
@@ -79,9 +79,9 @@ func inclusivelyFilterByConditionExpression(flows []bpmn20.TSequenceFlow, variab
 	return ret, nil
 }
 
-func findDefaultFlow(flows []bpmn20.TSequenceFlow) (ret []bpmn20.TSequenceFlow) {
+func findDefaultFlow(flows []bpmn20.SequenceFlow) (ret []bpmn20.SequenceFlow) {
 	for _, flow := range flows {
-		if !flow.HasConditionExpression() {
+		if flow.IsDefault() {
 			ret = append(ret, flow)
 			break
 		}

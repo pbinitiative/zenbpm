@@ -91,7 +91,7 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 }
 
 func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.MessageSubscription {
-	var be bpmn20.FlowNode = ice
+	var be bpmn20.FlowNode = &ice
 	ms := &runtime.MessageSubscription{
 		ElementId:            ice.Id,
 		ElementInstanceKey:   engine.generateKey(),

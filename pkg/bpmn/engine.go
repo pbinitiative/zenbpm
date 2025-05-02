@@ -204,7 +204,7 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 	case runtime.ActivityStateReady:
 		// use start events to start the instance
 		for _, startEvent := range process.Definitions.Process.StartEvents {
-			var be bpmn20.FlowNode = startEvent
+			var be bpmn20.FlowNode = &startEvent
 			commandQueue = append(commandQueue, activityCommand{
 				element: be,
 			})
@@ -251,9 +251,9 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 		switch tCmd := cmd.(type) {
 		case flowTransitionCommand:
 			sourceActivity := tCmd.sourceActivity
-			flowId := cmd.(flowTransitionCommand).sequenceFlowId
-			nextFlows := bpmn20.FindSequenceFlows(&process.Definitions.Process.SequenceFlows, []string{flowId})
-			if bpmn20.ElementTypeExclusiveGateway == sourceActivity.Element().GetType() {
+			flow := cmd.(flowTransitionCommand).sequenceFlow
+			nextFlows := []bpmn20.SequenceFlow{flow}
+			if bpmn20.ElementTypeExclusiveGateway == flow.GetSourceRef().GetType() {
 				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
 				if err != nil {
 					instance.State = runtime.ActivityStateFailed
@@ -262,10 +262,9 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 			}
 			for _, flow := range nextFlows {
 				engine.exportSequenceFlowEvent(*process, *instance, flow)
-				baseElements := bpmn20.FindFlowNodesById(&process.Definitions, flow.TargetRef)
-				targetBaseElement := baseElements[0]
+				targetBaseElement := flow.GetTargetRef()
 				aCmd := activityCommand{
-					sourceId:       flowId,
+					sourceId:       flow.GetId(),
 					originActivity: sourceActivity,
 					element:        targetBaseElement,
 				}
@@ -363,7 +362,7 @@ func (engine *Engine) handleElement(
 		}
 		createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
 	case bpmn20.ElementTypeIntermediateCatchEvent:
-		ice := element.(bpmn20.TIntermediateCatchEvent)
+		ice := *(element.(*bpmn20.TIntermediateCatchEvent))
 		createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
 		if err != nil {
 			nextCommands = append(nextCommands, errorCommand{
@@ -392,11 +391,11 @@ func (engine *Engine) handleElement(
 			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
 			element: element,
 		}
-		cmds := engine.handleIntermediateThrowEvent(process, instance, element.(bpmn20.TIntermediateThrowEvent), activity)
+		cmds := engine.handleIntermediateThrowEvent(process, instance, *element.(*bpmn20.TIntermediateThrowEvent), activity)
 		nextCommands = append(nextCommands, cmds...)
 		createFlowTransitions = false
 	case bpmn20.ElementTypeParallelGateway:
-		createFlowTransitions, activity = engine.handleParallelGateway(process, instance, element.(bpmn20.TParallelGateway), originActivity)
+		createFlowTransitions, activity = engine.handleParallelGateway(process, instance, *element.(*bpmn20.TParallelGateway), originActivity)
 	case bpmn20.ElementTypeExclusiveGateway:
 		activity = elementActivity{
 			key:     engine.generateKey(),
@@ -440,7 +439,7 @@ func createCheckExclusiveGatewayDoneCommand(originActivity runtime.Activity) (cm
 }
 
 func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.FlowNode, activity runtime.Activity) (cmds []command) {
-	nextFlows := bpmn20.FindSequenceFlows(&process.Definitions.Process.SequenceFlows, element.GetOutgoingAssociation())
+	nextFlows := element.GetOutgoingAssociation()
 	var err error
 	switch element.GetType() {
 	case bpmn20.ElementTypeExclusiveGateway:
@@ -469,9 +468,8 @@ func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.Pr
 	}
 	for _, flow := range nextFlows {
 		cmds = append(cmds, flowTransitionCommand{
-			sourceId:       element.GetId(),
 			sourceActivity: activity,
-			sequenceFlowId: flow.Id,
+			sequenceFlow:   flow,
 		})
 	}
 	return cmds
@@ -484,13 +482,13 @@ func (engine *Engine) handleIntermediateCatchEvent(ctx context.Context, batch st
 	} else if ice.TimerEventDefinition.Id != "" {
 		continueFlow, activity, err = engine.handleIntermediateTimerCatchEvent(ctx, batch, instance, ice, originActivity)
 	} else if ice.LinkEventDefinition.Id != "" {
-		var be bpmn20.FlowNode = ice
+		var be bpmn20.FlowNode = &ice
 		activity = &elementActivity{
 			key:     engine.generateKey(),
 			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
 			element: be,
 		}
-		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
+		throwLinkName := originActivity.Element().(*bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
 		catchLinkName := ice.LinkEventDefinition.Name
 		elementVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 		if err := propagateProcessInstanceVariables(&elementVarHolder, ice.Output); err != nil {
@@ -538,7 +536,7 @@ func (engine *Engine) handleEndEvent(process *runtime.ProcessDefinition, instanc
 func (engine *Engine) handleParallelGateway(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.TParallelGateway, originActivity runtime.Activity) (continueFlow bool, resultActivity runtime.Activity) {
 	resultActivity = instance.FindActiveActivityByElementId(element.Id)
 	if resultActivity == nil {
-		var be bpmn20.FlowNode = element
+		var be bpmn20.FlowNode = &element
 		resultActivity = &gatewayActivity{
 			key:      engine.generateKey(),
 			state:    runtime.ActivityStateActive,
@@ -547,8 +545,8 @@ func (engine *Engine) handleParallelGateway(process *runtime.ProcessDefinition, 
 		}
 		instance.AppendActivity(resultActivity)
 	}
-	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.Definitions.Process.SequenceFlows, originActivity.Element().GetId(), element.GetId())
-	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.Id)
+	sourceFlow := bpmn20.FindFirstSequenceFlow(originActivity.Element(), &element)
+	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.GetId())
 	continueFlow = resultActivity.(*gatewayActivity).parallel && resultActivity.(*gatewayActivity).AreInboundFlowsCompleted()
 	if continueFlow {
 		resultActivity.(*gatewayActivity).SetState(runtime.ActivityStateCompleted)
@@ -567,10 +565,10 @@ func (engine *Engine) findActiveSubscriptions(instance *runtime.ProcessInstance)
 	result := make([]runtime.MessageSubscription, 0, len(subs))
 	for _, ms := range subs {
 		bes := bpmn20.FindFlowNodesById(&instance.Definition.Definitions, ms.ElementId)
-		if len(bes) == 0 {
+		if bes == nil {
 			continue
 		}
-		ms.BaseElement = bes[0]
+		ms.BaseElement = bes
 		// FIXME: rewrite this hack
 		// instance.findActivity(ms.originActivity.Key())
 		result = append(result, ms)
@@ -587,10 +585,10 @@ func (engine *Engine) findCreatedTimers(instance *runtime.ProcessInstance) ([]ru
 	result := make([]runtime.Timer, 0, len(timers))
 	for _, t := range timers {
 		bes := bpmn20.FindFlowNodesById(&instance.Definition.Definitions, t.ElementId)
-		if len(bes) == 0 {
+		if bes == nil {
 			continue
 		}
-		t.BaseElement = bes[0]
+		t.BaseElement = bes
 		result = append(result, t)
 	}
 	return result, nil

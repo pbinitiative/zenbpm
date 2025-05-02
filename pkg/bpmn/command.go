@@ -11,9 +11,8 @@ type command interface {
 // ---------------------------------------------------------------------
 
 type flowTransitionCommand struct {
-	sourceId       string
 	sourceActivity runtime.Activity
-	sequenceFlowId string
+	sequenceFlow   bpmn20.SequenceFlow
 }
 
 // ---------------------------------------------------------------------

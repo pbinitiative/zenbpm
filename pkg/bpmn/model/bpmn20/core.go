@@ -1,5 +1,11 @@
 package bpmn20
 
+import (
+	"html"
+	"reflect"
+	"strings"
+)
+
 // TDocumentation  BPMN elements that inherit from the BaseElement will have the capability,
 // through the TDocumentation element, to have one (1) or more text descriptions
 // of that element.
@@ -13,11 +19,11 @@ type TDocumentation struct {
 	Format string `xml:"textFormat,attr"`
 }
 
-func (documentation TDocumentation) GetText() string {
+func (documentation *TDocumentation) GetText() string {
 	return documentation.Text
 }
 
-func (documentation TDocumentation) GetFormat() string {
+func (documentation *TDocumentation) GetFormat() string {
 	return documentation.Format
 }
 
@@ -33,15 +39,64 @@ type TBaseElement struct {
 	Documentation []TDocumentation `xml:"documentation"`
 }
 
-func (baseElement TBaseElement) GetId() string {
+func (baseElement *TBaseElement) GetId() string {
 	return baseElement.Id
 }
-func (baseElement TBaseElement) GetDocumentation() []Documentation {
+func (baseElement *TBaseElement) GetDocumentation() []Documentation {
 	var docs []Documentation
 	for _, doc := range baseElement.Documentation {
-		docs = append(docs, doc)
+		docs = append(docs, &doc)
 	}
 	return docs
+}
+
+func collectBaseElements(element interface{}, refs *map[string]BaseElement) error {
+	val := reflect.ValueOf(element)
+
+	// If c is a pointer receiver, adjust:
+	baseElement, ok := val.Interface().(BaseElement)
+	if ok {
+		// already registered
+		if _, ok2 := (*refs)[baseElement.GetId()]; ok2 {
+			return nil
+		}
+		(*refs)[baseElement.GetId()] = baseElement
+	}
+
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if !val.IsValid() || val.Kind() != reflect.Struct {
+		return nil // Skip invalid or non-struct values
+	}
+
+	for i := 0; i < val.NumField(); i++ {
+		fieldVal := val.Field(i)
+		if fieldVal.Kind() == reflect.Slice {
+			for j := 0; j < fieldVal.Len(); j++ {
+				arrEl := fieldVal.Index(j)
+				if !arrEl.CanInterface() || arrEl.Kind() != reflect.Struct {
+					continue
+				}
+				//aei := arrEl.Interface()
+				var err = collectBaseElements(arrEl.Addr().Interface(), refs)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			if !fieldVal.CanInterface() || fieldVal.Kind() != reflect.Struct {
+				continue
+			}
+			//fvi := fieldVal.Interface()
+			var err = collectBaseElements(fieldVal.Addr().Interface(), refs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type Documentation interface {
@@ -49,11 +104,16 @@ type Documentation interface {
 	GetFormat() string
 }
 
+type ResolvableReferences interface {
+	resolveReferences(refs *map[string]BaseElement) error
+}
+
 // BaseElement is the abstract super class/interface for most BPMN elements.
 // It provides the attributes id and documentation, which other elements will inherit
 type BaseElement interface {
 	GetId() string
 	GetDocumentation() []Documentation
+	//collectBaseElements(refs *map[string]BaseElement)
 }
 
 type TRootElementsContainer struct {
@@ -70,6 +130,7 @@ type TDefinitions struct {
 	TypeLanguage       string `xml:"typeLanguage,attr"`
 	Exporter           string `xml:"exporter,attr"`
 	ExporterVersion    string `xml:"exporterVersion,attr"`
+	baseElements       map[string]BaseElement
 }
 
 type TMessage struct {
@@ -93,41 +154,69 @@ type TFlowElement struct {
 	Name string `xml:"name,attr"`
 }
 
-func (fe TFlowElement) GetName() string {
+func (fe *TFlowElement) GetName() string {
 	return fe.Name
 }
-
-type TSequenceFlow struct {
-	TFlowElement
-	SourceRef           string        `xml:"sourceRef,attr"`
-	TargetRef           string        `xml:"targetRef,attr"`
-	ConditionExpression []TExpression `xml:"conditionExpression"`
+func (fe *TFlowElement) GetType() ElementType {
+	return ElementTypeSequenceFlow
 }
 
 // FlowNode is the abstract super class/interface that provides a single element as the source and target Sequence Flow associations.
 // Central abstraction used by the engine to traverse through the process flows.
 type FlowNode interface {
 	FlowElement
-	GetIncomingAssociation() []string
-	GetOutgoingAssociation() []string
+	GetIncomingAssociation() []SequenceFlow
+	GetOutgoingAssociation() []SequenceFlow
 }
 
 type TFlowNode struct {
 	TFlowElement
 	IncomingAssociation []string `xml:"incoming"`
 	OutgoingAssociation []string `xml:"outgoing"`
+	incomingRefs        []SequenceFlow
+	outgoingRefs        []SequenceFlow
 }
 
-func (flowNode TFlowNode) GetIncomingAssociation() []string {
-	return flowNode.IncomingAssociation
+func (flowNode *TFlowNode) GetIncomingAssociation() []SequenceFlow {
+	return flowNode.incomingRefs
 }
 
-func (flowNode TFlowNode) GetOutgoingAssociation() []string {
-	return flowNode.OutgoingAssociation
+func (flowNode *TFlowNode) GetOutgoingAssociation() []SequenceFlow {
+	return flowNode.outgoingRefs
 }
 
-//type TFlowElementsContainer
+type TSequenceFlow struct {
+	TFlowElement
+	SourceRefId         string      `xml:"sourceRef,attr"`
+	TargetRefId         string      `xml:"targetRef,attr"`
+	ConditionExpression TExpression `xml:"conditionExpression"`
+	sourceRef           FlowNode
+	targetRef           FlowNode
+}
+
+type SequenceFlow interface {
+	FlowElement
+	GetSourceRef() FlowNode
+	GetTargetRef() FlowNode
+	GetConditionExpression() string
+	IsDefault() bool
+}
 
 type TExpression struct {
 	Text string `xml:",innerxml"`
+}
+
+func (sequenceFlow *TSequenceFlow) GetSourceRef() FlowNode {
+	return sequenceFlow.sourceRef
+}
+func (sequenceFlow *TSequenceFlow) GetTargetRef() FlowNode {
+	return sequenceFlow.targetRef
+}
+func (sequenceFlow *TSequenceFlow) GetConditionExpression() string {
+	// GetConditionExpression returns the embedded expression. There will be a panic thrown, in case none exists!
+	return html.UnescapeString(sequenceFlow.ConditionExpression.Text)
+}
+
+func (sequenceFlow *TSequenceFlow) IsDefault() bool {
+	return len(strings.TrimSpace(sequenceFlow.ConditionExpression.Text)) == 0
 }

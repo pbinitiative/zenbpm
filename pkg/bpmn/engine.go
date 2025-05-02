@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -149,7 +148,7 @@ func (engine *Engine) RunOrContinueInstance(processInstanceKey int64) (*runtime.
 		return nil, newEngineErrorf("failed to find process instance with key: %d", processInstanceKey)
 	}
 	if pi.GetState() == runtime.ActivityStateCompleted {
-		return nil, nil
+		return &pi, nil
 	}
 	err = engine.run(&pi)
 	if err != nil {
@@ -280,6 +279,10 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 				}
 				commandQueue = append(commandQueue, aCmd)
 			}
+			err = batch.Flush(ctx)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to close batch for %d", instance.Key), err)
+			}
 		case activityCommand:
 			element := tCmd.element
 			originActivity := cmd.(activityCommand).originActivity
@@ -357,42 +360,42 @@ func (engine *Engine) handleElement(
 			state:   runtime.ActivityStateCompleted,
 			element: element,
 		}
-	case bpmn20.ElementTypeServiceTask:
-		taskElement := element.(bpmn20.TaskElement)
-		activity, err = engine.handleServiceTask(ctx, batch, process, instance, taskElement)
-		if err != nil {
-			return nil, fmt.Errorf("failed to handle service task: %w", err)
-		}
-		createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
-	case bpmn20.ElementTypeUserTask:
-		taskElement := element.(bpmn20.TaskElement)
-		activity, err = engine.handleUserTask(ctx, batch, process, instance, taskElement)
-		if err != nil {
-			return nil, fmt.Errorf("failed to handle user task: %w", err)
-		}
-		createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
-	case bpmn20.ElementTypeIntermediateCatchEvent:
-		ice := element.(bpmn20.TIntermediateCatchEvent)
-		createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
-		if err != nil {
-			nextCommands = append(nextCommands, errorCommand{
-				err:         err,
-				elementId:   element.GetId(),
-				elementName: element.GetName(),
-			})
-		} else {
-			nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
-		}
+	// case bpmn20.ElementTypeServiceTask:
+	// 	taskElement := element.(bpmn20.TaskElement)
+	// 	activity, err = engine.handleServiceTask(ctx, batch, process, instance, taskElement)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to handle service task: %w", err)
+	// 	}
+	// 	createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
+	// case bpmn20.ElementTypeUserTask:
+	// 	taskElement := element.(bpmn20.TaskElement)
+	// 	activity, err = engine.handleUserTask(ctx, batch, process, instance, taskElement)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to handle user task: %w", err)
+	// 	}
+	// 	createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
+	// case bpmn20.ElementTypeIntermediateCatchEvent:
+	// 	ice := element.(bpmn20.TIntermediateCatchEvent)
+	// 	createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
+	// 	if err != nil {
+	// 		nextCommands = append(nextCommands, errorCommand{
+	// 			err:         err,
+	// 			elementId:   element.GetId(),
+	// 			elementName: element.GetName(),
+	// 		})
+	// 	} else {
+	// 		nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
+	// 	}
 
-		if ms, ok := activity.(*runtime.MessageSubscription); ok {
-			batch.SaveMessageSubscription(ctx, *ms)
-			// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
-			batch.Flush(ctx)
-		} else {
-			// Handle the case when activity is not a MessageSubscription
-			// For example, you can return an error or log a message
-			log.Panicf("Unexpected Activity type: %T", activity)
-		}
+	// 	if ms, ok := activity.(*runtime.MessageSubscription); ok {
+	// 		batch.SaveMessageSubscription(ctx, *ms)
+	// 		// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
+	// 		batch.Flush(ctx)
+	// 	} else {
+	// 		// Handle the case when activity is not a MessageSubscription
+	// 		// For example, you can return an error or log a message
+	// 		log.Panicf("Unexpected Activity type: %T", activity)
+	// 	}
 	case bpmn20.ElementTypeIntermediateThrowEvent:
 		activity = &elementActivity{
 			key:     engine.generateKey(),
@@ -427,23 +430,27 @@ func (engine *Engine) handleElement(
 		}
 		createFlowTransitions = true
 	default:
-		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", element.GetId(), element.GetType()))
+		executor, err := GetExecutorInstance(engine, element)
+		if err != nil {
+			panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", element.GetId(), element.GetType()))
+		}
+		var commands []command
+		createFlowTransitions, activity, commands, err = executor.Execute(context.Background(), batch, engine, process, instance, originActivity)
+		if err != nil {
+			nextCommands = append(nextCommands, errorCommand{
+				err:         err,
+				elementId:   element.GetId(),
+				elementName: element.GetName(),
+			})
+		} else {
+			nextCommands = append(nextCommands, commands...)
+		}
 	}
 	if createFlowTransitions && err == nil {
 		engine.exportElementEvent(*process, *instance, element, exporter.ElementCompleted)
 		nextCommands = append(nextCommands, createNextCommands(process, instance, element, activity)...)
 	}
 	return nextCommands, nil
-}
-
-func createCheckExclusiveGatewayDoneCommand(originActivity runtime.Activity) (cmds []command) {
-	if originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
-		evtBasedGatewayActivity := originActivity.(*eventBasedGatewayActivity)
-		cmds = append(cmds, checkExclusiveGatewayDoneCommand{
-			gatewayActivity: *evtBasedGatewayActivity,
-		})
-	}
-	return cmds
 }
 
 func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.FlowNode, activity runtime.Activity) (cmds []command) {
@@ -482,32 +489,6 @@ func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.Pr
 		})
 	}
 	return cmds
-}
-
-func (engine *Engine) handleIntermediateCatchEvent(ctx context.Context, batch storage.Batch, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (continueFlow bool, activity runtime.Activity, err error) {
-	continueFlow = false
-	if ice.MessageEventDefinition.Id != "" {
-		continueFlow, activity, err = engine.handleIntermediateMessageCatchEvent(ctx, batch, process, instance, ice, originActivity)
-	} else if ice.TimerEventDefinition.Id != "" {
-		continueFlow, activity, err = engine.handleIntermediateTimerCatchEvent(ctx, batch, instance, ice, originActivity)
-	} else if ice.LinkEventDefinition.Id != "" {
-		var be bpmn20.FlowNode = ice
-		activity = &elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
-			element: be,
-		}
-		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
-		catchLinkName := ice.LinkEventDefinition.Name
-		elementVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-		if err := propagateProcessInstanceVariables(&elementVarHolder, ice.Output); err != nil {
-			msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ice.Id, ice.Name)
-			err = &ExpressionEvaluationError{Msg: msg, Err: err}
-		} else {
-			continueFlow = throwLinkName == catchLinkName // just stating the obvious
-		}
-	}
-	return continueFlow, activity, err
 }
 
 func (engine *Engine) handleEndEvent(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance) error {

@@ -12,6 +12,21 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
+type ServiceTaskExecutor struct {
+	FlowNodeExecutor
+}
+
+func (e *ServiceTaskExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
+	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
+
+	element := (*(e.flowNode)).Element()
+	taskElement := element.(bpmn20.TaskElement)
+	var act runtime.Activity
+
+	act, err = engine.handleServiceTask(ctx, batch, process, instance, taskElement)
+	return act.GetState() == runtime.ActivityStateCompleted, act, []command{}, err // [] nil
+}
+
 func (engine *Engine) handleServiceTask(ctx context.Context, batch storage.Batch, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.TaskElement) (*runtime.Job, error) {
 	job, err := findOrCreateJob(ctx, engine, batch, element, instance, engine.generateKey)
 	if err != nil {

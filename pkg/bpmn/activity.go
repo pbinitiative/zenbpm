@@ -1,10 +1,12 @@
 package bpmn
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -25,6 +27,16 @@ func (a elementActivity) GetState() runtime.ActivityState {
 
 func (a elementActivity) Element() bpmn20.FlowNode {
 	return a.element
+}
+
+// ----------------------------------------------------------------------------
+
+type FlowNodeExecutor struct {
+	flowNode *elementActivity
+}
+
+func (e *FlowNodeExecutor) Execute(ctx context.Context, batch storage.Batch, state *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance) (createFlowTransitions bool, activityResult *elementActivity, nextCommands []command, err error) {
+	return false, nil, []command{}, nil
 }
 
 // -------------------------------------------------------------------------

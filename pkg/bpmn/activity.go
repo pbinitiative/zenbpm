@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
@@ -36,7 +37,18 @@ type FlowNodeExecutor struct {
 }
 
 func (e *FlowNodeExecutor) Execute(ctx context.Context, batch storage.Batch, state *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance) (createFlowTransitions bool, activityResult *elementActivity, nextCommands []command, err error) {
+	log.Debug("Executing flow node %s", e.flowNode.Element().GetId())
 	return false, nil, []command{}, nil
+}
+
+type ActivityExecutor struct {
+	FlowNodeExecutor
+}
+
+// TODO: this will handle all business logic common to all activities like for example boundary events
+func (e *ActivityExecutor) Execute(ctx context.Context, batch storage.Batch, state *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance) (createFlowTransitions bool, activityResult *elementActivity, nextCommands []command, err error) {
+	log.Debug("Executing activity %s", e.flowNode.Element().GetId())
+	return e.FlowNodeExecutor.Execute(ctx, batch, state, process, instance)
 }
 
 // -------------------------------------------------------------------------

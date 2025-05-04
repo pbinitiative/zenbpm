@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
@@ -36,6 +37,152 @@ func (engine *Engine) PublishEventForInstance(processInstanceKey int64, messageN
 	}
 
 	return nil
+}
+
+func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.MessageSubscription {
+	var be bpmn20.FlowNode = ice
+	ms := &runtime.MessageSubscription{
+		ElementId:            ice.Id,
+		ElementInstanceKey:   engine.generateKey(),
+		ProcessDefinitionKey: instance.Definition.Key,
+		ProcessInstanceKey:   instance.GetInstanceKey(),
+		Name:                 ice.Name,
+		CreatedAt:            time.Now(),
+		MessageState:         runtime.ActivityStateActive,
+		BaseElement:          be,
+	}
+	return ms
+}
+
+// find first matching catchEvent
+func findMatchingCaughtEvent(messages []bpmn20.TMessage, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.CatchEvent {
+	msgName := findMessageNameById(messages, ice.MessageEventDefinition.MessageRef)
+	for i := 0; i < len(instance.CaughtEvents); i++ {
+		var caughtEvent = &instance.CaughtEvents[i]
+		if !caughtEvent.IsConsumed && msgName == caughtEvent.Name {
+			return caughtEvent
+		}
+	}
+	return nil
+}
+
+func findMessageNameById(messages []bpmn20.TMessage, msgId string) string {
+	for _, message := range messages {
+		if message.Id == msgId {
+			return message.Name
+		}
+	}
+	return ""
+}
+
+// ========================================================================
+// EXECUTORS
+// START_EVENT_EXECUTOR =============================================================
+type StartEventExecutor struct {
+	FlowNodeExecutor
+}
+
+func (e *StartEventExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
+	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
+
+	var activity runtime.Activity
+	nextCommands = []command{}
+
+	activity = &elementActivity{
+		key:     engine.generateKey(),
+		state:   runtime.ActivityStateCompleted,
+		element: e.flowNode.element,
+	}
+	createFlowTransitions = true
+
+	return createFlowTransitions, activity, nextCommands, err
+}
+
+// END_EVENT_EXECUTOR ===============================================================
+type EndEventExecutor struct {
+	FlowNodeExecutor
+}
+
+func (e *EndEventExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
+	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
+
+	var activity runtime.Activity
+	nextCommands = []command{}
+
+	element := e.flowNode.element
+
+	engine.handleEndEvent(process, instance)
+	engine.exportElementEvent(*process, *instance, element, exporter.ElementCompleted) // special case here, to end the instance
+	activity = &elementActivity{
+		key:     engine.generateKey(),
+		state:   runtime.ActivityStateCompleted,
+		element: element,
+	}
+	createFlowTransitions = false
+
+	return createFlowTransitions, activity, nextCommands, err
+}
+
+// INTERMEDIATE_CATCH_EVENT_EXECUTOR ================================================
+
+type IntermediateCatchEventExecutor struct {
+	FlowNodeExecutor
+}
+
+func (e *IntermediateCatchEventExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
+	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
+
+	var activity runtime.Activity
+	nextCommands = []command{}
+
+	element := e.flowNode.element
+
+	ice := element.(bpmn20.TIntermediateCatchEvent)
+	createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
+
+	if ms, ok := activity.(*runtime.MessageSubscription); ok {
+		batch.SaveMessageSubscription(ctx, *ms)
+		// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
+		batch.Flush(ctx)
+	} else {
+		// Handle the case when activity is not a MessageSubscription
+		// For example, you can return an error or log a message
+		log.Panicf("Unexpected Activity type: %T", activity)
+	}
+	if err != nil {
+		return createFlowTransitions, activity, nextCommands, err
+	} else {
+		nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
+	}
+
+	return createFlowTransitions, activity, nextCommands, err
+
+}
+
+func (engine *Engine) handleIntermediateCatchEvent(ctx context.Context, batch storage.Batch, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (continueFlow bool, activity runtime.Activity, err error) {
+	continueFlow = false
+	if ice.MessageEventDefinition.Id != "" {
+		continueFlow, activity, err = engine.handleIntermediateMessageCatchEvent(ctx, batch, process, instance, ice, originActivity)
+	} else if ice.TimerEventDefinition.Id != "" {
+		continueFlow, activity, err = engine.handleIntermediateTimerCatchEvent(ctx, batch, instance, ice, originActivity)
+	} else if ice.LinkEventDefinition.Id != "" {
+		var be bpmn20.FlowNode = ice
+		activity = &elementActivity{
+			key:     engine.generateKey(),
+			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
+			element: be,
+		}
+		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
+		catchLinkName := ice.LinkEventDefinition.Name
+		elementVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+		if err := propagateProcessInstanceVariables(&elementVarHolder, ice.Output); err != nil {
+			msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ice.Id, ice.Name)
+			err = &ExpressionEvaluationError{Msg: msg, Err: err}
+		} else {
+			continueFlow = throwLinkName == catchLinkName // just stating the obvious
+		}
+	}
+	return continueFlow, activity, err
 }
 
 func (engine *Engine) handleIntermediateMessageCatchEvent(
@@ -95,21 +242,13 @@ func (engine *Engine) handleIntermediateMessageCatchEvent(
 	return false, ms, err
 }
 
-type IntermediateCatchEventExecutor struct {
+// INTERMEDIATE_THROW_EVENT_EXECUTOR ================================================
+
+type IntermediateThrowEventExecutor struct {
 	FlowNodeExecutor
 }
 
-func createCheckExclusiveGatewayDoneCommand(originActivity runtime.Activity) (cmds []command) {
-	if originActivity.Element().GetType() == bpmn20.ElementTypeEventBasedGateway {
-		evtBasedGatewayActivity := originActivity.(*eventBasedGatewayActivity)
-		cmds = append(cmds, checkExclusiveGatewayDoneCommand{
-			gatewayActivity: *evtBasedGatewayActivity,
-		})
-	}
-	return cmds
-}
-
-func (e *IntermediateCatchEventExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
+func (e *IntermediateThrowEventExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
 	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
 
 	var activity runtime.Activity
@@ -117,86 +256,15 @@ func (e *IntermediateCatchEventExecutor) Execute(ctx context.Context, batch stor
 
 	element := e.flowNode.element
 
-	ice := element.(bpmn20.TIntermediateCatchEvent)
-	createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
-
-	if ms, ok := activity.(*runtime.MessageSubscription); ok {
-		batch.SaveMessageSubscription(ctx, *ms)
-		// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
-		batch.Flush(ctx)
-	} else {
-		// Handle the case when activity is not a MessageSubscription
-		// For example, you can return an error or log a message
-		log.Panicf("Unexpected Activity type: %T", activity)
+	activity = &elementActivity{
+		key:     engine.generateKey(),
+		state:   runtime.ActivityStateActive, // FIXME: should be Completed?
+		element: element,
 	}
-	if err != nil {
-		return createFlowTransitions, activity, nextCommands, err
-	} else {
-		nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
-	}
+	cmds := engine.handleIntermediateThrowEvent(process, instance, element.(bpmn20.TIntermediateThrowEvent), activity)
+	nextCommands = append(nextCommands, cmds...)
+	createFlowTransitions = false
 
 	return createFlowTransitions, activity, nextCommands, err
 
-}
-
-func (engine *Engine) handleIntermediateCatchEvent(ctx context.Context, batch storage.Batch, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent, originActivity runtime.Activity) (continueFlow bool, activity runtime.Activity, err error) {
-	continueFlow = false
-	if ice.MessageEventDefinition.Id != "" {
-		continueFlow, activity, err = engine.handleIntermediateMessageCatchEvent(ctx, batch, process, instance, ice, originActivity)
-	} else if ice.TimerEventDefinition.Id != "" {
-		continueFlow, activity, err = engine.handleIntermediateTimerCatchEvent(ctx, batch, instance, ice, originActivity)
-	} else if ice.LinkEventDefinition.Id != "" {
-		var be bpmn20.FlowNode = ice
-		activity = &elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
-			element: be,
-		}
-		throwLinkName := originActivity.Element().(bpmn20.TIntermediateThrowEvent).LinkEventDefinition.Name
-		catchLinkName := ice.LinkEventDefinition.Name
-		elementVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-		if err := propagateProcessInstanceVariables(&elementVarHolder, ice.Output); err != nil {
-			msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ice.Id, ice.Name)
-			err = &ExpressionEvaluationError{Msg: msg, Err: err}
-		} else {
-			continueFlow = throwLinkName == catchLinkName // just stating the obvious
-		}
-	}
-	return continueFlow, activity, err
-}
-
-func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.MessageSubscription {
-	var be bpmn20.FlowNode = ice
-	ms := &runtime.MessageSubscription{
-		ElementId:            ice.Id,
-		ElementInstanceKey:   engine.generateKey(),
-		ProcessDefinitionKey: instance.Definition.Key,
-		ProcessInstanceKey:   instance.GetInstanceKey(),
-		Name:                 ice.Name,
-		CreatedAt:            time.Now(),
-		MessageState:         runtime.ActivityStateActive,
-		BaseElement:          be,
-	}
-	return ms
-}
-
-// find first matching catchEvent
-func findMatchingCaughtEvent(messages []bpmn20.TMessage, instance *runtime.ProcessInstance, ice bpmn20.TIntermediateCatchEvent) *runtime.CatchEvent {
-	msgName := findMessageNameById(messages, ice.MessageEventDefinition.MessageRef)
-	for i := 0; i < len(instance.CaughtEvents); i++ {
-		var caughtEvent = &instance.CaughtEvents[i]
-		if !caughtEvent.IsConsumed && msgName == caughtEvent.Name {
-			return caughtEvent
-		}
-	}
-	return nil
-}
-
-func findMessageNameById(messages []bpmn20.TMessage, msgId string) string {
-	for _, message := range messages {
-		if message.Id == msgId {
-			return message.Name
-		}
-	}
-	return ""
 }

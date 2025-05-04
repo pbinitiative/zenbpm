@@ -343,109 +343,23 @@ func (engine *Engine) handleElement(
 	var activity runtime.Activity
 	var nextCommands []command
 	var err error
-	switch element.GetType() {
-	case bpmn20.ElementTypeStartEvent:
-		createFlowTransitions = true
-		activity = &elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateCompleted,
-			element: element,
-		}
-	case bpmn20.ElementTypeEndEvent:
-		engine.handleEndEvent(process, instance)
-		engine.exportElementEvent(*process, *instance, element, exporter.ElementCompleted) // special case here, to end the instance
-		createFlowTransitions = false
-		activity = &elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateCompleted,
-			element: element,
-		}
-	// case bpmn20.ElementTypeServiceTask:
-	// 	taskElement := element.(bpmn20.TaskElement)
-	// 	activity, err = engine.handleServiceTask(ctx, batch, process, instance, taskElement)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to handle service task: %w", err)
-	// 	}
-	// 	createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
-	// case bpmn20.ElementTypeUserTask:
-	// 	taskElement := element.(bpmn20.TaskElement)
-	// 	activity, err = engine.handleUserTask(ctx, batch, process, instance, taskElement)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to handle user task: %w", err)
-	// 	}
-	// 	createFlowTransitions = activity.GetState() == runtime.ActivityStateCompleted
-	// case bpmn20.ElementTypeIntermediateCatchEvent:
-	// 	ice := element.(bpmn20.TIntermediateCatchEvent)
-	// 	createFlowTransitions, activity, err = engine.handleIntermediateCatchEvent(ctx, batch, process, instance, ice, originActivity)
-	// 	if err != nil {
-	// 		nextCommands = append(nextCommands, errorCommand{
-	// 			err:         err,
-	// 			elementId:   element.GetId(),
-	// 			elementName: element.GetName(),
-	// 		})
-	// 	} else {
-	// 		nextCommands = append(nextCommands, createCheckExclusiveGatewayDoneCommand(originActivity)...)
-	// 	}
 
-	// 	if ms, ok := activity.(*runtime.MessageSubscription); ok {
-	// 		batch.SaveMessageSubscription(ctx, *ms)
-	// 		// TODO: this is needed because endevent checks subscriptions and if transaction is not flushed yet it will lock process in active state
-	// 		batch.Flush(ctx)
-	// 	} else {
-	// 		// Handle the case when activity is not a MessageSubscription
-	// 		// For example, you can return an error or log a message
-	// 		log.Panicf("Unexpected Activity type: %T", activity)
-	// 	}
-	case bpmn20.ElementTypeIntermediateThrowEvent:
-		activity = &elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateActive, // FIXME: should be Completed?
-			element: element,
-		}
-		cmds := engine.handleIntermediateThrowEvent(process, instance, element.(bpmn20.TIntermediateThrowEvent), activity)
-		nextCommands = append(nextCommands, cmds...)
-		createFlowTransitions = false
-	case bpmn20.ElementTypeParallelGateway:
-		createFlowTransitions, activity = engine.handleParallelGateway(process, instance, element.(bpmn20.TParallelGateway), originActivity)
-	case bpmn20.ElementTypeExclusiveGateway:
-		activity = elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateActive,
-			element: element,
-		}
-		createFlowTransitions = true
-	case bpmn20.ElementTypeEventBasedGateway:
-		activity = &eventBasedGatewayActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateCompleted,
-			element: element,
-		}
-		instance.AppendActivity(activity)
-		createFlowTransitions = true
-	case bpmn20.ElementTypeInclusiveGateway:
-		activity = elementActivity{
-			key:     engine.generateKey(),
-			state:   runtime.ActivityStateActive,
-			element: element,
-		}
-		createFlowTransitions = true
-	default:
-		executor, err := GetExecutorInstance(engine, element)
-		if err != nil {
-			panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", element.GetId(), element.GetType()))
-		}
-		var commands []command
-		createFlowTransitions, activity, commands, err = executor.Execute(context.Background(), batch, engine, process, instance, originActivity)
-		if err != nil {
-			nextCommands = append(nextCommands, errorCommand{
-				err:         err,
-				elementId:   element.GetId(),
-				elementName: element.GetName(),
-			})
-		} else {
-			nextCommands = append(nextCommands, commands...)
-		}
+	executor, err := GetExecutorInstance(engine, element)
+	if err != nil {
+		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", element.GetId(), element.GetType()))
 	}
+	var commands []command
+	createFlowTransitions, activity, commands, err = executor.Execute(context.Background(), batch, engine, process, instance, originActivity)
+	if err != nil {
+		nextCommands = append(nextCommands, errorCommand{
+			err:         err,
+			elementId:   element.GetId(),
+			elementName: element.GetName(),
+		})
+	} else {
+		nextCommands = append(nextCommands, commands...)
+	}
+
 	if createFlowTransitions && err == nil {
 		engine.exportElementEvent(*process, *instance, element, exporter.ElementCompleted)
 		nextCommands = append(nextCommands, createNextCommands(process, instance, element, activity)...)
@@ -521,27 +435,6 @@ func (engine *Engine) handleEndEvent(process *runtime.ProcessDefinition, instanc
 		instance.State = runtime.ActivityStateCompleted
 	}
 	return nil
-}
-
-func (engine *Engine) handleParallelGateway(process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.TParallelGateway, originActivity runtime.Activity) (continueFlow bool, resultActivity runtime.Activity) {
-	resultActivity = instance.FindActiveActivityByElementId(element.Id)
-	if resultActivity == nil {
-		var be bpmn20.FlowNode = element
-		resultActivity = &gatewayActivity{
-			key:      engine.generateKey(),
-			state:    runtime.ActivityStateActive,
-			element:  be,
-			parallel: true,
-		}
-		instance.AppendActivity(resultActivity)
-	}
-	sourceFlow := bpmn20.FindFirstSequenceFlow(&process.Definitions.Process.SequenceFlows, originActivity.Element().GetId(), element.GetId())
-	resultActivity.(*gatewayActivity).SetInboundFlowCompleted(sourceFlow.Id)
-	continueFlow = resultActivity.(*gatewayActivity).parallel && resultActivity.(*gatewayActivity).AreInboundFlowsCompleted()
-	if continueFlow {
-		resultActivity.(*gatewayActivity).SetState(runtime.ActivityStateCompleted)
-	}
-	return continueFlow, resultActivity
 }
 
 // findActiveSubscriptions returns active subscriptions;

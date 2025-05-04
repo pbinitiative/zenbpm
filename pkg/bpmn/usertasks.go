@@ -15,11 +15,11 @@ func (engine *Engine) handleUserTask(ctx context.Context, batch storage.Batch, p
 }
 
 type UserTaskExecutor struct {
-	FlowNodeExecutor
+	ActivityExecutor
 }
 
 func (e *UserTaskExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {
-	e.FlowNodeExecutor.Execute(ctx, batch, engine, process, instance)
+	e.ActivityExecutor.Execute(ctx, batch, engine, process, instance)
 	element := e.flowNode.element
 	taskElement := element.(bpmn20.TaskElement)
 	act, err := engine.handleUserTask(ctx, batch, process, instance, taskElement)

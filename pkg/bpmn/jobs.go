@@ -13,7 +13,7 @@ import (
 )
 
 type ServiceTaskExecutor struct {
-	FlowNodeExecutor
+	ActivityExecutor
 }
 
 func (e *ServiceTaskExecutor) Execute(ctx context.Context, batch storage.Batch, engine *Engine, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, originActivity runtime.Activity) (createFlowTransitions bool, activityResult runtime.Activity, nextCommands []command, err error) {

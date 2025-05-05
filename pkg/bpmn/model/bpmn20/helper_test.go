@@ -14,8 +14,7 @@ func Test_no_expression_when_only_blanks(t *testing.T) {
 		ConditionExpression: TExpression{Text: "   "},
 	}
 	// when
-	result := !flow.IsDefault()
-	// then
+	result := flow.GetConditionExpression() != ""
 	assert.False(t, result)
 }
 
@@ -27,7 +26,7 @@ func Test_has_expression_when_some_characters_present(t *testing.T) {
 		},
 	}
 	// when
-	result := !(flow.IsDefault())
+	result := flow.GetConditionExpression() != ""
 	// then
 	assert.True(t, result)
 }

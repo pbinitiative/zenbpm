@@ -19,13 +19,13 @@ import (
 // evaluates to true, a runtime exception occurs.
 // A converging Exclusive Gateway is used to merge alternative paths. Each incoming Sequence Flow token is routed
 // to the outgoing Sequence Flow without synchronization.
-func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
 	var ret []bpmn20.SequenceFlow
 	flowIds := strings.Builder{}
 	for _, flow := range flows {
-		if !(flow.IsDefault()) {
+		expression := flow.GetConditionExpression()
+		if expression != "" {
 			flowIds.WriteString(fmt.Sprintf("[id='%s',name='%s']", flow.GetId(), flow.GetName()))
-			expression := flow.GetConditionExpression()
 			out, err := evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
@@ -37,16 +37,19 @@ func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variabl
 				ret = append(ret, flow)
 				break
 			}
+			// one unconditional flow is enough to proceed further
+		} else if len(flows) == 1 {
+			ret = append(ret, flow)
 		}
 	}
 	if len(ret) == 0 {
-		ret = append(ret, findDefaultFlow(flows)...)
-	}
-	if len(ret) == 0 {
-		return nil, &ExpressionEvaluationError{
-			Msg: fmt.Sprintf("No default flow, nor matching expressions found, for flow elements: %s", flowIds.String()),
-			Err: nil,
+		if defaultFlow == nil {
+			return nil, &ExpressionEvaluationError{
+				Msg: fmt.Sprintf("No default flow, nor matching expressions found, for flow elements: %s", flowIds.String()),
+				Err: nil,
+			}
 		}
+		ret = append(ret, defaultFlow)
 	}
 	return ret, nil
 }
@@ -58,11 +61,11 @@ func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variabl
 // condition Expression does not exclude the evaluation of other condition Expressions. All Sequence Flows with
 // a true evaluation will be traversed by a token. Since each path is considered to be independent, all combinations of the
 // paths MAY be taken, from zero to all.
-func inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+func inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
 	var ret []bpmn20.SequenceFlow
 	for _, flow := range flows {
-		if !flow.IsDefault() {
-			expression := flow.GetConditionExpression()
+		expression := flow.GetConditionExpression()
+		if expression != "" {
 			out, err := evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
@@ -73,18 +76,19 @@ func inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, variabl
 			if out == true {
 				ret = append(ret, flow)
 			}
-		}
-	}
-	ret = append(ret, findDefaultFlow(flows)...)
-	return ret, nil
-}
-
-func findDefaultFlow(flows []bpmn20.SequenceFlow) (ret []bpmn20.SequenceFlow) {
-	for _, flow := range flows {
-		if flow.IsDefault() {
+			// if there is one outgoing flow with no condition - it is enough to proeed
+		} else if len(flows) == 1 {
 			ret = append(ret, flow)
-			break
 		}
 	}
-	return ret
+	if len(ret) == 0 {
+		if defaultFlow == nil {
+			return nil, &ExpressionEvaluationError{
+				Msg: fmt.Sprintf("No default flow, nor matching expressions found for gateway: %s", flows[0].GetSourceRef().GetId()),
+				Err: nil,
+			}
+		}
+		ret = append(ret, defaultFlow)
+	}
+	return ret, nil
 }

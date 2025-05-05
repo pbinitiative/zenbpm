@@ -41,17 +41,27 @@ type TTask struct {
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
+func (task TTask) GetInputMapping() []extensions.TIoMapping  { return task.Input }
+func (task TTask) GetOutputMapping() []extensions.TIoMapping { return task.Output }
+
 // TExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
 // BPMN 2.0 Unorthodox.
 type TExternallyProcessedTask struct {
 	TTask
 	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 }
+
+func (sendTask TExternallyProcessedTask) GetTaskType() string {
+	return sendTask.TaskDefinition.TypeName
+}
+
 type TServiceTask struct {
 	TExternallyProcessedTask
 	OperationRef   string `xml:"operationRef,attr"`
 	Implementation string `xml:"implementation,attr"`
 }
+
+func (serviceTask TServiceTask) GetType() ElementType { return ElementTypeServiceTask }
 
 type TBusinessRuleTask struct {
 	TExternallyProcessedTask
@@ -59,11 +69,15 @@ type TBusinessRuleTask struct {
 	Implementation string `xml:"implementation,attr"`
 }
 
+func (businessRuleTask TBusinessRuleTask) GetType() ElementType { return ElementTypeServiceTask }
+
 type TSendTask struct {
 	TExternallyProcessedTask
 	OperationRef   string `xml:"operationRef,attr"`
 	Implementation string `xml:"implementation,attr"`
 }
+
+func (sendTask TSendTask) GetType() ElementType { return ElementTypeServiceTask }
 
 type TUserTask struct {
 	TTask
@@ -71,38 +85,13 @@ type TUserTask struct {
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
-func (task TTask) GetInputMapping() []extensions.TIoMapping {
-	return task.Input
-}
-func (task TTask) GetOutputMapping() []extensions.TIoMapping {
-	return task.Output
-}
-
-func (serviceTask TServiceTask) GetType() ElementType {
-	return ElementTypeServiceTask
-}
-
-func (businessRuleTask TBusinessRuleTask) GetType() ElementType {
-	return ElementTypeServiceTask
-}
-
-func (sendTask TSendTask) GetType() ElementType {
-	return ElementTypeServiceTask
-}
-
-func (sendTask TExternallyProcessedTask) GetTaskType() string {
-	return sendTask.TaskDefinition.TypeName
-}
-
 func (userTask TUserTask) GetType() ElementType {
 	return ElementTypeUserTask
 }
 func (userTask TUserTask) GetTaskType() string { return "user-task-type" }
-
 func (userTask TUserTask) GetAssignmentAssignee() string {
 	return userTask.AssignmentDefinition.Assignee
 }
-
 func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 	return userTask.AssignmentDefinition.GetCandidateGroups()
 }

@@ -26,3 +26,14 @@ type TProcess struct {
 }
 
 type ElementType string
+
+type TDefaultFlowExtension struct {
+	DefaultFlow    string `xml:"default,attr" default:""`
+	defaultFlowRef SequenceFlow
+}
+
+type DefaultFlowExtension interface {
+	GetDefaultFlow() SequenceFlow
+}
+
+func (dfe TDefaultFlowExtension) GetDefaultFlow() SequenceFlow { return dfe.defaultFlowRef }

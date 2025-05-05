@@ -105,6 +105,35 @@ func resolveSequenceFlows(ids *[]string, refs *map[string]BaseElement) ([]Sequen
 	return flows, nil
 }
 
+func (dfe *TDefaultFlowExtension) resolveReferences(refs *map[string]BaseElement) error {
+	if dfe.DefaultFlow != "" {
+		var dflRef, err1 = (*refs)[dfe.DefaultFlow]
+		if !err1 {
+			return fmt.Errorf("failed to resolve default sequence flow references for Gateway with ID [%s]", dfe.DefaultFlow)
+		}
+
+		var dfltRef, err2 = dflRef.(SequenceFlow)
+		if !err2 {
+			return fmt.Errorf("resolved reference with ID [%s] is expected to be of SequenceFlow type", dfltRef.GetId())
+		}
+		dfe.defaultFlowRef = dfltRef
+	}
+	return nil
+}
+func (exclusiveGateway *TExclusiveGateway) resolveReferences(refs *map[string]BaseElement) error {
+	if err := (*exclusiveGateway).TDefaultFlowExtension.resolveReferences(refs); err != nil {
+		return err
+	}
+	return (*exclusiveGateway).TFlowNode.resolveReferences(refs)
+}
+
+func (inclusiveGateway *TInclusiveGateway) resolveReferences(refs *map[string]BaseElement) error {
+	if err := (*inclusiveGateway).TDefaultFlowExtension.resolveReferences(refs); err != nil {
+		return err
+	}
+	return (*inclusiveGateway).TFlowNode.resolveReferences(refs)
+}
+
 // FindFirstSequenceFlow returns the first flow definition for any given source and target element ID
 func FindFirstSequenceFlow(source FlowNode, target FlowNode) (result SequenceFlow) {
 	for _, flow := range source.GetOutgoingAssociation() {

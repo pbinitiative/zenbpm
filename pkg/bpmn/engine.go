@@ -263,7 +263,7 @@ func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 			flow := cmd.(flowTransitionCommand).sequenceFlow
 			nextFlows := []bpmn20.SequenceFlow{flow}
 			if bpmn20.ElementTypeExclusiveGateway == flow.GetSourceRef().GetType() {
-				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
+				nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, flow.GetSourceRef().(*bpmn20.TExclusiveGateway).GetDefaultFlow(), instance.VariableHolder.Variables())
 				if err != nil {
 					instance.State = runtime.ActivityStateFailed
 					return err
@@ -450,7 +450,7 @@ func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.Pr
 	var err error
 	switch element.GetType() {
 	case bpmn20.ElementTypeExclusiveGateway:
-		nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
+		nextFlows, err = exclusivelyFilterByConditionExpression(nextFlows, element.(*bpmn20.TExclusiveGateway).GetDefaultFlow(), instance.VariableHolder.Variables())
 		if err != nil {
 			instance.State = runtime.ActivityStateFailed
 			cmds = append(cmds, errorCommand{
@@ -461,7 +461,7 @@ func createNextCommands(process *runtime.ProcessDefinition, instance *runtime.Pr
 			return cmds
 		}
 	case bpmn20.ElementTypeInclusiveGateway:
-		nextFlows, err = inclusivelyFilterByConditionExpression(nextFlows, instance.VariableHolder.Variables())
+		nextFlows, err = inclusivelyFilterByConditionExpression(nextFlows, element.(*bpmn20.TInclusiveGateway).GetDefaultFlow(), instance.VariableHolder.Variables())
 		if err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return []command{

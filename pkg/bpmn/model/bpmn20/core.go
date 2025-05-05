@@ -199,11 +199,10 @@ type SequenceFlow interface {
 	GetSourceRef() FlowNode
 	GetTargetRef() FlowNode
 	GetConditionExpression() string
-	IsDefault() bool
 }
 
 type TExpression struct {
-	Text string `xml:",innerxml"`
+	Text string `xml:",innerxml" defelt:""`
 }
 
 func (sequenceFlow *TSequenceFlow) GetSourceRef() FlowNode {
@@ -214,9 +213,5 @@ func (sequenceFlow *TSequenceFlow) GetTargetRef() FlowNode {
 }
 func (sequenceFlow *TSequenceFlow) GetConditionExpression() string {
 	// GetConditionExpression returns the embedded expression. There will be a panic thrown, in case none exists!
-	return html.UnescapeString(sequenceFlow.ConditionExpression.Text)
-}
-
-func (sequenceFlow *TSequenceFlow) IsDefault() bool {
-	return len(strings.TrimSpace(sequenceFlow.ConditionExpression.Text)) == 0
+	return strings.TrimSpace(html.UnescapeString(sequenceFlow.ConditionExpression.Text))
 }

@@ -19,9 +19,15 @@ type TStartEvent struct {
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 }
 
+func (startEvent TStartEvent) GetType() ElementType {
+	return ElementTypeStartEvent
+}
+
 type TEndEvent struct {
 	TEvent
 }
+
+func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }
 
 type TIntermediateCatchEvent struct {
 	TEvent
@@ -33,11 +39,19 @@ type TIntermediateCatchEvent struct {
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
+func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
+	return ElementTypeIntermediateCatchEvent
+}
+
 type TIntermediateThrowEvent struct {
 	TEvent
 	LinkEventDefinition TLinkEventDefinition `xml:"linkEventDefinition"`
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+}
+
+func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
+	return ElementTypeIntermediateThrowEvent
 }
 
 type TMessageEventDefinition struct {
@@ -57,18 +71,4 @@ type TLinkEventDefinition struct {
 
 type TTimeDuration struct {
 	XMLText string `xml:",innerxml"`
-}
-
-func (startEvent TStartEvent) GetType() ElementType {
-	return ElementTypeStartEvent
-}
-
-func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }
-
-func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
-	return ElementTypeIntermediateCatchEvent
-}
-
-func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
-	return ElementTypeIntermediateThrowEvent
 }

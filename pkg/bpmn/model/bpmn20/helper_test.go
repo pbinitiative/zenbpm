@@ -43,15 +43,30 @@ func Test_unmarshalling_with_reference_resolution(t *testing.T) {
 		t.Fatalf("failed to unmarshal XML: %v", err)
 	}
 	// Check that references in FlowNodes are correctly resolved
-	assert.Equal(t, "id", definitions.Process.ServiceTasks[0].GetId())
-	assert.Equal(t, &definitions.Process.SequenceFlows[0], definitions.Process.StartEvents[0].GetOutgoingAssociation()[0])
-	assert.Equal(t, &definitions.Process.SequenceFlows[0], definitions.Process.ServiceTasks[0].GetIncomingAssociation()[0])
-	assert.Equal(t, &definitions.Process.SequenceFlows[1], definitions.Process.ServiceTasks[0].GetOutgoingAssociation()[0])
-	assert.Equal(t, &definitions.Process.SequenceFlows[1], definitions.Process.EndEvents[0].GetIncomingAssociation()[0])
-	// Check that references in SequenceFlow are correctly resolved
-	assert.Equal(t, &definitions.Process.StartEvents[0], definitions.Process.SequenceFlows[0].GetSourceRef())
-	assert.Equal(t, &definitions.Process.ServiceTasks[0], definitions.Process.SequenceFlows[0].GetTargetRef())
-	assert.Equal(t, &definitions.Process.ServiceTasks[0], definitions.Process.SequenceFlows[1].GetSourceRef())
-	assert.Equal(t, &definitions.Process.EndEvents[0], definitions.Process.SequenceFlows[1].GetTargetRef())
-	//assert.Equal(t, definitions.Process.EndEvents[0], definitions.Process.ServiceTasks[0].GetOutgoingAssociation()[0])
+	assert.Equal(t, 1, len(definitions.Process.ServiceTasks))
+	var serviceTask = definitions.Process.ServiceTasks[0]
+	assert.Equal(t, 1, len(definitions.Process.StartEvents))
+	var startEvent = definitions.Process.StartEvents[0]
+	assert.Equal(t, 1, len(definitions.Process.EndEvents))
+	var endEvent = definitions.Process.EndEvents[0]
+	assert.Equal(t, 2, len(definitions.Process.SequenceFlows))
+	var start_to_task, task_to_end = definitions.Process.SequenceFlows[0], definitions.Process.SequenceFlows[1]
+
+	assert.Equal(t, 1, len(startEvent.GetOutgoingAssociation()))
+	assert.Equal(t, 0, len(startEvent.GetIncomingAssociation()))
+	assert.Equal(t, &start_to_task, startEvent.GetOutgoingAssociation()[0])
+
+	assert.Equal(t, 1, len(serviceTask.GetOutgoingAssociation()))
+	assert.Equal(t, 1, len(serviceTask.GetIncomingAssociation()))
+	assert.Equal(t, &start_to_task, serviceTask.GetIncomingAssociation()[0])
+	assert.Equal(t, &task_to_end, serviceTask.GetOutgoingAssociation()[0])
+
+	assert.Equal(t, 0, len(endEvent.GetOutgoingAssociation()))
+	assert.Equal(t, 1, len(endEvent.GetIncomingAssociation()))
+	assert.Equal(t, &task_to_end, endEvent.GetIncomingAssociation()[0])
+	assert.Equal(t, &startEvent, start_to_task.GetSourceRef())
+	assert.Equal(t, &serviceTask, start_to_task.GetTargetRef())
+	assert.Equal(t, &serviceTask, task_to_end.GetSourceRef())
+	assert.Equal(t, &endEvent, task_to_end.GetTargetRef())
+
 }

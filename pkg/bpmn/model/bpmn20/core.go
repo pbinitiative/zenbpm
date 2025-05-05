@@ -79,7 +79,6 @@ func collectBaseElements(element interface{}, refs *map[string]BaseElement) erro
 				if !arrEl.CanInterface() || arrEl.Kind() != reflect.Struct {
 					continue
 				}
-				//aei := arrEl.Interface()
 				var err = collectBaseElements(arrEl.Addr().Interface(), refs)
 				if err != nil {
 					return err
@@ -89,7 +88,6 @@ func collectBaseElements(element interface{}, refs *map[string]BaseElement) erro
 			if !fieldVal.CanInterface() || fieldVal.Kind() != reflect.Struct {
 				continue
 			}
-			//fvi := fieldVal.Interface()
 			var err = collectBaseElements(fieldVal.Addr().Interface(), refs)
 			if err != nil {
 				return err

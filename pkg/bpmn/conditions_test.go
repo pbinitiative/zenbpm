@@ -31,7 +31,8 @@ func Test_exclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 	assert.Equal(t, "task-b", cp.CallPath)
 }
 
-func Test_exclusive_gateway_with_expressions_selects_default(t *testing.T) {
+// Test of corrupted process (no outgoing conditional flows resolved positively nor default flow defined). Incident has to be raised
+func Test_exclusive_gateway_with_expressions_fails_no_default(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -46,11 +47,11 @@ func Test_exclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
-	assert.Nil(t, err)
+	// Run the engine and check that Gateway haven't triggered any task
+	bpmnEngine.CreateAndRunInstance(process.Key, variables)
 
-	// then
-	assert.Equal(t, "task-b", cp.CallPath)
+	// no tasks called
+	assert.Equal(t, "", cp.CallPath)
 }
 
 func Test_exclusive_gateway_executes_just_one_matching_path(t *testing.T) {
@@ -201,6 +202,7 @@ func Test_inclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 	assert.Equal(t, cp.CallPath, "task-b")
 }
 
+// Test of corrupted process (no outgoing conditional flows resolved positively nor default flow defined). Incident has to be raised
 func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
@@ -216,14 +218,13 @@ func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateAndRunInstance(process.Key, variables)
-	assert.Nil(t, err)
+	bpmnEngine.CreateAndRunInstance(process.Key, variables)
 
-	// then
-	assert.Equal(t, cp.CallPath, "task-b")
+	// process stuck with no further advance after inclusive gateway
+	assert.Equal(t, cp.CallPath, "")
 }
 
-func Test_inclusive_gateway_executes_all_paths(t *testing.T) {
+func Test_inclusive_gateway_executes_all_positive_resolved_no_defaults(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -243,5 +244,5 @@ func Test_inclusive_gateway_executes_all_paths(t *testing.T) {
 	assert.Nil(t, err)
 
 	// then
-	assert.Equal(t, "task-a,task-b,task-default", cp.CallPath)
+	assert.Equal(t, "task-a,task-b", cp.CallPath)
 }

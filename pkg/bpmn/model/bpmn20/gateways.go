@@ -25,14 +25,15 @@ const (
 
 type TInclusiveGateway struct {
 	TGateway
+	TDefaultFlowExtension
 }
 
 type TParallelGateway struct {
 	TGateway
 }
-
 type TExclusiveGateway struct {
 	TGateway
+	TDefaultFlowExtension
 }
 
 type TEventBasedGateway struct {
@@ -46,23 +47,29 @@ type GatewayElement interface {
 	IsParallel() bool
 	IsExclusive() bool
 	IsInclusive() bool
+	GetDefaultFlow() SequenceFlow
 }
 
 // Defaults
-func (parallelGateway TGateway) IsParallel() bool  { return false }
-func (parallelGateway TGateway) IsExclusive() bool { return false }
-func (parallelGateway TGateway) IsInclusive() bool { return false }
+func (gateway *TGateway) IsParallel() bool             { return false }
+func (gateway *TGateway) IsExclusive() bool            { return false }
+func (gateway *TGateway) IsInclusive() bool            { return false }
+func (gateway *TGateway) GetDefaultFlow() SequenceFlow { return nil }
 
-func (parallelGateway TParallelGateway) GetType() ElementType { return ElementTypeParallelGateway }
-func (parallelGateway TParallelGateway) IsParallel() bool     { return true }
+func (parallelGateway *TParallelGateway) GetType() ElementType { return ElementTypeParallelGateway }
+func (parallelGateway *TParallelGateway) IsParallel() bool     { return true }
 
-func (exclusiveGateway TExclusiveGateway) GetType() ElementType { return ElementTypeExclusiveGateway }
-func (exclusiveGateway TExclusiveGateway) IsExclusive() bool    { return true }
-
-func (inclusiveGateway TInclusiveGateway) GetType() ElementType { return ElementTypeInclusiveGateway }
-func (inclusiveGateway TInclusiveGateway) IsInclusive() bool    { return true }
-
-func (eventBasedGateway TEventBasedGateway) GetType() ElementType {
+func (exclusiveGateway *TExclusiveGateway) GetType() ElementType { return ElementTypeExclusiveGateway }
+func (exclusiveGateway *TExclusiveGateway) IsExclusive() bool    { return true }
+func (exclusiveGateway *TExclusiveGateway) GetDefaultFlow() SequenceFlow {
+	return exclusiveGateway.defaultFlowRef
+}
+func (inclusiveGateway *TInclusiveGateway) GetType() ElementType { return ElementTypeInclusiveGateway }
+func (inclusiveGateway *TInclusiveGateway) IsInclusive() bool    { return true }
+func (inclusiveGateway *TInclusiveGateway) GetDefaultFlow() SequenceFlow {
+	return inclusiveGateway.defaultFlowRef
+}
+func (eventBasedGateway *TEventBasedGateway) GetType() ElementType {
 	return ElementTypeEventBasedGateway
 }
-func (eventBasedGateway TEventBasedGateway) IsExclusive() bool { return true }
+func (eventBasedGateway *TEventBasedGateway) IsExclusive() bool { return true }

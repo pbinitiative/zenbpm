@@ -2,7 +2,6 @@ package bpmn20
 
 import (
 	"html"
-	"reflect"
 	"strings"
 )
 
@@ -48,53 +47,6 @@ func (baseElement *TBaseElement) GetDocumentation() []Documentation {
 		docs = append(docs, &doc)
 	}
 	return docs
-}
-
-func collectBaseElements(element interface{}, refs *map[string]BaseElement) error {
-	val := reflect.ValueOf(element)
-
-	// If c is a pointer receiver, adjust:
-	baseElement, ok := val.Interface().(BaseElement)
-	if ok {
-		// already registered
-		if _, ok2 := (*refs)[baseElement.GetId()]; ok2 {
-			return nil
-		}
-		(*refs)[baseElement.GetId()] = baseElement
-	}
-
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	if !val.IsValid() || val.Kind() != reflect.Struct {
-		return nil // Skip invalid or non-struct values
-	}
-
-	for i := 0; i < val.NumField(); i++ {
-		fieldVal := val.Field(i)
-		if fieldVal.Kind() == reflect.Slice {
-			for j := 0; j < fieldVal.Len(); j++ {
-				arrEl := fieldVal.Index(j)
-				if !arrEl.CanInterface() || arrEl.Kind() != reflect.Struct {
-					continue
-				}
-				var err = collectBaseElements(arrEl.Addr().Interface(), refs)
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			if !fieldVal.CanInterface() || fieldVal.Kind() != reflect.Struct {
-				continue
-			}
-			var err = collectBaseElements(fieldVal.Addr().Interface(), refs)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 type Documentation interface {
@@ -169,18 +121,18 @@ type FlowNode interface {
 
 type TFlowNode struct {
 	TFlowElement
-	IncomingAssociation []string `xml:"incoming"`
-	OutgoingAssociation []string `xml:"outgoing"`
-	incomingRefs        []SequenceFlow
-	outgoingRefs        []SequenceFlow
+	IncomingAssociationsIDs []string       `xml:"incoming"`
+	OutgoingAssociationsIDs []string       `xml:"outgoing"`
+	IncomingAssociations    []SequenceFlow `idField:"IncomingAssociationsIDs"`
+	OutgoingAssociations    []SequenceFlow `idField:"OutgoingAssociationsIDs"`
 }
 
 func (flowNode *TFlowNode) GetIncomingAssociation() []SequenceFlow {
-	return flowNode.incomingRefs
+	return flowNode.IncomingAssociations
 }
 
 func (flowNode *TFlowNode) GetOutgoingAssociation() []SequenceFlow {
-	return flowNode.outgoingRefs
+	return flowNode.OutgoingAssociations
 }
 
 type TSequenceFlow struct {
@@ -188,8 +140,8 @@ type TSequenceFlow struct {
 	SourceRefId         string      `xml:"sourceRef,attr"`
 	TargetRefId         string      `xml:"targetRef,attr"`
 	ConditionExpression TExpression `xml:"conditionExpression"`
-	sourceRef           FlowNode
-	targetRef           FlowNode
+	SourceRef           FlowNode    `idField:"SourceRefId"`
+	TargetRef           FlowNode    `idField:"TargetRefId"`
 }
 
 type SequenceFlow interface {
@@ -200,14 +152,14 @@ type SequenceFlow interface {
 }
 
 type TExpression struct {
-	Text string `xml:",innerxml" defelt:""`
+	Text string `xml:",innerxml" default:""`
 }
 
 func (sequenceFlow *TSequenceFlow) GetSourceRef() FlowNode {
-	return sequenceFlow.sourceRef
+	return sequenceFlow.SourceRef
 }
 func (sequenceFlow *TSequenceFlow) GetTargetRef() FlowNode {
-	return sequenceFlow.targetRef
+	return sequenceFlow.TargetRef
 }
 func (sequenceFlow *TSequenceFlow) GetConditionExpression() string {
 	// GetConditionExpression returns the embedded expression. There will be a panic thrown, in case none exists!

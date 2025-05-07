@@ -43,7 +43,7 @@ type TInclusiveGateway struct {
 func (inclusiveGateway *TInclusiveGateway) GetType() ElementType { return ElementTypeInclusiveGateway }
 func (inclusiveGateway *TInclusiveGateway) IsInclusive() bool    { return true }
 func (inclusiveGateway *TInclusiveGateway) GetDefaultFlow() SequenceFlow {
-	return inclusiveGateway.defaultFlowRef
+	return inclusiveGateway.DefaultFlow
 }
 
 type TParallelGateway struct {
@@ -61,7 +61,7 @@ type TExclusiveGateway struct {
 func (exclusiveGateway *TExclusiveGateway) GetType() ElementType { return ElementTypeExclusiveGateway }
 func (exclusiveGateway *TExclusiveGateway) IsExclusive() bool    { return true }
 func (exclusiveGateway *TExclusiveGateway) GetDefaultFlow() SequenceFlow {
-	return exclusiveGateway.defaultFlowRef
+	return exclusiveGateway.DefaultFlow
 }
 
 type TEventBasedGateway struct {

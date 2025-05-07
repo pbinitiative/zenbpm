@@ -3,25 +3,22 @@ package bpmn20
 import (
 	"encoding/xml"
 	"fmt"
+	"reflect"
 )
 
 func (definitions *TDefinitions) ResolveReferences() error {
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)
-	err := collectBaseElements(definitions, &baseElementMap)
+	resolvables := make([]func(refs *map[string]BaseElement) error, 0)
+	err := collectBaseElements(definitions, &baseElementMap, &resolvables)
 	if err != nil {
 		return fmt.Errorf("failed to collect references: %w", err)
 	}
 	definitions.baseElements = baseElementMap
 	// Try to resolve references for each base element implementing ResolvableReferences
-	for _, baseElement := range baseElementMap {
+	for _, resolvable := range resolvables {
 		// Check if the baseElement implements ResolvableReferences
-		resolvable, ok := baseElement.(ResolvableReferences)
-		if !ok {
-			continue // Skip if it doesn't implement the interface
-		}
-		err := resolvable.resolveReferences(&baseElementMap)
-		if err != nil {
+		if err = resolvable(&baseElementMap); err != nil {
 			return err
 		}
 	}
@@ -48,90 +45,115 @@ func (definitions *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartEle
 	}
 	return nil
 }
+func collectBaseElements(element interface{}, refs *map[string]BaseElement, resolvables *[]func(refs *map[string]BaseElement) error) error {
+	val := reflect.ValueOf(element)
 
-func (flowNode *TFlowNode) resolveReferences(refs *map[string]BaseElement) error {
-
-	var incomingRefs, errIn = resolveSequenceFlows(&(flowNode.IncomingAssociation), refs)
-	if errIn != nil {
-		return fmt.Errorf("failed to resolve incoming references for FlowNode with ID [%s]", flowNode.GetId())
+	// If c is a pointer receiver, adjust:
+	baseElement, ok := val.Interface().(BaseElement)
+	if ok {
+		// already registered
+		if _, ok2 := (*refs)[baseElement.GetId()]; !ok2 {
+			(*refs)[baseElement.GetId()] = baseElement
+		}
 	}
 
-	flowNode.incomingRefs = incomingRefs
-	var outgoingRefs, errOut = resolveSequenceFlows(&(flowNode.OutgoingAssociation), refs)
-	if errOut != nil {
-		return fmt.Errorf("failed to resolve outgoing references for FlowNode with ID [%s]", flowNode.GetId())
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
 	}
-	flowNode.outgoingRefs = outgoingRefs
 
+	if !val.IsValid() || val.Kind() != reflect.Struct {
+		return nil // Skip invalid or non-struct values
+	}
+	baseElementType := reflect.TypeOf((*BaseElement)(nil)).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		fieldVal := val.Field(i)
+		// check if the field requires reference resolution
+		if idFieldName := val.Type().Field(i).Tag.Get("idField"); idFieldName != "" {
+			if idField := val.FieldByName(idFieldName); idField.IsValid() {
+				// assert that id field of string or []string type
+				if !(idField.Kind() == reflect.String || (idField.Kind() == reflect.Slice && idField.Type().Elem().Kind() == reflect.String)) {
+					return fmt.Errorf("ID containing field [%s] in structure [%s] has to be 'string' or '[]string' type", idFieldName, val.Type().Name())
+				}
+				// assert that reference field of <Interface> or []<Interface> type where BaseElement is assignable to <Interface>
+				if !((fieldVal.Kind() == reflect.Interface && fieldVal.Type().Implements(baseElementType)) ||
+					(fieldVal.Kind() == reflect.Slice && fieldVal.Type().Elem().Implements(baseElementType))) {
+					return fmt.Errorf("field [%s] in structure [%s] has to be interface or slice of interfaces assignable from BaseElement'", val.Type().Field(i).Name, val.Type().Name())
+				}
+				*resolvables = append(*resolvables, makeResolvable(fieldVal, val.FieldByName(idFieldName)))
+			} else {
+				return fmt.Errorf("field %s containing IDs not found in struct", idFieldName)
+			}
+		}
+
+		if fieldVal.Kind() == reflect.Slice {
+			for j := 0; j < fieldVal.Len(); j++ {
+				arrEl := fieldVal.Index(j)
+				if !arrEl.CanInterface() || arrEl.Kind() != reflect.Struct {
+					continue
+				}
+				var err = collectBaseElements(arrEl.Addr().Interface(), refs, resolvables)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			if !fieldVal.CanInterface() || fieldVal.Kind() != reflect.Struct {
+				continue
+			}
+			var err = collectBaseElements(fieldVal.Addr().Interface(), refs, resolvables)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
-func (sequenceFlow *TSequenceFlow) resolveReferences(refs *map[string]BaseElement) error {
-	var srcRef, err1 = (*refs)[sequenceFlow.SourceRefId]
-	if !err1 {
-		return fmt.Errorf("failed to resolve incoming references for FlowNode with ID [%s]", sequenceFlow.GetId())
-	}
-	var srcRefFlowNode, err2 = srcRef.(FlowNode)
-	if !err2 {
-		return fmt.Errorf("resolved reference with ID [%s] is expected to be of FLowNode type", srcRef.GetId())
-	}
-	sequenceFlow.sourceRef = srcRefFlowNode
-
-	var targetRef, err3 = (*refs)[sequenceFlow.TargetRefId]
-	if !err3 {
-		return fmt.Errorf("failed to resolve outgoing references for FlowNode with ID [%s]", sequenceFlow.GetId())
-	}
-	var targetRefFlowNode, err4 = targetRef.(FlowNode)
-	if !err4 {
-		return fmt.Errorf("resolved reference with ID [%s] is expected to be of FLowNode type", targetRef.GetId())
-	}
-	sequenceFlow.targetRef = targetRefFlowNode
-	return nil
-}
-
-func resolveSequenceFlows(ids *[]string, refs *map[string]BaseElement) ([]SequenceFlow, error) {
-	var flows []SequenceFlow
-	for _, value := range *ids {
-		ref, ok := (*refs)[value]
+func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *map[string]BaseElement) error {
+	singleIDprocessor := func(fieldVal reflect.Value, idField reflect.Value, refs *map[string]BaseElement, setter func(value reflect.Value) error) error {
+		id := idField.String()
+		if id == "" {
+			// skip is ID is empty
+			return nil
+		}
+		baseEl, ok := (*refs)[id]
 		if !ok {
-			return nil, fmt.Errorf("no registered reference with ID [%s]", value)
+			return fmt.Errorf("no registered BaseElement with ID [%s]", id)
 		}
-		sf, ok := ref.(SequenceFlow)
-		if !ok {
-			return nil, fmt.Errorf("found reference with ID [%s] is not of SequenceFlow type", value)
+		val := reflect.ValueOf(baseEl)
+		return setter(val)
+	}
+	return func(refs *map[string]BaseElement) error {
+		switch fieldVal.Kind() {
+		case reflect.Slice:
+			for i := 0; i < idField.Len(); i++ {
+				id := idField.Index(i)
+				singleIDprocessor(fieldVal, id, refs, func(value reflect.Value) error {
+					if fieldVal.IsNil() {
+						fieldVal.Set(reflect.MakeSlice(fieldVal.Type(), 0, idField.Len()))
+					}
+					if value.Type().AssignableTo(fieldVal.Type().Elem()) {
+						fieldVal.Set(reflect.Append(fieldVal, value))
+					} else {
+						return fmt.Errorf("resolved reference with ID [%s] is not of the expected type", id)
+					}
+					return nil
+				})
+			}
+		case reflect.Interface:
+			id := idField
+			return singleIDprocessor(fieldVal, id, refs, func(value reflect.Value) error {
+				if value.Type().AssignableTo(fieldVal.Type()) {
+					fieldVal.Set(value)
+				} else {
+					return fmt.Errorf("resolved reference with ID [%s] is not of the expected type", id)
+				}
+				return nil
+			})
+		default:
+			panic(fmt.Errorf("Error in structure [%s]: field is not of a slice or interface type", fieldVal.Type().Name()))
 		}
-
-		flows = append(flows, sf)
+		return nil
 	}
-	return flows, nil
-}
-
-func (dfe *TDefaultFlowExtension) resolveReferences(refs *map[string]BaseElement) error {
-	if dfe.DefaultFlow != "" {
-		var dflRef, err1 = (*refs)[dfe.DefaultFlow]
-		if !err1 {
-			return fmt.Errorf("failed to resolve default sequence flow references for Gateway with ID [%s]", dfe.DefaultFlow)
-		}
-
-		var dfltRef, err2 = dflRef.(SequenceFlow)
-		if !err2 {
-			return fmt.Errorf("resolved reference with ID [%s] is expected to be of SequenceFlow type", dfltRef.GetId())
-		}
-		dfe.defaultFlowRef = dfltRef
-	}
-	return nil
-}
-func (exclusiveGateway *TExclusiveGateway) resolveReferences(refs *map[string]BaseElement) error {
-	if err := (*exclusiveGateway).TDefaultFlowExtension.resolveReferences(refs); err != nil {
-		return err
-	}
-	return (*exclusiveGateway).TFlowNode.resolveReferences(refs)
-}
-
-func (inclusiveGateway *TInclusiveGateway) resolveReferences(refs *map[string]BaseElement) error {
-	if err := (*inclusiveGateway).TDefaultFlowExtension.resolveReferences(refs); err != nil {
-		return err
-	}
-	return (*inclusiveGateway).TFlowNode.resolveReferences(refs)
 }
 
 // FindFirstSequenceFlow returns the first flow definition for any given source and target element ID

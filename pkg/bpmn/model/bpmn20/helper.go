@@ -2,6 +2,7 @@ package bpmn20
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -9,7 +10,7 @@ import (
 func (definitions *TDefinitions) ResolveReferences() error {
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)
-	resolvables := make([]func(refs *map[string]BaseElement) error, 0)
+	resolvables := make([]resolvableFunc, 0)
 	err := collectBaseElements(definitions, &baseElementMap, &resolvables)
 	if err != nil {
 		return fmt.Errorf("failed to collect references: %w", err)
@@ -45,14 +46,17 @@ func (definitions *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartEle
 	}
 	return nil
 }
-func collectBaseElements(element interface{}, refs *map[string]BaseElement, resolvables *[]func(refs *map[string]BaseElement) error) error {
+
+type resolvableFunc func(refs *map[string]BaseElement) error
+
+func collectBaseElements(element interface{}, refs *map[string]BaseElement, resolvables *[]resolvableFunc) error {
 	val := reflect.ValueOf(element)
 
 	// If c is a pointer receiver, adjust:
 	baseElement, ok := val.Interface().(BaseElement)
 	if ok {
 		// already registered
-		if _, ok2 := (*refs)[baseElement.GetId()]; !ok2 {
+		if _, ok := (*refs)[baseElement.GetId()]; !ok {
 			(*refs)[baseElement.GetId()] = baseElement
 		}
 	}
@@ -65,18 +69,18 @@ func collectBaseElements(element interface{}, refs *map[string]BaseElement, reso
 		return nil // Skip invalid or non-struct values
 	}
 	baseElementType := reflect.TypeOf((*BaseElement)(nil)).Elem()
-	for i := 0; i < val.NumField(); i++ {
+	for i := range val.NumField() {
 		fieldVal := val.Field(i)
 		// check if the field requires reference resolution
 		if idFieldName := val.Type().Field(i).Tag.Get("idField"); idFieldName != "" {
 			if idField := val.FieldByName(idFieldName); idField.IsValid() {
 				// assert that id field of string or []string type
-				if !(idField.Kind() == reflect.String || (idField.Kind() == reflect.Slice && idField.Type().Elem().Kind() == reflect.String)) {
+				if idField.Kind() != reflect.String && (idField.Kind() != reflect.Slice || idField.Type().Elem().Kind() != reflect.String) {
 					return fmt.Errorf("ID containing field [%s] in structure [%s] has to be 'string' or '[]string' type", idFieldName, val.Type().Name())
 				}
 				// assert that reference field of <Interface> or []<Interface> type where BaseElement is assignable to <Interface>
-				if !((fieldVal.Kind() == reflect.Interface && fieldVal.Type().Implements(baseElementType)) ||
-					(fieldVal.Kind() == reflect.Slice && fieldVal.Type().Elem().Implements(baseElementType))) {
+				if (fieldVal.Kind() != reflect.Interface || !fieldVal.Type().Implements(baseElementType)) &&
+					(fieldVal.Kind() != reflect.Slice || !fieldVal.Type().Elem().Implements(baseElementType)) {
 					return fmt.Errorf("field [%s] in structure [%s] has to be interface or slice of interfaces assignable from BaseElement'", val.Type().Field(i).Name, val.Type().Name())
 				}
 				*resolvables = append(*resolvables, makeResolvable(fieldVal, val.FieldByName(idFieldName)))
@@ -86,7 +90,7 @@ func collectBaseElements(element interface{}, refs *map[string]BaseElement, reso
 		}
 
 		if fieldVal.Kind() == reflect.Slice {
-			for j := 0; j < fieldVal.Len(); j++ {
+			for j := range fieldVal.Len() {
 				arrEl := fieldVal.Index(j)
 				if !arrEl.CanInterface() || arrEl.Kind() != reflect.Struct {
 					continue
@@ -108,6 +112,7 @@ func collectBaseElements(element interface{}, refs *map[string]BaseElement, reso
 	}
 	return nil
 }
+
 func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *map[string]BaseElement) error {
 	singleIDprocessor := func(fieldVal reflect.Value, idField reflect.Value, refs *map[string]BaseElement, setter func(value reflect.Value) error) error {
 		id := idField.String()
@@ -125,9 +130,10 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 	return func(refs *map[string]BaseElement) error {
 		switch fieldVal.Kind() {
 		case reflect.Slice:
-			for i := 0; i < idField.Len(); i++ {
+			var joinErr error
+			for i := range idField.Len() {
 				id := idField.Index(i)
-				singleIDprocessor(fieldVal, id, refs, func(value reflect.Value) error {
+				err := singleIDprocessor(fieldVal, id, refs, func(value reflect.Value) error {
 					if fieldVal.IsNil() {
 						fieldVal.Set(reflect.MakeSlice(fieldVal.Type(), 0, idField.Len()))
 					}
@@ -138,6 +144,12 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 					}
 					return nil
 				})
+				if err != nil {
+					joinErr = errors.Join(joinErr, fmt.Errorf("error processing %s[%d] type %s: %w", fieldVal.Type(), i, id.String(), err))
+				}
+			}
+			if joinErr != nil {
+				return joinErr
 			}
 		case reflect.Interface:
 			id := idField
@@ -150,7 +162,7 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 				return nil
 			})
 		default:
-			panic(fmt.Errorf("Error in structure [%s]: field is not of a slice or interface type", fieldVal.Type().Name()))
+			panic(fmt.Sprintf("Error in structure [%s]: field is not of a slice or interface type", fieldVal.Type().Name()))
 		}
 		return nil
 	}

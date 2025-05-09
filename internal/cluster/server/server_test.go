@@ -17,7 +17,7 @@ import (
 func TestServer(t *testing.T) {
 	ctx := t.Context()
 
-	mux, err := network.NewNodeMux("")
+	mux, _, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create new mux: %s", err)
 	}
@@ -34,7 +34,7 @@ func TestServer(t *testing.T) {
 	grpcClient, err := grpc.NewClient(cLn.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
-			return dialer.Dial(s, 1*time.Second)
+			return dialer.DialGRPC(s)
 		}),
 	)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestServer(t *testing.T) {
 func TestServerTCPHeaderMux(t *testing.T) {
 	ctx := t.Context()
 
-	mux, err := network.NewNodeMux("")
+	mux, _, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create new mux: %s", err)
 	}
@@ -99,11 +99,11 @@ func TestServerTCPHeaderMux(t *testing.T) {
 	}
 
 	// create good dialer
-	dialer = network.NewZenBpmClusterDialer()
+	grpcdialer := network.NewZenBpmClusterDialer()
 	grpcClient, err = grpc.NewClient(cLn.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
-			return dialer.Dial(s, 1*time.Second)
+			return grpcdialer.DialGRPC(s)
 		}),
 	)
 	if err != nil {

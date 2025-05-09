@@ -1,6 +1,9 @@
 package store
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/hashicorp/raft"
 )
 
@@ -10,11 +13,15 @@ import (
 // information about currently active partition and Nodes in the cluster.
 // +k8s:deepcopy-gen=true
 type ClusterState struct {
+	// Config stores desired cluster configuration. At the start of the cluster its picked up from app configuration and later updated by calling GRPC API.
+	Config ClusterConfig `json:"clusterConfig"`
+	// Partitions stores current cluster partition state
 	Partitions map[uint32]Partition `json:"partitions"`
-	Nodes      map[string]Node      `json:"nodes"`
+	// Nodes stores information about current cluster members
+	Nodes map[string]Node `json:"nodes"`
 }
 
-func (c *ClusterState) GetNode(nodeId string) (Node, error) {
+func (c ClusterState) GetNode(nodeId string) (Node, error) {
 	for id, node := range c.Nodes {
 		if id != nodeId {
 			continue
@@ -22,6 +29,39 @@ func (c *ClusterState) GetNode(nodeId string) (Node, error) {
 		return node, nil
 	}
 	return Node{}, ErrNodeNotFound
+}
+
+func (c ClusterState) GetLeastStressedNode() (Node, error) {
+	minNode := Node{}
+	for _, node := range c.Nodes {
+		if minNode.Partitions == nil || len(minNode.Partitions) < len(node.Partitions) {
+			minNode = node
+		}
+	}
+	if minNode.Id == "" {
+		return minNode, fmt.Errorf("failed to find node")
+	}
+	return minNode, nil
+}
+
+func (c ClusterState) AnyNodeHasPartition(partitionId int) bool {
+	for _, node := range c.Nodes {
+		if _, ok := node.Partitions[uint32(partitionId)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (c ClusterState) PrintDebug() {
+	bytes, _ := json.MarshalIndent(c, "", " ")
+	fmt.Println(string(bytes))
+}
+
+// +k8s:deepcopy-gen=true
+type ClusterConfig struct {
+	DesiredPartitions uint32 `json:"desiredPartitions"`
+	// Version           int    `json:"version"`
 }
 
 // +k8s:deepcopy-gen=true

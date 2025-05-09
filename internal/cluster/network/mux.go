@@ -10,17 +10,17 @@ import (
 // NewNodeMux creates a new instance of TCP multiplexer.
 // Multiplexer can route its connections based on a header byte.
 // Providing empty string to the address will start on a random free port.
-func NewNodeMux(address string) (*tcp.Mux, error) {
+func NewNodeMux(address string) (*tcp.Mux, net.Listener, error) {
 	// Create internode network mux and configure it.
-	muxLn, err := net.Listen("tcp", address)
+	muxLn, err := net.Listen("tcp4", address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to listen on %s: %s", address, err.Error())
+		return nil, muxLn, fmt.Errorf("failed to listen on %s: %s", address, err.Error())
 	}
 	mux, err := startNodeMux(address, muxLn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start node mux: %s", err.Error())
+		return nil, muxLn, fmt.Errorf("failed to start node mux: %s", err.Error())
 	}
-	return mux, nil
+	return mux, muxLn, nil
 }
 
 // startNodeMux starts the TCP mux on the given listener, which should be already

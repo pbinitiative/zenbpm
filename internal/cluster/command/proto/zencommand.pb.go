@@ -170,6 +170,14 @@ func (RaftSuffrage) EnumDescriptor() ([]byte, []int) {
 	return file_zencommand_proto_rawDescGZIP(), []int{2}
 }
 
+// Partition state transition
+// JOINING - cluster leader determined that a node needs to be part of the partition group and node needs to perform joining operation on the group
+//    ↓
+// INITIALIZING - node has started the process of joining the partition group (this can take longer if rqlite has a lot of data stored)
+//    ↓
+// INITIALIZED - node has joined the partition group
+//
+// LEAVING - node has to leave the partition group
 type NodePartitionState int32
 
 const (

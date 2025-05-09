@@ -4,58 +4,67 @@ package zencommand;
 option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/command/proto";
 
 message Command {
-	enum Type {
-		TYPE_UNKNOWN = 0;
-		TYPE_NOOP = 1;
-		TYPE_NODE_CHANGE = 2;
-		TYPE_NODE_PARTITION_CHANGE = 3;
-	}
-	Type type = 1;
-	oneof request {
-			NodeChange node_change = 2;
-			NodePartitionChange node_partition_change = 3;
-	}
+  enum Type {
+    TYPE_UNKNOWN = 0;
+    TYPE_NOOP = 1;
+    TYPE_NODE_CHANGE = 2;
+    TYPE_NODE_PARTITION_CHANGE = 3;
+  }
+  Type type = 1;
+  oneof request {
+    NodeChange node_change = 2;
+    NodePartitionChange node_partition_change = 3;
+  }
 }
 
 enum Role {
-	ROLE_TYPE_UNKNOWN = 0;
-	ROLE_TYPE_FOLLOWER = 1;
-	ROLE_TYPE_LEADER = 2;
+  ROLE_TYPE_UNKNOWN = 0;
+  ROLE_TYPE_FOLLOWER = 1;
+  ROLE_TYPE_LEADER = 2;
 }
 
 enum NodeState {
-	NODE_STATE_UNKNOWN = 0;
-	NODE_STATE_ERROR = 1;
-	NODE_STATE_STARTED = 2;
-	NODE_STATE_SHUTDOWN = 3;
+  NODE_STATE_UNKNOWN = 0;
+  NODE_STATE_ERROR = 1;
+  NODE_STATE_STARTED = 2;
+  NODE_STATE_SHUTDOWN = 3;
 }
 
 enum RaftSuffrage {
-	RAFT_SUFFRAGE_UNKNOWN = 0;
-	RAFT_SUFFRAGE_VOTER = 1;
-	RAFT_SUFFRAGE_NONVOTER = 2;
+  RAFT_SUFFRAGE_UNKNOWN = 0;
+  RAFT_SUFFRAGE_VOTER = 1;
+  RAFT_SUFFRAGE_NONVOTER = 2;
 }
 
 message NodeChange {
-	string node_id = 1; // node which changed
-	string addr = 2; 
-	RaftSuffrage suffrage = 3;
-	NodeState state = 4;
-	Role role = 5;
+  string node_id = 1;  // node which changed
+  string addr = 2;
+  RaftSuffrage suffrage = 3;
+  NodeState state = 4;
+  Role role = 5;
 }
 
+
+// Partition state transition
+// JOINING - cluster leader determined that a node needs to be part of the partition group and node needs to perform joining operation on the group
+//    ↓
+// INITIALIZING - node has started the process of joining the partition group (this can take longer if rqlite has a lot of data stored)
+//    ↓
+// INITIALIZED - node has joined the partition group
+//
+// LEAVING - node has to leave the partition group
 enum NodePartitionState {
-	NODE_PARTITION_STATE_UNKNOWN = 0;
-	NODE_PARTITION_STATE_ERROR = 1;
-	NODE_PARTITION_STATE_JOINING = 2;
-	NODE_PARTITION_STATE_LEAVING = 3;
-	NODE_PARTITION_STATE_INITIALIZING = 4;
-	NODE_PARTITION_STATE_INITIALIZED = 5;
+  NODE_PARTITION_STATE_UNKNOWN = 0;
+  NODE_PARTITION_STATE_ERROR = 1;
+  NODE_PARTITION_STATE_JOINING = 2;
+  NODE_PARTITION_STATE_LEAVING = 3;
+  NODE_PARTITION_STATE_INITIALIZING = 4;
+  NODE_PARTITION_STATE_INITIALIZED = 5;
 }
 
 message NodePartitionChange {
-	string node_id = 1; // node which changed
-	uint32 partition_id = 2; // partition id which changed on node
-	NodePartitionState state = 3;
-	Role role = 4;
+  string node_id = 1;       // node which changed
+  uint32 partition_id = 2;  // partition id which changed on node
+  NodePartitionState state = 3;
+  Role role = 4;
 }

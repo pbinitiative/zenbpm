@@ -45,16 +45,17 @@ func NewZenBpmRaftDialer() *tcp.Dialer {
 	return tcp.NewDialer(byte(muxHeaderZenBpmRaft), nil)
 }
 
-func NewZenBpmClusterDialer() *tcp.Dialer {
-	return tcp.NewDialer(byte(muxHeaderZenBpmCluster), nil)
+func NewZenBpmClusterDialer() *Dialer {
+	return &Dialer{header: byte(muxHeaderZenBpmCluster)}
+	// return tcp.NewDialer(byte(muxHeaderZenBpmCluster), nil)
 }
 
 func NewRqLiteRaftListener(partition uint32, mux *tcp.Mux) net.Listener {
-	return mux.Listen(getPartitionRaftHeaderByte(partition))
+	return mux.Listen(GetPartitionRaftHeaderByte(partition))
 }
 
 func NewRqLiteClusterListener(partition uint32, mux *tcp.Mux) net.Listener {
-	return mux.Listen(getPartitionClusterHeaderByte(partition))
+	return mux.Listen(GetPartitionClusterHeaderByte(partition))
 }
 
 func NewRqLiteRaftDialer(partition uint32, cert, key, caCert, serverName string, Insecure bool) (*tcp.Dialer, error) {
@@ -66,7 +67,7 @@ func NewRqLiteRaftDialer(partition uint32, cert, key, caCert, serverName string,
 			return nil, fmt.Errorf("failed to create TLS config for Raft dialer: %s", err.Error())
 		}
 	}
-	return tcp.NewDialer(getPartitionRaftHeaderByte(partition), dialerTLSConfig), nil
+	return tcp.NewDialer(GetPartitionRaftHeaderByte(partition), dialerTLSConfig), nil
 }
 
 func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName string, Insecure bool) (*tcp.Dialer, error) {
@@ -78,10 +79,10 @@ func NewRqLiteClusterDialer(partition uint32, cert, key, caCert, serverName stri
 			return nil, fmt.Errorf("failed to create TLS config for Cluster dialer: %s", err.Error())
 		}
 	}
-	return tcp.NewDialer(getPartitionClusterHeaderByte(partition), dialerTLSConfig), nil
+	return tcp.NewDialer(GetPartitionClusterHeaderByte(partition), dialerTLSConfig), nil
 }
 
-func getPartitionRaftHeaderByte(partition uint32) byte {
+func GetPartitionRaftHeaderByte(partition uint32) byte {
 	// cap the max partition number at 122 to prevent byte overflow
 	// TODO: this is bad solution and we should handle this in the controller
 	if partition > 122 {
@@ -91,7 +92,7 @@ func getPartitionRaftHeaderByte(partition uint32) byte {
 	return byte(headerByte)
 }
 
-func getPartitionClusterHeaderByte(partition uint32) byte {
+func GetPartitionClusterHeaderByte(partition uint32) byte {
 	// cap the max partition number at 122 to prevent byte overflow
 	if partition > 122 {
 		panic("maximum number of partition is 122")

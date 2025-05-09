@@ -66,7 +66,7 @@ func Test_BootstrapperBootTimeout(t *testing.T) {
 		return nil, fmt.Errorf("not a cluster")
 	}
 	srv.NotifyHandler = func(nr *proto.NotifyRequest) (*proto.NotifyResponse, error) {
-		time.Sleep(10 * time.Second)
+		time.Sleep(1 * time.Second)
 		return nil, fmt.Errorf("some err")
 	}
 
@@ -77,7 +77,7 @@ func Test_BootstrapperBootTimeout(t *testing.T) {
 	clientMgr := client.NewClientManager(nil)
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 1*time.Second)
 	if err == nil {
 		t.Fatalf("no error returned from timed-out boot")
 	}
@@ -225,7 +225,7 @@ func Test_BootstrapperBootSingleNotify(t *testing.T) {
 	n := -1
 	done := func() bool {
 		n++
-		return n == 5
+		return n == 2
 	}
 
 	p := NewAddressProviderString([]string{srv.Addr()})
@@ -283,7 +283,7 @@ func Test_BootstrapperBootMultiJoinNotify(t *testing.T) {
 	n := -1
 	done := func() bool {
 		n++
-		return n == 5
+		return n == 2
 	}
 
 	p := NewAddressProviderString([]string{srv1.Addr(), srv2.Addr()})

@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
@@ -13,21 +14,21 @@ import (
 
 func TestRqLiteStorage(t *testing.T) {
 	ctx := context.Background()
-	mux, err := network.NewNodeMux("")
+	mux, muxLn, err := network.NewNodeMux("")
 	if err != nil {
 		t.Fatalf("failed to create mux: %s", err)
 	}
-	ln := mux.Listen(0)
 	c := GetRqLiteDefaultConfig(
 		"test-rq-lite",
-		ln.Addr().String(),
+		muxLn.Addr().String(),
 		t.TempDir(),
-		[]string{},
+		[]string{muxLn.Addr().String()},
 	)
-	partition, err := StartZenPartitionNode(ctx, mux, &c, 1)
+	partition, err := StartZenPartitionNode(ctx, mux, &c, 1, PartitionChangesCallbacks{})
 	if err != nil {
 		t.Fatalf("failed to create partition node: %s", err)
 	}
+	defer partition.Stop()
 	migrations, err := sql.GetMigrations()
 	if err != nil {
 		t.Fatalf("failed to get migrations: %s", err)
@@ -38,13 +39,21 @@ func TestRqLiteStorage(t *testing.T) {
 			Sql: mig,
 		}
 	}
+	_, err = partition.WaitForLeader(5 * time.Second)
+	if err != nil {
+		t.Fatalf("failed to get leader for partition: %s", err)
+	}
+
 	// run migrations
-	partition.Execute(ctx, &proto.ExecuteRequest{
+	_, err = partition.Execute(ctx, &proto.ExecuteRequest{
 		Request: &proto.Request{
 			Transaction: false,
 			Statements:  stmts,
 		},
 	})
+	if err != nil {
+		t.Fatalf("failed to run migrations: %s", err)
+	}
 
 	db := NewRqLiteDB(partition.rqliteDB.store, hclog.Default().Named("test-rq-lite-db"))
 

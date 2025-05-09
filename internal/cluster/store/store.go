@@ -92,6 +92,7 @@ type Store struct {
 	bootstrapped    bool
 	notifyingNodes  map[string]raft.Server
 
+	// mutext used by fsm to lock state changes
 	stateMu sync.Mutex
 	boltDB  *raftboltdb.BoltStore
 
@@ -110,7 +111,8 @@ type Store struct {
 	observerClose chan struct{}
 	observerDone  chan struct{}
 
-	state ClusterState
+	state                      ClusterState
+	clusterStateChangeObserver ClusterStateObserverFunc
 }
 
 type Config struct {
@@ -154,7 +156,7 @@ func DefaultConfig(c config.Cluster) Config {
 
 // New returns a new Store.
 // The store is in closed state and needs to be opened by calling Open before usage.
-func New(layer *tcp.Layer, c Config) *Store {
+func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *Store {
 	s := &Store{
 		cfg:             c,
 		stateMu:         sync.Mutex{},
@@ -170,15 +172,19 @@ func New(layer *tcp.Layer, c Config) *Store {
 		notifyMu:        sync.Mutex{},
 		bootstrapped:    false,
 		state: ClusterState{
+			Config: ClusterConfig{
+				DesiredPartitions: 1, // TODO: hardcoded partition number for now
+			},
 			Partitions: map[uint32]Partition{},
 			Nodes:      map[string]Node{},
 		},
-		raftTn:        &raft.NetworkTransport{},
-		boltStore:     &raftboltdb.BoltStore{},
-		observer:      &raft.Observer{},
-		observerChan:  make(chan raft.Observation),
-		observerClose: make(chan struct{}),
-		observerDone:  make(chan struct{}),
+		raftTn:                     &raft.NetworkTransport{},
+		boltStore:                  &raftboltdb.BoltStore{},
+		observer:                   &raft.Observer{},
+		observerChan:               make(chan raft.Observation),
+		observerClose:              make(chan struct{}),
+		observerDone:               make(chan struct{}),
+		clusterStateChangeObserver: stateObserverFn,
 	}
 
 	ResetStats()
@@ -242,6 +248,10 @@ func (s *Store) Open() (retErr error) {
 
 	s.observerClose, s.observerDone = s.observe()
 	return nil
+}
+
+func (s *Store) ClusterState() ClusterState {
+	return s.state
 }
 
 // Join joins a node, identified by id and located at addr, to this store.
@@ -416,6 +426,13 @@ func (s *Store) IsLeader() bool {
 		return false
 	}
 	return s.raft.State() == raft.Leader
+}
+
+func (s *Store) Role() proto.Role {
+	if s.IsLeader() {
+		return proto.Role_ROLE_TYPE_LEADER
+	}
+	return proto.Role_ROLE_TYPE_FOLLOWER
 }
 
 // HasLeader returns true if the cluster has a leader, false otherwise.
@@ -685,7 +702,7 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 				switch signal := o.Data.(type) {
 				case raft.ResumedHeartbeatObservation:
 					if err := s.resumeNode(signal.PeerID); err == nil {
-						s.logger.Info(fmt.Sprintf("node %s was removed from the state", signal.PeerID))
+						s.logger.Info(fmt.Sprintf("node %s was recovered in the state", signal.PeerID))
 					}
 				case raft.FailedHeartbeatObservation:
 					stats.Add(failedHeartbeatObserved, 1)

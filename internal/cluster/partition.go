@@ -9,23 +9,24 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/raft"
+	zproto "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
-	"github.com/rqlite/rqlite-disco-clients/consul"
-	"github.com/rqlite/rqlite-disco-clients/dns"
-	"github.com/rqlite/rqlite-disco-clients/dnssrv"
-	etcd "github.com/rqlite/rqlite-disco-clients/etcd"
 	"github.com/rqlite/rqlite/v8/auth"
 	"github.com/rqlite/rqlite/v8/auto/backup"
 	"github.com/rqlite/rqlite/v8/auto/restore"
 	"github.com/rqlite/rqlite/v8/aws"
 	"github.com/rqlite/rqlite/v8/cluster"
 	"github.com/rqlite/rqlite/v8/command/proto"
-	"github.com/rqlite/rqlite/v8/disco"
 	httpd "github.com/rqlite/rqlite/v8/http"
 	"github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
+)
+
+const (
+	observerChanLen = 100
 )
 
 // ZenPartitionNode is part of the rqlite raft cluster (partition of the main cluster)
@@ -40,42 +41,41 @@ type ZenPartitionNode struct {
 	statusMu        sync.Mutex
 	statuses        map[string]httpd.StatusReporter
 	logger          hclog.Logger
+
+	engine *bpmn.Engine
+
+	// Raft changes observer
+	observer      *raft.Observer
+	observerChan  chan raft.Observation
+	observerClose chan struct{}
+	observerDone  chan struct{}
+
+	// callback functions that notify node about changes in the partition cluster
+	stateChangeCallbacks PartitionChangesCallbacks
 }
 
-func (zpn *ZenPartitionNode) RegisterStatus(key string, stat httpd.StatusReporter) error {
-	zpn.statusMu.Lock()
-	defer zpn.statusMu.Unlock()
-
-	if _, ok := zpn.statuses[key]; ok {
-		return fmt.Errorf("status already registered with key %s", key)
-	}
-	zpn.statuses[key] = stat
-
-	return nil
+type PartitionChangesCallbacks struct {
+	// new node has joined the partition raft cluster
+	addNewNode func(raft.Server) error
+	// node has been removed from partition raft cluster
+	shutdownNode func(raft.ServerID) error
+	// leader changed
+	leaderChange func(raft.ServerID) error
+	// node needs to be removed according to reap settings
+	removeNode func(id string) error
+	// partition node has become available
+	resumeNode func(id string) error
 }
 
-func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
-	return zpn.store.IsLeader()
-}
-
-// Execute an SQL statement on rqlite partition node
-func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return zpn.store.Execute(req)
-}
-
-// Run an SQL query on rqlite partition node
-func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return zpn.store.Query(req)
-}
-
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite, partition uint32) (*ZenPartitionNode, error) {
-	// struct that will hold our partition cluster
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
 	zpn := ZenPartitionNode{
-		config:      cfg,
-		statuses:    map[string]httpd.StatusReporter{},
-		partitionId: partition,
-		logger:      hclog.Default().Named(fmt.Sprintf("zen-partition-node-%d", partition)),
+		config:               cfg,
+		statuses:             map[string]httpd.StatusReporter{},
+		partitionId:          partition,
+		logger:               hclog.Default().Named(fmt.Sprintf("zen-partition-node-%d", partition)),
+		stateChangeCallbacks: callbacks,
 	}
+	zpn.logger.Info(fmt.Sprintf("Starting partition %d node", partition))
 
 	// Raft internode layer
 	raftLn := network.NewRqLiteRaftListener(partition, mux)
@@ -142,7 +142,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 		return nil, fmt.Errorf("failed to create cluster service: %w", err)
 	}
 	zpn.clusterService = clstrServ
-	zpn.logger.Info(fmt.Sprintf("cluster TCP mux Listener registered with byte header %d", cluster.MuxClusterHeader))
+	zpn.logger.Info(fmt.Sprintf("cluster TCP mux Listener registered with byte header %d", network.GetPartitionClusterHeaderByte(partition)))
 
 	// Create the HTTP service.
 	//
@@ -160,9 +160,20 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
 
+	observerChan := make(chan raft.Observation, observerChanLen)
+	zpn.observer = raft.NewObserver(observerChan, true, func(o *raft.Observation) bool {
+		_, isLeaderChange := o.Data.(raft.LeaderObservation)
+		_, isFailedHeartBeat := o.Data.(raft.FailedHeartbeatObservation)
+		_, isResumedHeartBeat := o.Data.(raft.ResumedHeartbeatObservation)
+		_, isPeerChange := o.Data.(raft.PeerObservation)
+		return isLeaderChange || isFailedHeartBeat || isResumedHeartBeat || isPeerChange
+	})
+	str.RegisterObserver(zpn.observer)
+	zpn.observerClose, zpn.observerDone = zpn.observe()
+
 	// Register remaining status providers.
-	zpn.RegisterStatus("cluster", clstrServ)
-	zpn.RegisterStatus("network", tcp.NetworkReporter{})
+	zpn.registerStatus("cluster", clstrServ)
+	zpn.registerStatus("network", tcp.NetworkReporter{})
 
 	// Create the cluster!
 	nodes, err := str.Nodes()
@@ -176,22 +187,33 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 	// Start any requested auto-backups
 	backupSrv, err := zpn.startAutoBackups(ctx, cfg, str)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start auto-backups: %w", err)
+		return nil, fmt.Errorf("failed to start auto-ackups: %w", err)
 	}
 	if backupSrv != nil {
-		zpn.RegisterStatus("auto_backups", backupSrv)
-	}
-
-	// TODO: remove once engine and persistence start when they should
-	str.WaitForLeader(10 * time.Second)
-	if str.IsLeader() {
-		engine := bpmn.NewEngine(bpmn.EngineWithStorage(zpn.rqliteDB))
-		// TODO rework handlers
-		emptyHandler := func(job bpmn.ActivatedJob) {
-		}
-		engine.NewTaskHandler().Type("foo").Handler(emptyHandler)
+		zpn.registerStatus("auto_backups", backupSrv)
 	}
 	return &zpn, nil
+}
+
+func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
+	return zpn.store.IsLeader()
+}
+
+func (zpn *ZenPartitionNode) Role() zproto.Role {
+	if zpn.store.IsLeader() {
+		return zproto.Role_ROLE_TYPE_LEADER
+	}
+	return zproto.Role_ROLE_TYPE_FOLLOWER
+}
+
+// Execute an SQL statement on rqlite partition node
+func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
+	return zpn.store.Execute(req)
+}
+
+// Run an SQL query on rqlite partition node
+func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
+	return zpn.store.Query(req)
 }
 
 func (zpn *ZenPartitionNode) WaitForLeader(timeout time.Duration) (string, error) {
@@ -203,9 +225,13 @@ func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 }
 
 func (zpn *ZenPartitionNode) Stop() error {
+	// stop the engine if present
+	if zpn.engine != nil {
+		zpn.engine.Stop()
+	}
 	zpn.clusterService.Close()
 	if zpn.config.RaftClusterRemoveOnShutdown {
-		remover := cluster.NewRemover(zpn.clusterClient, 5*time.Second, zpn.store)
+		remover := cluster.NewRemover(zpn.clusterClient, 1*time.Second, zpn.store)
 		remover.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, zpn.config.JoinAs))
 		zpn.logger.Info("initiating removal of this node from cluster before shutdown")
 		if err := remover.Do(zpn.config.NodeID, true); err != nil {
@@ -227,6 +253,18 @@ func (zpn *ZenPartitionNode) Stop() error {
 		zpn.logger.Info(fmt.Sprintf("failed to close store: %s", err.Error()))
 	}
 	zpn.logger.Info("rqlite server stopped")
+	return nil
+}
+
+func (zpn *ZenPartitionNode) registerStatus(key string, stat httpd.StatusReporter) error {
+	zpn.statusMu.Lock()
+	defer zpn.statusMu.Unlock()
+
+	if _, ok := zpn.statuses[key]; ok {
+		return fmt.Errorf("status already registered with key %s", key)
+	}
+	zpn.statuses[key] = stat
+
 	return nil
 }
 
@@ -272,8 +310,6 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 				ForceLevel: hclog.Default().GetLevel(),
 			}),
 	})
-	// TODO: register observers for leader change and node changes and propagate them into zen store
-	// str.RegisterObserver(...)
 
 	// Set optional parameters on store.
 	str.RaftLogLevel = cfg.RaftLogLevel
@@ -299,42 +335,83 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 	return str, nil
 }
 
-func (zpn *ZenPartitionNode) createDiscoService(cfg *config.RqLite, str *store.Store) (*disco.Service, error) {
-	var c disco.Client
-	var err error
+func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
+	closeCh = make(chan struct{})
+	doneCh = make(chan struct{})
 
-	rc := cfg.DiscoConfigReader()
-	defer func() {
-		if rc != nil {
-			rc.Close()
+	go func() {
+		defer close(doneCh)
+		for {
+			select {
+			case o := <-zpn.observerChan:
+				switch signal := o.Data.(type) {
+				case raft.ResumedHeartbeatObservation:
+					if zpn.stateChangeCallbacks.resumeNode == nil {
+						break
+					}
+					if err := zpn.stateChangeCallbacks.resumeNode(string(signal.PeerID)); err == nil {
+						zpn.logger.Info(fmt.Sprintf("partition node %s was resumed in the state", signal.PeerID))
+					}
+				case raft.FailedHeartbeatObservation:
+					nodes, err := zpn.store.Nodes()
+					if err != nil {
+						zpn.logger.Error(fmt.Sprintf("failed to get partition nodes configuration during reap check: %s", err.Error()))
+					}
+					servers := store.Servers(nodes)
+					id := string(signal.PeerID)
+					dur := time.Since(signal.LastContact)
+
+					isReadOnly, found := servers.IsReadOnly(id)
+					if !found {
+						zpn.logger.Error(fmt.Sprintf("partition node %s (failing heartbeat) is not present in configuration", id))
+						break
+					}
+
+					if zpn.stateChangeCallbacks.shutdownNode != nil && zpn.config.RaftHeartbeatShutdownTimeout > 0 && dur > zpn.config.RaftHeartbeatShutdownTimeout {
+						if err = zpn.stateChangeCallbacks.shutdownNode(signal.PeerID); err == nil {
+							zpn.logger.Info(fmt.Sprintf("partition node %s was shutdown in the state", signal.PeerID))
+						}
+					}
+
+					if zpn.stateChangeCallbacks.removeNode != nil && ((isReadOnly && zpn.config.RaftReapReadOnlyNodeTimeout > 0 && dur > zpn.config.RaftReapReadOnlyNodeTimeout) ||
+						(!isReadOnly && zpn.config.RaftReapNodeTimeout > 0 && dur > zpn.config.RaftReapNodeTimeout)) {
+						pn := "voting node"
+						if isReadOnly {
+							pn = "non-voting node"
+						}
+						if err := zpn.stateChangeCallbacks.removeNode(id); err != nil {
+							zpn.logger.Error(fmt.Sprintf("failed to reap partition node %s %s: %s", pn, id, err.Error()))
+						} else {
+							zpn.logger.Info(fmt.Sprintf("successfully reaped partition node %s %s", pn, id))
+						}
+					}
+				case raft.LeaderObservation:
+					if zpn.stateChangeCallbacks.leaderChange == nil {
+						break
+					}
+					zpn.stateChangeCallbacks.leaderChange(signal.LeaderID)
+				case raft.PeerObservation:
+					// PeerObservation is invoked only when the raft replication goroutine is started/stoped
+					var err error
+					if signal.Removed && zpn.stateChangeCallbacks.shutdownNode != nil {
+						if err = zpn.stateChangeCallbacks.shutdownNode(signal.Peer.ID); err == nil {
+							zpn.logger.Info(fmt.Sprintf("partition node %s was shutdown in the state", signal.Peer.ID))
+						}
+					} else if !signal.Removed && zpn.stateChangeCallbacks.addNewNode != nil {
+						if err = zpn.stateChangeCallbacks.addNewNode(signal.Peer); err == nil {
+							zpn.logger.Debug(fmt.Sprintf("partition node %s was updated in the state", signal.Peer.ID))
+						}
+					}
+					if err != nil {
+						zpn.logger.Error(fmt.Sprintf("failed to update peer observation in partition %d: %s", zpn.partitionId, err))
+					}
+				}
+			case <-closeCh:
+				return
+			}
 		}
 	}()
-	if cfg.DiscoMode == config.DiscoModeConsulKV {
-		var consulCfg *consul.Config
-		consulCfg, err = consul.NewConfigFromReader(rc)
-		if err != nil {
-			return nil, fmt.Errorf("create Consul config: %s", err.Error())
-		}
-
-		c, err = consul.New(cfg.DiscoKey, consulCfg)
-		if err != nil {
-			return nil, fmt.Errorf("create Consul client: %s", err.Error())
-		}
-	} else if cfg.DiscoMode == config.DiscoModeEtcdKV {
-		var etcdCfg *etcd.Config
-		etcdCfg, err = etcd.NewConfigFromReader(rc)
-		if err != nil {
-			return nil, fmt.Errorf("create etcd config: %s", err.Error())
-		}
-
-		c, err = etcd.New(cfg.DiscoKey, etcdCfg)
-		if err != nil {
-			return nil, fmt.Errorf("create etcd client: %s", err.Error())
-		}
-	} else {
-		return nil, fmt.Errorf("invalid disco service: %s", cfg.DiscoMode)
-	}
-	return disco.NewService(c, str, disco.VoterSuffrage(!cfg.RaftNonVoter)), nil
+	return closeCh, doneCh
 }
 
 func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.CredentialsStore, error) {
@@ -346,7 +423,6 @@ func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.Cr
 
 func (zpn *ZenPartitionNode) createClusterService(cfg *config.RqLite, ln net.Listener, db cluster.Database, mgr cluster.Manager, credStr *auth.CredentialsStore) (*cluster.Service, error) {
 	c := cluster.New(ln, db, mgr, credStr)
-	// c.SetAPIAddr(cfg.HTTPAdv)
 	c.EnableHTTPS(cfg.HTTPx509Cert != "" && cfg.HTTPx509Key != "") // Conditions met for an HTTPS API
 	if err := c.Open(); err != nil {
 		return nil, err
@@ -371,7 +447,7 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 	if err := zpn.networkCheckJoinAddrs(joins); err != nil {
 		return err
 	}
-	if joins == nil && cfg.DiscoMode == "" && !hasPeers {
+	if joins == nil && !hasPeers {
 		if cfg.RaftNonVoter {
 			return fmt.Errorf("cannot create a new non-voting node without joining it to an existing cluster")
 		}
@@ -410,96 +486,6 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 		return bs.Boot(ctx, zpn.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
 	}
 
-	if cfg.DiscoMode == "" {
-		// No more clustering techniques to try. Node will just sit, probably using
-		// existing Raft state.
-		return nil
-	}
-
-	// DNS-based discovery requested. It's OK to proceed with this even if this node
-	// is already part of a cluster. Re-joining and re-notifying other nodes will be
-	// ignored when the node is already part of the cluster.
-	zpn.logger.Info(fmt.Sprintf("discovery mode: %s", cfg.DiscoMode))
-	switch cfg.DiscoMode {
-	case config.DiscoModeDNS, config.DiscoModeDNSSRV:
-		rc := cfg.DiscoConfigReader()
-		defer func() {
-			if rc != nil {
-				rc.Close()
-			}
-		}()
-
-		var provider interface {
-			cluster.AddressProvider
-			httpd.StatusReporter
-		}
-		if cfg.DiscoMode == config.DiscoModeDNS {
-			dnsCfg, err := dns.NewConfigFromReader(rc)
-			if err != nil {
-				return fmt.Errorf("error reading DNS configuration: %s", err.Error())
-			}
-			provider = dns.NewWithPort(dnsCfg, cfg.RaftPort())
-
-		} else {
-			dnssrvCfg, err := dnssrv.NewConfigFromReader(rc)
-			if err != nil {
-				return fmt.Errorf("error reading DNS configuration: %s", err.Error())
-			}
-			provider = dnssrv.New(dnssrvCfg)
-		}
-
-		bs := cluster.NewBootstrapper(provider, zpn.clusterClient)
-		bs.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
-		zpn.RegisterStatus("disco", provider)
-		return bs.Boot(ctx, zpn.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)
-
-	case config.DiscoModeEtcdKV, config.DiscoModeConsulKV:
-		discoService, err := zpn.createDiscoService(cfg, zpn.store)
-		if err != nil {
-			return fmt.Errorf("failed to start discovery service: %s", err.Error())
-		}
-		// Safe to start reporting before doing registration. If the node hasn't bootstrapped
-		// yet, or isn't leader, reporting will just be a no-op until something changes.
-		go discoService.StartReporting(cfg.NodeID, cfg.HTTPURL(), cfg.RaftAdv)
-		zpn.RegisterStatus("disco", discoService)
-
-		if hasPeers {
-			zpn.logger.Info("preexisting node configuration detected, not registering with discovery service")
-			return nil
-		}
-		zpn.logger.Info("no preexisting nodes, registering with discovery service")
-
-		leader, addr, err := discoService.Register(zpn.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
-		if err != nil {
-			return fmt.Errorf("failed to register with discovery service: %s", err.Error())
-		}
-		if leader {
-			zpn.logger.Info("node registered as leader using discovery service")
-			if err := zpn.store.Bootstrap(store.NewServer(zpn.store.ID(), zpn.store.Addr(), true)); err != nil {
-				return fmt.Errorf("failed to bootstrap single new node: %s", err.Error())
-			}
-		} else {
-			for {
-				zpn.logger.Info("discovery service returned %s as join address", addr)
-				if j, err := joiner.Do(ctx, []string{addr}, zpn.store.ID(), cfg.RaftAdv, clusterSuf); err != nil {
-					zpn.logger.Info("failed to join cluster at %s: %s", addr, err.Error())
-
-					time.Sleep(time.Second)
-					_, addr, err = discoService.Register(zpn.store.ID(), cfg.HTTPURL(), cfg.RaftAdv)
-					if err != nil {
-						zpn.logger.Info(fmt.Sprintf("failed to get updated leader: %s", err.Error()))
-					}
-					continue
-				} else {
-					zpn.logger.Info(fmt.Sprintf("successfully joined cluster at %s", j))
-					break
-				}
-			}
-		}
-
-	default:
-		return fmt.Errorf("invalid disco mode %s", cfg.DiscoMode)
-	}
 	return nil
 }
 

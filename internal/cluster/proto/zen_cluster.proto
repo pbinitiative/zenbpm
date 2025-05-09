@@ -49,8 +49,7 @@ service ZenService {
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 }
 
-// TODO: do we want to keep custom error struct or use the default error
-// handling?
+// TODO: do we want to keep custom error struct or use the default error handling?
 message ErrorResult {
   uint32 code = 1;
   string message = 2;

@@ -47,7 +47,6 @@ func NewZenBpmRaftDialer() *tcp.Dialer {
 
 func NewZenBpmClusterDialer() *Dialer {
 	return &Dialer{header: byte(muxHeaderZenBpmCluster)}
-	// return tcp.NewDialer(byte(muxHeaderZenBpmCluster), nil)
 }
 
 func NewRqLiteRaftListener(partition uint32, mux *tcp.Mux) net.Listener {

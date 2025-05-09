@@ -26,8 +26,7 @@ type clientData struct {
 
 type ClientManager struct {
 	// mu is a mutext for protecting activeClients
-	mu sync.RWMutex
-
+	mu            sync.RWMutex
 	activeClients map[string]clientData
 
 	store ClientStore

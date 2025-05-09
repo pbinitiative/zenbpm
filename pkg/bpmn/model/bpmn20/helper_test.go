@@ -68,5 +68,55 @@ func Test_unmarshalling_with_reference_resolution(t *testing.T) {
 	assert.Equal(t, &serviceTask, start_to_task.GetTargetRef())
 	assert.Equal(t, &serviceTask, task_to_end.GetSourceRef())
 	assert.Equal(t, &endEvent, task_to_end.GetTargetRef())
+}
 
+func TestResolveReferencesSuccess(t *testing.T) {
+	// I would expect some "simple" tests that demonstrates the functionality of ResolveReferences call
+	ts := TDefinitions{
+		baseElements: map[string]BaseElement{
+			"one": &TFlowNode{
+				TFlowElement: TFlowElement{
+					TBaseElement: TBaseElement{
+						Id: "one",
+					},
+				},
+				IncomingAssociationsIDs: []string{},
+				OutgoingAssociationsIDs: []string{"two"},
+			},
+			"two": &TFlowNode{
+				TFlowElement: TFlowElement{
+					TBaseElement: TBaseElement{
+						Id: "two",
+					},
+				},
+				IncomingAssociationsIDs: []string{"one"},
+				OutgoingAssociationsIDs: []string{"three", "four"},
+			},
+			"three": &TFlowNode{
+				TFlowElement: TFlowElement{
+					TBaseElement: TBaseElement{
+						Id: "three",
+					},
+				},
+				IncomingAssociationsIDs: []string{"two"},
+			},
+			"four": &TFlowNode{
+				TFlowElement: TFlowElement{
+					TBaseElement: TBaseElement{
+						Id: "four",
+					},
+				},
+				IncomingAssociationsIDs: []string{"two"},
+			},
+		},
+	}
+	err := ts.ResolveReferences()
+	// TODO: as of now this is not working. The call removes all the baseElements from the map
+	assert.NoError(t, err)
+	assert.Equal(t, "two", ts.baseElements["one"].(*TFlowNode).GetOutgoingAssociation()[0].GetId())
+	// ...
+}
+
+func TestResolveReferencesFail(t *testing.T) {
+	// TODO: write test that check for correct error handling
 }

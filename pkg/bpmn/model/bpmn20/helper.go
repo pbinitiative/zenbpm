@@ -20,7 +20,7 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	for _, resolvable := range resolvables {
 		// Check if the baseElement implements ResolvableReferences
 		if err = resolvable(&baseElementMap); err != nil {
-			return err
+			return fmt.Errorf("failed to resolve references: %w", err)
 		}
 	}
 	return nil
@@ -140,7 +140,7 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 					if value.Type().AssignableTo(fieldVal.Type().Elem()) {
 						fieldVal.Set(reflect.Append(fieldVal, value))
 					} else {
-						return fmt.Errorf("resolved reference with ID [%s] is not of the expected type", id)
+						return fmt.Errorf("resolved reference with ID [%s] is not assignable to %s", id, fieldVal.Elem().Type().Name())
 					}
 					return nil
 				})
@@ -157,7 +157,7 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 				if value.Type().AssignableTo(fieldVal.Type()) {
 					fieldVal.Set(value)
 				} else {
-					return fmt.Errorf("resolved reference with ID [%s] is not of the expected type", id)
+					return fmt.Errorf("resolved reference with ID [%s] is not assignable to %s", id, fieldVal.Type().Name())
 				}
 				return nil
 			})

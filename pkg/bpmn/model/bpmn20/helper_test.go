@@ -71,52 +71,287 @@ func Test_unmarshalling_with_reference_resolution(t *testing.T) {
 }
 
 func TestResolveReferencesSuccess(t *testing.T) {
-	// I would expect some "simple" tests that demonstrates the functionality of ResolveReferences call
 	ts := TDefinitions{
-		baseElements: map[string]BaseElement{
-			"one": &TFlowNode{
-				TFlowElement: TFlowElement{
+		TBaseElement: TBaseElement{
+			Id: "definitions_1",
+		},
+		TRootElementsContainer: TRootElementsContainer{
+			Process: TProcess{
+				TCallableElement: TCallableElement{
 					TBaseElement: TBaseElement{
-						Id: "one",
+						Id: "process_1",
+					},
+					Name: "Example Process",
+				},
+				TFlowElementsContainer: TFlowElementsContainer{
+					SequenceFlows: []TSequenceFlow{
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "one_to_two",
+								},
+							},
+							SourceRefId: "one",
+							TargetRefId: "two",
+						},
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "two_to_three",
+								},
+							},
+							SourceRefId: "two",
+							TargetRefId: "three",
+						},
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "two_to_four",
+								},
+							},
+							SourceRefId: "two",
+							TargetRefId: "four",
+						},
+					},
+					StartEvents: []TStartEvent{
+						{
+							TEvent: TEvent{
+								TActivity: TActivity{
+									TFlowNode: TFlowNode{
+										TFlowElement: TFlowElement{
+											TBaseElement: TBaseElement{
+												Id: "one",
+											},
+											Name: "Start Event",
+										},
+										IncomingAssociationsIDs: []string{},
+										OutgoingAssociationsIDs: []string{"one_to_two"}},
+								},
+							},
+						},
+					},
+					ServiceTasks: []TServiceTask{
+						{
+							TExternallyProcessedTask: TExternallyProcessedTask{
+								TTask: TTask{
+									TActivity: TActivity{
+										TFlowNode: TFlowNode{
+											TFlowElement: TFlowElement{
+												TBaseElement: TBaseElement{
+													Id: "two",
+												},
+												Name: "Task 1",
+											},
+											IncomingAssociationsIDs: []string{"one_to_two"},
+											OutgoingAssociationsIDs: []string{"two_to_three", "two_to_four"},
+										},
+									},
+								},
+							},
+						},
+						{
+							TExternallyProcessedTask: TExternallyProcessedTask{
+								TTask: TTask{
+									TActivity: TActivity{
+										TFlowNode: TFlowNode{
+											TFlowElement: TFlowElement{
+												TBaseElement: TBaseElement{
+													Id: "three",
+												},
+												Name: "Task 2",
+											},
+											IncomingAssociationsIDs: []string{"two_to_three"},
+										},
+									},
+								},
+							},
+						},
+					},
+
+					EndEvents: []TEndEvent{
+						{
+							TEvent: TEvent{
+								TActivity: TActivity{
+									TFlowNode: TFlowNode{
+										TFlowElement: TFlowElement{
+											TBaseElement: TBaseElement{
+												Id: "four",
+											},
+											Name: "End Event",
+										},
+										IncomingAssociationsIDs: []string{"two_to_four"},
+									},
+								},
+							},
+						},
 					},
 				},
-				IncomingAssociationsIDs: []string{},
-				OutgoingAssociationsIDs: []string{"two"},
 			},
-			"two": &TFlowNode{
-				TFlowElement: TFlowElement{
+		},
+	}
+
+	err := ts.ResolveReferences()
+	assert.NoError(t, err)
+	assert.Equal(t, ts.baseElements["one_to_two"], ts.baseElements["one"].(FlowNode).GetOutgoingAssociation()[0])
+	assert.Equal(t, ts.baseElements["one_to_two"], ts.baseElements["two"].(FlowNode).GetIncomingAssociation()[0])
+	assert.Equal(t, ts.baseElements["two_to_three"], ts.baseElements["two"].(FlowNode).GetOutgoingAssociation()[0])
+	assert.Equal(t, ts.baseElements["two_to_three"], ts.baseElements["three"].(FlowNode).GetIncomingAssociation()[0])
+	assert.Equal(t, ts.baseElements["two_to_four"], ts.baseElements["two"].(FlowNode).GetOutgoingAssociation()[1])
+	assert.Equal(t, ts.baseElements["two_to_four"], ts.baseElements["four"].(FlowNode).GetIncomingAssociation()[0])
+	assert.Equal(t, ts.baseElements["one"], ts.baseElements["one_to_two"].(SequenceFlow).GetSourceRef())
+	assert.Equal(t, ts.baseElements["two"], ts.baseElements["one_to_two"].(SequenceFlow).GetTargetRef())
+	assert.Equal(t, ts.baseElements["two"], ts.baseElements["two_to_three"].(SequenceFlow).GetSourceRef())
+	assert.Equal(t, ts.baseElements["three"], ts.baseElements["two_to_three"].(SequenceFlow).GetTargetRef())
+	assert.Equal(t, ts.baseElements["two"], ts.baseElements["two_to_four"].(SequenceFlow).GetSourceRef())
+	assert.Equal(t, ts.baseElements["four"], ts.baseElements["two_to_four"].(SequenceFlow).GetTargetRef())
+
+	// ...
+}
+
+func TestResolveReferencesFailNotFoundBaseElement(t *testing.T) {
+	ts := TDefinitions{
+		TBaseElement: TBaseElement{
+			Id: "definitions_1",
+		},
+		TRootElementsContainer: TRootElementsContainer{
+			Process: TProcess{
+				TCallableElement: TCallableElement{
 					TBaseElement: TBaseElement{
-						Id: "two",
+						Id: "process_1",
+					},
+					Name: "Example Process",
+				},
+				TFlowElementsContainer: TFlowElementsContainer{
+					SequenceFlows: []TSequenceFlow{
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "one_to_two",
+								},
+							},
+							SourceRefId: "one",
+							TargetRefId: "not_existing_id",
+						},
+					},
+					StartEvents: []TStartEvent{
+						{
+							TEvent: TEvent{
+								TActivity: TActivity{
+									TFlowNode: TFlowNode{
+										TFlowElement: TFlowElement{
+											TBaseElement: TBaseElement{
+												Id: "one",
+											},
+											Name: "Start Event",
+										},
+										IncomingAssociationsIDs: []string{},
+										OutgoingAssociationsIDs: []string{"one_to_two"}},
+								},
+							},
+						},
 					},
 				},
-				IncomingAssociationsIDs: []string{"one"},
-				OutgoingAssociationsIDs: []string{"three", "four"},
-			},
-			"three": &TFlowNode{
-				TFlowElement: TFlowElement{
-					TBaseElement: TBaseElement{
-						Id: "three",
-					},
-				},
-				IncomingAssociationsIDs: []string{"two"},
-			},
-			"four": &TFlowNode{
-				TFlowElement: TFlowElement{
-					TBaseElement: TBaseElement{
-						Id: "four",
-					},
-				},
-				IncomingAssociationsIDs: []string{"two"},
 			},
 		},
 	}
 	err := ts.ResolveReferences()
-	// TODO: as of now this is not working. The call removes all the baseElements from the map
-	assert.NoError(t, err)
-	assert.Equal(t, "two", ts.baseElements["one"].(*TFlowNode).GetOutgoingAssociation()[0].GetId())
-	// ...
+	assert.ErrorContains(t, err, "not_existing_id")
 }
-
-func TestResolveReferencesFail(t *testing.T) {
-	// TODO: write test that check for correct error handling
+func TestResolveReferencesSuccessEmptyIds(t *testing.T) {
+	ts := TDefinitions{
+		TBaseElement: TBaseElement{
+			Id: "definitions_1",
+		},
+		TRootElementsContainer: TRootElementsContainer{
+			Process: TProcess{
+				TCallableElement: TCallableElement{
+					TBaseElement: TBaseElement{
+						Id: "process_1",
+					},
+					Name: "Example Process",
+				},
+				TFlowElementsContainer: TFlowElementsContainer{
+					SequenceFlows: []TSequenceFlow{
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "one_to_two",
+								},
+							},
+							SourceRefId: "one",
+							TargetRefId: "one",
+						},
+					},
+					StartEvents: []TStartEvent{
+						{
+							TEvent: TEvent{
+								TActivity: TActivity{
+									TFlowNode: TFlowNode{
+										TFlowElement: TFlowElement{
+											TBaseElement: TBaseElement{
+												Id: "one",
+											},
+											Name: "Start Event",
+										},
+										IncomingAssociationsIDs: []string{""},
+										OutgoingAssociationsIDs: []string{""}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	err := ts.ResolveReferences()
+	assert.NoError(t, err)
+}
+func TestResolveReferencesFailWrongType(t *testing.T) {
+	ts := TDefinitions{
+		TBaseElement: TBaseElement{
+			Id: "definitions_1",
+		},
+		TRootElementsContainer: TRootElementsContainer{
+			Process: TProcess{
+				TCallableElement: TCallableElement{
+					TBaseElement: TBaseElement{
+						Id: "process_1",
+					},
+					Name: "Example Process",
+				},
+				TFlowElementsContainer: TFlowElementsContainer{
+					SequenceFlows: []TSequenceFlow{
+						{
+							TFlowElement: TFlowElement{
+								TBaseElement: TBaseElement{
+									Id: "one_to_two",
+								},
+							},
+							SourceRefId: "one",
+							TargetRefId: "one_to_two",
+						},
+					},
+					StartEvents: []TStartEvent{
+						{
+							TEvent: TEvent{
+								TActivity: TActivity{
+									TFlowNode: TFlowNode{
+										TFlowElement: TFlowElement{
+											TBaseElement: TBaseElement{
+												Id: "one",
+											},
+											Name: "Start Event",
+										},
+										IncomingAssociationsIDs: []string{},
+										OutgoingAssociationsIDs: []string{"one_to_two"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	err := ts.ResolveReferences()
+	assert.ErrorContains(t, err, "[one_to_two] is not assignable to FlowNode")
 }

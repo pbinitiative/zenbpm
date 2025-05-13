@@ -23,9 +23,10 @@ const (
 )
 
 type Config struct {
-	Server  Server  `yaml:"server" json:"server"` // configuration of the public REST server
-	Name    string  `yaml:"name" json:"name"`     // used for OTEL as an application identifier
-	Cluster Cluster `yaml:"cluster" json:"cluster"`
+	Server     Server     `yaml:"server" json:"server"`         // configuration of the public REST server
+	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
+	Name       string     `yaml:"name" json:"name"`             // used for OTEL as an application identifier
+	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
 }
 
 // TODO: clean up cluster & rqlite configuration
@@ -56,6 +57,10 @@ type ClusterRaft struct {
 	// Maximum time for bootstrap process
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"CLUSTER_RAFT_EXPECT_BOOTSTRAP_TIMEOUT" env-default:"10s"`
 	// Bootstrap              bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`
+}
+
+type GrpcServer struct {
+	Addr string `yaml:"addr" json:"addr" env:"GRPC_API_ADDR" env-default:":9090"`
 }
 
 type Server struct {

@@ -1,5 +1,5 @@
 syntax = "proto3";
-package zenapi;
+package grpc;
 
 option go_package = "github.com/pbinitiative/zenbpm/internal/grpc/proto";
 

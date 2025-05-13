@@ -8,6 +8,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/grpc"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/rest"
@@ -33,6 +34,10 @@ func main() {
 	svr := rest.NewServer(zenNode, conf.Server.Addr)
 	svr.Start()
 
+	// Start ZenBpm GRPC API
+	grpcSrv := grpc.NewServer(zenNode, conf.GrpcServer.Addr)
+	grpcSrv.Start()
+
 	appStop := make(chan os.Signal, 2)
 	signal.Notify(appStop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	handleSigterm(appStop, appContext)
@@ -40,6 +45,7 @@ func main() {
 	ctxCancel()
 	// cleanup
 	svr.Stop(appContext)
+	grpcSrv.Stop()
 	err = zenNode.Stop()
 	if err != nil {
 		log.Error("failed to properly stop zen node: %s", err)

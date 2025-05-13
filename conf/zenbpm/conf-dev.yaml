@@ -2,6 +2,8 @@ name: zenbpm
 server:
   context: /
   addr: :8080
+grpcServer:
+  addr: :9090
 cluster:
   addr: localhost:8090
   adv: localhost:8090

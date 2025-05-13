@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ZenBpm_ActivateJobs_FullMethodName = "/zenapi.ZenBpm/ActivateJobs"
-	ZenBpm_CompleteJob_FullMethodName  = "/zenapi.ZenBpm/CompleteJob"
-	ZenBpm_FailJob_FullMethodName      = "/zenapi.ZenBpm/FailJob"
+	ZenBpm_ActivateJobs_FullMethodName = "/grpc.ZenBpm/ActivateJobs"
+	ZenBpm_CompleteJob_FullMethodName  = "/grpc.ZenBpm/CompleteJob"
+	ZenBpm_FailJob_FullMethodName      = "/grpc.ZenBpm/FailJob"
 )
 
 // ZenBpmClient is the client API for ZenBpm service.
@@ -238,7 +238,7 @@ func _ZenBpm_FailJob_Handler(srv interface{}, ctx context.Context, dec func(inte
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ZenBpm_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "zenapi.ZenBpm",
+	ServiceName: "grpc.ZenBpm",
 	HandlerType: (*ZenBpmServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -261,9 +261,9 @@ var ZenBpm_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Gateway_ActivateJobs_FullMethodName = "/zenapi.Gateway/ActivateJobs"
-	Gateway_CompleteJob_FullMethodName  = "/zenapi.Gateway/CompleteJob"
-	Gateway_FailJob_FullMethodName      = "/zenapi.Gateway/FailJob"
+	Gateway_ActivateJobs_FullMethodName = "/grpc.Gateway/ActivateJobs"
+	Gateway_CompleteJob_FullMethodName  = "/grpc.Gateway/CompleteJob"
+	Gateway_FailJob_FullMethodName      = "/grpc.Gateway/FailJob"
 )
 
 // GatewayClient is the client API for Gateway service.
@@ -424,7 +424,7 @@ func _Gateway_FailJob_Handler(srv interface{}, ctx context.Context, dec func(int
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Gateway_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "zenapi.Gateway",
+	ServiceName: "grpc.Gateway",
 	HandlerType: (*GatewayServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

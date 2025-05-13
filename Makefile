@@ -90,7 +90,7 @@ help: ## Display this help.
 
 .PHONY: generate
 generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
-	@go generate ./...
+	@PATH=$(LOCALBIN):$(PATH) go generate ./...
 	@$(SQLC) generate
 	@cp internal/sql/db.go.template internal/sql/db.go
 	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/sql/models.go

@@ -18,6 +18,9 @@ PROTOC ?= $(LOCALBIN)/protoc
 PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 
+## Setup PATH to point to tools binaries
+PATH := $(LOCALBIN):$(PATH)
+
 ## Tool Versions
 SQLC_VERSION ?= v1.28.0
 PROTOC_VERSION ?= 30.1

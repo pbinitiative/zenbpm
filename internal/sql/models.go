@@ -4,6 +4,15 @@
 
 package sql
 
+type ExecutionToken struct {
+	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	State              int64  `json:"state"`
+	CreatedAt          int64  `json:"created_at"`
+}
+
 type Job struct {
 	Key                int64  `json:"key"`
 	ElementInstanceKey int64  `json:"element_instance_key"`

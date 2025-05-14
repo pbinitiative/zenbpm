@@ -28,11 +28,13 @@ type Querier interface {
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
 	FindTimersInState(ctx context.Context, arg FindTimersInStateParams) ([]Timer, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
+	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error
 	SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error
 	SaveTimer(ctx context.Context, arg SaveTimerParams) error
+	SaveToken(ctx context.Context, arg SaveTokenParams) error
 }
 
 var _ Querier = (*Queries)(nil)

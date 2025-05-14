@@ -264,3 +264,27 @@ func (j Job) GetState() ActivityState {
 func (j Job) Element() bpmn20.FlowNode {
 	return j.BaseElement
 }
+
+//go:generate go tool stringer -type=TokenState
+type TokenState int
+
+const (
+	_ TokenState = iota
+	TokenStateRunning
+	TokenStateWaiting
+	TokenStateCompleted
+	TokenStateFailed
+)
+
+// ExecutionToken represents one processing step in the engine.
+// Engine assumes that:
+//   - when an instance of the token hits parallel gateway it is completed and new tokens are created for each fork
+//
+// https://github.com/pbinitiative/zenbpm/issues/110
+type ExecutionToken struct {
+	Key                int64
+	ElementInstanceKey int64
+	ElementId          string
+	ProcessInstanceKey int64
+	State              TokenState
+}

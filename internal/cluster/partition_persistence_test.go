@@ -9,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/rqlite/rqlite/v8/command/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRqLiteStorage(t *testing.T) {
@@ -46,7 +47,8 @@ func TestRqLiteStorage(t *testing.T) {
 		},
 	})
 
-	db := NewRqLiteDB(partition.rqliteDB.store, hclog.Default().Named("test-rq-lite-db"))
+	db, err := NewRqLiteDB(partition.rqliteDB.store, partition.partitionId, hclog.Default().Named("test-rq-lite-db"))
+	assert.NoError(t, err)
 
 	tester := storagetest.StorageTester{}
 	tester.PrepareTestData(db, t)

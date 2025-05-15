@@ -62,7 +62,7 @@ After receiving this change, follower joins the Partition group and depending on
  - Partition leader 
  - Partition follower
 
-## Partition groups
+## Partition group clusters
 Partition groups are separate RqLite Raft clusters that are **controlled by Main cluster**. 
 When a node is part of the Partition group and is:
  - leader in that Partition group it will: 

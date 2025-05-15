@@ -18,6 +18,9 @@ PROTOC ?= $(LOCALBIN)/protoc
 PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 
+## Setup PATH to point to tools binaries
+PATH := $(LOCALBIN):$(PATH)
+
 ## Tool Versions
 SQLC_VERSION ?= v1.28.0
 PROTOC_VERSION ?= 30.1
@@ -87,7 +90,7 @@ help: ## Display this help.
 
 .PHONY: generate
 generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
-	@go generate ./...
+	@PATH=$(LOCALBIN):$(PATH) go generate ./...
 	@$(SQLC) generate
 	@cp internal/sql/db.go.template internal/sql/db.go
 	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/sql/models.go

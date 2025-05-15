@@ -3,7 +3,6 @@ package storagetest
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,12 +39,14 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestJobStorageReader,
 		st.TestMessageStorageReader,
 		st.TestMessageStorageWriter,
+		st.TestTokenStorageReader,
+		st.TestTokenStorageWriter,
 	}
 
 	for _, function := range functions {
 		funcName := getFunctionName(function)
-		stripedName := funcName[strings.LastIndex(funcName, ".")+1:]
-		tests[stripedName] = function
+		strippedName := funcName[strings.LastIndex(funcName, ".")+1:]
+		tests[strippedName] = function
 	}
 	return tests
 }
@@ -68,7 +69,8 @@ func getProcessDefinition(r int64) runtime.ProcessDefinition {
 // prepareTestData will prepare common data for the tests
 func (st *StorageTester) PrepareTestData(s storage.Storage, t *testing.T) {
 	ctx := context.Background()
-	r := rand.Int63()
+
+	r := s.GenerateId()
 
 	st.processDefinition = getProcessDefinition(r)
 	err := s.SaveProcessDefinition(ctx, st.processDefinition)
@@ -83,7 +85,7 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		def := getProcessDefinition(r)
 
@@ -100,7 +102,7 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		def := getProcessDefinition(r)
 
@@ -163,7 +165,7 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
 
@@ -176,7 +178,7 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
 
@@ -217,7 +219,7 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
@@ -234,7 +236,7 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
@@ -259,7 +261,7 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, t *testing.T) f
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 
@@ -272,7 +274,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
@@ -306,7 +308,7 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
@@ -323,7 +325,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 	return func(t *testing.T) {
 		ctx := context.TODO()
 
-		r := rand.Int63()
+		r := s.GenerateId()
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
@@ -340,5 +342,53 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 		messageSubs, err = s.FindActivityMessageSubscriptions(ctx, job.Key, runtime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
+	}
+}
+
+func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+
+		token1 := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+
+		err := s.SaveToken(ctx, token1)
+		assert.Nil(t, err)
+	}
+}
+
+func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+
+		token1 := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateRunning,
+		}
+
+		err := s.SaveToken(ctx, token1)
+		assert.Nil(t, err)
+
+		tokens, err := s.GetRunningTokens(ctx)
+		assert.Nil(t, err)
+
+		matched := false
+		for _, tok := range tokens {
+			if tok.ElementInstanceKey == token1.ElementInstanceKey {
+				matched = true
+				break
+			}
+		}
+		assert.True(t, matched, "expected to find created token among active tokens for partition")
 	}
 }

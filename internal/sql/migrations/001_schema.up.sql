@@ -64,5 +64,15 @@ CREATE TABLE IF NOT EXISTS job(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
+CREATE TABLE IF NOT EXISTS execution_token(
+    key INTEGER PRIMARY KEY, -- int64 snowflake id of the token
+    element_instance_key INTEGER NOT NULL, -- int64 id of the element instance
+    element_id TEXT NOT NULL, -- string id of the element from xml definition
+    process_instance_key INTEGER NOT NULL, -- int64 reference to process instance
+    state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:TokenState
+    created_at INTEGER NOT NULL, -- unix millis of when the instance of the token was created
+    FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
+);
+
 -- TODO: create a table for dumb activities like gateway/...
 -- TODO: create a table for flow

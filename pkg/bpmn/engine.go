@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/bwmarrin/snowflake"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
@@ -17,7 +16,6 @@ import (
 )
 
 type Engine struct {
-	name string
 	// _processes            []*ProcessInfo
 	_processInstances []*runtime.ProcessInstance
 	// _messageSubscriptions []*MessageSubscription
@@ -25,21 +23,19 @@ type Engine struct {
 	// _timers               []*Timer
 	taskHandlers []*taskHandler
 	exporters    []exporter.EventExporter
-	snowflake    *snowflake.Node
 	persistence  storage.Storage
+	logger       hclog.Logger
 }
 
 type EngineOption = func(*Engine)
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
-	name := fmt.Sprintf("Bpmn-Engine-%d", getGlobalSnowflakeIdGenerator().Generate().Int64())
 	engine := Engine{
-		name:         name,
 		taskHandlers: []*taskHandler{},
-		snowflake:    getGlobalSnowflakeIdGenerator(),
 		exporters:    []exporter.EventExporter{},
 		persistence:  nil,
+		logger:       hclog.Default(),
 	}
 
 	for _, option := range options {
@@ -59,9 +55,9 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 	}
 }
 
-func EngineWithName(name string) EngineOption {
+func EngineWithLogger(logger hclog.Logger) EngineOption {
 	return func(engine *Engine) {
-		engine.name = name
+		engine.logger = logger
 	}
 }
 
@@ -164,11 +160,6 @@ func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.Pro
 	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
 }
 
-// Name returns the name of the engine, only useful in case you control multiple ones
-func (engine *Engine) Name() string {
-	return engine.name
-}
-
 // FindProcessesById returns all registered processes with given ID
 // result array is ordered by version number, from 1 (first) and largest version (last)
 func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
@@ -203,7 +194,7 @@ func (b *Engine) Stop() {
 
 func (engine *Engine) run(instance *runtime.ProcessInstance) (err error) {
 	ctx := context.TODO()
-	executionKey := engine.snowflake.Generate().Int64()
+	executionKey := engine.generateKey()
 	ctx = context.WithValue(ctx, appcontext.ExecutionKey, executionKey)
 	process := instance.Definition
 	var commandQueue []command
@@ -391,7 +382,9 @@ func (engine *Engine) handleElement(
 		} else {
 			// Handle the case when activity is not a MessageSubscription
 			// For example, you can return an error or log a message
-			log.Panicf("Unexpected Activity type: %T", activity)
+			msg := fmt.Sprintf("Unexpected Activity type: %T", activity)
+			engine.logger.Error(msg)
+			panic(msg)
 		}
 	case bpmn20.ElementTypeIntermediateThrowEvent:
 		activity = &elementActivity{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/hashicorp/go-hclog"
@@ -121,7 +120,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		if err != nil {
 			return nil, fmt.Errorf("failed to join cluster: %s", err.Error())
 		}
-		log.Println("successfully joined cluster at", j)
+		node.logger.Info(fmt.Sprintf("successfully joined cluster at %s", j))
 		return &node, nil
 	}
 

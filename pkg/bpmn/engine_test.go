@@ -1,13 +1,11 @@
 package bpmn
 
 import (
-	"log"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
 )
@@ -74,14 +72,13 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	// // given
 	pi, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
 	bpmnEngine.RunOrContinueInstance(pi.Key)
 
 	// when
 	assert.True(t, wasCalled)
-
 }
 
 func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
@@ -140,8 +137,6 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	process3, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	assert.Equal(t, process1.BpmnProcessId, process2.BpmnProcessId, "both prepared files should have equal IDs")
-	assert.Greater(t, process2.Key, process1.Key, "Because later created")
-
 	assert.Equal(t, int32(1), process1.Version)
 	assert.Equal(t, int32(2), process2.Version)
 	assert.Equal(t, int32(3), process3.Version)
@@ -163,7 +158,6 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	// then
 	assert.GreaterOrEqual(t, instance1.CreatedAt.UnixNano(), beforeCreation.UnixNano(), "make sure we have creation time set")
 	assert.Equal(t, instance2.Definition.Key, instance1.Definition.Key)
-	assert.Greater(t, instance2.Key, instance1.Key, "Because later created")
 }
 
 func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
@@ -200,17 +194,6 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 
 	// then
 	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
-}
-
-func TestMultipleEnginesCanBeCreatedWithoutAName(t *testing.T) {
-	// when
-	var store storage.Storage = &inmemory.Storage{}
-	bpmnEngine1 := NewEngine(EngineWithStorage(store))
-	var store2 storage.Storage = &inmemory.Storage{}
-	bpmnEngine2 := NewEngine(EngineWithStorage(store2))
-
-	// then
-	assert.NotEqual(t, bpmnEngine1.name, bpmnEngine2.name, "make sure the names are different")
 }
 
 func Test_multiple_engines_create_unique_Ids(t *testing.T) {

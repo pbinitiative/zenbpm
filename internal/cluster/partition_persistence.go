@@ -10,6 +10,7 @@ import (
 
 	ssql "database/sql"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -20,19 +21,32 @@ import (
 )
 
 type RqLiteDB struct {
-	store   *store.Store
-	queries *sql.Queries
-	logger  hclog.Logger
+	store     *store.Store
+	queries   *sql.Queries
+	logger    hclog.Logger
+	node      *snowflake.Node
+	partition uint32
 }
 
-func NewRqLiteDB(store *store.Store, logger hclog.Logger) *RqLiteDB {
+// GenerateId implements storage.Storage.
+func (rq *RqLiteDB) GenerateId() int64 {
+	return rq.node.Generate().Int64()
+}
+
+func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger) (*RqLiteDB, error) {
+	node, err := snowflake.NewNode(int64(partition))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
+	}
 	db := &RqLiteDB{
-		store:  store,
-		logger: logger,
+		store:     store,
+		logger:    logger,
+		node:      node,
+		partition: partition,
 	}
 	queries := sql.New(db)
 	db.queries = queries
-	return db
+	return db, nil
 }
 
 func (rq *RqLiteDB) executeStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
@@ -632,6 +646,7 @@ var _ storage.MessageStorageWriter = &RqLiteDB{}
 func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
 	return SaveMessageSubscriptionWith(ctx, rq.queries, subscription)
 }
+
 func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription runtime.MessageSubscription) error {
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.GetKey(),
@@ -651,6 +666,47 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 		return fmt.Errorf("failed to save message subscription %d: %w", subscription.GetKey(), err)
 	}
 	return nil
+}
+
+var _ storage.TokenStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error) {
+	return GetActiveTokensForPartition(ctx, rq.queries, rq.partition)
+}
+
+func GetActiveTokensForPartition(ctx context.Context, db *sql.Queries, partitionId uint32) ([]runtime.ExecutionToken, error) {
+	tokens, err := db.GetTokensInStateForPartition(ctx, sql.GetTokensInStateForPartitionParams{
+		Partition: int64(partitionId),
+		State:     int64(runtime.TokenStateRunning),
+	})
+	res := make([]runtime.ExecutionToken, len(tokens))
+	for i, tok := range tokens {
+		res[i] = runtime.ExecutionToken{
+			Key:                tok.Key,
+			ElementInstanceKey: tok.ElementInstanceKey,
+			ElementId:          tok.ElementID,
+			ProcessInstanceKey: tok.ProcessInstanceKey,
+			State:              runtime.TokenState(tok.State),
+		}
+	}
+	return res, err
+}
+
+var _ storage.TokenStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+	return SaveToken(ctx, rq.queries, token)
+}
+
+func SaveToken(ctx context.Context, db *sql.Queries, token runtime.ExecutionToken) error {
+	return db.SaveToken(ctx, sql.SaveTokenParams{
+		Key:                token.Key,
+		ElementInstanceKey: token.ElementInstanceKey,
+		ElementID:          token.ElementId,
+		ProcessInstanceKey: token.ProcessInstanceKey,
+		State:              int64(token.State),
+		CreatedAt:          time.Now().UnixMilli(),
+	})
 }
 
 type RqLiteDBBatch struct {
@@ -712,4 +768,10 @@ var _ storage.MessageStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
 	return SaveMessageSubscriptionWith(ctx, b.queries, subscription)
+}
+
+var _ storage.TokenStorageWriter = &RqLiteDBBatch{}
+
+func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+	return SaveToken(ctx, b.queries, token)
 }

@@ -21,7 +21,10 @@ type Storage interface {
 	JobStorageWriter
 	MessageStorageReader
 	MessageStorageWriter
+	TokenStorageReader
+	TokenStorageWriter
 
+	GenerateId() int64
 	NewBatch() Batch
 }
 
@@ -31,6 +34,7 @@ type Batch interface {
 	TimerStorageWriter
 	JobStorageWriter
 	MessageStorageWriter
+	TokenStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
@@ -105,50 +109,10 @@ type MessageStorageWriter interface {
 	SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error
 }
 
-// type ProcessDefinition struct {
-// 	BpmnProcessId    string
-// 	Version          int32
-// 	Key              int64
-// 	BpmnData         string
-// 	BpmnResourceName string
-// 	BpmnChecksum     [16]byte
-// }
-//
-// type ProcessInstance struct {
-// 	DefinitionKey int64
-// 	Key           int64
-// 	Variables     map[string]any
-// 	CreatedAt     time.Time
-// 	State         runtime.ActivityState
-// }
-//
-// type MessageSubscription struct {
-// 	ElementId            string
-// 	ElementInstanceKey   int64
-// 	ProcessDefinitionKey int64
-// 	ProcessInstanceKey   int64
-// 	Name                 string
-// 	State                runtime.ActivityState
-// 	CreatedAt            time.Time
-// 	OriginActivityKey    int64
-// }
-//
-// type Timer struct {
-// 	ElementId            string
-// 	ElementInstanceKey   int64
-// 	ProcessDefinitionKey int64
-// 	ProcessInstanceKey   int64
-// 	TimerState           runtime.TimerState
-// 	CreatedAt            time.Time
-// 	DueAt                time.Time
-// 	OriginActivityKey    int64
-// }
-//
-// type Job struct {
-// 	ElementId          string
-// 	ElementInstanceKey int64
-// 	ProcessInstanceKey int64
-// 	Key                int64
-// 	State              runtime.ActivityState
-// 	CreatedAt          time.Time
-// }
+type TokenStorageReader interface {
+	GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error)
+}
+
+type TokenStorageWriter interface {
+	SaveToken(ctx context.Context, token runtime.ExecutionToken) error
+}

@@ -3,6 +3,7 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"slices"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -17,6 +18,11 @@ type Storage struct {
 	MessageSubscriptions map[int64]runtime.MessageSubscription
 	Timers               map[int64]runtime.Timer
 	Jobs                 map[int64]runtime.Job
+	ExecutionTokens      map[int64]runtime.ExecutionToken
+}
+
+func (mem *Storage) GenerateId() int64 {
+	return rand.Int63()
 }
 
 func NewStorage() *Storage {
@@ -26,13 +32,14 @@ func NewStorage() *Storage {
 		MessageSubscriptions: make(map[int64]runtime.MessageSubscription),
 		Timers:               make(map[int64]runtime.Timer),
 		Jobs:                 make(map[int64]runtime.Job),
+		ExecutionTokens:      make(map[int64]runtime.ExecutionToken),
 	}
 }
 
 var _ storage.Storage = &Storage{}
 
 func (mem *Storage) NewBatch() storage.Batch {
-	return &InMemoryStorageBatch{
+	return &StorageBatch{
 		db:        mem,
 		stmtToRun: make([]func() error, 0, 10),
 	}
@@ -238,16 +245,37 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription ru
 	return nil
 }
 
-type InMemoryStorageBatch struct {
+var _ storage.TokenStorageReader = &Storage{}
+
+// GetActiveTokensForPartition implements storage.Storage.
+func (mem *Storage) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error) {
+	activeTokens := make([]runtime.ExecutionToken, 0)
+	for _, token := range mem.ExecutionTokens {
+		if token.State == runtime.TokenStateRunning {
+			activeTokens = append(activeTokens, token)
+		}
+	}
+	return activeTokens, nil
+}
+
+var _ storage.TokenStorageWriter = &Storage{}
+
+// SaveToken implements storage.Storage.
+func (mem *Storage) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+	mem.ExecutionTokens[token.Key] = token
+	return nil
+}
+
+type StorageBatch struct {
 	db        *Storage
 	stmtToRun []func() error
 }
 
-var _ storage.Batch = &InMemoryStorageBatch{}
+var _ storage.Batch = &StorageBatch{}
 
 // TODO: for now close just calls the functions
 // in the future we want to actually execute this as one statement into memlite
-func (b *InMemoryStorageBatch) Flush(ctx context.Context) error {
+func (b *StorageBatch) Flush(ctx context.Context) error {
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
 		err := stmt()
@@ -262,47 +290,56 @@ func (b *InMemoryStorageBatch) Flush(ctx context.Context) error {
 	return nil
 }
 
-var _ storage.ProcessDefinitionStorageWriter = &InMemoryStorageBatch{}
+var _ storage.ProcessDefinitionStorageWriter = &StorageBatch{}
 
-func (b *InMemoryStorageBatch) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
+func (b *StorageBatch) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveProcessDefinition(ctx, definition)
 	})
 	return nil
 }
 
-var _ storage.ProcessInstanceStorageWriter = &InMemoryStorageBatch{}
+var _ storage.ProcessInstanceStorageWriter = &StorageBatch{}
 
-func (b *InMemoryStorageBatch) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+func (b *StorageBatch) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveProcessInstance(ctx, processInstance)
 	})
 	return nil
 }
 
-var _ storage.TimerStorageWriter = &InMemoryStorageBatch{}
+var _ storage.TimerStorageWriter = &StorageBatch{}
 
-func (b *InMemoryStorageBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error {
+func (b *StorageBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveTimer(ctx, timer)
 	})
 	return nil
 }
 
-var _ storage.JobStorageWriter = &InMemoryStorageBatch{}
+var _ storage.JobStorageWriter = &StorageBatch{}
 
-func (b *InMemoryStorageBatch) SaveJob(ctx context.Context, job runtime.Job) error {
+func (b *StorageBatch) SaveJob(ctx context.Context, job runtime.Job) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveJob(ctx, job)
 	})
 	return nil
 }
 
-var _ storage.MessageStorageWriter = &InMemoryStorageBatch{}
+var _ storage.MessageStorageWriter = &StorageBatch{}
 
-func (b *InMemoryStorageBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
+func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveMessageSubscription(ctx, subscription)
+	})
+	return nil
+}
+
+var _ storage.TokenStorageWriter = &StorageBatch{}
+
+func (b *StorageBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveToken(ctx, token)
 	})
 	return nil
 }

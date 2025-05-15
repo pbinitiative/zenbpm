@@ -48,7 +48,6 @@ func (s *Server) Open() error {
 
 // Close closes the Server.
 func (s *Server) Close() error {
-	fmt.Println(s.ln)
 	s.ln.Close()
 	return nil
 }
@@ -107,7 +106,7 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	case protoc.Command_TYPE_UNKNOWN:
 		fallthrough
 	default:
-		return nil, nil
+		panic("unexpected protoc.Command_Type")
 	}
 }
 

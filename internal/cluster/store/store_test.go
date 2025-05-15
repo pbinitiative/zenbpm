@@ -296,14 +296,14 @@ func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	if c.Addr != "" {
 		addr = c.Addr
 	}
-	mux, err := network.NewNodeMux(addr)
+	mux, _, err := network.NewNodeMux(addr)
 	if err != nil {
 		t.Fatalf("failed to start network mux: %s", err)
 	}
 	ln := network.NewZenBpmRaftListener(mux)
 	raftTn := tcp.NewLayer(ln, network.NewZenBpmRaftDialer())
 
-	s := New(raftTn, DefaultConfig(c))
+	s := New(raftTn, nil, DefaultConfig(c))
 	return s, ln
 }
 

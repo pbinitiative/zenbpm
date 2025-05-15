@@ -19,11 +19,11 @@ type TestServer struct {
 
 // New returns a new instance of a TestServer
 func NewTestServer() *TestServer {
-	mux, err := network.NewNodeMux("")
-	ln := network.NewZenBpmClusterListener(mux)
+	mux, _, err := network.NewNodeMux("")
 	if err != nil {
 		panic("service: failed to listen: " + err.Error())
 	}
+	ln := network.NewZenBpmClusterListener(mux)
 	s := &TestServer{
 		Listener: ln,
 	}

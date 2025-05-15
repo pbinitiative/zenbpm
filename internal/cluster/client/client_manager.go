@@ -10,13 +10,9 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-)
-
-const (
-	dialTimeout = 5 * time.Second
+	"google.golang.org/grpc/keepalive"
 )
 
 type clientData struct {
@@ -26,14 +22,18 @@ type clientData struct {
 
 type ClientManager struct {
 	// mu is a mutext for protecting activeClients
-	mu sync.RWMutex
-
+	mu            sync.RWMutex
 	activeClients map[string]clientData
 
-	store *store.Store
+	store ClientStore
 }
 
-func NewClientManager(store *store.Store) *ClientManager {
+type ClientStore interface {
+	LeaderWithID() (string, string)
+	PartitionLeaderWithID(partition uint32) (string, string)
+}
+
+func NewClientManager(store ClientStore) *ClientManager {
 	return &ClientManager{
 		activeClients: map[string]clientData{},
 		store:         store,
@@ -96,9 +96,13 @@ func (c *ClientManager) newClient(nodeAddr string) (proto.ZenServiceClient, erro
 	dialer := network.NewZenBpmClusterDialer()
 	grpcClient, err := grpc.NewClient(nodeAddr,
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
-			return dialer.Dial(s, dialTimeout)
+			return dialer.DialGRPC(s)
 		}),
-		// TODO: add credentials at later stage
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             2 * time.Second,
+			PermitWithoutStream: true,
+		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

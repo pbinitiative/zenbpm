@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,35 +11,56 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
+type ClusterStateObserverFunc func(ctx context.Context)
+
 // FSM is Finite State Machine of the system state
 type FSM struct {
 	store *Store
+	// context used by the observer of a previous call
+	previousChangeCtxCancel    context.CancelFunc
+	clusterStateChangeObserver ClusterStateObserverFunc
 }
 
 // NewFSM returns a new FSM.
 func NewFSM(s *Store) *FSM {
-	return &FSM{store: s}
+	return &FSM{store: s, clusterStateChangeObserver: s.clusterStateChangeObserver}
 }
 
 var _ raft.FSM = &FSM{}
 
-// Apply applies a Raft log entry to the key-value store.
+// Apply is called once a log entry is committed by a majority of the cluster.
+//
+// Apply should apply the log to the FSM. Apply must be deterministic and
+// produce the same result on all peers in the cluster.
+//
+// The returned value is returned to the client as the ApplyFuture.Response.
 func (f *FSM) Apply(l *raft.Log) interface{} {
 	var command proto.Command
 	if err := pb.Unmarshal(l.Data, &command); err != nil {
 		panic(fmt.Sprintf("failed to unmarshal command: %s", err.Error()))
 	}
 
+	var res interface{}
 	switch command.GetType() {
 	case proto.Command_TYPE_NODE_CHANGE:
 		nodeChangeCommand := command.GetNodeChange()
-		return f.applyNodeChange(nodeChangeCommand)
+		res = f.applyNodeChange(nodeChangeCommand)
 	case proto.Command_TYPE_NODE_PARTITION_CHANGE:
 		partitionChangeCommand := command.GetNodePartitionChange()
-		return f.applyPartitionChange(partitionChangeCommand)
+		res = f.applyPartitionChange(partitionChangeCommand)
 	default:
 		panic(fmt.Sprintf("unrecognized command type: %s", command.Type))
 	}
+	if f.store.clusterStateChangeObserver != nil {
+		// cancel the context of previous goroutine to let it know that there is a newer change
+		if f.previousChangeCtxCancel != nil {
+			f.previousChangeCtxCancel()
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		f.previousChangeCtxCancel = cancel
+		go f.store.clusterStateChangeObserver(ctx)
+	}
+	return res
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
@@ -60,13 +82,33 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	return nil
 }
 
+type FsmStore interface {
+	LeaderID() (string, error)
+	ClusterState() ClusterState
+}
+
 func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	node, ok := f.store.state.Nodes[nodeChangeCommand.NodeId]
+	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand)
+	f.store.state = changedState
+	return nil
+}
+
+func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionChange) interface{} {
+	f.store.stateMu.Lock()
+	defer f.store.stateMu.Unlock()
+	changedState := FsmApplyPartitionChange(f.store, partitionChangeCommand)
+	f.store.state = changedState
+	return nil
+}
+
+func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) ClusterState {
+	state := store.ClusterState()
+	node, ok := state.Nodes[nodeChangeCommand.NodeId]
 	// node is not yet present in the store
 	role := RoleFollower
-	leaderId, _ := f.store.LeaderID()
+	leaderId, _ := store.LeaderID()
 	if leaderId == nodeChangeCommand.NodeId {
 		role = RoleLeader
 	}
@@ -81,9 +123,9 @@ func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
 	}
 	// if the leader has changed, change other nodes to be followers
 	if leaderId == node.Id && node.Role < RoleLeader && role == RoleLeader {
-		for k, n := range f.store.state.Nodes {
+		for k, n := range state.Nodes {
 			n.Role = RoleFollower
-			f.store.state.Nodes[k] = n
+			state.Nodes[k] = n
 		}
 	}
 	node.Role = role
@@ -101,14 +143,13 @@ func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
 	if nodeChangeCommand.State != proto.NodeState_NODE_STATE_UNKNOWN {
 		node.State = NodeState(nodeChangeCommand.State)
 	}
-	f.store.state.Nodes[nodeChangeCommand.NodeId] = node
-	return nil
+	state.Nodes[nodeChangeCommand.NodeId] = node
+	return state
 }
 
-func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionChange) interface{} {
-	f.store.stateMu.Lock()
-	defer f.store.stateMu.Unlock()
-	node, ok := f.store.state.Nodes[partitionChangeCommand.NodeId]
+func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange) ClusterState {
+	state := store.ClusterState()
+	node, ok := state.Nodes[partitionChangeCommand.NodeId]
 	// node is not yet present in the store
 	if !ok {
 		node = Node{
@@ -118,8 +159,8 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 	}
 	if partitionChangeCommand.State == proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING {
 		delete(node.Partitions, partitionChangeCommand.PartitionId)
-		f.store.state.Nodes[partitionChangeCommand.NodeId] = node
-		return nil
+		state.Nodes[partitionChangeCommand.NodeId] = node
+		return state
 	}
 	node.Partitions[partitionChangeCommand.PartitionId] = NodePartition{
 		Id:    partitionChangeCommand.PartitionId,
@@ -127,10 +168,11 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 		Role:  Role(partitionChangeCommand.Role),
 	}
 	if partitionChangeCommand.Role == proto.Role_ROLE_TYPE_LEADER {
-		partition := f.store.state.Partitions[partitionChangeCommand.PartitionId]
-		partition.LeaderId = partitionChangeCommand.NodeId
-		f.store.state.Partitions[partitionChangeCommand.PartitionId] = partition
+		state.Partitions[partitionChangeCommand.PartitionId] = Partition{
+			Id:       partitionChangeCommand.PartitionId,
+			LeaderId: partitionChangeCommand.NodeId,
+		}
 	}
-	f.store.state.Nodes[partitionChangeCommand.NodeId] = node
-	return nil
+	state.Nodes[partitionChangeCommand.NodeId] = node
+	return state
 }

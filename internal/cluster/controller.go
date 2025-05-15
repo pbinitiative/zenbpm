@@ -109,7 +109,7 @@ func (c *controller) assignNewPartition(ctx context.Context, newPartitionId int)
 		return
 	}
 
-	// check if partition is not in the process of being created on of the nodes
+	// check if partition is not in the process of being created on one of the nodes
 	if cs.AnyNodeHasPartition(newPartitionId) {
 		c.logger.Debug(fmt.Sprintf("Partition %d already assigned skipping assignment.", newPartitionId))
 		return

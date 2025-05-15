@@ -72,7 +72,7 @@ When a node is part of the Partition group and is:
    - listen on the private API port for queries on the partition
 
 ### Leader
-Has to notify leader of the cluster that it became a leader (so that the cluster leader can update cluster state).
+Has to notify leader of the cluster that it became a partition group leader (so that the cluster leader can update cluster state).
 Acts on observations of partition cluster and relays the information to the cluster leader (node became unresponsive, shutdown, ...).
 Performs write/read operations into the database.
 

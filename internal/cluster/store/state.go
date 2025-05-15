@@ -34,7 +34,7 @@ func (c ClusterState) GetNode(nodeId string) (Node, error) {
 func (c ClusterState) GetLeastStressedNode() (Node, error) {
 	minNode := Node{}
 	for _, node := range c.Nodes {
-		if minNode.Partitions == nil || len(minNode.Partitions) < len(node.Partitions) {
+		if minNode.Partitions == nil || len(minNode.Partitions) > len(node.Partitions) {
 			minNode = node
 		}
 	}

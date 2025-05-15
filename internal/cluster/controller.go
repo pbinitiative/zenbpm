@@ -230,7 +230,7 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
 		c.partitionsMu.Unlock()
-		partitionNode.Stop()
+		_ = partitionNode.Stop()
 		return
 	}
 	c.partitions[partitionId] = partitionNode

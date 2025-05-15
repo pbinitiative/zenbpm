@@ -15,10 +15,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-const (
-	dialTimeout = 15 * time.Second
-)
-
 type clientData struct {
 	conn *grpc.ClientConn
 	c    proto.ZenServiceClient

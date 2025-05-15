@@ -389,7 +389,7 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 					if zpn.stateChangeCallbacks.leaderChange == nil {
 						break
 					}
-					zpn.stateChangeCallbacks.leaderChange(signal.LeaderID)
+					_ = zpn.stateChangeCallbacks.leaderChange(signal.LeaderID)
 				case raft.PeerObservation:
 					// PeerObservation is invoked only when the raft replication goroutine is started/stoped
 					var err error

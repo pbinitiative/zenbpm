@@ -41,7 +41,7 @@ func Init() {
 	// set logger used by rqlite
 	// this is not enough because rqlite implementation of: tcp.Mux, cluster.Remover, cluster.Joiner, cluster.Bootstrapper, cluster.Service, snapshot.Store, store.raftConfig
 	// and others use hardcoded loggers
-	hclog.SetDefault(NewHcLog(logger, 5))
+	hclog.SetDefault(NewHcLog(logger, 1))
 }
 
 func Error(msg string, a ...any) {

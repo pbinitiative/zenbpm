@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
@@ -50,6 +51,7 @@ type ZenNode struct {
 	server     *server.Server
 	client     *client.ClientManager
 	logger     hclog.Logger
+	muxLn      net.Listener
 }
 
 // StartZenNode Starts a cluster node
@@ -58,14 +60,24 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		logger: hclog.Default().Named(fmt.Sprintf("zen-node-%s", conf.Cluster.NodeId)),
 	}
 
-	mux, err := network.NewNodeMux(conf.Cluster.Addr)
+	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.Addr, err)
 	}
 
+	node.muxLn = muxLn
+	node.controller, err = NewController(mux, conf.Cluster)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create node controller: %w", err)
+	}
+
 	zenRaftLn := network.NewZenBpmRaftListener(mux)
 	raftTn := tcp.NewLayer(zenRaftLn, network.NewZenBpmRaftDialer())
-	node.store = store.New(raftTn, store.DefaultConfig(conf.Cluster))
+	node.store = store.New(
+		raftTn,
+		node.controller.ClusterStateChangeNotification,
+		store.DefaultConfig(conf.Cluster),
+	)
 	if err = node.store.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
@@ -77,17 +89,11 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 	node.server = clusterSrv
 
-	node.controller, err = NewController(node.store, mux, conf.Cluster)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create node controller: %w", err)
-	}
-
-	err = node.controller.Start()
+	node.client = client.NewClientManager(node.store)
+	err = node.controller.Start(node.store, node.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
 	}
-
-	node.client = client.NewClientManager(node.store)
 
 	// bootstrapping logic
 	nodes, err := node.store.Nodes()
@@ -142,6 +148,7 @@ func (node *ZenNode) Stop() error {
 	if err != nil {
 		joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop node controller: %w", err))
 	}
+	node.muxLn.Close()
 	err = node.server.Close()
 	if err != nil {
 		joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop grpc server: %w", err))

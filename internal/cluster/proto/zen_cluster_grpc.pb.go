@@ -28,6 +28,18 @@ type ZenServiceClient interface {
 	Notify(ctx context.Context, in *NotifyRequest, opts ...grpc.CallOption) (*NotifyResponse, error)
 	// Join joins a remote node to the cluster.
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
+	// called by a partition leader when new node joins the cluster
+	AddPartitionNode(ctx context.Context, in *AddPartitionNodeRequest, opts ...grpc.CallOption) (*AddPartitionNodeResponse, error)
+	// called by a partition leader when node becomes unreachable
+	ShutdownPartitionNode(ctx context.Context, in *ShutdownPartitionNodeRequest, opts ...grpc.CallOption) (*ShutdownPartitionNodeResponse, error)
+	// called by a partition leader when he becomes a leader of partition cluster
+	PartitionNodeLeaderChange(ctx context.Context, in *PartitionNodeLeaderChangeRequest, opts ...grpc.CallOption) (*PartitionNodeLeaderChangeResponse, error)
+	// called by a partition leader when member node has to be reaped due to reap
+	// settings
+	RemovePartitionNode(ctx context.Context, in *RemovePartitionNodeRequest, opts ...grpc.CallOption) (*RemovePartitionNodeResponse, error)
+	// called by a partition leader when member node becomes responsive after
+	// being marked as shut down
+	ResumePartitionNode(ctx context.Context, in *ResumePartitionNodeRequest, opts ...grpc.CallOption) (*ResumePartitionNodeResponse, error)
 	ClusterBackup(ctx context.Context, in *ClusterBackupRequest, opts ...grpc.CallOption) (*ClusterBackupResponse, error)
 	ClusterRestore(ctx context.Context, in *ClusterRestoreRequest, opts ...grpc.CallOption) (*ClusterRestoreResponse, error)
 	ConfigurationUpdate(ctx context.Context, in *ConfigurationUpdateRequest, opts ...grpc.CallOption) (*ConfigurationUpdateResponse, error)
@@ -58,6 +70,51 @@ func (c *zenServiceClient) Notify(ctx context.Context, in *NotifyRequest, opts .
 func (c *zenServiceClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error) {
 	out := new(JoinResponse)
 	err := c.cc.Invoke(ctx, "/cluster.ZenService/Join", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) AddPartitionNode(ctx context.Context, in *AddPartitionNodeRequest, opts ...grpc.CallOption) (*AddPartitionNodeResponse, error) {
+	out := new(AddPartitionNodeResponse)
+	err := c.cc.Invoke(ctx, "/cluster.ZenService/AddPartitionNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) ShutdownPartitionNode(ctx context.Context, in *ShutdownPartitionNodeRequest, opts ...grpc.CallOption) (*ShutdownPartitionNodeResponse, error) {
+	out := new(ShutdownPartitionNodeResponse)
+	err := c.cc.Invoke(ctx, "/cluster.ZenService/ShutdownPartitionNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) PartitionNodeLeaderChange(ctx context.Context, in *PartitionNodeLeaderChangeRequest, opts ...grpc.CallOption) (*PartitionNodeLeaderChangeResponse, error) {
+	out := new(PartitionNodeLeaderChangeResponse)
+	err := c.cc.Invoke(ctx, "/cluster.ZenService/PartitionNodeLeaderChange", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) RemovePartitionNode(ctx context.Context, in *RemovePartitionNodeRequest, opts ...grpc.CallOption) (*RemovePartitionNodeResponse, error) {
+	out := new(RemovePartitionNodeResponse)
+	err := c.cc.Invoke(ctx, "/cluster.ZenService/RemovePartitionNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) ResumePartitionNode(ctx context.Context, in *ResumePartitionNodeRequest, opts ...grpc.CallOption) (*ResumePartitionNodeResponse, error) {
+	out := new(ResumePartitionNodeResponse)
+	err := c.cc.Invoke(ctx, "/cluster.ZenService/ResumePartitionNode", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +202,18 @@ type ZenServiceServer interface {
 	Notify(context.Context, *NotifyRequest) (*NotifyResponse, error)
 	// Join joins a remote node to the cluster.
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
+	// called by a partition leader when new node joins the cluster
+	AddPartitionNode(context.Context, *AddPartitionNodeRequest) (*AddPartitionNodeResponse, error)
+	// called by a partition leader when node becomes unreachable
+	ShutdownPartitionNode(context.Context, *ShutdownPartitionNodeRequest) (*ShutdownPartitionNodeResponse, error)
+	// called by a partition leader when he becomes a leader of partition cluster
+	PartitionNodeLeaderChange(context.Context, *PartitionNodeLeaderChangeRequest) (*PartitionNodeLeaderChangeResponse, error)
+	// called by a partition leader when member node has to be reaped due to reap
+	// settings
+	RemovePartitionNode(context.Context, *RemovePartitionNodeRequest) (*RemovePartitionNodeResponse, error)
+	// called by a partition leader when member node becomes responsive after
+	// being marked as shut down
+	ResumePartitionNode(context.Context, *ResumePartitionNodeRequest) (*ResumePartitionNodeResponse, error)
 	ClusterBackup(context.Context, *ClusterBackupRequest) (*ClusterBackupResponse, error)
 	ClusterRestore(context.Context, *ClusterRestoreRequest) (*ClusterRestoreResponse, error)
 	ConfigurationUpdate(context.Context, *ConfigurationUpdateRequest) (*ConfigurationUpdateResponse, error)
@@ -165,6 +234,21 @@ func (UnimplementedZenServiceServer) Notify(context.Context, *NotifyRequest) (*N
 }
 func (UnimplementedZenServiceServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
+}
+func (UnimplementedZenServiceServer) AddPartitionNode(context.Context, *AddPartitionNodeRequest) (*AddPartitionNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddPartitionNode not implemented")
+}
+func (UnimplementedZenServiceServer) ShutdownPartitionNode(context.Context, *ShutdownPartitionNodeRequest) (*ShutdownPartitionNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShutdownPartitionNode not implemented")
+}
+func (UnimplementedZenServiceServer) PartitionNodeLeaderChange(context.Context, *PartitionNodeLeaderChangeRequest) (*PartitionNodeLeaderChangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PartitionNodeLeaderChange not implemented")
+}
+func (UnimplementedZenServiceServer) RemovePartitionNode(context.Context, *RemovePartitionNodeRequest) (*RemovePartitionNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemovePartitionNode not implemented")
+}
+func (UnimplementedZenServiceServer) ResumePartitionNode(context.Context, *ResumePartitionNodeRequest) (*ResumePartitionNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResumePartitionNode not implemented")
 }
 func (UnimplementedZenServiceServer) ClusterBackup(context.Context, *ClusterBackupRequest) (*ClusterBackupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ClusterBackup not implemented")
@@ -235,6 +319,96 @@ func _ZenService_Join_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).Join(ctx, req.(*JoinRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_AddPartitionNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddPartitionNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).AddPartitionNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cluster.ZenService/AddPartitionNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).AddPartitionNode(ctx, req.(*AddPartitionNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_ShutdownPartitionNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShutdownPartitionNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ShutdownPartitionNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cluster.ZenService/ShutdownPartitionNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ShutdownPartitionNode(ctx, req.(*ShutdownPartitionNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_PartitionNodeLeaderChange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PartitionNodeLeaderChangeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).PartitionNodeLeaderChange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cluster.ZenService/PartitionNodeLeaderChange",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).PartitionNodeLeaderChange(ctx, req.(*PartitionNodeLeaderChangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_RemovePartitionNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemovePartitionNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).RemovePartitionNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cluster.ZenService/RemovePartitionNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).RemovePartitionNode(ctx, req.(*RemovePartitionNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_ResumePartitionNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResumePartitionNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ResumePartitionNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cluster.ZenService/ResumePartitionNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ResumePartitionNode(ctx, req.(*ResumePartitionNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -397,6 +571,26 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Join",
 			Handler:    _ZenService_Join_Handler,
+		},
+		{
+			MethodName: "AddPartitionNode",
+			Handler:    _ZenService_AddPartitionNode_Handler,
+		},
+		{
+			MethodName: "ShutdownPartitionNode",
+			Handler:    _ZenService_ShutdownPartitionNode_Handler,
+		},
+		{
+			MethodName: "PartitionNodeLeaderChange",
+			Handler:    _ZenService_PartitionNodeLeaderChange_Handler,
+		},
+		{
+			MethodName: "RemovePartitionNode",
+			Handler:    _ZenService_RemovePartitionNode_Handler,
+		},
+		{
+			MethodName: "ResumePartitionNode",
+			Handler:    _ZenService_ResumePartitionNode_Handler,
 		},
 		{
 			MethodName: "ClusterBackup",

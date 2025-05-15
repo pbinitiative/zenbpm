@@ -74,11 +74,11 @@ func (st *StorageTester) PrepareTestData(s storage.Storage, t *testing.T) {
 
 	st.processDefinition = getProcessDefinition(r)
 	err := s.SaveProcessDefinition(ctx, st.processDefinition)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	st.processInstance = getProcessInstance(r, st.processDefinition)
 	err = s.SaveProcessInstance(ctx, st.processInstance)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 }
 
 func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
@@ -90,10 +90,10 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 		def := getProcessDefinition(r)
 
 		err := s.SaveProcessDefinition(ctx, def)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		definition, err := s.FindProcessDefinitionByKey(ctx, r)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 	}
 }
@@ -107,18 +107,18 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		def := getProcessDefinition(r)
 
 		err := s.SaveProcessDefinition(ctx, def)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		definition, err := s.FindLatestProcessDefinitionById(ctx, def.BpmnProcessId)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 
 		definition, err = s.FindProcessDefinitionByKey(ctx, def.Key)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 
 		definitions, err := s.FindProcessDefinitionsById(ctx, def.BpmnProcessId)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
 	}
@@ -170,7 +170,7 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
 
 		err := s.SaveProcessInstance(ctx, inst)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 }
 
@@ -183,10 +183,10 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
 
 		err := s.SaveProcessInstance(ctx, inst)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		instance, err := s.FindProcessInstanceByKey(ctx, inst.Key)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, inst.Key, instance.Key)
 		assert.Equal(t, inst.CreatedAt.Truncate(time.Millisecond), instance.CreatedAt.Truncate(time.Millisecond))
 		assert.Equal(t, inst.VariableHolder, instance.VariableHolder)
@@ -223,12 +223,12 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		timer := getTimer(r, st.processDefinition.Key, st.processInstance.Key, job)
 
 		err = s.SaveTimer(ctx, timer)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 }
 
@@ -240,19 +240,19 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		timer := getTimer(r, st.processDefinition.Key, st.processInstance.Key, job)
 
 		err = s.SaveTimer(ctx, timer)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		timers, err := s.FindTimersByState(ctx, st.processInstance.Key, runtime.TimerStateCreated)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 
 		timers, err = s.FindActivityTimers(ctx, job.Key, runtime.TimerStateCreated)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 	}
 }
@@ -278,14 +278,14 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		jobs, err := s.FindPendingProcessInstanceJobs(ctx, st.processInstance.Key)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Contains(t, jobs, job)
 
 		storeJob, err := s.FindJobByJobKey(ctx, job.Key)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, job, storeJob)
 	}
 }
@@ -312,12 +312,12 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		message := getMessage(r, st.processDefinition.Key, st.processInstance.Key, job)
 
 		err = s.SaveMessageSubscription(ctx, message)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 }
 
@@ -329,18 +329,18 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 
 		job := getJob(r, st.processInstance.Key)
 		err := s.SaveJob(ctx, job)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.Key, job)
 		err = s.SaveMessageSubscription(ctx, messageSub)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(ctx, st.processInstance.Key, runtime.ActivityStateActive)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 
 		messageSubs, err = s.FindActivityMessageSubscriptions(ctx, job.Key, runtime.ActivityStateActive)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 	}
 }

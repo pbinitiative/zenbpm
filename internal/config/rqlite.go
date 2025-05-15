@@ -1,10 +1,8 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -94,15 +92,6 @@ type RqLite struct {
 	// BootstrapExpectTimeout is the maximum time a bootstrap operation can take.
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"RQLITE_BOOTSTRAP_EXPECT_TIMEOUT"`
 
-	// DiscoMode sets the discovery mode. May not be set.
-	DiscoMode string `yaml:"discoMode" json:"discoMode" env:"RQLITE_DISCO_MODE"`
-
-	// DiscoKey sets the discovery prefix key.
-	DiscoKey string `yaml:"discoKey" json:"discoKey" env:"RQLITE_DISCO_KEY"`
-
-	// DiscoConfig sets the path to any discovery configuration file. May not be set.
-	DiscoConfig string `yaml:"discoConfig" json:"discoConfig" env:"RQLITE_DISCO_CONFIG"`
-
 	// OnDiskPath sets the path to the SQLite file. May not be set.
 	OnDiskPath string `yaml:"onDiskPath" json:"onDiskPath" env:"RQLITE_ON_DISK_PATH"`
 
@@ -149,6 +138,9 @@ type RqLite struct {
 
 	// RaftStepdownOnShutdown sets whether Leadership should be relinquished on shutdown
 	RaftStepdownOnShutdown bool `yaml:"raftStepdownOnShutdown" json:"raftStepdownOnShutdown" env:"RQLITE_RAFT_STEPDOWN_ON_SHUTDOWN"`
+
+	// RaftHeartbeatShutdownTimeout the duration after which a non-reachable node is marked as shut down
+	RaftHeartbeatShutdownTimeout time.Duration `yaml:"raftHeartbeatShutdownTimeout" json:"raftHeartbeatShutdownTimeout" env:"RQLITE_RAFT_SHUTDOWN_TIMEOUT"`
 
 	// RaftReapNodeTimeout sets the duration after which a non-reachable voting node is
 	// reaped i.e. removed from the cluster.
@@ -256,26 +248,6 @@ func (c *RqLite) Validate() error {
 				}
 			}
 		}
-
-		if c.DiscoMode != "" {
-			return errors.New("disco mode cannot be used when also explicitly joining a cluster")
-		}
-	}
-
-	// Valid disco mode?
-	switch c.DiscoMode {
-	case "":
-	case DiscoModeEtcdKV, DiscoModeConsulKV:
-		if c.BootstrapExpect > 0 {
-			return fmt.Errorf("bootstrapping not applicable when using %s", c.DiscoMode)
-		}
-	case DiscoModeDNS, DiscoModeDNSSRV:
-		if c.BootstrapExpect == 0 && !c.RaftNonVoter {
-			return fmt.Errorf("bootstrap-expect value required when using %s with a voting node", c.DiscoMode)
-		}
-	default:
-		return fmt.Errorf("disco mode must be one of %s, %s, %s, or %s",
-			DiscoModeConsulKV, DiscoModeEtcdKV, DiscoModeDNS, DiscoModeDNSSRV)
 	}
 
 	return nil
@@ -313,25 +285,6 @@ func (c *RqLite) RaftPort() int {
 		panic("RaftAddr port not valid")
 	}
 	return p
-}
-
-// DiscoConfigReader returns a ReadCloser providing access to the Disco config.
-// The caller must call close on the ReadCloser when finished with it. If no
-// config was supplied, it returns nil.
-func (c *RqLite) DiscoConfigReader() io.ReadCloser {
-	var rc io.ReadCloser
-	if c.DiscoConfig == "" {
-		return nil
-	}
-
-	// Open config file. If opening fails, assume string is the literal config.
-	cfgFile, err := os.Open(c.DiscoConfig)
-	if err != nil {
-		rc = io.NopCloser(bytes.NewReader([]byte(c.DiscoConfig)))
-	} else {
-		rc = cfgFile
-	}
-	return rc
 }
 
 // CheckFilePaths checks that all file paths in the config exist.

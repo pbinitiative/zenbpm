@@ -45,8 +45,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 
 	for _, function := range functions {
 		funcName := getFunctionName(function)
-		stripedName := funcName[strings.LastIndex(funcName, ".")+1:]
-		tests[stripedName] = function
+		strippedName := funcName[strings.LastIndex(funcName, ".")+1:]
+		tests[strippedName] = function
 	}
 	return tests
 }

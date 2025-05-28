@@ -7,7 +7,101 @@ package sql
 
 import (
 	"context"
+	"strings"
 )
+
+const getTokens = `-- name: GetTokens :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, state, created_at
+FROM
+    execution_token
+WHERE
+    key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error) {
+	query := getTokens
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionToken{}
+	for rows.Next() {
+		var i ExecutionToken
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTokensForProcessInstance = `-- name: GetTokensForProcessInstance :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, state, created_at
+FROM
+    execution_token
+WHERE (key & 4190208) >> 12 = ?1
+    AND process_instance_key = ?2
+`
+
+type GetTokensForProcessInstanceParams struct {
+	Partition          int64 `json:"partition"`
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+}
+
+func (q *Queries) GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getTokensForProcessInstance, arg.Partition, arg.ProcessInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionToken{}
+	for rows.Next() {
+		var i ExecutionToken
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const getTokensInStateForPartition = `-- name: GetTokensInStateForPartition :many
 SELECT

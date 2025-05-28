@@ -1,7 +1,6 @@
 package bpmn
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -9,14 +8,14 @@ import (
 )
 
 func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
 	// setup
 	cp := CallPath{}
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-events.bpmn")
-	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
+	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(h)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	// then
 	assert.Nil(t, err)
@@ -25,33 +24,35 @@ func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 }
 
 func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
 	cp := CallPath{}
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-broken.bpmn")
-	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
+	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(h)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Error(t, err)
 
 	// then
-	assert.NotNil(t, err)
-	assert.True(t, strings.HasPrefix(err.Error(), "missing link intermediate catch event with linkName="))
+	assert.ErrorContains(t, err, "failed to find link")
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.Equal(t, "", cp.CallPath)
+
+	instanceDb, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateFailed, instanceDb.State)
 }
 
 func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
-	t.Skip("TODO: re-enable once refactoring is done")
-
 	// setup
 	cp := CallPath{}
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-output-variables.bpmn")
-	bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
-	instance, err := bpmnEngine.CreateAndRunInstance(process.Key, nil)
+	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(h)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Nil(t, err)
 	assert.Equal(t, instance.State, runtime.ActivityStateCompleted)

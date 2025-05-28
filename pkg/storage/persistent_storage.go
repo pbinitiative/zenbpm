@@ -68,9 +68,6 @@ type ProcessInstanceStorageWriter interface {
 
 type TimerStorageReader interface {
 	FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error)
-
-	// TODO: in runtime.Timer there is a comment about not exposing OriginActivity outside of package. How do we want to satisfy this method if we do that?
-	FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error)
 }
 
 type TimerStorageWriter interface {
@@ -100,7 +97,7 @@ type MessageStorageReader interface {
 	// FindProcessInstanceMessageSubscription return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error)
 
-	FindActivityMessageSubscriptions(ctx context.Context, originActivityKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error)
+	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error)
 }
 
 type MessageStorageWriter interface {
@@ -111,6 +108,8 @@ type MessageStorageWriter interface {
 
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error)
+	// TODO: update this so it doesn't have to return all the tokens
+	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {

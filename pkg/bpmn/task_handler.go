@@ -6,7 +6,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-type taskMatcher func(element bpmn20.TaskElement) bool
+type taskMatcher func(element bpmn20.InternalTask) bool
 
 type taskHandlerType string
 
@@ -31,7 +31,7 @@ type newTaskHandlerCommand struct {
 
 type NewTaskHandlerCommand2 interface {
 	// Handler is the actual handler to be executed
-	Handler(func(job ActivatedJob))
+	Handler(func(job ActivatedJob)) *taskHandler
 }
 
 type NewTaskHandlerCommand1 interface {
@@ -58,6 +58,8 @@ type NewTaskHandlerCommand1 interface {
 func (engine *Engine) NewTaskHandler() NewTaskHandlerCommand1 {
 	cmd := newTaskHandlerCommand{
 		append: func(handler *taskHandler) {
+			engine.taskhandlersMu.Lock()
+			defer engine.taskhandlersMu.Unlock()
 			engine.taskHandlers = append(engine.taskHandlers, handler)
 		},
 	}
@@ -66,7 +68,7 @@ func (engine *Engine) NewTaskHandler() NewTaskHandlerCommand1 {
 
 // Id implements NewTaskHandlerCommand1
 func (thc newTaskHandlerCommand) Id(id string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element bpmn20.TaskElement) bool {
+	thc.matcher = func(element bpmn20.InternalTask) bool {
 		return element.GetId() == id
 	}
 	thc.handlerType = taskHandlerForId
@@ -75,7 +77,7 @@ func (thc newTaskHandlerCommand) Id(id string) NewTaskHandlerCommand2 {
 
 // Type implements NewTaskHandlerCommand1
 func (thc newTaskHandlerCommand) Type(taskType string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element bpmn20.TaskElement) bool {
+	thc.matcher = func(element bpmn20.InternalTask) bool {
 		return element.GetTaskType() == taskType
 	}
 	thc.handlerType = taskHandlerForType
@@ -83,23 +85,32 @@ func (thc newTaskHandlerCommand) Type(taskType string) NewTaskHandlerCommand2 {
 }
 
 // Handler implements NewTaskHandlerCommand2
-func (thc newTaskHandlerCommand) Handler(f func(job ActivatedJob)) {
+func (thc newTaskHandlerCommand) Handler(f func(job ActivatedJob)) *taskHandler {
 	th := taskHandler{
 		handlerType: thc.handlerType,
 		matches:     thc.matcher,
 		handler:     f,
 	}
 	thc.append(&th)
+	return &th
 }
 
-func (engine *Engine) clearTaskHandlers() {
-	engine.taskHandlers = []*taskHandler{}
+// RemoveHandler removes the handler created by Handler method
+func (engine *Engine) RemoveHandler(handler *taskHandler) {
+	engine.taskhandlersMu.Lock()
+	defer engine.taskhandlersMu.Unlock()
+	for i, hand := range engine.taskHandlers {
+		if hand == handler {
+			engine.taskHandlers = slices.Delete(engine.taskHandlers, i, i+1)
+			return
+		}
+	}
 }
 
 // Assignee implements NewTaskHandlerCommand2
 // TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element bpmn20.TaskElement) bool {
+	thc.matcher = func(element bpmn20.InternalTask) bool {
 		utl, isUserTask := element.(bpmn20.UserTaskElement)
 		if !isUserTask {
 			return false
@@ -113,7 +124,7 @@ func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand
 // CandidateGroups implements NewTaskHandlerCommand2
 // TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandlerCommand2 {
-	thc.matcher = func(element bpmn20.TaskElement) bool {
+	thc.matcher = func(element bpmn20.InternalTask) bool {
 		utl, isUserTask := element.(bpmn20.UserTaskElement)
 		if !isUserTask {
 			return false
@@ -129,7 +140,9 @@ func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandle
 	return thc
 }
 
-func (engine *Engine) findTaskHandler(element bpmn20.TaskElement) func(job ActivatedJob) {
+func (engine *Engine) findTaskHandler(element bpmn20.InternalTask) func(job ActivatedJob) {
+	engine.taskhandlersMu.RLock()
+	defer engine.taskhandlersMu.RUnlock()
 	searchOrder := []taskHandlerType{taskHandlerForId}
 	if element.GetType() == bpmn20.ElementTypeServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)

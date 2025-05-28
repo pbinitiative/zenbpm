@@ -10,64 +10,13 @@ import (
 	"database/sql"
 )
 
-const findActivityMessageSubscriptions = `-- name: FindActivityMessageSubscriptions :many
-SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
-FROM
-    message_subscription
-WHERE
-    origin_activity_key = ?1
-    AND state = ?2
-`
-
-type FindActivityMessageSubscriptionsParams struct {
-	OriginActivityKey int64 `json:"origin_activity_key"`
-	State             int   `json:"state"`
-}
-
-func (q *Queries) FindActivityMessageSubscriptions(ctx context.Context, arg FindActivityMessageSubscriptionsParams) ([]MessageSubscription, error) {
-	rows, err := q.db.QueryContext(ctx, findActivityMessageSubscriptions, arg.OriginActivityKey, arg.State)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageSubscription{}
-	for rows.Next() {
-		var i MessageSubscription
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessDefinitionKey,
-			&i.ProcessInstanceKey,
-			&i.Name,
-			&i.State,
-			&i.CreatedAt,
-			&i.CorrelationKey,
-			&i.OriginActivityKey,
-			&i.OriginActivityState,
-			&i.OriginActivityID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
     message_subscription
 WHERE
-    COALESCE(?1, "origin_activity_key") = "origin_activity_key"
+    COALESCE(?1, "execution_token") = "execution_token"
     AND COALESCE(?2, process_instance_key) = process_instance_key
     AND COALESCE(?3, element_id) = element_id
     AND (?4 IS NULL
@@ -79,7 +28,7 @@ WHERE
 `
 
 type FindMessageSubscriptionsParams struct {
-	OriginActivityKey  sql.NullInt64  `json:"origin_activity_key"`
+	ExecutionToken     sql.NullInt64  `json:"execution_token"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	ElementID          sql.NullString `json:"element_id"`
 	States             interface{}    `json:"states"`
@@ -87,7 +36,7 @@ type FindMessageSubscriptionsParams struct {
 
 func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error) {
 	rows, err := q.db.QueryContext(ctx, findMessageSubscriptions,
-		arg.OriginActivityKey,
+		arg.ExecutionToken,
 		arg.ProcessInstanceKey,
 		arg.ElementID,
 		arg.States,
@@ -109,9 +58,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 			&i.State,
 			&i.CreatedAt,
 			&i.CorrelationKey,
-			&i.OriginActivityKey,
-			&i.OriginActivityState,
-			&i.OriginActivityID,
+			&i.ExecutionToken,
 		); err != nil {
 			return nil, err
 		}
@@ -128,7 +75,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 
 const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, origin_activity_key, origin_activity_state, origin_activity_id
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
     message_subscription
 WHERE
@@ -160,9 +107,56 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 			&i.State,
 			&i.CreatedAt,
 			&i.CorrelationKey,
-			&i.OriginActivityKey,
-			&i.OriginActivityState,
-			&i.OriginActivityID,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findTokenMessageSubscriptions = `-- name: FindTokenMessageSubscriptions :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    execution_token = ?1
+    AND state = ?2
+`
+
+type FindTokenMessageSubscriptionsParams struct {
+	ExecutionToken int64 `json:"execution_token"`
+	State          int   `json:"state"`
+}
+
+func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error) {
+	rows, err := q.db.QueryContext(ctx, findTokenMessageSubscriptions, arg.ExecutionToken, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessageSubscription{}
+	for rows.Next() {
+		var i MessageSubscription
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.Name,
+			&i.State,
+			&i.CreatedAt,
+			&i.CorrelationKey,
+			&i.ExecutionToken,
 		); err != nil {
 			return nil, err
 		}
@@ -179,8 +173,8 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec
 INSERT INTO message_subscription(key, element_instance_key, element_id, process_definition_key, process_instance_key, name, state,
-    created_at, origin_activity_key, origin_activity_state, origin_activity_id, correlation_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, correlation_key, execution_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
@@ -195,10 +189,8 @@ type SaveMessageSubscriptionParams struct {
 	Name                 string `json:"name"`
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
-	OriginActivityKey    int64  `json:"origin_activity_key"`
-	OriginActivityState  int    `json:"origin_activity_state"`
-	OriginActivityID     string `json:"origin_activity_id"`
 	CorrelationKey       string `json:"correlation_key"`
+	ExecutionToken       int64  `json:"execution_token"`
 }
 
 func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error {
@@ -211,10 +203,8 @@ func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSu
 		arg.Name,
 		arg.State,
 		arg.CreatedAt,
-		arg.OriginActivityKey,
-		arg.OriginActivityState,
-		arg.OriginActivityID,
 		arg.CorrelationKey,
+		arg.ExecutionToken,
 	)
 	return err
 }

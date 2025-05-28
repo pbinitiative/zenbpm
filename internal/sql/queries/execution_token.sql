@@ -14,3 +14,19 @@ FROM
     execution_token
 WHERE (key & 4190208) >> 12 = @partition
     AND state = @state;
+
+-- name: GetTokensForProcessInstance :many
+SELECT
+    *
+FROM
+    execution_token
+WHERE (key & 4190208) >> 12 = @partition
+    AND process_instance_key = @process_instance_key;
+
+-- name: GetTokens :many
+SELECT
+    *
+FROM
+    execution_token
+WHERE
+    key IN (sqlc.slice('keys'));

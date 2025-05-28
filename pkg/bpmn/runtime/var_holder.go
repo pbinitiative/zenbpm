@@ -1,5 +1,7 @@
 package runtime
 
+import "maps"
+
 type VariableHolder struct {
 	parent    *VariableHolder
 	variables map[string]interface{}
@@ -13,9 +15,7 @@ func NewVariableHolder(parent *VariableHolder, variables map[string]interface{})
 		variables = make(map[string]interface{})
 	}
 	if parent != nil {
-		for k, v := range parent.variables {
-			variables[k] = v
-		}
+		maps.Copy(variables, parent.variables)
 	}
 	return VariableHolder{
 		parent:    parent,

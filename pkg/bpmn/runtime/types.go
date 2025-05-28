@@ -30,8 +30,6 @@ type ProcessInstance struct {
 	VariableHolder VariableHolder
 	CreatedAt      time.Time
 	State          ActivityState
-	CaughtEvents   []CatchEvent
-	Activities     []Activity
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
@@ -57,28 +55,6 @@ func (pi *ProcessInstance) GetCreatedAt() time.Time {
 // GetState returns one of [ Ready, Active, Completed, Failed ]
 func (pi *ProcessInstance) GetState() ActivityState {
 	return pi.State
-}
-
-func (pi *ProcessInstance) AppendActivity(activity Activity) {
-	pi.Activities = append(pi.Activities, activity)
-}
-
-func (pi *ProcessInstance) FindActiveActivityByElementId(id string) Activity {
-	for _, a := range pi.Activities {
-		if a.Element().GetId() == id && a.GetState() == ActivityStateActive {
-			return a
-		}
-	}
-	return nil
-}
-
-func (pi *ProcessInstance) FindActivity(key int64) Activity {
-	for _, a := range pi.Activities {
-		if a.GetKey() == key {
-			return a
-		}
-	}
-	return nil
 }
 
 // ActivityState as per BPMN 2.0 spec, section 13.2.2 Activity, page 428, State diagram:
@@ -149,8 +125,7 @@ type MessageSubscription struct {
 	Name                 string
 	MessageState         ActivityState
 	CreatedAt            time.Time
-	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
-	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	Token                ExecutionToken
 }
 
 func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
@@ -172,10 +147,6 @@ func (m MessageSubscription) GetKey() int64 {
 
 func (m MessageSubscription) GetState() ActivityState {
 	return m.MessageState
-}
-
-func (m MessageSubscription) Element() bpmn20.FlowNode {
-	return m.BaseElement
 }
 
 //go:generate go tool stringer -type=TimerState
@@ -200,7 +171,7 @@ type Timer struct {
 	CreatedAt            time.Time
 	DueAt                time.Time
 	Duration             time.Duration
-	OriginActivity       Activity        // Deprecated: FIXME, should not be public, nor serialized
+	Token                ExecutionToken
 	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
 
@@ -250,7 +221,7 @@ type Job struct {
 	Key                int64
 	State              ActivityState
 	CreatedAt          time.Time
-	BaseElement        bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
+	Token              ExecutionToken
 }
 
 func (j Job) GetKey() int64 {
@@ -261,10 +232,6 @@ func (j Job) GetState() ActivityState {
 	return j.State
 }
 
-func (j Job) Element() bpmn20.FlowNode {
-	return j.BaseElement
-}
-
 //go:generate go tool stringer -type=TokenState
 type TokenState int
 
@@ -273,6 +240,7 @@ const (
 	TokenStateRunning
 	TokenStateWaiting
 	TokenStateCompleted
+	TokenStateCanceled
 	TokenStateFailed
 )
 

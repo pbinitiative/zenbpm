@@ -146,8 +146,11 @@ func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRe
 
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
 	key := *getKeyFromString(&request.Body.ProcessInstanceKey)
-	s.engine.PublishEventForInstance(key, request.Body.MessageName, *request.Body.Variables)
-	s.engine.RunOrContinueInstance(key)
+	err := s.engine.PublishEventForInstance(ctx, key, request.Body.MessageName, *request.Body.Variables)
+	if err != nil {
+		// TODO:
+		panic(err)
+	}
 	return public.PublishMessage201Response{}, nil
 }
 
@@ -225,7 +228,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.engine.CreateAndRunInstance(*getKeyFromString(&request.Body.ProcessDefinitionKey), variables)
+	process, err := s.engine.CreateInstanceByKey(ctx, *getKeyFromString(&request.Body.ProcessDefinitionKey), variables)
 	if err != nil {
 		return nil, err
 	}

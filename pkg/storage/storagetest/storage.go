@@ -124,7 +124,7 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 	}
 }
 
-func getProcessInstance(r int64, d runtime.ProcessDefinition, activities ...runtime.Activity) runtime.ProcessInstance {
+func getProcessInstance(r int64, d runtime.ProcessDefinition, jobs ...runtime.Job) runtime.ProcessInstance {
 	return runtime.ProcessInstance{
 		Definition: &d,
 		Key:        r,
@@ -134,22 +134,10 @@ func getProcessInstance(r int64, d runtime.ProcessDefinition, activities ...runt
 		}),
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 		State:     runtime.ActivityStateActive,
-		CaughtEvents: []runtime.CatchEvent{
-			{
-				Name:       "TestEvent",
-				CaughtAt:   time.Now().Truncate(time.Millisecond),
-				IsConsumed: false,
-				Variables: map[string]interface{}{
-					"v1": float64(123),
-					"v2": "v2",
-				},
-			},
-		},
-		Activities: activities,
 	}
 }
 
-func getJob(key, piKey int64) runtime.Job {
+func getJob(key, piKey int64, token runtime.ExecutionToken) runtime.Job {
 	return runtime.Job{
 		ElementId:          fmt.Sprintf("job-%d", key),
 		ElementInstanceKey: key + 200,
@@ -157,7 +145,7 @@ func getJob(key, piKey int64) runtime.Job {
 		Key:                key,
 		State:              runtime.ActivityStateActive,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
-		// BaseElement:        ,
+		Token:              token,
 	}
 }
 
@@ -166,8 +154,15 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
+		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key, token))
 
 		err := s.SaveProcessInstance(ctx, inst)
 		assert.NoError(t, err)
@@ -179,8 +174,15 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key))
+		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key, token))
 
 		err := s.SaveProcessInstance(ctx, inst)
 		assert.NoError(t, err)
@@ -200,7 +202,7 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 	}
 }
 
-func getTimer(key, pdKey, piKey int64, originActivity runtime.Activity) runtime.Timer {
+func getTimer(key, pdKey, piKey int64, originActivity runtime.Job) runtime.Timer {
 	return runtime.Timer{
 		ElementId:            fmt.Sprintf("timer-%d", key),
 		Key:                  key,
@@ -209,9 +211,14 @@ func getTimer(key, pdKey, piKey int64, originActivity runtime.Activity) runtime.
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            time.Now().Truncate(time.Millisecond),
 		DueAt:                time.Now().Add(1 * time.Hour).Truncate(time.Millisecond),
-		Duration:             1 * time.Hour,
-		OriginActivity:       originActivity,
-		// BaseElement:          nil,
+		Token: runtime.ExecutionToken{
+			Key:                key,
+			ElementInstanceKey: key,
+			ElementId:          "",
+			ProcessInstanceKey: piKey,
+			State:              runtime.TokenStateWaiting,
+		},
+		Duration: 1 * time.Hour,
 	}
 }
 
@@ -220,8 +227,15 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		job := getJob(r, st.processInstance.Key)
+		job := getJob(r, st.processInstance.Key, token)
 		err := s.SaveJob(ctx, job)
 		assert.NoError(t, err)
 
@@ -237,8 +251,15 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		job := getJob(r, st.processInstance.Key)
+		job := getJob(r, st.processInstance.Key, token)
 		err := s.SaveJob(ctx, job)
 		assert.NoError(t, err)
 
@@ -250,10 +271,6 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		timers, err := s.FindTimersByState(ctx, st.processInstance.Key, runtime.TimerStateCreated)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
-
-		timers, err = s.FindActivityTimers(ctx, job.Key, runtime.TimerStateCreated)
-		assert.NoError(t, err)
-		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 	}
 }
 
@@ -262,8 +279,15 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, t *testing.T) f
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		job := getJob(r, st.processInstance.Key)
+		job := getJob(r, st.processInstance.Key, token)
 
 		err := s.SaveJob(ctx, job)
 		assert.Nil(t, err)
@@ -275,8 +299,15 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		job := getJob(r, st.processInstance.Key)
+		job := getJob(r, st.processInstance.Key, token)
 		err := s.SaveJob(ctx, job)
 		assert.NoError(t, err)
 
@@ -290,7 +321,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 	}
 }
 
-func getMessage(r int64, piKey int64, pdKey int64, activity runtime.Activity) runtime.MessageSubscription {
+func getMessage(r int64, piKey int64, pdKey int64, token runtime.ExecutionToken) runtime.MessageSubscription {
 	return runtime.MessageSubscription{
 		ElementId:            fmt.Sprintf("message-%d", r),
 		ElementInstanceKey:   r + 400,
@@ -299,8 +330,7 @@ func getMessage(r int64, piKey int64, pdKey int64, activity runtime.Activity) ru
 		Name:                 fmt.Sprintf("message-%d", r),
 		MessageState:         runtime.ActivityStateActive,
 		CreatedAt:            time.Now().Truncate(time.Millisecond),
-		OriginActivity:       activity,
-		BaseElement:          nil,
+		Token:                token,
 	}
 }
 
@@ -309,12 +339,25 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 		ctx := context.TODO()
 
 		r := s.GenerateId()
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		job := getJob(r, st.processInstance.Key)
+		job := getJob(r, st.processInstance.Key, token)
 		err := s.SaveJob(ctx, job)
 		assert.NoError(t, err)
 
-		message := getMessage(r, st.processDefinition.Key, st.processInstance.Key, job)
+		message := getMessage(r, st.processDefinition.Key, st.processInstance.Key, runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "messageElementId",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		})
 
 		err = s.SaveMessageSubscription(ctx, message)
 		assert.NoError(t, err)
@@ -327,19 +370,24 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 
 		r := s.GenerateId()
 
-		job := getJob(r, st.processInstance.Key)
-		err := s.SaveJob(ctx, job)
-		assert.NoError(t, err)
+		token := runtime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "47b623dd-54ab-407e-86dc-847b62d22318",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+		s.SaveToken(ctx, token)
 
-		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.Key, job)
-		err = s.SaveMessageSubscription(ctx, messageSub)
+		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.Key, token)
+		err := s.SaveMessageSubscription(ctx, messageSub)
 		assert.NoError(t, err)
 
 		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(ctx, st.processInstance.Key, runtime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 
-		messageSubs, err = s.FindActivityMessageSubscriptions(ctx, job.Key, runtime.ActivityStateActive)
+		messageSubs, err = s.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 	}

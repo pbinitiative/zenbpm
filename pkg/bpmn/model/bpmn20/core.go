@@ -1,6 +1,7 @@
 package bpmn20
 
 import (
+	"fmt"
 	"html"
 	"strings"
 )
@@ -83,6 +84,15 @@ type TDefinitions struct {
 	baseElements       map[string]BaseElement
 }
 
+func (d *TDefinitions) GetMessageByRef(ref string) (TMessage, error) {
+	for _, mes := range d.Messages {
+		if mes.Id == ref {
+			return mes, nil
+		}
+	}
+	return TMessage{}, fmt.Errorf("failed to find message among process messages")
+}
+
 type TMessage struct {
 	Id   string `xml:"id,attr"`
 	Name string `xml:"name,attr"`
@@ -96,6 +106,7 @@ type TCallableElement struct {
 type FlowElement interface {
 	BaseElement
 	GetName() string
+	// TODO: do we need this if we have custom types for everything and type switch?
 	GetType() ElementType
 }
 

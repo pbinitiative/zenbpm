@@ -15,15 +15,16 @@ type Activity interface {
 	GetStartQuantity() int
 }
 
-type TaskElement interface {
-	FlowNode
+type InternalTask interface {
+	GetId() string
+	GetType() ElementType
 	GetTaskType() string
 	GetInputMapping() []extensions.TIoMapping
 	GetOutputMapping() []extensions.TIoMapping
 }
 
 type UserTaskElement interface {
-	TaskElement
+	InternalTask
 	GetAssignmentAssignee() string
 	GetAssignmentCandidateGroups() []string
 }

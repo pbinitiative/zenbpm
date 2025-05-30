@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf.Server.Addr, conf)
+	svr := rest.NewServer(zenNode, conf)
 	svr.Start()
 
 	// Start ZenBpm GRPC API

@@ -3,12 +3,17 @@ package grpc
 import (
 	"context"
 	"errors"
-	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"net"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"go.opentelemetry.io/otel"
 
 	"github.com/pbinitiative/zenbpm/internal/grpc/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
+	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 type Server struct {
@@ -20,7 +25,12 @@ type Server struct {
 
 // NewServer returns a new instance of ZenBpm GRPC server
 func NewServer(node *cluster.ZenNode, addr string) *Server {
-	grpcServer := grpc.NewServer()
+	textMapPropagator := otelpropagation.TraceContext{}
+	so := opentelemetry.ServerOption(opentelemetry.Options{
+		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
+		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
+
+	grpcServer := grpc.NewServer(so)
 	server := &Server{
 		node:   node,
 		addr:   addr,

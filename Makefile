@@ -121,6 +121,17 @@ run2: ## Start 2nd node
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
 	go run cmd/zenbpm/*.go
 
+.PHONY: start-jaeger
+start-jaeger: ## Start jaeger. UI listening on port 16686
+	@docker run -d --rm --name jaeger \
+	-p 4318:4318 \
+  -p 16686:16686 \
+  jaegertracing/jaeger:2.6.0
+
+.PHONY: stop-jaeger
+stop-jaeger:
+	@docker stop jaeger
+
 .PHONY: test
 test: ## Run tests
 	LOG_LEVEL=INFO go test ./...

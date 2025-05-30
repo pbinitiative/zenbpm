@@ -25,7 +25,7 @@ const (
 type Config struct {
 	Server     Server     `yaml:"server" json:"server"`         // configuration of the public REST server
 	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
-	Name       string     `yaml:"name" json:"name"`             // used for OTEL as an application identifier
+	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
 }
 
@@ -66,6 +66,13 @@ type GrpcServer struct {
 type Server struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
+}
+
+type Tracing struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled" env:"TRACING_ENABLED" env-default:"false"`
+	Name            string   `yaml:"name" json:"name" env:"TRACING_APP_NAME" env-default:"ZenBPM"` // application identifier
+	TransferHeaders []string `yaml:"transferHeaders" json:"transferHeaders" env:"TRACING_TRANSFER_HEADERS"`
+	Endpoint        string   `yaml:"endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 }
 
 // validate checks the configuration for internal consistency, and activates

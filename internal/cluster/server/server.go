@@ -8,7 +8,11 @@ import (
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"go.opentelemetry.io/otel"
+	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
+	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 // Server provides information about the node and cluster.
@@ -39,10 +43,15 @@ var _ proto.ZenServiceServer = &Server{}
 
 // Open opens the Server.
 func (s *Server) Open() error {
-	log.Info("zen cluster service listening on %s", s.addr)
-	srv := grpc.NewServer()
+	textMapPropagator := otelpropagation.TraceContext{}
+	so := opentelemetry.ServerOption(opentelemetry.Options{
+		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
+		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
+
+	srv := grpc.NewServer(so)
 	proto.RegisterZenServiceServer(srv, s)
 	go srv.Serve(s.ln)
+	log.Info("zen cluster service listening on %s", s.addr)
 	return nil
 }
 

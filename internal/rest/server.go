@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
@@ -24,6 +25,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -37,20 +39,22 @@ type Server struct {
 // TODO: do we use non strict interface to implement std lib interface directly and use http.Request to reconstruct calls for proxying?
 var _ public.StrictServerInterface = (*Server)(nil)
 
-func NewServer(node *cluster.ZenNode, addr string) *Server {
+func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	r := chi.NewRouter()
 	s := Server{
 		node: node,
-		addr: addr,
+		addr: conf.Server.Addr,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           r,
-			Addr:              addr,
+			Addr:              conf.Server.Addr,
 		},
 	}
 	r.Use(middleware.Cors())
+	r.Use(middleware.Opentelemetry(conf))
 	r.Route("/v1", func(appContext chi.Router) {
-		h := public.HandlerFromMux(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
+		// mount generated handler from open-api
+		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -59,7 +63,9 @@ func NewServer(node *cluster.ZenNode, addr string) *Server {
 					Type:    "ERROR",
 				})
 			},
-		}), appContext)
+		}))
+		// register prometheus endpoint
+		appContext.Get("/metrics", promhttp.Handler().ServeHTTP)
 		appContext.Mount("/", h)
 	})
 	return &s

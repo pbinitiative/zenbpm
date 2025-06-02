@@ -125,8 +125,8 @@ run2: ## Start 2nd node
 start-jaeger: ## Start jaeger. UI listening on port 16686
 	@docker run -d --rm --name jaeger \
 	-p 4318:4318 \
-  -p 16686:16686 \
-  jaegertracing/jaeger:2.6.0
+	-p 16686:16686 \
+	jaegertracing/jaeger:2.6.0
 
 .PHONY: stop-jaeger
 stop-jaeger:

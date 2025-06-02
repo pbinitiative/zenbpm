@@ -193,7 +193,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			continue
 		}
 
-		updatedTokens, err := engine.processActivity(ctx, batch, instance, activity, currentToken)
+		updatedTokens, err := engine.processFlowNode(ctx, batch, instance, activity, currentToken)
 		if err != nil {
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
@@ -259,10 +259,10 @@ func (engine *Engine) getExecutionTokenActivity(
 	return activity, nil
 }
 
-// processActivity handles the activation of the activity.
+// processFlowNode handles the activation of the activity.
 // If the activity is waiting for external input it returns token updated in waiting state.
 // If the activity is completed returns an array of tokens that need to be processed by the engine in next stage.
-func (engine *Engine) processActivity(
+func (engine *Engine) processFlowNode(
 	ctx context.Context,
 	batch storage.Batch,
 	instance *runtime.ProcessInstance,
@@ -475,7 +475,9 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 
 func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runtime.ProcessInstance, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
+	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
+		// TODO: handle condition expressions
 		if i == 0 {
 			resTokens[0].ElementId = flow.GetTargetRef().GetId()
 			resTokens[0].ElementInstanceKey = engine.generateKey()

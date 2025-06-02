@@ -35,5 +35,8 @@ type ExpressionEvaluationError struct {
 }
 
 func (e *ExpressionEvaluationError) Error() string {
-	return e.Msg + "\nerror: " + e.Err.Error()
+	if e.Err != nil {
+		return e.Msg + "\nerror: " + e.Err.Error()
+	}
+	return e.Msg
 }

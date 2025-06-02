@@ -115,20 +115,6 @@ func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance run
 
 var _ storage.TimerStorageReader = &Storage{}
 
-func (mem *Storage) FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
-	res := make([]runtime.Timer, 0)
-	for _, timer := range mem.Timers {
-		if timer.OriginActivity.GetKey() != activityKey {
-			continue
-		}
-		if timer.TimerState != state {
-			continue
-		}
-		res = append(res, timer)
-	}
-	return res, nil
-}
-
 func (mem *Storage) FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
 	res := make([]runtime.Timer, 0)
 	for _, timer := range mem.Timers {
@@ -210,16 +196,13 @@ func (mem *Storage) SaveJob(ctx context.Context, job runtime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
-func (mem *Storage) FindActivityMessageSubscriptions(ctx context.Context, originActivityKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
+// FindTokenMessageSubscriptions implements storage.Storage.
+func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
 	res := make([]runtime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.OriginActivity.GetKey() != originActivityKey {
-			continue
+		if sub.Token.Key == tokenKey {
+			res = append(res, sub)
 		}
-		if sub.GetState() != state {
-			continue
-		}
-		res = append(res, sub)
 	}
 	return res, nil
 }
@@ -246,6 +229,17 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription ru
 }
 
 var _ storage.TokenStorageReader = &Storage{}
+
+// GetTokensForProcessInstance implements storage.TokenStorageReader.
+func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	res := make([]runtime.ExecutionToken, 0)
+	for _, tok := range mem.ExecutionTokens {
+		if tok.ProcessInstanceKey == processInstanceKey {
+			res = append(res, tok)
+		}
+	}
+	return res, nil
+}
 
 // GetActiveTokensForPartition implements storage.Storage.
 func (mem *Storage) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error) {

@@ -12,61 +12,69 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (engine *Engine) handleServiceTask(ctx context.Context, batch storage.Batch, process *runtime.ProcessDefinition, instance *runtime.ProcessInstance, element bpmn20.TaskElement) (*runtime.Job, error) {
-	job, err := findOrCreateJob(ctx, engine, batch, element, instance, engine.generateKey)
+func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+	job := runtime.Job{
+		ElementId:          currentToken.ElementId,
+		ElementInstanceKey: currentToken.ElementInstanceKey,
+		ProcessInstanceKey: currentToken.ProcessInstanceKey,
+		Key:                engine.generateKey(),
+		State:              runtime.ActivityStateActive,
+		CreatedAt:          time.Now(),
+	}
+	err := batch.SaveJob(ctx, job)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find or create job: %w", err)
+		job.State = runtime.ActivityStateFailed
+		return job.State, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	//FIXME: logic of using the internal handler needs to be discussed whether it will be kept
-	// If kept needs to work in parallel with external job completion
 	handler := engine.findTaskHandler(element)
-	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-	if handler != nil {
-		if job.State != runtime.ActivityStateCompleting {
-			job.State = runtime.ActivityStateActive
-			activatedJob := &activatedJob{
-				processInstanceInfo:      instance,
-				failHandler:              func(reason string) { job.State = runtime.ActivityStateFailed },
-				completeHandler:          func() { job.State = runtime.ActivityStateCompleting },
-				key:                      engine.generateKey(),
-				processInstanceKey:       instance.Key,
-				bpmnProcessId:            process.BpmnProcessId,
-				processDefinitionVersion: process.Version,
-				processDefinitionKey:     process.Key,
-				elementId:                job.ElementId,
-				createdAt:                job.CreatedAt,
-				variableHolder:           variableHolder,
-			}
-			if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
-				job.State = runtime.ActivityStateFailed
-				instance.State = runtime.ActivityStateFailed
-				batch.SaveJob(ctx, *job)
-				return job, nil
-			}
-			handler(activatedJob)
-		}
+	if handler == nil {
+		return job.State, nil
 	}
-
-	if job.State == runtime.ActivityStateCompleting {
-		err = propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping())
-		if err != nil {
+	// if we have the handler handle the task directly
+	// TODO: pull this out into function that will be called by API as well
+	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+	if job.State != runtime.ActivityStateCompleting {
+		job.State = runtime.ActivityStateActive
+		activatedJob := &activatedJob{
+			processInstanceInfo:      instance,
+			failHandler:              func(reason string) { job.State = runtime.ActivityStateFailed },
+			completeHandler:          func() { job.State = runtime.ActivityStateCompleting },
+			key:                      engine.generateKey(),
+			processInstanceKey:       instance.Key,
+			bpmnProcessId:            instance.Definition.BpmnProcessId,
+			processDefinitionVersion: instance.Definition.Version,
+			processDefinitionKey:     instance.Definition.Key,
+			elementId:                job.ElementId,
+			createdAt:                job.CreatedAt,
+			variableHolder:           variableHolder,
+		}
+		if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
 			job.State = runtime.ActivityStateFailed
 			instance.State = runtime.ActivityStateFailed
-		} else {
-			job.State = runtime.ActivityStateCompleted
+			err := batch.SaveJob(ctx, job)
+			if err != nil {
+				engine.logger.Error("failed to save job", "job", job.Key, "err", err)
+				return runtime.ActivityStateFailed, fmt.Errorf("failed to save job: %w", err)
+			}
+			return runtime.ActivityStateFailed, nil
+		}
+		handler(activatedJob)
+		if job.State == runtime.ActivityStateCompleting {
+			err = propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping())
+			if err != nil {
+				instance.State = runtime.ActivityStateFailed
+				job.State = runtime.ActivityStateFailed
+			} else {
+				job.State = runtime.ActivityStateCompleted
+			}
+		}
+		err = batch.SaveJob(ctx, job)
+		if err != nil {
+			return runtime.ActivityStateFailed, fmt.Errorf("failed to add save job into batch: %w", err)
 		}
 	}
-	err = batch.SaveJob(ctx, *job)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add save job into batch: %w", err)
-	}
-	err = batch.Flush(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to close batch for handle service task: %w", err)
-	}
-
-	return job, nil
+	return job.State, nil
 }
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
@@ -81,18 +89,31 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
-	element := job.BaseElement.(bpmn20.TaskElement)
-	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
+	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+	if task == nil {
+		return errors.Join(newEngineErrorf("failed to task with id: %s", job.Token.ElementId), err)
+	}
+
+	if err := propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
 		job.State = runtime.ActivityStateFailed
 		instance.State = runtime.ActivityStateFailed
 	}
 	// TODO: variable mapping needs to be implemented
 	job.State = runtime.ActivityStateCompleting
-	engine.persistence.SaveJob(ctx, job)
-	engine.persistence.SaveProcessInstance(ctx, instance)
+	batch := engine.persistence.NewBatch()
+	batch.SaveJob(ctx, job)
+	batch.SaveProcessInstance(ctx, instance)
 
-	engine.RunOrContinueInstance(job.ProcessInstanceKey)
+	currentToken := job.Token
+	currentToken.State = runtime.TokenStateRunning
+	batch.SaveToken(ctx, currentToken)
+	err = batch.Flush(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+	}
 
+	// TODO: make sure that process instance is not running and if so modify currently running instance
+	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{currentToken})
 	return nil
 }
 
@@ -110,10 +131,15 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.Key, err)
 		}
 		variableHolder := processInstance.VariableHolder
-		if err := evaluateLocalVariables(&variableHolder, job.BaseElement.(bpmn20.TaskElement).GetInputMapping()); err != nil {
+
+		task := processInstance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+		if err := evaluateLocalVariables(&variableHolder, task.GetInputMapping()); err != nil {
 			job.State = runtime.ActivityStateFailed
-			engine.persistence.SaveJob(ctx, job)
-			return nil, err
+			perr := engine.persistence.SaveJob(ctx, job)
+			if perr != nil {
+				return nil, errors.Join(fmt.Errorf("failed to save failed job"), err, perr)
+			}
+			return nil, fmt.Errorf("failed to evaluate variables: %w", err)
 		}
 		aj := &activatedJob{
 			processInstanceInfo: &processInstance,
@@ -126,30 +152,4 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 		activatedJobs = append(activatedJobs, aj)
 	}
 	return activatedJobs, nil
-}
-
-func findOrCreateJob(ctx context.Context, engine *Engine, jobWriter storage.JobStorageWriter, element bpmn20.TaskElement, instance *runtime.ProcessInstance, generateKey func() int64) (*runtime.Job, error) {
-	be := element.(bpmn20.FlowNode)
-	job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, be.GetId())
-
-	if err == nil {
-		return &job, nil
-	}
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, fmt.Errorf("failed to find job by element id: %s for process instance: %d: %w", be.GetId(), instance.Key, err)
-	}
-
-	elementInstanceKey := generateKey()
-	job = runtime.Job{
-		ElementId:          be.GetId(),
-		ElementInstanceKey: elementInstanceKey,
-		ProcessInstanceKey: instance.GetInstanceKey(),
-		Key:                elementInstanceKey + 1,
-		State:              runtime.ActivityStateActive,
-		CreatedAt:          time.Now(),
-		BaseElement:        be,
-	}
-	jobWriter.SaveJob(ctx, job)
-
-	return &job, nil
 }

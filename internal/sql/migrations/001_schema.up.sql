@@ -32,9 +32,7 @@ CREATE TABLE IF NOT EXISTS message_subscription(
     state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     created_at INTEGER NOT NULL, -- unix millis of when the instance of the message subscription was created
     correlation_key TEXT NOT NULL, -- correlation key used to correlate message in the engine
-    origin_activity_key INTEGER NOT NULL, -- key of the activity that invoked the message subscription
-    origin_activity_state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
-    origin_activity_id TEXT NOT NULL, -- string id of the activity from xml definition
+    execution_token INTEGER NOT NULL, -- key of the execution_token that created message_subscription
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key), -- reference to process instance
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- reference to process definition
 );
@@ -48,6 +46,7 @@ CREATE TABLE IF NOT EXISTS timer(
     state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     created_at INTEGER NOT NULL, -- unix millis of when the instance of the message subscription was created
     due_at INTEGER NOT NULL, -- unix millis of when timer should fire
+    execution_token INTEGER NOT NULL, -- key of the execution_token that created timer
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key), -- reference to process instance
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- reference to process definition
 );
@@ -61,6 +60,7 @@ CREATE TABLE IF NOT EXISTS job(
     state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     created_at INTEGER NOT NULL, -- unix millis of when the instance of the job was created
     variables TEXT NOT NULL, -- serialized json variables of the process instance
+    execution_token INTEGER NOT NULL, -- key of the execution_token that created job
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 

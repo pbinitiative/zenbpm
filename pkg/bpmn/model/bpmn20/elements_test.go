@@ -5,8 +5,8 @@ import "testing"
 // tests to get quick compiler warnings, when interface is not correctly implemented
 
 func Test_all_interfaces_implemented(t *testing.T) {
-	var _ TaskElement = &TServiceTask{}
-	var _ TaskElement = &TUserTask{}
+	var _ InternalTask = &TServiceTask{}
+	var _ InternalTask = &TUserTask{}
 
 	var _ BaseElement = &TStartEvent{}
 	var _ BaseElement = &TEndEvent{}

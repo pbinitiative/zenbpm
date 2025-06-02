@@ -1,6 +1,6 @@
 -- name: SaveTimer :exec
-INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state;

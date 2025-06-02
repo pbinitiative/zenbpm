@@ -531,6 +531,14 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.
 	if err != nil {
 		return res, fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
 	}
+	tokens, err := rq.queries.GetTokens(ctx, []int64{job.ExecutionToken})
+	if err != nil {
+		return res, fmt.Errorf("failed to find job token %d: %w", job.ExecutionToken, err)
+	}
+	if len(tokens) != 1 {
+		return res, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
+	}
+	token := tokens[0]
 	res = runtime.Job{
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -538,7 +546,13 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.
 		Key:                job.Key,
 		State:              runtime.ActivityState(job.State),
 		CreatedAt:          time.UnixMilli(job.CreatedAt),
-		// BaseElement:        nil,
+		Token: runtime.ExecutionToken{
+			Key:                token.Key,
+			ElementInstanceKey: token.ElementInstanceKey,
+			ElementId:          token.ElementID,
+			ProcessInstanceKey: token.ProcessInstanceKey,
+			State:              runtime.TokenState(token.State),
+		},
 	}
 	return res, nil
 }
@@ -552,6 +566,7 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		return nil, fmt.Errorf("failed to find pending process instance jobs for process instance key %d: %w", processInstanceKey, err)
 	}
 	res := make([]runtime.Job, len(dbJobs))
+	tokensToLoad := make([]int64, len(dbJobs))
 	for i, job := range dbJobs {
 		res[i] = runtime.Job{
 			ElementId:          job.ElementID,
@@ -560,7 +575,28 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 			Key:                job.Key,
 			State:              runtime.ActivityState(job.State),
 			CreatedAt:          time.UnixMilli(job.CreatedAt),
-			// BaseElement:        nil,
+			Token: runtime.ExecutionToken{
+				Key: job.ExecutionToken,
+			},
+		}
+		tokensToLoad[i] = job.ExecutionToken
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+			}
 		}
 	}
 	return res, nil
@@ -579,9 +615,10 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		// Type:               job.Type, // TODO: add type to runtime.Job
-		State:     int(job.GetState()),
-		CreatedAt: job.CreatedAt.UnixMilli(),
-		Variables: "{}", // TODO: add variables to job
+		State:          int(job.GetState()),
+		CreatedAt:      job.CreatedAt.UnixMilli(),
+		Variables:      "{}", // TODO: add variables to job
+		ExecutionToken: job.Token.Key,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
@@ -591,15 +628,16 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
 
 var _ storage.MessageStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindActivityMessageSubscriptions(ctx context.Context, originActivityKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
-	dbMessages, err := rq.queries.FindActivityMessageSubscriptions(ctx, sql.FindActivityMessageSubscriptionsParams{
-		OriginActivityKey: originActivityKey,
-		State:             int(state),
+func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
+	dbMessages, err := rq.queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
+		ExecutionToken: tokenKey,
+		State:          int(state),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to find origin activity message subscriptions for activity %d: %w", originActivityKey, err)
+		return nil, fmt.Errorf("failed to find token message subscriptions for token %d: %w", tokenKey, err)
 	}
 	res := make([]runtime.MessageSubscription, len(dbMessages))
+	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
 		res[i] = runtime.MessageSubscription{
 			ElementId:            mes.ElementID,
@@ -609,10 +647,31 @@ func (rq *RqLiteDB) FindActivityMessageSubscriptions(ctx context.Context, origin
 			Name:                 mes.Name,
 			MessageState:         runtime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			// OriginActivity:     mes.OriginActivityID,
-			// BaseElement:        nil,
+			Token: runtime.ExecutionToken{
+				Key: mes.ExecutionToken,
+			},
+		}
+		tokensToLoad[i] = mes.ExecutionToken
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+			}
 		}
 	}
+
 	return res, nil
 }
 
@@ -625,6 +684,7 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 		return nil, fmt.Errorf("failed to find message subscriptions for process %d: %w", processInstanceKey, err)
 	}
 	res := make([]runtime.MessageSubscription, len(dbMessages))
+	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
 		res[i] = runtime.MessageSubscription{
 			ElementId:            mes.ElementID,
@@ -634,8 +694,25 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 			Name:                 mes.Name,
 			MessageState:         runtime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			// OriginActivity:     mes.OriginActivityID,
-			// BaseElement:        nil,
+		}
+		tokensToLoad[i] = mes.ExecutionToken
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+			}
 		}
 	}
 	return res, nil
@@ -657,10 +734,8 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 		Name:                 subscription.Name,
 		State:                int(subscription.GetState()),
 		CreatedAt:            subscription.CreatedAt.UnixMilli(),
-		OriginActivityKey:    subscription.OriginActivity.GetKey(),
-		OriginActivityState:  int(subscription.OriginActivity.GetState()),
+		ExecutionToken:       subscription.Token.Key,
 		CorrelationKey:       "", // TODO: add message correlation keys into message subscription
-		// OriginActivityID:     subscription.OriginActivity.Id(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save message subscription %d: %w", subscription.GetKey(), err)
@@ -678,6 +753,28 @@ func GetActiveTokensForPartition(ctx context.Context, db *sql.Queries, partition
 	tokens, err := db.GetTokensInStateForPartition(ctx, sql.GetTokensInStateForPartitionParams{
 		Partition: int64(partitionId),
 		State:     int64(runtime.TokenStateRunning),
+	})
+	res := make([]runtime.ExecutionToken, len(tokens))
+	for i, tok := range tokens {
+		res[i] = runtime.ExecutionToken{
+			Key:                tok.Key,
+			ElementInstanceKey: tok.ElementInstanceKey,
+			ElementId:          tok.ElementID,
+			ProcessInstanceKey: tok.ProcessInstanceKey,
+			State:              runtime.TokenState(tok.State),
+		}
+	}
+	return res, err
+}
+
+func (rq *RqLiteDB) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	return GetTokensForProcessInstance(ctx, rq.queries, rq.partition, processInstanceKey)
+}
+
+func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+	tokens, err := db.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
+		Partition:          int64(partitionId),
+		ProcessInstanceKey: processInstanceKey,
 	})
 	res := make([]runtime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {

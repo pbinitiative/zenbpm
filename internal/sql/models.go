@@ -22,6 +22,7 @@ type Job struct {
 	State              int    `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 	Variables          string `json:"variables"`
+	ExecutionToken     int64  `json:"execution_token"`
 }
 
 type MessageSubscription struct {
@@ -34,9 +35,7 @@ type MessageSubscription struct {
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	CorrelationKey       string `json:"correlation_key"`
-	OriginActivityKey    int64  `json:"origin_activity_key"`
-	OriginActivityState  int    `json:"origin_activity_state"`
-	OriginActivityID     string `json:"origin_activity_id"`
+	ExecutionToken       int64  `json:"execution_token"`
 }
 
 type ProcessDefinition struct {
@@ -65,4 +64,5 @@ type Timer struct {
 	State                int    `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	DueAt                int64  `json:"due_at"`
+	ExecutionToken       int64  `json:"execution_token"`
 }

@@ -368,12 +368,18 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	// }
 
 	tokens, err := rq.queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
-	var token sql.ExecutionToken
+	var parentToken runtime.ExecutionToken
 	if err != nil {
 		return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
 	}
 	if len(tokens) == 1 {
-		token = tokens[0]
+		parentToken = runtime.ExecutionToken{
+			Key:                tokens[0].Key,
+			ElementInstanceKey: tokens[0].ElementInstanceKey,
+			ElementId:          tokens[0].ElementID,
+			ProcessInstanceKey: tokens[0].ProcessInstanceKey,
+			State:              runtime.TokenState(tokens[0].State),
+		}
 	}
 
 	res = runtime.ProcessInstance{
@@ -384,13 +390,7 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 		State:          runtime.ActivityState(dbInstance.State),
 		// CaughtEvents:   []runtime.CatchEvent{}, //TODO: do something
 		// Activities: make([]runtime.Activity, len(dbActivities)),
-		ParentProcessExecutionToken: ptr.To(runtime.ExecutionToken{
-			Key:                token.Key,
-			ElementInstanceKey: token.ElementInstanceKey,
-			ElementId:          token.ElementID,
-			ProcessInstanceKey: token.ProcessInstanceKey,
-			State:              runtime.TokenState(token.State),
-		}),
+		ParentProcessExecutionToken: ptr.To(parentToken),
 	}
 
 	return res, nil

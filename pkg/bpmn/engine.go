@@ -315,11 +315,7 @@ func (engine *Engine) processFlowNode(
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
-	case *bpmn20.TServiceTask:
-		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
-	case *bpmn20.TUserTask:
-		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
-	case *bpmn20.TCallActivity:
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
 
 	case *bpmn20.TIntermediateCatchEvent:

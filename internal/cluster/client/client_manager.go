@@ -10,9 +10,13 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"go.opentelemetry.io/otel"
+	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 type clientData struct {
@@ -94,6 +98,13 @@ func (c *ClientManager) For(targetAddr string) (proto.ZenServiceClient, error) {
 
 func (c *ClientManager) newClient(nodeAddr string) (proto.ZenServiceClient, error) {
 	dialer := network.NewZenBpmClusterDialer()
+
+	textMapPropagator := otelpropagation.TraceContext{}
+	otelOpts := opentelemetry.DialOption(opentelemetry.Options{
+		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
+		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator},
+	})
+
 	grpcClient, err := grpc.NewClient(nodeAddr,
 		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 			return dialer.DialGRPC(s)
@@ -104,6 +115,7 @@ func (c *ClientManager) newClient(nodeAddr string) (proto.ZenServiceClient, erro
 			PermitWithoutStream: true,
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		otelOpts,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new GRPC client: %w", err)

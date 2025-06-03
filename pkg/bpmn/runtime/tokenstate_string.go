@@ -10,14 +10,15 @@ func _() {
 	var x [1]struct{}
 	_ = x[TokenStateRunning-1]
 	_ = x[TokenStateWaiting-2]
-	_ = x[TokenStateCompleted-3]
-	_ = x[TokenStateCanceled-4]
-	_ = x[TokenStateFailed-5]
+	_ = x[TokenStateActive-3]
+	_ = x[TokenStateCompleted-4]
+	_ = x[TokenStateCanceled-5]
+	_ = x[TokenStateFailed-6]
 }
 
-const _TokenState_name = "TokenStateRunningTokenStateWaitingTokenStateCompletedTokenStateCanceledTokenStateFailed"
+const _TokenState_name = "TokenStateRunningTokenStateWaitingTokenStateActiveTokenStateCompletedTokenStateCanceledTokenStateFailed"
 
-var _TokenState_index = [...]uint8{0, 17, 34, 53, 71, 87}
+var _TokenState_index = [...]uint8{0, 17, 34, 50, 69, 87, 103}
 
 func (i TokenState) String() string {
 	i -= 1

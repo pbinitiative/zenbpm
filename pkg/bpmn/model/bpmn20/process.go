@@ -18,6 +18,7 @@ type TFlowElementsContainer struct {
 	InclusiveGateway       []TInclusiveGateway       `xml:"inclusiveGateway"`
 	IntermediateCatchEvent []TIntermediateCatchEvent `xml:"intermediateCatchEvent"`
 	IntermediateThrowEvent []TIntermediateThrowEvent `xml:"intermediateThrowEvent"`
+	CallActivity           []TCallActivity           `xml:"callActivity"`
 }
 
 type TProcess struct {
@@ -120,6 +121,11 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 		}
 	}
 	for _, e := range p.IntermediateThrowEvent {
+		if e.GetId() == id {
+			return &e
+		}
+	}
+	for _, e := range p.CallActivity {
 		if e.GetId() == id {
 			return &e
 		}

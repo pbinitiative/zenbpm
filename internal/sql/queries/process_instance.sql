@@ -1,8 +1,8 @@
 -- name: SaveProcessInstance :exec
 INSERT INTO process_instance (
-    key, process_definition_key, created_at, state, variables
+    key, process_definition_key, created_at, state, variables,  parent_process_execution_token
 ) VALUES (
-    ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?
 )
  ON CONFLICT(key) DO UPDATE SET 
     state = excluded.state,

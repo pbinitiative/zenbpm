@@ -34,16 +34,17 @@ type TActivity struct {
 	CompletionQuantity int  `xml:"completionQuantity,attr"`
 	IsForCompensation  bool `xml:"isForCompensation,attr"`
 	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
-}
-type TTask struct {
-	TActivity
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
-func (task TTask) GetInputMapping() []extensions.TIoMapping  { return task.Input }
-func (task TTask) GetOutputMapping() []extensions.TIoMapping { return task.Output }
+func (task TActivity) GetInputMapping() []extensions.TIoMapping  { return task.Input }
+func (task TActivity) GetOutputMapping() []extensions.TIoMapping { return task.Output }
+
+type TTask struct {
+	TActivity
+}
 
 // TExternallyProcessedTask is to be processed by external Job workers. Is not part of original BPMN Implementation
 // BPMN 2.0 Unorthodox.
@@ -95,4 +96,10 @@ func (userTask TUserTask) GetAssignmentAssignee() string {
 }
 func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 	return userTask.AssignmentDefinition.GetCandidateGroups()
+}
+
+type TCallActivity struct {
+	TActivity
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }

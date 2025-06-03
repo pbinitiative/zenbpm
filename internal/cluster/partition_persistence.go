@@ -15,6 +15,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
@@ -366,6 +367,15 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	// 	return res, fmt.Errorf("failed to find activities for process instance key (%d): %w", dbInstance.Key, err)
 	// }
 
+	tokens, err := rq.queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
+	var token sql.ExecutionToken
+	if err != nil {
+		return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
+	}
+	if len(tokens) == 1 {
+		token = tokens[0]
+	}
+
 	res = runtime.ProcessInstance{
 		// Definition:     &runtime.ProcessDefinition{}, //TODO: load from cache
 		Key:            dbInstance.Key,
@@ -374,6 +384,13 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 		State:          runtime.ActivityState(dbInstance.State),
 		// CaughtEvents:   []runtime.CatchEvent{}, //TODO: do something
 		// Activities: make([]runtime.Activity, len(dbActivities)),
+		ParentProcessExecutionToken: ptr.To(runtime.ExecutionToken{
+			Key:                token.Key,
+			ElementInstanceKey: token.ElementInstanceKey,
+			ElementId:          token.ElementID,
+			ProcessInstanceKey: token.ProcessInstanceKey,
+			State:              runtime.TokenState(token.State),
+		}),
 	}
 
 	return res, nil

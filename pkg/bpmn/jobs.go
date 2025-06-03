@@ -20,6 +20,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		Key:                engine.generateKey(),
 		State:              runtime.ActivityStateActive,
 		CreatedAt:          time.Now(),
+		Token:              currentToken,
 	}
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
@@ -70,6 +71,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			}
 		}
 		err = batch.SaveJob(ctx, job)
+		err = batch.Flush(ctx)
 		if err != nil {
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to add save job into batch: %w", err)
 		}
@@ -99,13 +101,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		instance.State = runtime.ActivityStateFailed
 	}
 	// TODO: variable mapping needs to be implemented
-	job.State = runtime.ActivityStateCompleting
+	job.State = runtime.ActivityStateCompleted
 	batch := engine.persistence.NewBatch()
 	batch.SaveJob(ctx, job)
 	batch.SaveProcessInstance(ctx, instance)
 
 	currentToken := job.Token
-	currentToken.State = runtime.TokenStateRunning
+	currentToken.State = runtime.TokenStateActive
 	batch.SaveToken(ctx, currentToken)
 	err = batch.Flush(ctx)
 	if err != nil {

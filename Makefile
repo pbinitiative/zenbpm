@@ -155,3 +155,12 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 .PHONY: build
 build: generate ## Build the project
 	go build -o zenbpm cmd/zenbpm/main.go
+
+##@ Documentation
+
+.PHONY: start-docusaurus
+start-docusaurus:  ## Start documentation preview
+	cd docs && \
+	npm install && \
+	npm start
+

@@ -1,0 +1,170 @@
+import ApiOperation from "@theme/ApiOperation";
+
+# Getting Started with ZenBPM
+
+This tutorial will guide you through the basics of ZenBPM, helping you set up your first BPMN process and execute it.
+
+## What You'll Learn
+
+- How to install and run ZenBPM
+- How to create a simple BPMN process
+- How to deploy the process to ZenBPM
+- How to start a process instance
+- How to monitor the process execution
+
+## Prerequisites
+
+- Basic understanding of what BPMN is
+- Docker installed on your machine
+
+## Step 1: Install and Run ZenBPM
+
+The easiest way to get started with ZenBPM is to use Docker.
+
+1. Pull the ZenBPM Docker image:
+
+:::note docker image is not published yet
+```bash
+docker pull zenbpm/zenbpm:latest
+```
+Instead, create a docker image from a Dockerfile
+```bash
+git clone git@github.com:pbinitiative/zenbpm.git
+cd zenbpm
+docker build -t zenbpm .
+```
+:::
+
+2. Run the ZenBPM container:
+
+:::note docker image is not published yet
+```bash
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm/zenbpm:latest
+```
+Instead, run the newly built image
+```bash
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm
+```
+:::
+
+This will start ZenBPM with:
+- REST API available at localhost:8080
+- gRPC API available at localhost:9090
+
+## Step 2: Create a Simple BPMN Process
+
+For this tutorial, we'll create a simple "Hello World" process with a start event, a message throw event, and an end event.
+
+1. Create a file named `hello-world.bpmn` with the following content:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_0tl6ily" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0">
+    <bpmn:process id="Process_0iehjhs" isExecutable="true">
+        <bpmn:startEvent id="StartEvent_1" name="Start Process">
+            <bpmn:outgoing>Flow_1l01xu9</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_1l01xu9" sourceRef="StartEvent_1" targetRef="Event_1" />
+        <bpmn:endEvent id="Event_End" name="End Process">
+            <bpmn:incoming>Flow_02ezsew</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_02ezsew" sourceRef="Event_1" targetRef="Event_End" />
+        <bpmn:intermediateThrowEvent id="Event_1" name="Throw Event">
+            <bpmn:incoming>Flow_1l01xu9</bpmn:incoming>
+            <bpmn:outgoing>Flow_02ezsew</bpmn:outgoing>
+            <bpmn:messageEventDefinition id="MessageEventDefinition_02xi10c" messageRef="Message_36nekaq" />
+        </bpmn:intermediateThrowEvent>
+    </bpmn:process>
+    <bpmn:message id="Message_36nekaq" name="Message_1" />
+    <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+        <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_0iehjhs">
+            <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+                <dc:Bounds x="182" y="102" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="167" y="145" width="67" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_0b5zljm_di" bpmnElement="Event_End">
+                <dc:Bounds x="342" y="102" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="329" y="145" width="63" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_0xpjar9_di" bpmnElement="Event_1">
+                <dc:Bounds x="262" y="102" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="251" y="145" width="62" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge id="Flow_1l01xu9_di" bpmnElement="Flow_1l01xu9">
+                <di:waypoint x="218" y="120" />
+                <di:waypoint x="262" y="120" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_02ezsew_di" bpmnElement="Flow_02ezsew">
+                <di:waypoint x="298" y="120" />
+                <di:waypoint x="342" y="120" />
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+```
+
+This BPMN file defines a simple process with:
+- A start event
+- A Message intermediate throw event
+- An end event
+
+## Step 3: Deploy the Process to ZenBPM
+
+Now that we have our BPMN process, let's deploy it to ZenBPM:
+
+<ApiOperation id="api" pointer="#/paths/~1process-definitions/post" example={true} />
+
+You should receive a response with details about the deployed process definition, including a `processDefinitionKey` that uniquely identifies it.
+
+## Step 4: Start a Process Instance
+
+With the process definition deployed, we can now start a process instance:
+
+<ApiOperation id="api" pointer="#/paths/~1process-instances/post" example={true} />
+
+This will start a new instance of our "Hello World" process. The response will include a `processInstanceKey` that uniquely identifies this instance.
+
+## Step 5: Monitor the Process Execution
+
+Let's check the status of our process instance:
+
+<ApiOperation id="api" pointer="#/paths/~1process-instances~1{processInstanceKey}/get" example={true} />
+
+Replace `{processInstanceKey}` with the actual key from the previous step.
+
+You should see details about the process instance, including its current state. Since our process is very simple, it might have already completed by the time you check.
+
+## Step 6: View Process Activities
+
+:::warning
+this feature is not implemented yet
+:::
+To see what activities were executed in our process:
+
+<ApiOperation id="api" pointer="#/paths/~1process-instances~1{processInstanceKey}~1activities/get" example={true} />
+
+This will show you all the activities that were executed as part of the process instance, including the message throw event.
+
+## Conclusion
+
+Congratulations! You've successfully:
+- Set up ZenBPM
+- Created a simple BPMN process
+- Deployed the process to ZenBPM
+- Started a process instance
+- Monitored the process execution
+
+## Next Steps
+
+[//]: # (TODO: Link documents after creation)
+Now that you've completed this basic tutorial, you might want to:
+- Learn how to [create more complex BPMN processes](/future-feature) <sub>*`TODO`*</sub>
+- Explore [user tasks and forms](/future-feature) <sub>*`TODO`*</sub>
+- Understand [message events and correlation](/future-feature) <sub>*`TODO`*</sub>
+- Set up [process monitoring and observability](/future-feature) <sub>*`TODO`*</sub>

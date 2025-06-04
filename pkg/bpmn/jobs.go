@@ -107,7 +107,11 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	batch.SaveProcessInstance(ctx, instance)
 
 	currentToken := job.Token
-	currentToken.State = runtime.TokenStateActive
+
+	tokens, err := engine.handleSimpleTransition(ctx, &instance, task, currentToken)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+	}
 	batch.SaveToken(ctx, currentToken)
 	err = batch.Flush(ctx)
 	if err != nil {
@@ -115,7 +119,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	// TODO: make sure that process instance is not running and if so modify currently running instance
-	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{currentToken})
+	engine.runProcessInstance(ctx, &instance, tokens)
 	return nil
 }
 

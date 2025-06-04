@@ -10,12 +10,14 @@ const (
 
 type Activity interface {
 	FlowNode
-	GetCompletionQuantity() int
-	GetIsForCompensation() bool
-	GetStartQuantity() int
+	// TODO: Do we need this?
+	// GetCompletionQuantity() int
+	// GetIsForCompensation() bool
+	// GetStartQuantity() int
 }
 
 type InternalTask interface {
+	Activity
 	GetId() string
 	GetType() ElementType
 	GetTaskType() string

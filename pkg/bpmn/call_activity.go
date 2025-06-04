@@ -64,7 +64,7 @@ func propagateVariablesBackToParent(instance runtime.ProcessInstance, calledProc
 	return nil
 }
 
-func (engine *Engine) handleCallActivityChildProcessCompletion(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, parentInstance runtime.ProcessInstance, token runtime.ExecutionToken) error {
+func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, parentInstance runtime.ProcessInstance, token runtime.ExecutionToken) error {
 
 	element := parentInstance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	// map the variables back to the parent
@@ -79,13 +79,21 @@ func (engine *Engine) handleCallActivityChildProcessCompletion(ctx context.Conte
 		return err
 	}
 	// unblock token of the parent
-	instance.ParentProcessExecutionToken.State = runtime.TokenStateActive
-	batch.SaveToken(ctx, *instance.ParentProcessExecutionToken)
+	// instance.ParentProcessExecutionToken.State = runtime.TokenStateActive
 
-	return nil
-}
+	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	}
 
-func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
-	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{token})
+	element = ppi.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
+
+	tokens, err := engine.handleSimpleTransition(ctx, &ppi, element, *instance.ParentProcessExecutionToken)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to handle simple transition for call activity: %s", instance.ParentProcessExecutionToken.ElementId), err)
+	}
+
+	engine.runProcessInstance(ctx, &ppi, tokens)
+
 	return nil
 }

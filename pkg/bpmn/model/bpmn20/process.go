@@ -55,7 +55,7 @@ func (p *TProcess) GetInternalTaskById(id string) InternalTask {
 		switch def := e.EventDefinition.(type) {
 		case TMessageEventDefinition:
 			if def.Id == id {
-				return def
+				return &def
 			}
 		default:
 			panic(fmt.Sprintf("unexpected type in EventDefinition %T", def))

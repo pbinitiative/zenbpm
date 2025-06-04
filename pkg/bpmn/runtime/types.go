@@ -240,7 +240,6 @@ const (
 	_ TokenState = iota
 	TokenStateRunning
 	TokenStateWaiting
-	TokenStateActive
 	TokenStateCompleted
 	TokenStateCanceled
 	TokenStateFailed

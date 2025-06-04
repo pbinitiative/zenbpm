@@ -1,0 +1,9 @@
+@host=http://localhost:8080/v1
+### GetProcesses
+GET {{host}}/process-definitions
+Accept: application/json
+
+###
+
+### Metrics
+GET {{host}}/metrics

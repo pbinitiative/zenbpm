@@ -10,7 +10,13 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/exporter"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -24,6 +30,9 @@ type Engine struct {
 	exporters      []exporter.EventExporter
 	persistence    storage.Storage
 	logger         hclog.Logger
+	tracer         trace.Tracer
+	meter          metric.Meter
+	metrics        *otelPkg.EngineMetrics
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -33,16 +42,26 @@ type EngineOption = func(*Engine)
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
+	logger := hclog.Default()
+	meter := otel.GetMeterProvider().Meter("bpmn-engine")
+	tracer := otel.GetTracerProvider().Tracer("bpmn-engine")
+	metrics, err := otelPkg.NewMetrics(meter)
+	if err != nil {
+		logger.Error("Failed to initialize metrics for the engine", "err", err)
+	}
 	engine := Engine{
 		taskhandlersMu: &sync.RWMutex{},
 		taskHandlers:   []*taskHandler{},
 		exporters:      []exporter.EventExporter{},
 		persistence:    nil,
-		logger:         hclog.Default(),
+		logger:         logger,
 		runningInstances: &RunningInstancesCache{
 			processInstances: map[int64]*runtime.ProcessInstance{},
 			mu:               sync.RWMutex{},
 		},
+		tracer:  tracer,
+		meter:   meter,
+		metrics: metrics,
 	}
 
 	for _, option := range options {
@@ -138,6 +157,9 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 		engine.runningInstances.removeInstance(&processInstance)
 		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
+	engine.metrics.ProcessesStartedTotal.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
+		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
+	)))
 	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
 	if err != nil {
 		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
@@ -176,6 +198,18 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.Key), err)
 	}
+	ctx, instanceSpan := engine.tracer.Start(ctx, instance.Definition.BpmnProcessId, trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
+	))
+	defer func() {
+		if err != nil {
+			instanceSpan.RecordError(err)
+			instanceSpan.SetStatus(codes.Error, err.Error())
+		}
+		instanceSpan.End()
+	}()
 
 	var parentProcessInstance *runtime.ProcessInstance
 	if instance.ParentProcessExecutionToken != nil {
@@ -197,14 +231,21 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if !(currentToken.State == runtime.TokenStateRunning) {
 			continue
 		}
+		ctx, tokenSpan := engine.tracer.Start(ctx, currentToken.ElementId, trace.WithAttributes(
+			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
+			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
+		))
 
-		activity, err := engine.getExecutionTokenActivity(ctx, batch, instance, currentToken)
+		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {
 			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
 			currentToken.State = runtime.TokenStateFailed
 			batch.SaveToken(ctx, currentToken)
 			// TODO: create incident here?
+			tokenSpan.RecordError(err)
+			tokenSpan.SetStatus(codes.Error, err.Error())
+			tokenSpan.End()
 			continue
 		}
 
@@ -214,10 +255,15 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			runErr = errors.Join(runErr, err)
 			currentToken.State = runtime.TokenStateFailed
 			// TODO: create incident here?
-			err := batch.SaveToken(ctx, currentToken)
-			if err != nil {
-				engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, err)
+			saveErr := batch.SaveToken(ctx, currentToken)
+			if saveErr != nil {
+				tokenSpan.RecordError(saveErr)
+				tokenSpan.SetStatus(codes.Error, saveErr.Error())
+				engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
 			}
+			tokenSpan.RecordError(err)
+			tokenSpan.SetStatus(codes.Error, err.Error())
+			tokenSpan.End()
 			continue
 		}
 
@@ -238,13 +284,20 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		err = batch.Flush(ctx)
 		if err != nil {
+			tokenSpan.RecordError(err)
+			tokenSpan.SetStatus(codes.Error, err.Error())
+			tokenSpan.End()
 			return errors.Join(newEngineErrorf("failed to close batch for token %d", currentToken.Key), err)
 		}
+		tokenSpan.End()
 	}
 
 	if instance.State == runtime.ActivityStateCompleted || instance.State == runtime.ActivityStateFailed {
 		// TODO need to send failed State
 		engine.exportEndProcessEvent(*process, *instance)
+		engine.metrics.ProcessesEndedTotal.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
+			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+		)))
 	}
 	// if we encounter any error we switch the instance to failed state
 	if runErr != nil {
@@ -262,7 +315,6 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 func (engine *Engine) getExecutionTokenActivity(
 	ctx context.Context,
-	batch storage.Batch,
 	instance *runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
@@ -287,11 +339,25 @@ func (engine *Engine) processFlowNode(
 	instance *runtime.ProcessInstance,
 	activity *elementActivity,
 	currentToken runtime.ExecutionToken,
-) ([]runtime.ExecutionToken, error) {
+) (tokens []runtime.ExecutionToken, err error) {
+	ctx, activitySpan := engine.tracer.Start(ctx, activity.element.GetId(), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeElementKey, activity.GetKey()),
+		attribute.String(otelPkg.AttributeElementName, activity.Element().GetName()),
+		attribute.String(otelPkg.AttributeElementType, string(activity.Element().GetType())),
+	))
+	defer func() {
+		if err != nil {
+			activitySpan.RecordError(err)
+			activitySpan.SetStatus(codes.Error, err.Error())
+		}
+		activitySpan.End()
+	}()
+
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
 		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
 		if err != nil {
+			activitySpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil

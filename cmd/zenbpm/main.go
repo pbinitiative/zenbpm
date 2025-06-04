@@ -10,6 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/grpc"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/rest"
 )
@@ -22,8 +23,13 @@ func main() {
 
 	conf := config.InitConfig()
 
-	// TODO: initialize cluster client
+	openTelemetry, err := otel.SetupOtel(conf.Tracing)
+	if err != nil {
+		log.Error("Failed to set up OTEL: %s", err)
+		os.Exit(1)
+	}
 
+	// TODO: initialize cluster client
 	zenNode, err := cluster.StartZenNode(appContext, conf)
 	if err != nil {
 		log.Error("Failed to start Zen node: %s", err)
@@ -31,7 +37,7 @@ func main() {
 	}
 
 	// Start the public API
-	svr := rest.NewServer(zenNode, conf.Server.Addr)
+	svr := rest.NewServer(zenNode, conf)
 	svr.Start()
 
 	// Start ZenBpm GRPC API
@@ -47,6 +53,7 @@ func main() {
 	svr.Stop(appContext)
 	grpcSrv.Stop()
 	err = zenNode.Stop()
+	openTelemetry.Stop(appContext)
 	if err != nil {
 		log.Error("failed to properly stop zen node: %s", err)
 	}

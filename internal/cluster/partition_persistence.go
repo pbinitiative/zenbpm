@@ -372,6 +372,9 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	if err != nil {
 		return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
 	}
+	if len(tokens) > 1 {
+		return res, fmt.Errorf("more than one token found for parent process instance key (%d): %w", dbInstance.Key, err)
+	}
 	if len(tokens) == 1 {
 		parentToken = runtime.ExecutionToken{
 			Key:                tokens[0].Key,

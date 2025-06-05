@@ -11,7 +11,6 @@ import (
 )
 
 func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
-	// 1. create a new process instance while mapping input variables or find already running
 	processId := element.CalledElement.ProcessId
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
@@ -48,9 +47,6 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 	} else {
 		return runtime.ActivityStateFailed, errors.Join(newEngineErrorf("unknown error when receiving result from call activity: %s", processId), err)
 	}
-
-	// 2. create a new execution token
-	// 3. start the process instance
 }
 
 func propagateVariablesBackToParent(instance runtime.ProcessInstance, calledProcessInstance runtime.ProcessInstance, element *bpmn20.TCallActivity) error {
@@ -79,8 +75,6 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 		return err
 	}
 	// unblock token of the parent
-	// instance.ParentProcessExecutionToken.State = runtime.TokenStateActive
-
 	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)

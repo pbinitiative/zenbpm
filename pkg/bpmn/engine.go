@@ -9,8 +9,8 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -228,7 +228,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		batch := engine.persistence.NewBatch()
 		currentToken := runningExecutionTokens[0]
 		runningExecutionTokens = runningExecutionTokens[1:]
-		if !(currentToken.State == runtime.TokenStateRunning) {
+		if currentToken.State != runtime.TokenStateRunning {
 			continue
 		}
 		ctx, tokenSpan := engine.tracer.Start(ctx, currentToken.ElementId, trace.WithAttributes(

@@ -37,7 +37,7 @@ func TestRqLiteStorage(t *testing.T) {
 	stmts := make([]*proto.Statement, len(migrations))
 	for i, mig := range migrations {
 		stmts[i] = &proto.Statement{
-			Sql: mig,
+			Sql: mig.SQL,
 		}
 	}
 	_, err = partition.WaitForLeader(5 * time.Second)

@@ -31,7 +31,7 @@ func TestFkdUpClient(t *testing.T) {
 
 	tStore := &StoreSvc{}
 	// srv := server.New(ln, tStore)
-	srv := server.New(cLn, tStore)
+	srv := server.New(cLn, tStore, nil)
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)

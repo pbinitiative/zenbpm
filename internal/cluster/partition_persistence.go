@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
@@ -159,7 +162,6 @@ func (rq *RqLiteDB) generateStatement(sql string, parameters ...interface{}) *pr
 }
 
 func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
-
 	stmts := rq.generateStatement(query, parameters...)
 
 	qr := &proto.QueryRequest{
@@ -360,20 +362,34 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 		return res, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 
-	// TODO: load all activities from DB
-	// dbActivities, err := rq.queries.FindActivityInstances(ctx, dbInstance.Key)
-	// if err != nil {
-	// 	return res, fmt.Errorf("failed to find activities for process instance key (%d): %w", dbInstance.Key, err)
-	// }
+	definition, err := rq.FindProcessDefinitionByKey(ctx, dbInstance.ProcessDefinitionKey)
+	if err != nil {
+		return res, fmt.Errorf("failed to find process definition for process instance: %w", err)
+	}
 
+	var definitions bpmn20.TDefinitions
+	decoded, err := bpmn.DecodeAndDecompress(definition.BpmnData)
+	if err != nil {
+		return res, fmt.Errorf("failed to decode and decompress xml data: %w", err)
+	}
+	err = xml.Unmarshal(decoded, &definitions)
+	if err != nil {
+		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
 	res = runtime.ProcessInstance{
-		// Definition:     &runtime.ProcessDefinition{}, //TODO: load from cache
+		Definition: &runtime.ProcessDefinition{
+			BpmnProcessId:    definition.BpmnProcessId,
+			Version:          definition.Version,
+			Key:              definition.Key,
+			Definitions:      bpmn20.TDefinitions{},
+			BpmnData:         definition.BpmnData,
+			BpmnResourceName: "",
+			BpmnChecksum:     definition.BpmnChecksum,
+		}, //TODO: load from cache
 		Key:            dbInstance.Key,
 		VariableHolder: runtime.NewVariableHolder(nil, variables),
 		CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 		State:          runtime.ActivityState(dbInstance.State),
-		// CaughtEvents:   []runtime.CatchEvent{}, //TODO: do something
-		// Activities: make([]runtime.Activity, len(dbActivities)),
 	}
 
 	return res, nil

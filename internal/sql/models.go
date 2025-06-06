@@ -38,6 +38,11 @@ type MessageSubscription struct {
 	ExecutionToken       int64  `json:"execution_token"`
 }
 
+type Migration struct {
+	Name  string `json:"name"`
+	RanAt int64  `json:"ran_at"`
+}
+
 type ProcessDefinition struct {
 	Key              int64  `json:"key"`
 	Version          int32  `json:"version"`

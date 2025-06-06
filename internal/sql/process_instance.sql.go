@@ -11,11 +11,15 @@ import (
 )
 
 const findProcessInstances = `-- name: FindProcessInstances :many
-SELECT "key", process_definition_key, created_at, state, variables 
-FROM process_instance
-WHERE COALESCE(?1, "key") = "key"
+SELECT
+    "key", process_definition_key, created_at, state, variables
+FROM
+    process_instance
+WHERE
+    COALESCE(?1, "key") = "key"
     AND COALESCE(?2, process_definition_key) = process_definition_key
-ORDER BY created_at DESC
+ORDER BY
+    created_at DESC
 `
 
 type FindProcessInstancesParams struct {
@@ -52,10 +56,60 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 	return items, nil
 }
 
+const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
+SELECT
+    "key", process_definition_key, created_at, state, variables
+FROM
+    process_instance
+WHERE
+    process_definition_key = ?1
+ORDER BY
+    created_at DESC
+LIMIT ?3 OFFSET ?2
+`
+
+type FindProcessInstancesPageParams struct {
+	ProcessDefinitionKey int64 `json:"process_definition_key"`
+	Offst                int64 `json:"offst"`
+	Size                 int64 `json:"size"`
+}
+
+func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage, arg.ProcessDefinitionKey, arg.Offst, arg.Size)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessInstance{}
+	for rows.Next() {
+		var i ProcessInstance
+		if err := rows.Scan(
+			&i.Key,
+			&i.ProcessDefinitionKey,
+			&i.CreatedAt,
+			&i.State,
+			&i.Variables,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProcessInstance = `-- name: GetProcessInstance :one
-SELECT "key", process_definition_key, created_at, state, variables 
-FROM process_instance
-WHERE key = ?1
+SELECT
+    "key", process_definition_key, created_at, state, variables
+FROM
+    process_instance
+WHERE
+    key = ?1
 `
 
 func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error) {
@@ -72,14 +126,12 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
-INSERT INTO process_instance (
-    key, process_definition_key, created_at, state, variables
-) VALUES (
-    ?, ?, ?, ?, ?
-)
- ON CONFLICT(key) DO UPDATE SET 
-    state = excluded.state,
-    variables = excluded.variables
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables)
+    VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (key)
+    DO UPDATE SET
+        state = excluded.state,
+        variables = excluded.variables
 `
 
 type SaveProcessInstanceParams struct {

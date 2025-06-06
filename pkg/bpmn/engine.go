@@ -104,15 +104,15 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 
 // CreateInstanceByKey creates a new instance for a process with given process definition key
 // Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceByKey(ctx context.Context, processKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processKey)
+func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
+	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
 	if err != nil {
-		return nil, errors.Join(newEngineErrorf("no process with key=%d was found (prior loaded into the engine)", processKey), err)
+		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err)
 	}
 
 	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
 	if err != nil {
-		return instance, errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", processKey), err)
+		return instance, errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", definitionKey), err)
 	}
 
 	return instance, nil

@@ -220,6 +220,8 @@ type Job struct {
 	ProcessInstanceKey int64
 	Key                int64
 	State              ActivityState
+	Type               string
+	Variables          map[string]any
 	CreatedAt          time.Time
 	Token              ExecutionToken
 }

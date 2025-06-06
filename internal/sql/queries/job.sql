@@ -56,6 +56,14 @@ FROM
 WHERE
     key = @key;
 
+-- name: FindProcessInstanceJobs :many
+SELECT
+    *
+FROM
+    job
+WHERE
+    process_instance_key = @process_instance_key;
+
 -- name: FindProcessInstanceJobsInState :many
 SELECT
     *

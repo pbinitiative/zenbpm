@@ -53,10 +53,10 @@ func main() {
 	svr.Stop(appContext)
 	grpcSrv.Stop()
 	err = zenNode.Stop()
-	openTelemetry.Stop(appContext)
 	if err != nil {
 		log.Error("failed to properly stop zen node: %s", err)
 	}
+	openTelemetry.Stop(appContext)
 }
 
 func handleSigterm(appStop chan os.Signal, ctx context.Context) {

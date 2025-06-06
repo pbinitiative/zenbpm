@@ -10,7 +10,7 @@ import (
 const XmlTestString = `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process" name="aName" isExecutable="true"></bpmn:process></xml>`
 
 func Test_compress_and_encode_produces_ascii_chars(t *testing.T) {
-	str := compressAndEncode([]byte(XmlTestString))
+	str := CompressAndEncode([]byte(XmlTestString))
 	encodedBytes := []byte(str)
 	for i := 0; i < len(encodedBytes); i++ {
 		b := encodedBytes[i]
@@ -23,8 +23,8 @@ func Test_compress_and_encode_produces_ascii_chars(t *testing.T) {
 }
 
 func Test_compress_and_decompress_roundtrip(t *testing.T) {
-	encoded := compressAndEncode([]byte(XmlTestString))
-	decoded, err := decodeAndDecompress(encoded)
+	encoded := CompressAndEncode([]byte(XmlTestString))
+	decoded, err := DecodeAndDecompress(encoded)
 
 	assert.Nil(t, err)
 	assert.Equal(t, []byte(XmlTestString), decoded)

@@ -1,5 +1,10 @@
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS migration(
+    name TEXT NOT NULL,
+		ran_at INTEGER NOT NULL 
+);
+
 -- table that holds information about all the process instances
 CREATE TABLE IF NOT EXISTS process_instance(
     key INTEGER PRIMARY KEY, -- int64 snowflake id where node is partition id which handles the process instance

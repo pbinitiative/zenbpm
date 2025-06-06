@@ -35,6 +35,14 @@ const (
 	ZenService_PartitionBackup_FullMethodName           = "/cluster.ZenService/PartitionBackup"
 	ZenService_PartitionRestore_FullMethodName          = "/cluster.ZenService/PartitionRestore"
 	ZenService_NodeCommand_FullMethodName               = "/cluster.ZenService/NodeCommand"
+	ZenService_DeployDefinition_FullMethodName          = "/cluster.ZenService/DeployDefinition"
+	ZenService_ActivateJob_FullMethodName               = "/cluster.ZenService/ActivateJob"
+	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
+	ZenService_PublishMessage_FullMethodName            = "/cluster.ZenService/PublishMessage"
+	ZenService_CreateInstance_FullMethodName            = "/cluster.ZenService/CreateInstance"
+	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
+	ZenService_GetProcessInstance_FullMethodName        = "/cluster.ZenService/GetProcessInstance"
+	ZenService_GetProcessInstanceJobs_FullMethodName    = "/cluster.ZenService/GetProcessInstanceJobs"
 )
 
 // ZenServiceClient is the client API for ZenService service.
@@ -68,6 +76,15 @@ type ZenServiceClient interface {
 	PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (*PartitionBackupResponse, error)
 	PartitionRestore(ctx context.Context, in *PartitionRestoreRequest, opts ...grpc.CallOption) (*PartitionRestoreResponse, error)
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
+	// Deploys definition into partitions that receiving node is leader of
+	DeployDefinition(ctx context.Context, in *DeployDefinitionRequest, opts ...grpc.CallOption) (*DeployDefinitionResponse, error)
+	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
+	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
+	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
+	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
+	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
+	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
+	GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error)
 }
 
 type zenServiceClient struct {
@@ -228,6 +245,95 @@ func (c *zenServiceClient) NodeCommand(ctx context.Context, in *proto.Command, o
 	return out, nil
 }
 
+func (c *zenServiceClient) DeployDefinition(ctx context.Context, in *DeployDefinitionRequest, opts ...grpc.CallOption) (*DeployDefinitionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployDefinitionResponse)
+	err := c.cc.Invoke(ctx, ZenService_DeployDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_ActivateJob_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ActivateJobRequest, ActivateJobResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ActivateJobClient = grpc.ServerStreamingClient[ActivateJobResponse]
+
+func (c *zenServiceClient) CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteJobResponse)
+	err := c.cc.Invoke(ctx, ZenService_CompleteJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishMessageResponse)
+	err := c.cc.Invoke(ctx, ZenService_PublishMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateInstanceResponse)
+	err := c.cc.Invoke(ctx, ZenService_CreateInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessInstancesResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetProcessInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessInstanceResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetProcessInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessInstanceJobsResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetProcessInstanceJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZenServiceServer is the server API for ZenService service.
 // All implementations must embed UnimplementedZenServiceServer
 // for forward compatibility.
@@ -259,6 +365,15 @@ type ZenServiceServer interface {
 	PartitionBackup(context.Context, *PartitionBackupRequest) (*PartitionBackupResponse, error)
 	PartitionRestore(context.Context, *PartitionRestoreRequest) (*PartitionRestoreResponse, error)
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
+	// Deploys definition into partitions that receiving node is leader of
+	DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error)
+	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
+	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
+	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
+	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
+	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
+	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
+	GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
 }
 
@@ -313,6 +428,30 @@ func (UnimplementedZenServiceServer) PartitionRestore(context.Context, *Partitio
 }
 func (UnimplementedZenServiceServer) NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NodeCommand not implemented")
+}
+func (UnimplementedZenServiceServer) DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeployDefinition not implemented")
+}
+func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ActivateJob not implemented")
+}
+func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompleteJob not implemented")
+}
+func (UnimplementedZenServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
+}
+func (UnimplementedZenServiceServer) CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateInstance not implemented")
+}
+func (UnimplementedZenServiceServer) GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstances not implemented")
+}
+func (UnimplementedZenServiceServer) GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstance not implemented")
+}
+func (UnimplementedZenServiceServer) GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstanceJobs not implemented")
 }
 func (UnimplementedZenServiceServer) mustEmbedUnimplementedZenServiceServer() {}
 func (UnimplementedZenServiceServer) testEmbeddedByValue()                    {}
@@ -605,6 +744,143 @@ func _ZenService_NodeCommand_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_DeployDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).DeployDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_DeployDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).DeployDefinition(ctx, req.(*DeployDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_ActivateJob_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ActivateJobRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ZenServiceServer).ActivateJob(m, &grpc.GenericServerStream[ActivateJobRequest, ActivateJobResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_ActivateJobServer = grpc.ServerStreamingServer[ActivateJobResponse]
+
+func _ZenService_CompleteJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).CompleteJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_CompleteJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).CompleteJob(ctx, req.(*CompleteJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).PublishMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_PublishMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).PublishMessage(ctx, req.(*PublishMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_CreateInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).CreateInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_CreateInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).CreateInstance(ctx, req.(*CreateInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetProcessInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessInstancesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetProcessInstances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetProcessInstances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetProcessInstances(ctx, req.(*GetProcessInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetProcessInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetProcessInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetProcessInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetProcessInstance(ctx, req.(*GetProcessInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetProcessInstanceJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessInstanceJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetProcessInstanceJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetProcessInstanceJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetProcessInstanceJobs(ctx, req.(*GetProcessInstanceJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZenService_ServiceDesc is the grpc.ServiceDesc for ZenService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -672,7 +948,41 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "NodeCommand",
 			Handler:    _ZenService_NodeCommand_Handler,
 		},
+		{
+			MethodName: "DeployDefinition",
+			Handler:    _ZenService_DeployDefinition_Handler,
+		},
+		{
+			MethodName: "CompleteJob",
+			Handler:    _ZenService_CompleteJob_Handler,
+		},
+		{
+			MethodName: "PublishMessage",
+			Handler:    _ZenService_PublishMessage_Handler,
+		},
+		{
+			MethodName: "CreateInstance",
+			Handler:    _ZenService_CreateInstance_Handler,
+		},
+		{
+			MethodName: "GetProcessInstances",
+			Handler:    _ZenService_GetProcessInstances_Handler,
+		},
+		{
+			MethodName: "GetProcessInstance",
+			Handler:    _ZenService_GetProcessInstance_Handler,
+		},
+		{
+			MethodName: "GetProcessInstanceJobs",
+			Handler:    _ZenService_GetProcessInstanceJobs_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ActivateJob",
+			Handler:       _ZenService_ActivateJob_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "zen_cluster.proto",
 }

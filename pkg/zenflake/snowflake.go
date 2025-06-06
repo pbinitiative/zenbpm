@@ -1,4 +1,6 @@
-package snowflake
+package zenflake
+
+// NODE with id 0 is used for global resources like definitions across all the partitions
 
 var (
 	// NodeBits holds the number of bits to use for Node
@@ -17,6 +19,12 @@ var (
 	nodeShift       = StepBits
 )
 
-func GetNodeMask() int64 {
+func GetPartitionMask() int64 {
 	return nodeMask
+}
+
+func GetPartitionId(id int64) uint32 {
+	maskedId := id & GetPartitionMask()
+	nodeId := maskedId >> int64(nodeShift)
+	return uint32(nodeId)
 }

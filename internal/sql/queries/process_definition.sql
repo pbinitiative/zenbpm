@@ -13,6 +13,14 @@ WHERE
 ORDER BY
     version DESC;
 
+-- name: FindAllProcessDefinitions :many
+SELECT
+    *
+FROM
+    process_definition
+ORDER BY
+    version DESC;
+
 -- name: FindProcessDefinitionByKey :one
 SELECT
     *
@@ -39,6 +47,17 @@ FROM
     process_definition
 WHERE
     bpmn_process_id IN (@bpmn_process_ids)
+ORDER BY
+    version asc
+LIMIT 1;
+
+-- name: FindProcessDefinitionsByKeys :many
+SELECT
+    *
+FROM
+    process_definition
+WHERE
+    key IN (sqlc.slice('keys'))
 ORDER BY
     version asc
 LIMIT 1;

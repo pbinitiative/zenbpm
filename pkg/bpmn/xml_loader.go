@@ -22,31 +22,35 @@ import (
 func (engine *Engine) LoadFromFile(filename string) (*runtime.ProcessDefinition, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load from file: %w", err)
 	}
-	return engine.load(xmlData, filename)
+	return engine.load(xmlData, filename, engine.generateKey())
 }
 
 // LoadFromBytes loads a given BPMN file by xmlData byte array into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (engine *Engine) LoadFromBytes(xmlData []byte) (*runtime.ProcessDefinition, error) {
-	return engine.load(xmlData, "")
+func (engine *Engine) LoadFromBytes(xmlData []byte, key int64) (*runtime.ProcessDefinition, error) {
+	def, err := engine.load(xmlData, "", key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load from bytes: %w", err)
+	}
+	return def, nil
 }
 
-func (engine *Engine) load(xmlData []byte, resourceName string) (*runtime.ProcessDefinition, error) {
+func (engine *Engine) load(xmlData []byte, resourceName string, key int64) (*runtime.ProcessDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions bpmn20.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
 	processInfo := runtime.ProcessDefinition{
 		Version:          1,
 		BpmnProcessId:    definitions.Process.Id,
-		Key:              engine.generateKey(),
+		Key:              key,
 		Definitions:      definitions,
-		BpmnData:         compressAndEncode(xmlData),
+		BpmnData:         CompressAndEncode(xmlData),
 		BpmnResourceName: resourceName,
 		BpmnChecksum:     md5sum,
 	}
@@ -61,13 +65,16 @@ func (engine *Engine) load(xmlData []byte, resourceName string) (*runtime.Proces
 		}
 		processInfo.Version = processes[latestIndex].Version + 1
 	}
-	engine.persistence.SaveProcessDefinition(context.TODO(), processInfo)
+	err = engine.persistence.SaveProcessDefinition(context.TODO(), processInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save process definition: %w", err)
+	}
 
 	engine.exportNewProcessEvent(processInfo, xmlData, resourceName, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil
 }
 
-func compressAndEncode(data []byte) string {
+func CompressAndEncode(data []byte) string {
 	buffer := bytes.Buffer{}
 	ascii85Writer := ascii85.NewEncoder(&buffer)
 	flateWriter, err := flate.NewWriter(ascii85Writer, flate.BestCompression)
@@ -84,7 +91,7 @@ func compressAndEncode(data []byte) string {
 	return buffer.String()
 }
 
-func decodeAndDecompress(data string) ([]byte, error) {
+func DecodeAndDecompress(data string) ([]byte, error) {
 	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(data)))
 	deflateReader := flate.NewReader(ascii85Reader)
 	buffer := bytes.Buffer{}

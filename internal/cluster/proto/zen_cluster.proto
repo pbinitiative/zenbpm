@@ -47,6 +47,18 @@ service ZenService {
       returns (PartitionRestoreResponse);
 
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
+
+  // engine endpoints
+  
+  // Deploys definition into partitions that receiving node is leader of
+  rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
+  rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
+  rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
+  rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -121,6 +133,131 @@ message ResumePartitionNodeRequest {
 message ResumePartitionNodeResponse {
   optional ErrorResult error = 1;
 }
+
+// INTERNAL ENGINE API START
+
+message ProcessDefinition {
+  int64 key = 1;
+  int32 version = 2;
+  string process_id = 3;
+  bytes definition = 4;
+}
+
+message ProcessInstance {
+  int64 key = 1;
+  string process_id = 2;
+  bytes variables = 3;
+  int64 state = 4;
+  int64 createdAt = 5;
+  int64 definition_key = 6;
+}
+
+message Job {
+  int64 key = 1;
+  int64 element_instance_key = 2;
+  string element_id = 3;
+  int64 process_instance_key = 4;
+  string type = 5;
+  int64 state = 6;
+  int64 created_at = 7;
+  bytes variables = 8;
+}
+
+message DeployDefinitionRequest {
+  int64 key = 1;
+  bytes data = 2;
+}
+
+message DeployDefinitionResponse {
+  optional ErrorResult error = 1;
+}
+
+message CompleteJobRequest {
+  int64 key = 1;
+  bytes variables = 2; // []byte of json variables 
+}
+
+message CompleteJobResponse {
+  optional ErrorResult error = 1;
+}
+
+message ActivateJobRequest {
+  string job_type = 1;
+}
+
+message ActivateJobResponse {
+  optional ErrorResult error = 1;
+  InternalJob job = 2;
+}
+
+message InternalJob {
+  int64 key = 1;
+  int64 instance_key = 2;
+  bytes variables = 3;
+  string type = 4;
+  int64 state = 5;
+  string element_id = 6;
+  int64 created_at = 7;
+}
+
+message PublishMessageRequest {
+  string name = 1;
+  int64 instance_key = 2;
+  bytes variables = 3;
+}
+
+message PublishMessageResponse {
+  optional ErrorResult error = 1;
+}
+
+message CreateInstanceRequest {
+  oneof start_by{
+    int64 definition_key = 1;
+    string latest_process_id = 2;
+  }
+  bytes variables = 3;
+}
+
+message CreateInstanceResponse {
+  optional ErrorResult error = 1;
+  ProcessInstance process = 2;
+}
+
+message GetProcessInstancesRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  int64 definition_key = 4;
+}
+
+message PartitionedProcessInstances {
+  uint32 partition_id = 1;
+  repeated ProcessInstance instances = 2;
+}
+
+message GetProcessInstancesResponse {
+  optional ErrorResult error = 1;
+  repeated PartitionedProcessInstances partitions = 2;
+}
+
+message GetProcessInstanceRequest {
+  int64 process_instance_key = 1;
+}
+
+message GetProcessInstanceResponse {
+  optional ErrorResult error = 1;
+  ProcessInstance processes = 2;
+}
+
+message GetProcessInstanceJobsRequest {
+  int64 process_instance_key = 1;
+}
+
+message GetProcessInstanceJobsResponse {
+  optional ErrorResult error = 1;
+  repeated Job jobs = 2;
+}
+// INTERNAL ENGINE API END
 
 // TODO: implement missing messages when needed by cluster communication
 message PartitionRestoreRequest {}

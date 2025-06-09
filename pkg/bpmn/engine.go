@@ -161,18 +161,6 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 	return &processInstance, nil
 }
 
-// FindProcessInstance searches for a given processInstanceKey
-// and returns the corresponding processInstanceInfo, or otherwise nil
-func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
-	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
-}
-
-// FindProcessesById returns all registered processes with given ID
-// result array is ordered by version number, from 1 (first) and largest version (last)
-func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
-	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
-}
-
 func (b *Engine) Stop() {
 }
 

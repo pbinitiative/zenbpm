@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -121,12 +122,17 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 // CreateInstance creates a new instance for a process with given processKey
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
+	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
+}
+
+func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
-		Definition:     process,
-		Key:            engine.generateKey(),
-		VariableHolder: runtime.NewVariableHolder(nil, variableContext),
-		CreatedAt:      time.Now(),
-		State:          runtime.ActivityStateReady,
+		Definition:                  process,
+		Key:                         engine.generateKey(),
+		VariableHolder:              variableHolder,
+		CreatedAt:                   time.Now(),
+		State:                       runtime.ActivityStateReady,
+		ParentProcessExecutionToken: parentToken,
 	}
 	batch := engine.persistence.NewBatch()
 	err := batch.SaveProcessInstance(ctx, processInstance)
@@ -205,6 +211,15 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		instanceSpan.End()
 	}()
 
+	var parentProcessInstance *runtime.ProcessInstance
+	if instance.ParentProcessExecutionToken != nil {
+		ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+		if err != nil {
+			return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey), err)
+		}
+		parentProcessInstance = &ppi
+	}
+
 	engine.runningInstances.addInstance(instance)
 	defer engine.runningInstances.removeInstance(instance)
 
@@ -261,6 +276,10 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			if tok.State == runtime.TokenStateRunning {
 				runningExecutionTokens = append(runningExecutionTokens, tok)
 			}
+		}
+
+		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
+			engine.handleCallActivityParentContinuation(ctx, batch, *instance, *parentProcessInstance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
 		}
 
 		err = batch.Flush(ctx)
@@ -347,38 +366,9 @@ func (engine *Engine) processFlowNode(
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
-	case *bpmn20.TServiceTask:
-		activityResult, err := engine.createInternalTask(ctx, batch, instance, element, currentToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process ServiceTask %d: %w", activity.GetKey(), err)
-		}
-		switch activityResult {
-		case runtime.ActivityStateActive:
-			currentToken.State = runtime.TokenStateWaiting
-			return []runtime.ExecutionToken{currentToken}, nil
-		case runtime.ActivityStateCompleted:
-			tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process ServiceTask flow transition %d: %w", activity.GetKey(), err)
-			}
-			return tokens, nil
-		}
-	case *bpmn20.TUserTask:
-		activityResult, err := engine.createUserTask(ctx, batch, instance, element, currentToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process UserTask %d: %w", activity.GetKey(), err)
-		}
-		switch activityResult {
-		case runtime.ActivityStateActive:
-			currentToken.State = runtime.TokenStateWaiting
-			return []runtime.ExecutionToken{currentToken}, nil
-		case runtime.ActivityStateCompleted:
-			tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process UserTask flow transition %d: %w", activity.GetKey(), err)
-			}
-			return tokens, nil
-		}
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity:
+		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
+
 	case *bpmn20.TIntermediateCatchEvent:
 		// intermediate catch events following event based gateway are handled in event based gateway
 		tokens, err := engine.createIntermediateCatchEvent(ctx, batch, instance, element, currentToken)
@@ -421,6 +411,42 @@ func (engine *Engine) processFlowNode(
 		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", activity.Element().GetId(), activity.Element().GetType()))
 	}
 	return nil, nil
+}
+
+func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {
+
+	var activityResult runtime.ActivityState
+	var err error
+
+	switch element := activity.Element().(type) {
+	case *bpmn20.TServiceTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TUserTask:
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TCallActivity:
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+	default:
+		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), err)
+	}
+
+	// Now check wheter the activity ended rightaway and the process can move on or it needs to wait for external event
+	switch activityResult {
+	case runtime.ActivityStateActive:
+		currentToken.State = runtime.TokenStateWaiting
+		return []runtime.ExecutionToken{currentToken}, nil
+	case runtime.ActivityStateCompleted:
+		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.Element(), currentToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
+		}
+		return tokens, nil
+	}
+
+	return []runtime.ExecutionToken{}, nil
 }
 
 func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

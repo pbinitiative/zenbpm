@@ -12,7 +12,7 @@ import (
 
 const findProcessInstances = `-- name: FindProcessInstances :many
 SELECT
-    "key", process_definition_key, created_at, state, variables
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
 FROM
     process_instance
 WHERE
@@ -42,6 +42,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 			&i.CreatedAt,
 			&i.State,
 			&i.Variables,
+			&i.ParentProcessExecutionToken,
 		); err != nil {
 			return nil, err
 		}
@@ -58,7 +59,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    "key", process_definition_key, created_at, state, variables
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
 FROM
     process_instance
 WHERE
@@ -89,6 +90,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.CreatedAt,
 			&i.State,
 			&i.Variables,
+			&i.ParentProcessExecutionToken,
 		); err != nil {
 			return nil, err
 		}
@@ -105,7 +107,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
-    "key", process_definition_key, created_at, state, variables
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
 FROM
     process_instance
 WHERE
@@ -121,13 +123,14 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.CreatedAt,
 		&i.State,
 		&i.Variables,
+		&i.ParentProcessExecutionToken,
 	)
 	return i, err
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables)
-    VALUES (?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token)
+    VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
@@ -135,11 +138,12 @@ ON CONFLICT (key)
 `
 
 type SaveProcessInstanceParams struct {
-	Key                  int64  `json:"key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	CreatedAt            int64  `json:"created_at"`
-	State                int    `json:"state"`
-	Variables            string `json:"variables"`
+	Key                         int64         `json:"key"`
+	ProcessDefinitionKey        int64         `json:"process_definition_key"`
+	CreatedAt                   int64         `json:"created_at"`
+	State                       int           `json:"state"`
+	Variables                   string        `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
 }
 
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
@@ -149,6 +153,7 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.CreatedAt,
 		arg.State,
 		arg.Variables,
+		arg.ParentProcessExecutionToken,
 	)
 	return err
 }

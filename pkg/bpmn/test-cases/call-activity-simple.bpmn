@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1plhi4y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
+  <bpmn:process id="Simple_CallActivity_Process" isExecutable="true">
+    <bpmn:endEvent id="Event_0rrd3fx">
+      <bpmn:incoming>Flow_1htsftl</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0y8zi5j" sourceRef="StartEvent_1" targetRef="callActivity" />
+    <bpmn:sequenceFlow id="Flow_1htsftl" sourceRef="callActivity" targetRef="Event_0rrd3fx" />
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_0y8zi5j</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:callActivity id="callActivity" name="Test call activity">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="Simple_Task_Process" propagateAllChildVariables="false" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0y8zi5j</bpmn:incoming>
+      <bpmn:outgoing>Flow_1htsftl</bpmn:outgoing>
+    </bpmn:callActivity>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Simple_CallActivity_Process">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0nqrldo_di" bpmnElement="callActivity">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0rrd3fx_di" bpmnElement="Event_0rrd3fx">
+        <dc:Bounds x="422" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0y8zi5j_di" bpmnElement="Flow_0y8zi5j">
+        <di:waypoint x="218" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1htsftl_di" bpmnElement="Flow_1htsftl">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="422" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

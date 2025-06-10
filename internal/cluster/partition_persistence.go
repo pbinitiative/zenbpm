@@ -18,6 +18,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
@@ -366,7 +367,6 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	if err != nil {
 		return res, fmt.Errorf("failed to find process definition for process instance: %w", err)
 	}
-
 	var definitions bpmn20.TDefinitions
 	decoded, err := bpmn.DecodeAndDecompress(definition.BpmnData)
 	if err != nil {
@@ -376,20 +376,40 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
+
+	tokens, err := rq.queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
+	var parentToken runtime.ExecutionToken
+	if err != nil {
+		return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
+	}
+	if len(tokens) > 1 {
+		return res, fmt.Errorf("more than one token found for parent process instance key (%d): %w", dbInstance.Key, err)
+	}
+	if len(tokens) == 1 {
+		parentToken = runtime.ExecutionToken{
+			Key:                tokens[0].Key,
+			ElementInstanceKey: tokens[0].ElementInstanceKey,
+			ElementId:          tokens[0].ElementID,
+			ProcessInstanceKey: tokens[0].ProcessInstanceKey,
+			State:              runtime.TokenState(tokens[0].State),
+		}
+	}
+
 	res = runtime.ProcessInstance{
 		Definition: &runtime.ProcessDefinition{
 			BpmnProcessId:    definition.BpmnProcessId,
 			Version:          definition.Version,
 			Key:              definition.Key,
-			Definitions:      bpmn20.TDefinitions{},
+			Definitions:      definitions,
 			BpmnData:         definition.BpmnData,
 			BpmnResourceName: "",
 			BpmnChecksum:     definition.BpmnChecksum,
 		}, //TODO: load from cache
-		Key:            dbInstance.Key,
-		VariableHolder: runtime.NewVariableHolder(nil, variables),
-		CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
-		State:          runtime.ActivityState(dbInstance.State),
+		Key:                         dbInstance.Key,
+		VariableHolder:              runtime.NewVariableHolder(nil, variables),
+		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
+		State:                       runtime.ActivityState(dbInstance.State),
+		ParentProcessExecutionToken: ptr.To(parentToken),
 	}
 
 	return res, nil

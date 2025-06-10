@@ -4,6 +4,10 @@
 
 package sql
 
+import (
+	"database/sql"
+)
+
 type ExecutionToken struct {
 	Key                int64  `json:"key"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
@@ -53,11 +57,12 @@ type ProcessDefinition struct {
 }
 
 type ProcessInstance struct {
-	Key                  int64  `json:"key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	CreatedAt            int64  `json:"created_at"`
-	State                int    `json:"state"`
-	Variables            string `json:"variables"`
+	Key                         int64         `json:"key"`
+	ProcessDefinitionKey        int64         `json:"process_definition_key"`
+	CreatedAt                   int64         `json:"created_at"`
+	State                       int           `json:"state"`
+	Variables                   string        `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
 }
 
 type Timer struct {

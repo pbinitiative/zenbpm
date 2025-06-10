@@ -25,11 +25,12 @@ type CatchEvent struct {
 }
 
 type ProcessInstance struct {
-	Definition     *ProcessDefinition
-	Key            int64
-	VariableHolder VariableHolder
-	CreatedAt      time.Time
-	State          ActivityState
+	Definition                  *ProcessDefinition
+	Key                         int64
+	VariableHolder              VariableHolder
+	CreatedAt                   time.Time
+	State                       ActivityState
+	ParentProcessExecutionToken *ExecutionToken
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {

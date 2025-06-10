@@ -10,7 +10,17 @@ import (
 )
 
 type elementActivity struct {
-	key     int64                 `json:"k"`
+	key int64 `json:"k"`
+	// TODO: we need to revise how states are handled and how those rely to token states
+	/*
+		TokenStateRunning		Ready
+		TokenStateWaiting       Active
+		TokenStateActive        Completing
+		TokenStateCompleted		Completed
+		TokenStateCanceled      Canceled
+		TokenStateFailed        Failed
+
+	*/
 	state   runtime.ActivityState `json:"s"`
 	element bpmn20.FlowNode
 }

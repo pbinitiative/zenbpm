@@ -18,4 +18,5 @@ func Test_all_interfaces_implemented(t *testing.T) {
 	var _ BaseElement = &TIntermediateThrowEvent{}
 	var _ BaseElement = &TEventBasedGateway{}
 	var _ BaseElement = &TInclusiveGateway{}
+	var _ BaseElement = &TCallActivity{}
 }

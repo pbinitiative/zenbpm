@@ -36,9 +36,9 @@ type Cluster struct {
 	// internal communication bind address
 	Addr string `yaml:"addr" json:"addr" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
 	// inter communication advertise address. If not set, same as internal communication bind address
-	Adv    string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV"`
-	Raft   ClusterRaft `yaml:"raft" json:"raft"`
-	RqLite *RqLite     `yaml:"rqlite" json:"rqlite"`
+	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV"`
+	Raft        ClusterRaft `yaml:"raft" json:"raft"`
+	Persistence Persistence `yaml:"persistence" json:"persistence"`
 }
 
 type ClusterRaft struct {
@@ -73,6 +73,12 @@ type Tracing struct {
 	Name            string   `yaml:"name" json:"name" env:"TRACING_APP_NAME" env-default:"ZenBPM"` // application identifier
 	TransferHeaders []string `yaml:"transferHeaders" json:"transferHeaders" env:"TRACING_TRANSFER_HEADERS"`
 	Endpoint        string   `yaml:"endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+}
+
+type Persistence struct {
+	ProcDefCacheTTLSeconds int     `yaml:"procDefCacheTTLSeconds" env:"PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS" env-default:"86400"`
+	ProcDefCacheSize       int     `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
+	RqLite                 *RqLite `yaml:"rqlite" json:"rqlite"`
 }
 
 // validate checks the configuration for internal consistency, and activates

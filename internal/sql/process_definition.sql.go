@@ -195,9 +195,6 @@ FROM
     process_definition
 WHERE
     key IN (/*SLICE:keys*/?)
-ORDER BY
-    version asc
-LIMIT 1
 `
 
 func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error) {

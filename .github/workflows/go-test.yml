@@ -40,3 +40,5 @@ jobs:
         run: make generate
       - name: run tests
         run: make test
+      - name: run e2e tests
+        run: make test-e2e

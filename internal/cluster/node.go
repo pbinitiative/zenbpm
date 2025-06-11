@@ -285,8 +285,6 @@ func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.
 	jobsChan := make(chan *proto.InternalJob, len(state.Partitions))
 	defer func() {
 		activateCancel()
-		close(errChan)
-		close(jobsChan)
 	}()
 	for _, partition := range state.Partitions {
 		pLeader := state.Nodes[partition.LeaderId]
@@ -310,7 +308,7 @@ func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.
 				wg.Done()
 			}()
 			if err != nil || resp.Error != nil {
-				e := fmt.Errorf("client call to deploy definition failed")
+				e := fmt.Errorf("client call to activate job failed")
 				if err != nil {
 					errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
 				} else if resp.Error != nil {
@@ -325,15 +323,16 @@ func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.
 				}
 				jobsChan <- resp.Job
 			}
-			if errJoin != nil {
-				errChan <- errJoin
-				return
-			}
+			errChan <- errJoin
 		}()
 	}
 	wg.Wait()
+	close(errChan)
+	close(jobsChan)
 	for err := range errChan {
-		errJoin = errors.Join(errJoin, err)
+		if err != nil {
+			errJoin = errors.Join(errJoin, err)
+		}
 	}
 	jobs := make([]*proto.InternalJob, 0, len(state.Partitions))
 	for job := range jobsChan {

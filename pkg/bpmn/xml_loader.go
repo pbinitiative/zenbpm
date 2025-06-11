@@ -1,15 +1,11 @@
 package bpmn
 
 import (
-	"bytes"
-	"compress/flate"
 	"context"
 	"crypto/md5"
-	"encoding/ascii85"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -50,7 +46,7 @@ func (engine *Engine) load(xmlData []byte, resourceName string, key int64) (*run
 		BpmnProcessId:    definitions.Process.Id,
 		Key:              key,
 		Definitions:      definitions,
-		BpmnData:         CompressAndEncode(xmlData),
+		BpmnData:         string(xmlData),
 		BpmnResourceName: resourceName,
 		BpmnChecksum:     md5sum,
 	}
@@ -72,32 +68,4 @@ func (engine *Engine) load(xmlData []byte, resourceName string, key int64) (*run
 
 	engine.exportNewProcessEvent(processInfo, xmlData, resourceName, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil
-}
-
-func CompressAndEncode(data []byte) string {
-	buffer := bytes.Buffer{}
-	ascii85Writer := ascii85.NewEncoder(&buffer)
-	flateWriter, err := flate.NewWriter(ascii85Writer, flate.BestCompression)
-	if err != nil {
-		panic("can't initialize flate.Writer, error=" + err.Error())
-	}
-	_, err = flateWriter.Write(data)
-	if err != nil {
-		panic("can't write to flate.Writer, error=" + err.Error())
-	}
-	_ = flateWriter.Flush()
-	_ = flateWriter.Close()
-	_ = ascii85Writer.Close()
-	return buffer.String()
-}
-
-func DecodeAndDecompress(data string) ([]byte, error) {
-	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(data)))
-	deflateReader := flate.NewReader(ascii85Reader)
-	buffer := bytes.Buffer{}
-	_, err := io.Copy(&buffer, deflateReader)
-	if err != nil {
-		return []byte{}, &BpmnEngineUnmarshallingError{Err: err}
-	}
-	return buffer.Bytes(), nil
 }

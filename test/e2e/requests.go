@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ type Application struct {
 
 type request struct {
 	t           testing.TB
+	ctx         context.Context
 	method      string
 	path        string
 	addr        string
@@ -26,6 +28,7 @@ type request struct {
 func (app *Application) NewRequest(t testing.TB) *request {
 	return &request{
 		t:           t,
+		ctx:         nil,
 		method:      "GET",
 		path:        "",
 		addr:        app.addr,
@@ -37,6 +40,11 @@ func (app *Application) NewRequest(t testing.TB) *request {
 
 func (r *request) WithHeaders(headers http.Header) *request {
 	r.headers = headers
+	return r
+}
+
+func (r *request) WithContext(ctx context.Context) *request {
+	r.ctx = ctx
 	return r
 }
 
@@ -70,14 +78,21 @@ func (r *request) Do() ([]byte, int, *http.Response, error) {
 		if r.headers.Get("Content-Type") == "application/json" {
 			json, err := json.Marshal(r.requestBody)
 			if err != nil {
-				return nil, 0, nil, fmt.Errorf("Could not serialize %T to json", r.requestBody)
+				return nil, 0, nil, fmt.Errorf("could not serialize %T to json", r.requestBody)
 			}
 			reader = bytes.NewBuffer(json)
 		} else {
 			reader = bytes.NewBuffer(r.requestBody.([]byte))
 		}
 	}
-	req, err := http.NewRequest(r.method, fmt.Sprintf("http://%s%s", r.addr, r.path), reader)
+	reqCtx := context.Background()
+	if r.t != nil {
+		reqCtx = r.t.Context()
+	}
+	if r.ctx != nil {
+		reqCtx = r.ctx
+	}
+	req, err := http.NewRequestWithContext(reqCtx, r.method, fmt.Sprintf("http://%s%s", r.addr, r.path), reader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("error during request build: %w", err)
 	}

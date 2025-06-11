@@ -474,6 +474,8 @@ components:
       type: object
       allOf:
         - type: object
+          required:
+            - items
           properties:
             items:
               type: array

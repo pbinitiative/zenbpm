@@ -1,0 +1,61 @@
+package e2e
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestRestApiMessage(t *testing.T) {
+	var instance public.ProcessInstance
+	var definition public.ProcessDefinitionSimple
+	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
+	assert.NoError(t, err)
+	defintitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range defintitions {
+		if def.BpmnProcessId == "message-intermediate-catch-event" {
+			definition = def
+			break
+		}
+	}
+	instance, err = createProcessInstance(t, definition.Key, map[string]any{
+		"testVar": 123,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, instance.Key)
+
+	t.Run("publish message", func(t *testing.T) {
+		err := publishMessage(t, "globalMsgRef", instance.Key, &map[string]any{
+			"test-var": "test",
+		})
+		assert.NoError(t, err)
+		processInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, processInstance.Variables)
+		assert.NotEmpty(t, processInstance.Variables["test-var"])
+		assert.Equal(t, "test", processInstance.Variables["test-var"])
+		assert.Equal(t, float64(123), processInstance.Variables["testVar"])
+	})
+}
+
+func publishMessage(t testing.TB, name string, processInstanceKey string, vars *map[string]any) error {
+	_, status, _, err := app.NewRequest(t).
+		WithPath("/v1/messages").
+		WithMethod("POST").
+		WithBody(public.PublishMessageJSONBody{
+			MessageName:        name,
+			ProcessInstanceKey: processInstanceKey,
+			Variables:          vars,
+		}).
+		Do()
+	if err != nil {
+		return fmt.Errorf("failed to publish message: %w", err)
+	}
+	if status != 201 {
+		return fmt.Errorf("failed to publish message expected status 201")
+	}
+	return nil
+}

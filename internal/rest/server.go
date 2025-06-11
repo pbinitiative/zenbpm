@@ -1,11 +1,7 @@
 package rest
 
 import (
-	"bytes"
-	"compress/flate"
 	"context"
-	"encoding/ascii85"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -151,7 +147,7 @@ func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRe
 		return nil, fmt.Errorf("failed to activate jobs: %w", err)
 	}
 
-	items := make([]public.Job, len(jobs))
+	items := make([]public.Job, 0, len(jobs))
 	for _, j := range jobs {
 		key := fmt.Sprintf("%x", j.GetKey())
 		processInstanceKey := fmt.Sprintf("%x", j.GetInstanceKey())
@@ -231,21 +227,13 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	if err != nil {
 		return nil, err
 	}
-	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(definition.Definition)))
-	deflateReader := flate.NewReader(ascii85Reader)
-	buffer := bytes.Buffer{}
-	_, err = io.Copy(&buffer, deflateReader)
-	if err != nil {
-		return nil, err
-	}
-	bpmnData := base64.StdEncoding.EncodeToString(buffer.Bytes())
 	return public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: definition.ProcessId,
 			Key:           fmt.Sprintf("%x", definition.Key),
 			Version:       int(definition.Version),
 		},
-		BpmnData: &bpmnData,
+		BpmnData: ptr.To(string(definition.Definition)),
 	}, nil
 }
 
@@ -418,13 +406,17 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			ProcessInstanceKey: fmt.Sprintf("%x", job.ProcessInstanceKey),
 			State:              runtime.ActivityState(job.State).String(),
 			Type:               job.Type,
-			Variables:          map[string]interface{}{},
+			Variables:          vars,
 		}
 
 	}
 	return public.GetJobs200JSONResponse{
-		Items:        &[]public.Job{},
-		PageMetadata: public.PageMetadata{},
+		Items: resp,
+		PageMetadata: public.PageMetadata{
+			Count:  len(resp),
+			Offset: 0,
+			Size:   len(resp),
+		},
 	}, nil
 }
 

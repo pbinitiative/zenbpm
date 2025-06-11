@@ -275,7 +275,9 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 	return nil
 }
 
-// ActivateJob will
+// ActivateJob will call activate on all partition leaders, when it receives the first batch of jobs from the stream it closes all the active streams and returns them.
+// TODO: we will need to have a locking logic on the server side + some round robin for active connections
+// This client will then have to ack and lock on the jobs it will send to the API client
 func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.InternalJob, error) {
 	state := node.store.ClusterState()
 	var errJoin error

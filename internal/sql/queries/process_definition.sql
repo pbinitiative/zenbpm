@@ -57,7 +57,4 @@ SELECT
 FROM
     process_definition
 WHERE
-    key IN (sqlc.slice('keys'))
-ORDER BY
-    version asc
-LIMIT 1;
+    key IN (sqlc.slice('keys'));

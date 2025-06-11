@@ -12,6 +12,7 @@ import (
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -53,7 +54,7 @@ func NewEngine(options ...EngineOption) Engine {
 		taskhandlersMu: &sync.RWMutex{},
 		taskHandlers:   []*taskHandler{},
 		exporters:      []exporter.EventExporter{},
-		persistence:    nil,
+		persistence:    inmemory.NewStorage(),
 		logger:         logger,
 		runningInstances: &RunningInstancesCache{
 			processInstances: map[int64]*runtime.ProcessInstance{},

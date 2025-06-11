@@ -117,9 +117,8 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 		}, nil
 	}
 
-	keyHex := fmt.Sprintf("%x", key)
 	return public.CreateProcessDefinition200JSONResponse{
-		ProcessDefinitionKey: keyHex,
+		ProcessDefinitionKey: fmt.Sprintf("%x", key),
 	}, nil
 }
 
@@ -131,7 +130,7 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 			Message: err.Error(),
 		}, nil
 	}
-	err = s.node.CompleteJob(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
+	err = s.node.CompleteJob(ctx, key, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
 		return public.CompleteJob502JSONResponse{
 			Code:    "TODO",

@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS migration(
     name TEXT NOT NULL,
-		ran_at INTEGER NOT NULL 
+    ran_at INTEGER NOT NULL 
 );
 
 -- table that holds information about all the process instances

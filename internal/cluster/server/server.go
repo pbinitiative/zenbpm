@@ -45,12 +45,12 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, engine ControllerService) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
-		controller: engine,
+		controller: controller,
 	}
 }
 
@@ -72,7 +72,7 @@ func (s *Server) Open() error {
 
 // Close closes the Server.
 func (s *Server) Close() error {
-	// s.ln.Close()
+	s.ln.Close()
 	return nil
 }
 

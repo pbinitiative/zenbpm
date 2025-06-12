@@ -27,9 +27,9 @@ func TestRqLiteStorage(t *testing.T) {
 		[]string{muxLn.Addr().String()},
 	)
 	conf := config.Persistence{
-		RqLite:                 &c,
-		ProcDefCacheTTLSeconds: 200,
-		ProcDefCacheSize:       200,
+		RqLite:           &c,
+		ProcDefCacheTTL:  24 * time.Hour,
+		ProcDefCacheSize: 200,
 	}
 	partition, err := StartZenPartitionNode(ctx, mux, conf, 1, PartitionChangesCallbacks{})
 	if err != nil {

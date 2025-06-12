@@ -48,7 +48,7 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 		logger:    logger,
 		node:      node,
 		partition: partition,
-		pdCache:   expirable.NewLRU[int64, runtime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Second*time.Duration(cfg.ProcDefCacheTTLSeconds)),
+		pdCache:   expirable.NewLRU[int64, runtime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
 	}
 	queries := sql.New(db)
 	db.queries = queries

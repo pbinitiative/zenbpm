@@ -42,6 +42,7 @@ tool (
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/armon/go-metrics v0.5.4 // indirect

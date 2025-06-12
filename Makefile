@@ -134,11 +134,21 @@ stop-jaeger:
 
 .PHONY: test
 test: ## Run tests
-	LOG_LEVEL=INFO go test ./...
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	go test ./... -coverprofile cover.out
 
 .PHONY: bench
 bench: ## Run benchmarks
 	LOG_LEVEL=ERROR go test ./... -bench=.
+
+.PHONY: test-e2e 
+test-e2e:  ## Run end to end tests (tests will repeat 100 times)
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	go test -count=100 -v ./test/e2e/...
 
 ##@ Build
 

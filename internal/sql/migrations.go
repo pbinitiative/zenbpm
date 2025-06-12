@@ -10,12 +10,19 @@ import (
 //go:embed migrations
 var migrations embed.FS
 
-func GetMigrations() ([]string, error) {
+type Migrations []MigrationData
+
+type MigrationData struct {
+	Filename string
+	SQL      string
+}
+
+func GetMigrations() (Migrations, error) {
 	migDir, err := migrations.ReadDir("migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read migration directory: %w", err)
 	}
-	res := make([]string, 0, len(migDir))
+	res := make(Migrations, 0, len(migDir))
 	for _, f := range migDir {
 		if !strings.HasSuffix(f.Name(), ".sql") {
 			continue
@@ -27,7 +34,10 @@ func GetMigrations() ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s: %w", f.Name(), err)
 		}
-		res = append(res, string(content))
+		res = append(res, MigrationData{
+			Filename: f.Name(),
+			SQL:      string(content),
+		})
 	}
 	return res, nil
 }

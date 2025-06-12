@@ -1,14 +1,11 @@
 package rest
 
 import (
-	"bytes"
-	"compress/flate"
 	"context"
-	"encoding/ascii85"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -22,7 +19,6 @@ import (
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,7 +26,6 @@ import (
 
 type Server struct {
 	sync.RWMutex
-	engine *bpmn.Engine // TODO: remove engine
 	node   *cluster.ZenNode
 	addr   string
 	server *http.Server
@@ -52,7 +47,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	}
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
-	r.Route("/v1", func(appContext chi.Router) {
+	r.Route("/v1", func(r chi.Router) {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -64,19 +59,32 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 				})
 			},
 		}))
-		// register prometheus endpoint
-		appContext.Get("/metrics", promhttp.Handler().ServeHTTP)
-		appContext.Mount("/", h)
+		r.Mount("/", h)
+	})
+	// register system endpoints
+	r.Route("/system", func(r chi.Router) {
+		r.Get("/metrics", promhttp.Handler().ServeHTTP)
+		r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
+			state, _ := json.MarshalIndent(node.GetStatus(), "", " ")
+			w.Header().Add("Content-Type", "application/json")
+			w.Write(state)
+			w.WriteHeader(200)
+		})
 	})
 	return &s
 }
 
-func (s *Server) Start() {
+func (s *Server) Start() net.Listener {
+	listener, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		log.Error("failed to listen: %v", err)
+	}
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Error("Error starting server: %s", err)
 		}
 	}()
+	return listener
 }
 
 func (s *Server) Stop(ctx context.Context) {
@@ -88,61 +96,73 @@ func (s *Server) Stop(ctx context.Context) {
 	}
 }
 
-func getKeyFromString(s *string) *int64 {
-	if s == nil {
-		return nil
-	}
-	key, err := strconv.ParseInt(*s, 10, 64)
+func getKeyFromString(s string) (int64, error) {
+	key, err := strconv.ParseInt(s, 16, 64)
 	if err != nil {
-		return nil
+		return key, fmt.Errorf("failed to parse key: %w", err)
 	}
-	return &key
+	return key, nil
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
-	if !s.node.IsAnyPartitionLeader(ctx) {
-		// if not leader redirect to leader
-		// proxyTheRequestToLeader(ctx, s)
-		return nil, fmt.Errorf("not leader")
-	}
-
 	data, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, err
 	}
-	process, err := s.engine.LoadFromBytes(data)
+	key, err := s.node.DeployDefinitionToAllPartitions(ctx, data)
 	if err != nil {
-		return nil, err
+		return public.CreateProcessDefinition502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
+
 	return public.CreateProcessDefinition200JSONResponse{
-		ProcessDefinitionKey: &process.BpmnProcessId,
+		ProcessDefinitionKey: fmt.Sprintf("%x", key),
 	}, nil
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	key := *getKeyFromString(&request.Body.JobKey)
-	s.engine.JobCompleteByKey(ctx, key, ptr.Deref(request.Body.Variables, map[string]interface{}{}))
+	key, err := getKeyFromString(request.Body.JobKey)
+	if err != nil {
+		return public.CompleteJob400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	err = s.node.CompleteJob(ctx, key, ptr.Deref(request.Body.Variables, map[string]any{}))
+	if err != nil {
+		return public.CompleteJob502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
 	return public.CompleteJob201Response{}, nil
 }
 
 func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRequestObject) (public.ActivateJobsResponseObject, error) {
-	jobs, err := s.engine.ActivateJobs(ctx, request.JobType)
+	jobs, err := s.node.ActivateJob(ctx, request.JobType)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to activate jobs: %w", err)
 	}
 
-	items := make([]public.Job, 0)
+	items := make([]public.Job, 0, len(jobs))
 	for _, j := range jobs {
-		key := fmt.Sprintf("%d", j.Key())
-		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey())
-		//TODO: Needs propper conversion
-		vh := j.Variables()
+		key := fmt.Sprintf("%x", j.GetKey())
+		processInstanceKey := fmt.Sprintf("%x", j.GetInstanceKey())
+		variables := map[string]any{}
+		err := json.Unmarshal(j.GetVariables(), &variables)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
+		}
 		jobSimple := public.Job{
-			Key:                &key,
-			ElementId:          ptr.To(j.ElementId()),
-			CreatedAt:          ptr.To(j.CreatedAt()),
-			ProcessInstanceKey: &processInstanceKey,
-			VariableHolder:     ptr.To(vh.Variables()),
+			Key:                key,
+			ElementId:          j.GetElementId(),
+			CreatedAt:          time.UnixMilli(j.GetCreatedAt()),
+			ProcessInstanceKey: processInstanceKey,
+			Variables:          variables,
+			State:              runtime.ActivityState(j.GetState()).String(),
+			Type:               j.GetType(),
 		}
 		items = append(items, jobSimple)
 	}
@@ -151,266 +171,252 @@ func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRe
 }
 
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
-	key := *getKeyFromString(&request.Body.ProcessInstanceKey)
-	err := s.engine.PublishEventForInstance(ctx, key, request.Body.MessageName, *request.Body.Variables)
+	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
 	if err != nil {
-		// TODO:
-		panic(err)
+		return public.PublishMessage400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	err = s.node.PublishMessage(ctx, request.Body.MessageName, key, *request.Body.Variables)
+	if err != nil {
+		return public.PublishMessage502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
 	return public.PublishMessage201Response{}, nil
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	_ = store
-	// processes, err := store.FindAllProcessDefinitions(ctx, nil, nil)
-	var processes []runtime.ProcessDefinition
+	definitions, err := s.node.GetProcessDefinitions(ctx)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]public.ProcessDefinitionSimple, 0)
 	result := public.ProcessDefinitionsPage{
-		Items: &items,
+		Items: items,
 	}
-	for _, p := range processes {
-		version := int(p.Version)
-		key := fmt.Sprintf("%d", p.Key)
+	for _, p := range definitions {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:           &key,
-			Version:       &version,
-			BpmnProcessId: &p.BpmnProcessId,
+			Key:           fmt.Sprintf("%x", p.Key),
+			Version:       int(p.Version),
+			BpmnProcessId: p.ProcessId,
 		}
 		items = append(items, processDefinitionSimple)
 	}
-	result.Items = &items
+	result.Items = items
 	total := len(items)
-	result.Count = &total
-	result.Offset = nil
-	result.Size = nil
+	result.Count = total
+	result.Offset = 0
+	result.Size = len(definitions)
 
 	return public.GetProcessDefinitions200JSONResponse(result), nil
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
+	key, err := getKeyFromString(request.ProcessDefinitionKey)
+	if err != nil {
+		return public.GetProcessDefinition400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	definition, err := s.node.GetProcessDefinition(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	_ = store
-	// processes, err := store.FindProcesses(ctx, nil, getKeyFromString(&request.ProcessDefinitionKey))
-	var processes []runtime.ProcessDefinition
-	if err != nil {
-		return nil, err
-	}
-	if len(processes) == 0 {
-		return public.GetProcessDefinition200JSONResponse{}, nil
-	}
-
-	version := int(processes[0].Version)
-	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(processes[0].BpmnData)))
-	deflateReader := flate.NewReader(ascii85Reader)
-	buffer := bytes.Buffer{}
-	_, err = io.Copy(&buffer, deflateReader)
-	if err != nil {
-		return nil, err
-	}
-	bpmnData := base64.StdEncoding.EncodeToString(buffer.Bytes())
-	processDefinitionDetail := public.ProcessDefinitionDetail{
+	return public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
-			BpmnProcessId: &processes[0].BpmnProcessId,
-			Key:           ptr.To(fmt.Sprintf("%d", processes[0].Key)),
-			Version:       &version,
+			BpmnProcessId: definition.ProcessId,
+			Key:           fmt.Sprintf("%x", definition.Key),
+			Version:       int(definition.Version),
 		},
-		BpmnData: &bpmnData,
-	}
-	return public.GetProcessDefinition200JSONResponse(processDefinitionDetail), nil
+		BpmnData: ptr.To(string(definition.Definition)),
+	}, nil
 }
 
 func (s *Server) CreateProcessInstance(ctx context.Context, request public.CreateProcessInstanceRequestObject) (public.CreateProcessInstanceResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
+	if err != nil {
+		return public.CreateProcessInstance400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.engine.CreateInstanceByKey(ctx, *getKeyFromString(&request.Body.ProcessDefinitionKey), variables)
+	process, err := s.node.CreateInstance(ctx, key, variables)
 	if err != nil {
-		return nil, err
+		return public.CreateProcessInstance502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	instanceDetail, err := s.getProcessInstance(ctx, process.Key)
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.Variables, &processVars)
 	if err != nil {
-		return nil, err
+		return public.CreateProcessInstance500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	return public.CreateProcessInstance200JSONResponse(*instanceDetail), nil
-}
-
-func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	_ = store
-	// processInstances, err := store.FindProcessInstances(ctx, nil, getKeyFromString(request.Params.ProcessDefinitionKey))
-	processInstances := []runtime.ProcessInstance{}
-	if err != nil {
-		return nil, err
-	}
-
-	processInstancesPage := public.ProcessInstancePage{
-		Items: &[]public.ProcessInstance{},
-	}
-	for _, pi := range processInstances {
-		processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
-		state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
-		processInstanceSimple := public.ProcessInstance{
-			Key:                  fmt.Sprintf("%d", pi.Key),
-			ProcessDefinitionKey: processDefintionKey,
-			State:                state,
-			CreatedAt:            &pi.CreatedAt,
-			// CaughtEvents:         &pi.CaughtEvents,
-			// VariableHolder:       &pi.VariableHolder,
-			// Activities:           &pi.Activities,
-		}
-		*processInstancesPage.Items = append(*processInstancesPage.Items, processInstanceSimple)
-	}
-	total := len(*processInstancesPage.Items)
-	processInstancesPage.Count = &total
-	processInstancesPage.Offset = nil
-	processInstancesPage.Size = nil
-	return public.GetProcessInstances200JSONResponse{
-		ProcessInstances: &[]public.ProcessInstancePage{processInstancesPage},
-		Total:            total,
+	return public.CreateProcessInstance200JSONResponse{
+		CreatedAt:            time.UnixMilli(process.CreatedAt),
+		Key:                  fmt.Sprintf("%x", process.Key),
+		ProcessDefinitionKey: fmt.Sprintf("%x", process.DefinitionKey),
+		// TODO: make sure its the same string
+		State:     public.ProcessInstanceState(runtime.ActivityState(process.State).String()),
+		Variables: processVars,
 	}, nil
 }
 
-func (s *Server) getProcessInstance(ctx context.Context, key int64) (*public.ProcessInstance, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
+func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
+	page := int32(1)
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	size := int32(10)
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	definitionKey, err := getKeyFromString(request.Params.ProcessDefinitionKey)
 	if err != nil {
-		return nil, err
+		return public.GetProcessInstances400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	_ = store
-	// processInstances, err := store.FindProcessInstances(ctx, &key, nil)
-	processInstances := []runtime.ProcessInstance{}
+
+	partitionedInstances, err := s.node.GetProcessInstances(ctx, definitionKey, page, size)
 	if err != nil {
-		return nil, err
+		return public.GetProcessInstances500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	if len(processInstances) == 0 {
-		return nil, fmt.Errorf("process instance with key %d not found", key)
+
+	processInstancesPage := public.GetProcessInstances200JSONResponse{
+		Partitions: make([]public.PartitionProcessInstances, len(partitionedInstances)),
+		PartitionedPageMetadata: public.PartitionedPageMetadata{
+			Page: int(page),
+			Size: int(size),
+		},
 	}
-	pi := processInstances[0]
-	processDefintionKey := fmt.Sprintf("%d", pi.Definition.Key)
-	state := public.ProcessInstanceState(fmt.Sprintf("%d", pi.State))
-	processInstanceSimple := public.ProcessInstance{
-		Key:                  fmt.Sprintf("%d", pi.Key),
-		ProcessDefinitionKey: processDefintionKey,
-		State:                state,
-		CreatedAt:            &pi.CreatedAt,
-		// CaughtEvents:         &pi.CaughtEvents,
-		// VariableHolder:       &pi.VariableHolder,
-		// Activities:           &pi.Activities,
+
+	count := 0
+	for i, partitionInstances := range partitionedInstances {
+		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
+			Items:     make([]public.ProcessInstance, len(partitionInstances.Instances)),
+			Partition: int(partitionInstances.PartitionId),
+		}
+		count += len(partitionInstances.Instances)
+		for k, instance := range partitionInstances.Instances {
+			vars := map[string]any{}
+			err = json.Unmarshal(instance.Variables, &vars)
+			if err != nil {
+				return public.GetProcessInstances500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
+				CreatedAt:            time.UnixMilli(instance.CreatedAt),
+				Key:                  fmt.Sprintf("%x", instance.Key),
+				ProcessDefinitionKey: fmt.Sprintf("%x", instance.DefinitionKey),
+				State:                public.ProcessInstanceState(runtime.ActivityState(instance.State).String()),
+				Variables:            vars,
+			}
+		}
 	}
-	return &processInstanceSimple, nil
+	processInstancesPage.Count = count
+	return processInstancesPage, nil
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
-	processInstance, err := s.getProcessInstance(ctx, *getKeyFromString(&request.ProcessInstanceKey))
+	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
 	if err != nil {
-		return nil, err
+		return public.GetProcessInstance400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	if processInstance == nil {
-		return nil, fmt.Errorf("process instance with key %s not found", request.ProcessInstanceKey)
+	instance, err := s.node.GetProcessInstance(ctx, instanceKey)
+	if err != nil {
+		return public.GetProcessInstance502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-
-	return public.GetProcessInstance200JSONResponse(*processInstance), nil
+	vars := map[string]any{}
+	err = json.Unmarshal(instance.Variables, &vars)
+	if err != nil {
+		return public.GetProcessInstance500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.GetProcessInstance200JSONResponse{
+		CreatedAt:            time.UnixMilli(instance.CreatedAt),
+		Key:                  fmt.Sprintf("%x", instance.Key),
+		ProcessDefinitionKey: fmt.Sprintf("%x", instance.DefinitionKey),
+		State:                public.ProcessInstanceState(runtime.ActivityState(instance.State).String()),
+		Variables:            vars,
+	}, nil
 }
 
 func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	_ = store
-	// activities, err := store.FindActivitiesByProcessInstanceKey(ctx, getKeyFromString(&request.ProcessInstanceKey))
-	// activities := []runtime.Activity
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// items := make([]public.Activity, 0)
-	// result := public.ActivityPage{
-	// 	Items: &items,
-	// }
-	// for _, a := range activities {
-	// 	key := fmt.Sprintf("%d", a.Key)
-	// 	createdAt := time.Unix(a.CreatedAt, 0)
-	// 	processInstanceKey := fmt.Sprintf("%d", a.ProcessInstanceKey)
-	// 	processDefinitionKey := fmt.Sprintf("%d", a.ProcessDefinitionKey)
-	// 	activitySimple := public.Activity{
-	// 		Key:                  &key,
-	// 		ElementId:            &a.ElementID,
-	// 		CreatedAt:            &createdAt,
-	// 		BpmnElementType:      &a.BpmnElementType,
-	// 		ProcessDefinitionKey: &processDefinitionKey,
-	// 		ProcessInstanceKey:   &processInstanceKey,
-	// 		State:                &a.State,
-	// 	}
-	// 	items = append(items, activitySimple)
-	// }
-	// result.Items = &items
-	// l := len(items)
-	// result.Count = &l
-	// result.Offset = nil
-	// result.Size = nil
-	// return public.GetActivities200JSONResponse(result), nil
+	// TODO: we currently do not store activities
 	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
 }
 
-func (s *Server) getJobItems(ctx context.Context, elementId *string, jobType *string, processInstanceKey *string, states ...string) ([]public.Job, error) {
-	store, err := s.node.GetPartitionStore(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	_ = store
-	// jobs, err := store.FindJobs(ctx, elementId, jobType, getKeyFromString(processInstanceKey), nil, states)
-	jobs := []runtime.Job{}
-	if err != nil {
-		return nil, err
-	}
-	items := make([]public.Job, 0)
-	for _, j := range jobs {
-		key := fmt.Sprintf("%d", j.GetKey())
-		processInstanceKey := fmt.Sprintf("%d", j.ProcessInstanceKey)
-		elementInstanceKey := fmt.Sprintf("%d", j.ElementInstanceKey)
-		//TODO: Needs propper conversion
-		state := fmt.Sprintf("%d", j.GetState())
-		jobSimple := public.Job{
-			Key: &key,
-			// ElementId:          &j.ElementID,
-			// Type:               &j.Type,
-			ElementInstanceKey: &elementInstanceKey,
-			CreatedAt:          &j.CreatedAt,
-			State:              &state,
-			ProcessInstanceKey: &processInstanceKey,
-		}
-		items = append(items, jobSimple)
-	}
-	return items, nil
-}
-
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
-	items, err := s.getJobItems(ctx, nil, nil, &request.ProcessInstanceKey)
-
+	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
 	if err != nil {
-		return nil, err
+		return public.GetJobs400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	result := public.JobPage{
-		Items: &items,
+	jobs, err := s.node.GetProcessInstanceJobs(ctx, instanceKey)
+	if err != nil {
+		return public.GetJobs502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
 	}
-	l := len(items)
-	result.Count = &l
-	result.Offset = nil
-	result.Size = nil
-	return public.GetJobs200JSONResponse(result), nil
+	resp := make([]public.Job, len(jobs))
+	for i, job := range jobs {
+		vars := map[string]any{}
+		err := json.Unmarshal(job.Variables, &vars)
+		if err != nil {
+			return public.GetJobs500JSONResponse{
+				Code:    "TODO",
+				Message: err.Error(),
+			}, nil
+		}
+		resp[i] = public.Job{
+			CreatedAt:          time.UnixMilli(job.CreatedAt),
+			ElementId:          job.ElementId,
+			Key:                fmt.Sprintf("%x", job.Key),
+			ProcessInstanceKey: fmt.Sprintf("%x", job.ProcessInstanceKey),
+			State:              runtime.ActivityState(job.State).String(),
+			Type:               job.Type,
+			Variables:          vars,
+		}
+
+	}
+	return public.GetJobs200JSONResponse{
+		Items: resp,
+		PageMetadata: public.PageMetadata{
+			Count:  len(resp),
+			Offset: 0,
+			Size:   len(resp),
+		},
+	}, nil
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {

@@ -1,4 +1,4 @@
-package snowflake
+package zenflake
 
 import (
 	"fmt"
@@ -15,9 +15,10 @@ func TestNodeMask(t *testing.T) {
 	fmt.Printf("%d :\n- %b\n", id.Int64(), id.Int64())
 	fmt.Printf("%d :\n- %b\n", id.Node(), id.Node())
 
-	fmt.Printf("%d :\n- %b\n", GetNodeMask(), GetNodeMask())
-	maskedId := id.Int64() & GetNodeMask()
+	fmt.Printf("%d :\n- %b\n", GetPartitionMask(), GetPartitionMask())
+	maskedId := id.Int64() & GetPartitionMask()
 	fmt.Printf("%b\n", maskedId)
 	fmt.Printf("%b\n", nodeShift)
 	assert.Equal(t, nodeId, maskedId>>int64(nodeShift))
+	assert.Equal(t, uint32(nodeId), GetPartitionId(id.Int64()))
 }

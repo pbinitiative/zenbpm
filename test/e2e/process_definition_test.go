@@ -1,0 +1,121 @@
+package e2e
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path"
+	"strings"
+	"testing"
+
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestRestApiProcessDefinition(t *testing.T) {
+	t.Run("deploy process definition", func(t *testing.T) {
+		err := deployDefinition(t, "service-task-input-output.bpmn")
+		assert.NoError(t, err)
+	})
+
+	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
+		err := deployDefinition(t, "service-task-input-output.bpmn")
+		assert.NoError(t, err)
+		defintitions, err := listProcessDefinitions(t)
+		assert.NoError(t, err)
+		count := 0
+		for _, def := range defintitions {
+			if def.BpmnProcessId == "service-task-input-output" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("listing deployed definitions", func(t *testing.T) {
+		list, err := listProcessDefinitions(t)
+		assert.NoError(t, err)
+		assert.Greater(t, len(list), 0)
+		var deployedDefinition public.ProcessDefinitionSimple
+		for _, def := range list {
+			if def.BpmnProcessId == "service-task-input-output" {
+				deployedDefinition = def
+				break
+			}
+		}
+		assert.Equal(t, deployedDefinition.BpmnProcessId, "service-task-input-output")
+	})
+
+	t.Run("listing deployed definitions", func(t *testing.T) {
+		list, err := listProcessDefinitions(t)
+		assert.NoError(t, err)
+		assert.Greater(t, len(list), 0)
+
+		detail, err := getDefinitionDetail(t, list[0].Key)
+		assert.NoError(t, err)
+		assert.Equal(t, detail.BpmnProcessId, "service-task-input-output")
+		assert.NotNil(t, detail.BpmnData)
+	})
+}
+
+func getDefinitionDetail(t testing.TB, key string) (public.ProcessDefinitionDetail, error) {
+	var detail public.ProcessDefinitionDetail
+	resp, err := app.NewRequest(t).
+		WithPath(fmt.Sprintf("/v1/process-definitions/%s", key)).
+		DoOk()
+	if err != nil {
+		return detail, fmt.Errorf("failed to get %s process definition detail: %w", key, err)
+	}
+	err = json.Unmarshal(resp, &detail)
+	if err != nil {
+		return detail, fmt.Errorf("failed to unmarshal %s process definition detail: %w", key, err)
+	}
+	return detail, nil
+}
+
+func deployDefinition(t testing.TB, filename string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	wd = strings.ReplaceAll(wd, "/test/e2e", "")
+	loc := path.Join(wd, "pkg", "bpmn", "test-cases", filename)
+	file, err := os.ReadFile(loc)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+	resp, err := app.NewRequest(t).
+		WithPath("/v1/process-definitions").
+		WithMethod("POST").
+		WithBody(file).
+		WithHeader("Content-Type", "application/xml").
+		DoOk()
+	if err != nil {
+		return fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
+	}
+	definition := public.CreateProcessDefinition200JSONResponse{}
+	err = json.Unmarshal(resp, &definition)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal create definition response: %w", err)
+	}
+	return nil
+}
+
+func listProcessDefinitions(t testing.TB) ([]public.ProcessDefinitionSimple, error) {
+	respBytes, err := app.NewRequest(t).
+		WithPath("/v1/process-definitions").
+		WithMethod("GET").
+		DoOk()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list process definitions: %w", err)
+	}
+	resp := public.GetProcessDefinitions200JSONResponse{}
+	err = json.Unmarshal(respBytes, &resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal process definitions: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list process definitions: %v %w", resp, err)
+	}
+	return resp.Items, nil
+}

@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 
 	"github.com/hashicorp/raft"
 )
@@ -42,6 +43,47 @@ func (c ClusterState) GetLeastStressedNode() (Node, error) {
 		return minNode, fmt.Errorf("failed to find node")
 	}
 	return minNode, nil
+}
+
+// GetPartitionFollower preferably returns partition follower node and if it does not exist it returns the leader
+func (c ClusterState) GetPartitionFollower(partition uint32) (Node, error) {
+	partitionState, ok := c.Partitions[partition]
+	if !ok {
+		return Node{}, fmt.Errorf("partition not found")
+	}
+	partitionLeaderId := partitionState.LeaderId
+	var partitionFollower Node
+	for _, node := range c.Nodes {
+		nodePartition, hasPartition := node.Partitions[partition]
+		if !hasPartition {
+			continue
+		}
+		if nodePartition.Role == RoleFollower {
+			partitionFollower = node
+			break
+		}
+	}
+	var winningNode Node
+	if partitionFollower.Addr == "" {
+		winningNode = c.Nodes[partitionLeaderId]
+	} else {
+		winningNode = partitionFollower
+	}
+	return winningNode, nil
+}
+
+// GetLeastStressedPartitionLeader returns leader of partition that has the least instances running
+func (c ClusterState) LeastStressedPartition() (Partition, error) {
+	pick := rand.Intn(len(c.Partitions) - 1)
+	i := 0
+	for _, partition := range c.Partitions {
+		if i != pick {
+			i++
+			continue
+		}
+		return partition, nil
+	}
+	return Partition{}, fmt.Errorf("failed to find node")
 }
 
 func (c ClusterState) AnyNodeHasPartition(partitionId int) bool {

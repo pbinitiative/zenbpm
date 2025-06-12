@@ -16,7 +16,9 @@ import (
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	rqproto "github.com/rqlite/rqlite/v8/command/proto"
 	rstore "github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
@@ -260,6 +262,18 @@ func (c *controller) handlePartitionStateInitializing(ctx context.Context, parti
 	}
 
 	if partitionNode.engine == nil && partitionNode.IsLeader(ctx) {
+		// TODO: add check for migrations and apply only missing
+		migrations, err := sql.GetMigrations()
+		if err != nil {
+			c.logger.Error("Failed to read migrations: %w", err)
+		}
+		statements := make([]*rqproto.Statement, len(migrations))
+		for i, migration := range migrations {
+			statements[i] = &rqproto.Statement{
+				Sql: migration.SQL,
+			}
+		}
+		partitionNode.rqliteDB.executeStatements(ctx, statements)
 		engine := bpmn.NewEngine(bpmn.EngineWithStorage(c.partitions[partitionId].rqliteDB))
 		partitionNode.engine = &engine
 	}
@@ -359,4 +373,30 @@ func (c *controller) IsAnyPartitionLeader(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+func (c *controller) PartitionEngine(ctx context.Context, partition uint32) *bpmn.Engine {
+	partitionNode, ok := c.partitions[partition]
+	if !ok {
+		return nil
+	}
+	return partitionNode.engine
+}
+
+func (c *controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
+	res := make(map[uint32]*bpmn.Engine, 0)
+	for partition, partitionNode := range c.partitions {
+		if partitionNode.engine != nil {
+			res[partition] = partitionNode.engine
+		}
+	}
+	return res
+}
+
+func (c *controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
+	partitionNode, ok := c.partitions[partitionId]
+	if !ok {
+		return nil
+	}
+	return partitionNode.rqliteDB.queries
 }

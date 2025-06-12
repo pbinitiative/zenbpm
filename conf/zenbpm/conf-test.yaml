@@ -1,0 +1,18 @@
+name: zenbpm
+server:
+  context: /
+  addr: :8080
+grpcServer:
+  addr: :9090
+cluster:
+  addr: localhost:8090
+  adv: localhost:8090
+  raft:
+    dir: test-node-1
+    bootstrapExpect: 1
+    bootstrapExpectTimeout: 30m
+    joinAttempts: 5
+    joinAddresses: 
+      - localhost:8090
+  nodeId: test-node-1
+

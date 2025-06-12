@@ -2,12 +2,19 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
+	"slices"
 
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
@@ -18,9 +25,10 @@ import (
 // Server provides information about the node and cluster.
 type Server struct {
 	proto.UnimplementedZenServiceServer
-	ln    net.Listener // Incoming connections to the service
-	addr  net.Addr     // Address on which this service is listening
-	store StoreService
+	ln         net.Listener // Incoming connections to the service
+	addr       net.Addr     // Address on which this service is listening
+	store      StoreService
+	controller ControllerService
 }
 
 type StoreService interface {
@@ -30,12 +38,19 @@ type StoreService interface {
 	WritePartitionChange(change *protoc.NodePartitionChange) error
 }
 
+type ControllerService interface {
+	PartitionEngine(ctx context.Context, partitionId uint32) *bpmn.Engine
+	Engines(ctx context.Context) map[uint32]*bpmn.Engine
+	PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries
+}
+
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService) *Server {
 	return &Server{
-		ln:    ln,
-		addr:  ln.Addr(),
-		store: store,
+		ln:         ln,
+		addr:       ln.Addr(),
+		store:      store,
+		controller: controller,
 	}
 }
 
@@ -120,33 +135,392 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 }
 
 func (s *Server) ClusterBackup(ctx context.Context, req *proto.ClusterBackupRequest) (*proto.ClusterBackupResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 
 func (s *Server) ClusterRestore(ctx context.Context, req *proto.ClusterRestoreRequest) (*proto.ClusterRestoreResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 
 func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartitionRequest) (*proto.AssignPartitionResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 func (s *Server) PartitionBackup(ctx context.Context, req *proto.PartitionBackupRequest) (*proto.PartitionBackupResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
 }
 func (s *Server) PartitionRestore(ctx context.Context, req *proto.PartitionRestoreRequest) (*proto.PartitionRestoreResponse, error) {
-	// TODO: implement
-	return nil, nil
+	panic("unimplemented")
+}
+func (s *Server) PartitionNodeLeaderChange(context.Context, *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
+	panic("unimplemented")
+}
+func (s *Server) AddPartitionNode(context.Context, *proto.AddPartitionNodeRequest) (*proto.AddPartitionNodeResponse, error) {
+	panic("unimplemented")
+}
+func (s *Server) RemovePartitionNode(context.Context, *proto.RemovePartitionNodeRequest) (*proto.RemovePartitionNodeResponse, error) {
+	panic("unimplemented")
+}
+
+func (s *Server) ResumePartitionNode(context.Context, *proto.ResumePartitionNodeRequest) (*proto.ResumePartitionNodeResponse, error) {
+	panic("unimplemented")
+}
+
+func (s *Server) ShutdownPartitionNode(context.Context, *proto.ShutdownPartitionNodeRequest) (*proto.ShutdownPartitionNodeResponse, error) {
+	panic("unimplemented")
+}
+
+func (s *Server) ActivateJob(req *proto.ActivateJobRequest, stream grpc.ServerStreamingServer[proto.ActivateJobResponse]) error {
+	// TODO: we might want to redo this so that we will remember the request and periodically check engines for jobs of that type
+	runningEngines := s.controller.Engines(stream.Context())
+	for _, engine := range runningEngines {
+		jobs, err := engine.ActivateJobs(stream.Context(), req.JobType)
+		if err != nil {
+			stream.Send(&proto.ActivateJobResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			})
+		}
+		for _, job := range jobs {
+			vh := job.Variables()
+			vars, err := json.Marshal(vh.Variables())
+			if err != nil {
+				stream.Send(&proto.ActivateJobResponse{
+					Error: &proto.ErrorResult{
+						Code:    0,
+						Message: err.Error(),
+					},
+				})
+			}
+			err = stream.Send(&proto.ActivateJobResponse{
+				Job: &proto.InternalJob{
+					Key:         job.Key(),
+					InstanceKey: job.ProcessInstanceKey(),
+					Variables:   vars,
+					Type:        req.JobType,
+					State:       int64(runtime.ActivityStateActive),
+					ElementId:   job.ElementId(),
+					CreatedAt:   job.CreatedAt().UnixMilli(),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send activate job message: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.Key)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		return &proto.CompleteJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal job input variables: %w", err)
+		return &proto.CompleteJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	err = engine.JobCompleteByKey(ctx, req.Key, vars)
+	if err != nil {
+		err := fmt.Errorf("failed to complete job %d: %w", req.Key, err)
+		return &proto.CompleteJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.CompleteJobResponse{}, nil
+}
+
+func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRequest) (*proto.CreateInstanceResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
+		return &proto.CreateInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	var instance *runtime.ProcessInstance
+	switch startBy := req.StartBy.(type) {
+	case *proto.CreateInstanceRequest_DefinitionKey:
+		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
+	case *proto.CreateInstanceRequest_LatestProcessId:
+		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
+	}
+	if err != nil {
+		err := fmt.Errorf("failed to create process instance: %w", err)
+		return &proto.CreateInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.CreateInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.CreateInstanceResponse{
+		Process: &proto.ProcessInstance{
+			Key:           instance.Key,
+			ProcessId:     instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         int64(instance.State),
+			CreatedAt:     instance.CreatedAt.UnixMilli(),
+			DefinitionKey: instance.Definition.Key,
+		},
+	}, nil
+}
+
+func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefinitionRequest) (*proto.DeployDefinitionResponse, error) {
+	engines := s.controller.Engines(ctx)
+	var err error
+	for _, engine := range engines {
+		_, err = engine.LoadFromBytes(req.GetData(), req.Key)
+		if err != nil {
+			err = fmt.Errorf("failed to deploy process definition: %w", err)
+			return &proto.DeployDefinitionResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+	}
+	return &proto.DeployDefinitionResponse{}, nil
+}
+
+func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		return &proto.GetProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	instance, err := engine.FindProcessInstance(req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to find process instance %d", req.ProcessInstanceKey)
+		return &proto.GetProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	vars, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal variables of process instance %d", req.ProcessInstanceKey)
+		return &proto.GetProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.GetProcessInstanceResponse{
+		Processes: &proto.ProcessInstance{
+			Key:           instance.Key,
+			ProcessId:     instance.Definition.BpmnProcessId,
+			Variables:     vars,
+			State:         int64(instance.State),
+			CreatedAt:     instance.CreatedAt.UnixMilli(),
+			DefinitionKey: instance.Definition.Key,
+		},
+	}, nil
+}
+
+func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProcessInstanceJobsRequest) (*proto.GetProcessInstanceJobsResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.ProcessInstanceKey)
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetProcessInstanceJobsResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	jobs, err := queries.FindProcessInstanceJobs(ctx, req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.ProcessInstanceKey)
+		return &proto.GetProcessInstanceJobsResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	result := make([]*proto.Job, len(jobs))
+	for i, job := range jobs {
+		result[i] = &proto.Job{
+			Key:                job.Key,
+			ElementInstanceKey: job.ElementInstanceKey,
+			ElementId:          job.ElementID,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Type:               job.Type,
+			State:              int64(job.State),
+			CreatedAt:          job.CreatedAt,
+			Variables:          []byte(job.Variables),
+		}
+	}
+	return &proto.GetProcessInstanceJobsResponse{
+		Jobs: result,
+	}, nil
+}
+
+func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
+	resp := make([]*proto.PartitionedProcessInstances, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetProcessInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
+			ProcessDefinitionKey: req.DefinitionKey,
+			Offst:                int64(req.Size) * int64(req.Page-1),
+			Size:                 int64(req.Size),
+		})
+		if err != nil {
+			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)
+			return &proto.GetProcessInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+		definitionsToLoad := make([]int64, 0)
+		for _, inst := range instances {
+			if !slices.Contains(definitionsToLoad, inst.ProcessDefinitionKey) {
+				definitionsToLoad = append(definitionsToLoad, inst.ProcessDefinitionKey)
+			}
+		}
+		definitions, err := queries.FindProcessDefinitionsByKeys(ctx, definitionsToLoad)
+		if err != nil {
+			err := fmt.Errorf("failed to find process definitions with definition keys %v", definitionsToLoad)
+			return &proto.GetProcessInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+		definitionMap := make(map[int64]sql.ProcessDefinition, len(definitions))
+		for _, definition := range definitions {
+			definitionMap[definition.Key] = definition
+		}
+		procInstances := make([]*proto.ProcessInstance, len(instances))
+		for i, inst := range instances {
+			procInstances[i] = &proto.ProcessInstance{
+				Key:           inst.Key,
+				ProcessId:     definitionMap[inst.ProcessDefinitionKey].BpmnProcessID,
+				Variables:     []byte(inst.Variables),
+				State:         int64(inst.State),
+				CreatedAt:     inst.CreatedAt,
+				DefinitionKey: inst.ProcessDefinitionKey,
+			}
+		}
+		resp = append(resp, &proto.PartitionedProcessInstances{
+			PartitionId: partitionId,
+			Instances:   procInstances,
+		})
+	}
+	return &proto.GetProcessInstancesResponse{
+		Partitions: resp,
+	}, nil
+}
+
+func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRequest) (*proto.PublishMessageResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.InstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		return &proto.PublishMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal message input variables: %w", err)
+		return &proto.PublishMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	err = engine.PublishEventForInstance(ctx, req.InstanceKey, req.Name, vars)
+	if err != nil {
+		err := fmt.Errorf("failed to publish message event for %d: %w", req.InstanceKey, err)
+		return &proto.PublishMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.PublishMessageResponse{}, nil
+}
+
+func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
+	engines := s.controller.Engines(ctx)
+	index := rand.Intn(len(engines))
+	i := 0
+	for _, engine := range engines {
+		if i == index {
+			return engine
+		}
+		i++
+	}
+	return nil
 }

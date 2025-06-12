@@ -248,6 +248,48 @@ func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStates
 	return items, nil
 }
 
+const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    process_instance_key = ?1
+`
+
+func (q *Queries) FindProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceJobs, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token

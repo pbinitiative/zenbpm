@@ -13,6 +13,8 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -28,6 +30,7 @@ type RqLiteDB struct {
 	logger    hclog.Logger
 	node      *snowflake.Node
 	partition uint32
+	pdCache   *expirable.LRU[int64, runtime.ProcessDefinition]
 }
 
 // GenerateId implements storage.Storage.
@@ -35,7 +38,7 @@ func (rq *RqLiteDB) GenerateId() int64 {
 	return rq.node.Generate().Int64()
 }
 
-func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger) (*RqLiteDB, error) {
+func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence) (*RqLiteDB, error) {
 	node, err := snowflake.NewNode(int64(partition))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
@@ -45,6 +48,7 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger) (*Rq
 		logger:    logger,
 		node:      node,
 		partition: partition,
+		pdCache:   expirable.NewLRU[int64, runtime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
 	}
 	queries := sql.New(db)
 	db.queries = queries
@@ -272,20 +276,42 @@ func (rq *RqLiteDB) FindLatestProcessDefinitionById(ctx context.Context, process
 		return res, fmt.Errorf("failed to find latest process definition: %w", err)
 	}
 
+	pd, ok := rq.pdCache.Get(dbDefinition.Key)
+	if ok {
+		return pd, nil
+	}
+
+	var definitions bpmn20.TDefinitions
+	err = xml.Unmarshal([]byte(dbDefinition.BpmnData), &definitions)
+	if err != nil {
+		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+	err = definitions.ResolveReferences()
+	if err != nil {
+		return res, fmt.Errorf("failed to resolve references in definition with bpmn id%s: %w", processDefinitionId, err)
+	}
+
 	res = runtime.ProcessDefinition{
-		BpmnProcessId: dbDefinition.BpmnProcessID,
-		Version:       dbDefinition.Version,
-		Key:           dbDefinition.Key,
-		// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
+		BpmnProcessId:    dbDefinition.BpmnProcessID,
+		Version:          dbDefinition.Version,
+		Key:              dbDefinition.Key,
+		Definitions:      definitions,
 		BpmnData:         dbDefinition.BpmnData,
 		BpmnResourceName: dbDefinition.BpmnResourceName,
 		BpmnChecksum:     [16]byte(dbDefinition.BpmnChecksum),
 	}
 
+	rq.pdCache.Add(dbDefinition.Key, res)
+
 	return res, nil
 }
 
 func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (runtime.ProcessDefinition, error) {
+	pd, ok := rq.pdCache.Get(processDefinitionKey)
+	if ok {
+		return pd, nil
+	}
+
 	var res runtime.ProcessDefinition
 	dbDefinition, err := rq.queries.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
@@ -306,11 +332,14 @@ func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefin
 		BpmnProcessId:    dbDefinition.BpmnProcessID,
 		Version:          dbDefinition.Version,
 		Key:              dbDefinition.Key,
-		Definitions:      definitions, // TODO: initialize from cache
+		Definitions:      definitions,
 		BpmnData:         dbDefinition.BpmnData,
 		BpmnResourceName: dbDefinition.BpmnResourceName,
 		BpmnChecksum:     [16]byte(dbDefinition.BpmnChecksum),
 	}
+
+	rq.pdCache.Add(processDefinitionKey, res)
+
 	return res, nil
 }
 
@@ -322,6 +351,12 @@ func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId st
 
 	res := make([]runtime.ProcessDefinition, len(dbDefinitions))
 	for i, def := range dbDefinitions {
+		pd, ok := rq.pdCache.Get(def.Key)
+		if ok {
+			res[i] = pd
+			continue
+		}
+
 		var definitions bpmn20.TDefinitions
 		err = xml.Unmarshal([]byte(def.BpmnData), &definitions)
 		if err != nil {
@@ -335,11 +370,13 @@ func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId st
 			BpmnProcessId:    def.BpmnProcessID,
 			Version:          def.Version,
 			Key:              def.Key,
-			Definitions:      definitions, // TODO: initialize from cache
+			Definitions:      definitions,
 			BpmnData:         def.BpmnData,
 			BpmnResourceName: def.BpmnResourceName,
 			BpmnChecksum:     [16]byte(def.BpmnChecksum),
 		}
+
+		rq.pdCache.Add(def.Key, res[i])
 	}
 	return res, nil
 }

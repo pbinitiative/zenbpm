@@ -26,14 +26,14 @@ import (
 type controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions   map[uint32]*ZenPartitionNode
-	partitionsMu sync.RWMutex
-	store        ControlledStore
-	client       *client.ClientManager
-	config       config.Cluster
-	rqLiteConfig config.RqLite
-	mux          *tcp.Mux
-	logger       hclog.Logger
+	partitions        map[uint32]*ZenPartitionNode
+	partitionsMu      sync.RWMutex
+	store             ControlledStore
+	client            *client.ClientManager
+	config            config.Cluster
+	persistenceConfig config.Persistence
+	mux               *tcp.Mux
+	logger            hclog.Logger
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
@@ -60,17 +60,17 @@ type ControlledStore interface {
 func (c *controller) Start(s ControlledStore, clientMgr *client.ClientManager) error {
 	c.store = s
 	c.client = clientMgr
-	rqLiteConfig := c.config.RqLite
+	persistenceConfig := c.config.Persistence
 
-	if c.config.RqLite == nil {
+	if c.config.Persistence.RqLite == nil {
 		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
-		rqLiteConfig = &defaultConfig
+		persistenceConfig.RqLite = &defaultConfig
 	}
-	err := rqLiteConfig.Validate()
+	err := persistenceConfig.RqLite.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to start controller, rqLite config validation failed: %w", err)
 	}
-	c.rqLiteConfig = *rqLiteConfig
+	c.persistenceConfig = persistenceConfig
 	// TODO: wait until we catch up with raft log and verify that we have all the engines/partitions running
 	go c.monitor()
 	return nil
@@ -209,10 +209,10 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionId, err))
 	}
-	partitionConf := c.rqLiteConfig
-	partitionConf.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
-	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, &partitionConf, partitionId, PartitionChangesCallbacks{
+	partitionConf := c.persistenceConfig
+	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
+	partitionConf.RqLite.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
+	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, partitionId, PartitionChangesCallbacks{
 		addNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)
 		},

@@ -1,0 +1,8 @@
+{
+  "label": "Explanation",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "Detailed documentation of ZenBPM's architecture and components"
+  }
+}

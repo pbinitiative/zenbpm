@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"strings"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
@@ -262,18 +263,61 @@ func (rq *RqLiteDB) NewBatch() storage.Batch {
 	return batch
 }
 
+var _ storage.DecisionDefinitionStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
+	return SaveDecisionDefinitionWith(ctx, rq.queries, definition)
+}
+
+func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DecisionDefinition) error {
+	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+		Key:             definition.Key,
+		Version:         definition.Version,
+		DmnData:         definition.RawData,
+		DmnChecksum:     definition.DmnChecksum[:],
+		DmnResourceName: definition.DmnResourceName,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save decision table definition: %w", err)
+	}
+	return nil
+}
+
+var _ storage.DecisionDefinitionStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) FindDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
+	dbDefinitions, err := rq.queries.FindDecisionDefinitionsByIds(ctx, decisionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find process definitions by id: %w", err)
+	}
+
+	res := make([]dmnruntime.DecisionDefinition, len(dbDefinitions))
+	for i, def := range dbDefinitions {
+		res[i] = dmnruntime.DecisionDefinition{
+			Version: def.Version,
+			Key:     def.Key,
+			Id:      def.DmnID,
+			//Definitions: , //TODO: do we initialize somehow?
+			RawData:         def.DmnData,
+			DmnResourceName: def.DmnResourceName,
+			DmnChecksum:     [16]byte(def.DmnChecksum),
+		}
+	}
+	return res, nil
+}
+
 var _ storage.ProcessDefinitionStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (runtime.ProcessDefinition, error) {
-	var res runtime.ProcessDefinition
+func (rq *RqLiteDB) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (bpmnruntime.ProcessDefinition, error) {
+	var res bpmnruntime.ProcessDefinition
 	dbDefinition, err := rq.queries.FindLatestProcessDefinitionById(ctx, processDefinitionId)
 	if err != nil {
 		return res, fmt.Errorf("failed to find latest process definition: %w", err)
 	}
 
-	res = runtime.ProcessDefinition{
+	res = bpmnruntime.ProcessDefinition{
 		BpmnProcessId: dbDefinition.BpmnProcessID,
-		Version:       dbDefinition.Version,
+		Version:       int32(dbDefinition.Version),
 		Key:           dbDefinition.Key,
 		// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 		BpmnData:         dbDefinition.BpmnData,
@@ -284,16 +328,16 @@ func (rq *RqLiteDB) FindLatestProcessDefinitionById(ctx context.Context, process
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (runtime.ProcessDefinition, error) {
-	var res runtime.ProcessDefinition
+func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (bpmnruntime.ProcessDefinition, error) {
+	var res bpmnruntime.ProcessDefinition
 	dbDefinition, err := rq.queries.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
 		return res, fmt.Errorf("failed to find latest process definition: %w", err)
 	}
 
-	res = runtime.ProcessDefinition{
+	res = bpmnruntime.ProcessDefinition{
 		BpmnProcessId: dbDefinition.BpmnProcessID,
-		Version:       dbDefinition.Version,
+		Version:       int32(dbDefinition.Version),
 		Key:           dbDefinition.Key,
 		// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 		BpmnData:         dbDefinition.BpmnData,
@@ -303,17 +347,17 @@ func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId string) ([]runtime.ProcessDefinition, error) {
+func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
 	dbDefinitions, err := rq.queries.FindProcessDefinitionsByIds(ctx, processId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find process definitions by id: %w", err)
 	}
 
-	res := make([]runtime.ProcessDefinition, len(dbDefinitions))
+	res := make([]bpmnruntime.ProcessDefinition, len(dbDefinitions))
 	for i, def := range dbDefinitions {
-		res[i] = runtime.ProcessDefinition{
+		res[i] = bpmnruntime.ProcessDefinition{
 			BpmnProcessId: def.BpmnProcessID,
-			Version:       def.Version,
+			Version:       int32(def.Version),
 			Key:           def.Key,
 			// Definitions:      bpmn20.TDefinitions{}, //TODO: do we initialize somehow?
 			BpmnData:         def.BpmnData,
@@ -326,14 +370,14 @@ func (rq *RqLiteDB) FindProcessDefinitionsById(ctx context.Context, processId st
 
 var _ storage.ProcessDefinitionStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
+func (rq *RqLiteDB) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	return SaveProcessDefinitionWith(ctx, rq.queries, definition)
 }
 
-func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition runtime.ProcessDefinition) error {
+func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition bpmnruntime.ProcessDefinition) error {
 	err := db.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
 		Key:              definition.Key,
-		Version:          definition.Version,
+		Version:          int64(definition.Version),
 		BpmnProcessID:    definition.BpmnProcessId,
 		BpmnData:         definition.BpmnData,
 		BpmnChecksum:     definition.BpmnChecksum[:],
@@ -347,8 +391,8 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 
 var _ storage.ProcessInstanceStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (runtime.ProcessInstance, error) {
-	var res runtime.ProcessInstance
+func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
+	var res bpmnruntime.ProcessInstance
 	dbInstance, err := rq.queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		return res, fmt.Errorf("failed to find process instance by key: %w", err)
@@ -366,14 +410,14 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	// 	return res, fmt.Errorf("failed to find activities for process instance key (%d): %w", dbInstance.Key, err)
 	// }
 
-	res = runtime.ProcessInstance{
-		// Definition:     &runtime.ProcessDefinition{}, //TODO: load from cache
+	res = bpmnruntime.ProcessInstance{
+		// Definition:     &bpmnruntime.ProcessDefinition{}, //TODO: load from cache
 		Key:            dbInstance.Key,
-		VariableHolder: runtime.NewVariableHolder(nil, variables),
+		VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
 		CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
-		State:          runtime.ActivityState(dbInstance.State),
-		// CaughtEvents:   []runtime.CatchEvent{}, //TODO: do something
-		// Activities: make([]runtime.Activity, len(dbActivities)),
+		State:          bpmnruntime.ActivityState(dbInstance.State),
+		// CaughtEvents:   []bpmnruntime.CatchEvent{}, //TODO: do something
+		// Activities: make([]bpmnruntime.Activity, len(dbActivities)),
 	}
 
 	return res, nil
@@ -381,11 +425,11 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 
 var _ storage.ProcessInstanceStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+func (rq *RqLiteDB) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
 	return SaveProcessInstanceWith(ctx, rq.queries, processInstance)
 }
 
-func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstance runtime.ProcessInstance) error {
+func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstance bpmnruntime.ProcessInstance) error {
 	varStr, err := json.Marshal(processInstance.VariableHolder.Variables())
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
@@ -394,7 +438,7 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
 		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
-		State:                int(processInstance.State),
+		State:                int64(processInstance.State),
 		Variables:            string(varStr),
 		// CaughtEvents:         "",
 		// Activities:           , //TODO: what do we save here? we have activity_instance table
@@ -407,22 +451,22 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 
 var _ storage.TimerStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
+func (rq *RqLiteDB) FindActivityTimers(ctx context.Context, activityKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.queries.FindElementTimers(ctx, sql.FindElementTimersParams{
 		ElementInstanceKey: activityKey,
-		State:              int(state),
+		State:              int64(state),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find element timers %d: %w", activityKey, err)
 	}
-	res := make([]runtime.Timer, len(dbTimers))
+	res := make([]bpmnruntime.Timer, len(dbTimers))
 	for i, timer := range dbTimers {
-		res[i] = runtime.Timer{
+		res[i] = bpmnruntime.Timer{
 			ElementId:            timer.ElementID,
 			Key:                  timer.ElementInstanceKey,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
-			TimerState:           runtime.TimerState(timer.State),
+			TimerState:           bpmnruntime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
 			// OriginActivity:     timer.ElementID, // TODO: load process from cache and find its activity by id
@@ -433,22 +477,22 @@ func (rq *RqLiteDB) FindActivityTimers(ctx context.Context, activityKey int64, s
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
+func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.queries.FindTimersInState(ctx, sql.FindTimersInStateParams{
 		ProcessInstanceKey: processInstanceKey,
-		State:              int(state),
+		State:              int64(state),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find process instance timers %d: %w", processInstanceKey, err)
 	}
-	res := make([]runtime.Timer, len(dbTimers))
+	res := make([]bpmnruntime.Timer, len(dbTimers))
 	for i, timer := range dbTimers {
-		res[i] = runtime.Timer{
+		res[i] = bpmnruntime.Timer{
 			ElementId:            timer.ElementID,
 			Key:                  timer.ElementInstanceKey,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
-			TimerState:           runtime.TimerState(timer.State),
+			TimerState:           bpmnruntime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
 			Duration:             time.Millisecond * time.Duration(timer.DueAt-timer.CreatedAt),
@@ -461,18 +505,18 @@ func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey in
 
 var _ storage.TimerStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveTimer(ctx context.Context, timer runtime.Timer) error {
+func (rq *RqLiteDB) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	return SaveTimerWith(ctx, rq.queries, timer)
 }
 
-func SaveTimerWith(ctx context.Context, db *sql.Queries, timer runtime.Timer) error {
+func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer) error {
 	err := db.SaveTimer(ctx, sql.SaveTimerParams{
 		Key:                  timer.GetKey(),
 		ElementID:            timer.ElementId,
 		ElementInstanceKey:   timer.Key,
 		ProcessDefinitionKey: timer.ProcessDefinitionKey,
 		ProcessInstanceKey:   timer.ProcessInstanceKey,
-		State:                int(timer.GetState()),
+		State:                int64(timer.GetState()),
 		CreatedAt:            timer.CreatedAt.UnixMilli(),
 		DueAt:                timer.DueAt.UnixMilli(),
 	})
@@ -484,19 +528,19 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer runtime.Timer) er
 
 var _ storage.JobStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindActiveJobsByType(ctx context.Context, jobType string) ([]runtime.Job, error) {
+func (rq *RqLiteDB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	jobs, err := rq.queries.FindActiveJobsByType(ctx, jobType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find active jobs for type %s: %w", jobType, err)
 	}
-	res := make([]runtime.Job, len(jobs))
+	res := make([]bpmnruntime.Job, len(jobs))
 	for i, job := range jobs {
-		res[i] = runtime.Job{
+		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
 			Key:                job.Key,
-			State:              runtime.ActivityState(job.State),
+			State:              bpmnruntime.ActivityState(job.State),
 			CreatedAt:          time.UnixMilli(job.CreatedAt),
 			// BaseElement:        ,
 		}
@@ -504,8 +548,8 @@ func (rq *RqLiteDB) FindActiveJobsByType(ctx context.Context, jobType string) ([
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (runtime.Job, error) {
-	var res runtime.Job
+func (rq *RqLiteDB) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error) {
+	var res bpmnruntime.Job
 	job, err := rq.queries.FindJobByElementId(ctx, sql.FindJobByElementIdParams{
 		ElementID:          elementID,
 		ProcessInstanceKey: processInstanceKey,
@@ -513,20 +557,20 @@ func (rq *RqLiteDB) FindJobByElementID(ctx context.Context, processInstanceKey i
 	if err != nil {
 		return res, fmt.Errorf("failed to find job for elementId %s and process instance key %d: %w", elementID, processInstanceKey, err)
 	}
-	res = runtime.Job{
+	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		Key:                job.Key,
-		State:              runtime.ActivityState(job.State),
+		State:              bpmnruntime.ActivityState(job.State),
 		CreatedAt:          time.UnixMilli(job.CreatedAt),
 		// BaseElement:        nil,
 	}
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.Job, error) {
-	var res runtime.Job
+func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
+	var res bpmnruntime.Job
 	job, err := rq.queries.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return res, fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
@@ -539,43 +583,43 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.
 		return res, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
 	}
 	token := tokens[0]
-	res = runtime.Job{
+	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		Key:                job.Key,
-		State:              runtime.ActivityState(job.State),
+		State:              bpmnruntime.ActivityState(job.State),
 		CreatedAt:          time.UnixMilli(job.CreatedAt),
-		Token: runtime.ExecutionToken{
+		Token: bpmnruntime.ExecutionToken{
 			Key:                token.Key,
 			ElementInstanceKey: token.ElementInstanceKey,
 			ElementId:          token.ElementID,
 			ProcessInstanceKey: token.ProcessInstanceKey,
-			State:              runtime.TokenState(token.State),
+			State:              bpmnruntime.TokenState(token.State),
 		},
 	}
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]runtime.Job, error) {
+func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
 	dbJobs, err := rq.queries.FindProcessInstanceJobsInState(ctx, sql.FindProcessInstanceJobsInStateParams{
 		ProcessInstanceKey: processInstanceKey,
-		States:             []int{int(runtime.ActivityStateCompleting), int(runtime.ActivityStateActive)},
+		States:             []int64{int64(bpmnruntime.ActivityStateCompleting), int64(bpmnruntime.ActivityStateActive)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find pending process instance jobs for process instance key %d: %w", processInstanceKey, err)
 	}
-	res := make([]runtime.Job, len(dbJobs))
+	res := make([]bpmnruntime.Job, len(dbJobs))
 	tokensToLoad := make([]int64, len(dbJobs))
 	for i, job := range dbJobs {
-		res[i] = runtime.Job{
+		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
 			ProcessInstanceKey: job.ProcessInstanceKey,
 			Key:                job.Key,
-			State:              runtime.ActivityState(job.State),
+			State:              bpmnruntime.ActivityState(job.State),
 			CreatedAt:          time.UnixMilli(job.CreatedAt),
-			Token: runtime.ExecutionToken{
+			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
 		}
@@ -589,12 +633,12 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
 		for i := range res {
 			if res[i].Token.Key == token.Key {
-				res[i].Token = runtime.ExecutionToken{
+				res[i].Token = bpmnruntime.ExecutionToken{
 					Key:                token.Key,
 					ElementInstanceKey: token.ElementInstanceKey,
 					ElementId:          token.ElementID,
 					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              runtime.TokenState(token.State),
+					State:              bpmnruntime.TokenState(token.State),
 				}
 			}
 		}
@@ -604,18 +648,18 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 
 var _ storage.JobStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveJob(ctx context.Context, job runtime.Job) error {
+func (rq *RqLiteDB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, rq.queries, job)
 }
 
-func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
+func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
 	err := db.SaveJob(ctx, sql.SaveJobParams{
 		Key:                job.GetKey(),
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
-		// Type:               job.Type, // TODO: add type to runtime.Job
-		State:          int(job.GetState()),
+		// Type:               job.Type, // TODO: add type to bpmnruntime.Job
+		State:          int64(job.GetState()),
 		CreatedAt:      job.CreatedAt.UnixMilli(),
 		Variables:      "{}", // TODO: add variables to job
 		ExecutionToken: job.Token.Key,
@@ -628,26 +672,26 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job runtime.Job) error {
 
 var _ storage.MessageStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
+func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	dbMessages, err := rq.queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
 		ExecutionToken: tokenKey,
-		State:          int(state),
+		State:          int64(state),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find token message subscriptions for token %d: %w", tokenKey, err)
 	}
-	res := make([]runtime.MessageSubscription, len(dbMessages))
+	res := make([]bpmnruntime.MessageSubscription, len(dbMessages))
 	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
-		res[i] = runtime.MessageSubscription{
+		res[i] = bpmnruntime.MessageSubscription{
 			ElementId:            mes.ElementID,
 			ElementInstanceKey:   mes.ElementInstanceKey,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
-			MessageState:         runtime.ActivityState(mes.State),
+			MessageState:         bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			Token: runtime.ExecutionToken{
+			Token: bpmnruntime.ExecutionToken{
 				Key: mes.ExecutionToken,
 			},
 		}
@@ -661,12 +705,12 @@ func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
 		for i := range res {
 			if res[i].Token.Key == token.Key {
-				res[i].Token = runtime.ExecutionToken{
+				res[i].Token = bpmnruntime.ExecutionToken{
 					Key:                token.Key,
 					ElementInstanceKey: token.ElementInstanceKey,
 					ElementId:          token.ElementID,
 					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              runtime.TokenState(token.State),
+					State:              bpmnruntime.TokenState(token.State),
 				}
 			}
 		}
@@ -675,24 +719,24 @@ func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
+func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	dbMessages, err := rq.queries.FindProcessInstanceMessageSubscriptions(ctx, sql.FindProcessInstanceMessageSubscriptionsParams{
 		ProcessInstanceKey: processInstanceKey,
-		State:              int(state),
+		State:              int64(state),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find message subscriptions for process %d: %w", processInstanceKey, err)
 	}
-	res := make([]runtime.MessageSubscription, len(dbMessages))
+	res := make([]bpmnruntime.MessageSubscription, len(dbMessages))
 	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
-		res[i] = runtime.MessageSubscription{
+		res[i] = bpmnruntime.MessageSubscription{
 			ElementId:            mes.ElementID,
 			ElementInstanceKey:   mes.ElementInstanceKey,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
-			MessageState:         runtime.ActivityState(mes.State),
+			MessageState:         bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 		}
 		tokensToLoad[i] = mes.ExecutionToken
@@ -705,12 +749,12 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
 		for i := range res {
 			if res[i].Token.Key == token.Key {
-				res[i].Token = runtime.ExecutionToken{
+				res[i].Token = bpmnruntime.ExecutionToken{
 					Key:                token.Key,
 					ElementInstanceKey: token.ElementInstanceKey,
 					ElementId:          token.ElementID,
 					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              runtime.TokenState(token.State),
+					State:              bpmnruntime.TokenState(token.State),
 				}
 			}
 		}
@@ -720,11 +764,11 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 
 var _ storage.MessageStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
+func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	return SaveMessageSubscriptionWith(ctx, rq.queries, subscription)
 }
 
-func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription runtime.MessageSubscription) error {
+func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription bpmnruntime.MessageSubscription) error {
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.GetKey(),
 		ElementInstanceKey:   subscription.ElementInstanceKey,
@@ -732,7 +776,7 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 		ProcessDefinitionKey: subscription.ProcessDefinitionKey,
 		ProcessInstanceKey:   subscription.ProcessInstanceKey,
 		Name:                 subscription.Name,
-		State:                int(subscription.GetState()),
+		State:                int64(subscription.GetState()),
 		CreatedAt:            subscription.CreatedAt.UnixMilli(),
 		ExecutionToken:       subscription.Token.Key,
 		CorrelationKey:       "", // TODO: add message correlation keys into message subscription
@@ -745,45 +789,45 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 
 var _ storage.TokenStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error) {
+func (rq *RqLiteDB) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
 	return GetActiveTokensForPartition(ctx, rq.queries, rq.partition)
 }
 
-func GetActiveTokensForPartition(ctx context.Context, db *sql.Queries, partitionId uint32) ([]runtime.ExecutionToken, error) {
+func GetActiveTokensForPartition(ctx context.Context, db *sql.Queries, partitionId uint32) ([]bpmnruntime.ExecutionToken, error) {
 	tokens, err := db.GetTokensInStateForPartition(ctx, sql.GetTokensInStateForPartitionParams{
 		Partition: int64(partitionId),
-		State:     int64(runtime.TokenStateRunning),
+		State:     int64(bpmnruntime.TokenStateRunning),
 	})
-	res := make([]runtime.ExecutionToken, len(tokens))
+	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
-		res[i] = runtime.ExecutionToken{
+		res[i] = bpmnruntime.ExecutionToken{
 			Key:                tok.Key,
 			ElementInstanceKey: tok.ElementInstanceKey,
 			ElementId:          tok.ElementID,
 			ProcessInstanceKey: tok.ProcessInstanceKey,
-			State:              runtime.TokenState(tok.State),
+			State:              bpmnruntime.TokenState(tok.State),
 		}
 	}
 	return res, err
 }
 
-func (rq *RqLiteDB) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+func (rq *RqLiteDB) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	return GetTokensForProcessInstance(ctx, rq.queries, rq.partition, processInstanceKey)
 }
 
-func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
+func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	tokens, err := db.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
 		Partition:          int64(partitionId),
 		ProcessInstanceKey: processInstanceKey,
 	})
-	res := make([]runtime.ExecutionToken, len(tokens))
+	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
-		res[i] = runtime.ExecutionToken{
+		res[i] = bpmnruntime.ExecutionToken{
 			Key:                tok.Key,
 			ElementInstanceKey: tok.ElementInstanceKey,
 			ElementId:          tok.ElementID,
 			ProcessInstanceKey: tok.ProcessInstanceKey,
-			State:              runtime.TokenState(tok.State),
+			State:              bpmnruntime.TokenState(tok.State),
 		}
 	}
 	return res, err
@@ -791,11 +835,11 @@ func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partition
 
 var _ storage.TokenStorageWriter = &RqLiteDB{}
 
-func (rq *RqLiteDB) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+func (rq *RqLiteDB) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	return SaveToken(ctx, rq.queries, token)
 }
 
-func SaveToken(ctx context.Context, db *sql.Queries, token runtime.ExecutionToken) error {
+func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.ExecutionToken) error {
 	return db.SaveToken(ctx, sql.SaveTokenParams{
 		Key:                token.Key,
 		ElementInstanceKey: token.ElementInstanceKey,
@@ -839,36 +883,36 @@ func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
 
 var _ storage.ProcessDefinitionStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
+func (b *RqLiteDBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	return SaveProcessDefinitionWith(ctx, b.queries, definition)
 }
 
 var _ storage.ProcessInstanceStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+func (b *RqLiteDBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
 	return SaveProcessInstanceWith(ctx, b.queries, processInstance)
 }
 
 var _ storage.TimerStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error {
+func (b *RqLiteDBBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	return SaveTimerWith(ctx, b.queries, timer)
 }
 
 var _ storage.JobStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveJob(ctx context.Context, job runtime.Job) error {
+func (b *RqLiteDBBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return SaveJobWith(ctx, b.queries, job)
 }
 
 var _ storage.MessageStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
+func (b *RqLiteDBBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	return SaveMessageSubscriptionWith(ctx, b.queries, subscription)
 }
 
 var _ storage.TokenStorageWriter = &RqLiteDBBatch{}
 
-func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	return SaveToken(ctx, b.queries, token)
 }

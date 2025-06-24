@@ -155,7 +155,7 @@ INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_ch
 
 type SaveProcessDefinitionParams struct {
 	Key              int64  `json:"key"`
-	Version          int32  `json:"version"`
+	Version          int64  `json:"version"`
 	BpmnProcessID    string `json:"bpmn_process_id"`
 	BpmnData         string `json:"bpmn_data"`
 	BpmnChecksum     []byte `json:"bpmn_checksum"`

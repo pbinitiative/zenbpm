@@ -22,7 +22,7 @@ WHERE
 
 type FindElementTimersParams struct {
 	ElementInstanceKey int64 `json:"element_instance_key"`
-	State              int   `json:"state"`
+	State              int64 `json:"state"`
 }
 
 func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error) {
@@ -125,7 +125,7 @@ WHERE
 
 type FindTimersInStateParams struct {
 	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int   `json:"state"`
+	State              int64 `json:"state"`
 }
 
 func (q *Queries) FindTimersInState(ctx context.Context, arg FindTimersInStateParams) ([]Timer, error) {
@@ -175,7 +175,7 @@ type SaveTimerParams struct {
 	ElementInstanceKey   int64  `json:"element_instance_key"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	State                int    `json:"state"`
+	State                int64  `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	DueAt                int64  `json:"due_at"`
 	ExecutionToken       int64  `json:"execution_token"`

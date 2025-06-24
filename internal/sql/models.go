@@ -4,6 +4,15 @@
 
 package sql
 
+type DecisionDefinition struct {
+	Key             int64  `json:"key"`
+	Version         int64  `json:"version"`
+	DmnID           string `json:"dmn_id"`
+	DmnData         string `json:"dmn_data"`
+	DmnChecksum     []byte `json:"dmn_checksum"`
+	DmnResourceName string `json:"dmn_resource_name"`
+}
+
 type ExecutionToken struct {
 	Key                int64  `json:"key"`
 	ElementInstanceKey int64  `json:"element_instance_key"`
@@ -19,7 +28,7 @@ type Job struct {
 	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 	Type               string `json:"type"`
-	State              int    `json:"state"`
+	State              int64  `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 	Variables          string `json:"variables"`
 	ExecutionToken     int64  `json:"execution_token"`
@@ -32,7 +41,7 @@ type MessageSubscription struct {
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
 	Name                 string `json:"name"`
-	State                int    `json:"state"`
+	State                int64  `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	CorrelationKey       string `json:"correlation_key"`
 	ExecutionToken       int64  `json:"execution_token"`
@@ -40,7 +49,7 @@ type MessageSubscription struct {
 
 type ProcessDefinition struct {
 	Key              int64  `json:"key"`
-	Version          int32  `json:"version"`
+	Version          int64  `json:"version"`
 	BpmnProcessID    string `json:"bpmn_process_id"`
 	BpmnData         string `json:"bpmn_data"`
 	BpmnChecksum     []byte `json:"bpmn_checksum"`
@@ -51,7 +60,7 @@ type ProcessInstance struct {
 	Key                  int64  `json:"key"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	CreatedAt            int64  `json:"created_at"`
-	State                int    `json:"state"`
+	State                int64  `json:"state"`
 	Variables            string `json:"variables"`
 }
 
@@ -61,7 +70,7 @@ type Timer struct {
 	ElementID            string `json:"element_id"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	State                int    `json:"state"`
+	State                int64  `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	DueAt                int64  `json:"due_at"`
 	ExecutionToken       int64  `json:"execution_token"`

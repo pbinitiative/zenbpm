@@ -74,5 +74,15 @@ CREATE TABLE IF NOT EXISTS execution_token(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
+-- table that holds information about all the decision definitions
+CREATE TABLE IF NOT EXISTS decision_definition(
+    key INTEGER PRIMARY KEY, -- int64 id of the decision definition
+    version INTEGER NOT NULL, -- int64 version of the decision definition
+    dmn_id TEXT NOT NULL, -- id of the decision from xml definition
+    dmn_data TEXT NOT NULL, -- raw string of the decision definition
+    dmn_checksum BLOB NOT NULL, -- md5 checksum of the decision definition
+    dmn_resource_name TEXT NOT NULL -- resource name from deployment
+);
+
 -- TODO: create a table for dumb activities like gateway/...
 -- TODO: create a table for flow

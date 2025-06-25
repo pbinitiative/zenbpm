@@ -7,7 +7,7 @@ type DecisionDefinition struct {
 	Key             int64            // The engines key for this given decision definition with version
 	Id              string           // The ID as defined in the DMN file
 	Definitions     dmn.TDefinitions // parsed file content
-	RawData         string           // the raw source data, compressed and encoded via ascii85
+	RawData         []byte           // the raw source data, compressed and encoded via ascii85
 	DmnResourceName string           // some name for the resource
 	DmnChecksum     [16]byte         // internal checksum to identify different versions
 }

@@ -1,29 +1,17 @@
 package dmn
 
 import (
-	"bytes"
-	"compress/flate"
 	"context"
 	"crypto/md5"
-	"encoding/ascii85"
 	"encoding/xml"
 	"fmt"
 	"github.com/pbinitiative/feel"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
-	"io"
 	"os"
 	"strings"
 )
-
-type DmnEngine interface {
-	LoadFromBytes(ctx context.Context, xmlData []byte) (*runtime.DecisionDefinition, error)
-	LoadFromFile(ctx context.Context, filename string) (*runtime.DecisionDefinition, error)
-	EvaluateDRD(ctx context.Context, dmnDefinition *runtime.DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
-	EvaluateDecision(ctx context.Context, dmnDefinition *runtime.DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error)
-	Validate(ctx context.Context, dmnDefinition *runtime.DecisionDefinition) error
-}
 
 type ZenDmnEngine struct {
 	persistence storage.DecisionStorage
@@ -32,7 +20,7 @@ type ZenDmnEngine struct {
 type EngineOption = func(*ZenDmnEngine)
 
 // NewEngine creates a new instance of the BPMN Engine;
-func NewEngine(options ...EngineOption) DmnEngine {
+func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: nil,
 	}
@@ -75,7 +63,7 @@ func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceNa
 		Id:              definitions.Id,
 		Key:             engine.generateKey(),
 		Definitions:     definitions,
-		RawData:         compressAndEncode(xmlData),
+		RawData:         xmlData,
 		DmnChecksum:     md5sum,
 		DmnResourceName: resourceName,
 	}
@@ -101,34 +89,6 @@ func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceNa
 
 func (engine *ZenDmnEngine) generateKey() int64 {
 	return engine.persistence.GenerateId()
-}
-
-func compressAndEncode(data []byte) string {
-	buffer := bytes.Buffer{}
-	ascii85Writer := ascii85.NewEncoder(&buffer)
-	flateWriter, err := flate.NewWriter(ascii85Writer, flate.BestCompression)
-	if err != nil {
-		panic("can't initialize flate.Writer, error=" + err.Error())
-	}
-	_, err = flateWriter.Write(data)
-	if err != nil {
-		panic("can't write to flate.Writer, error=" + err.Error())
-	}
-	_ = flateWriter.Flush()
-	_ = flateWriter.Close()
-	_ = ascii85Writer.Close()
-	return buffer.String()
-}
-
-func decodeAndDecompress(data string) ([]byte, error) {
-	ascii85Reader := ascii85.NewDecoder(bytes.NewBuffer([]byte(data)))
-	deflateReader := flate.NewReader(ascii85Reader)
-	buffer := bytes.Buffer{}
-	_, err := io.Copy(&buffer, deflateReader)
-	if err != nil {
-		return []byte{}, &DmnEngineUnmarshallingError{Err: err}
-	}
-	return buffer.Bytes(), nil
 }
 
 func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DecisionDefinition) error {

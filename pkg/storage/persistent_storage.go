@@ -23,6 +23,7 @@ type Storage interface {
 	MessageStorageWriter
 	TokenStorageReader
 	TokenStorageWriter
+	DecisionStorage
 
 	GenerateId() int64
 	NewBatch() Batch

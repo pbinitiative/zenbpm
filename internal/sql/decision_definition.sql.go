@@ -60,7 +60,7 @@ type SaveDecisionDefinitionParams struct {
 	Key             int64  `json:"key"`
 	Version         int64  `json:"version"`
 	DmnID           string `json:"dmn_id"`
-	DmnData         string `json:"dmn_data"`
+	DmnData         []byte `json:"dmn_data"`
 	DmnChecksum     []byte `json:"dmn_checksum"`
 	DmnResourceName string `json:"dmn_resource_name"`
 }

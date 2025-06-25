@@ -15,20 +15,7 @@ import (
 	"testing"
 )
 
-type testCase struct {
-	Decision       string                 `yaml:"decision"`
-	Input          map[string]interface{} `yaml:"input"`
-	ExpectedOutput interface{}            `yaml:"expectedOutput"`
-}
-
-type configuration struct {
-	DMN   string
-	Tests []testCase `yaml:"tests"`
-}
-
-const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
-
-var dmnEngine DmnEngine
+var dmnEngine *ZenDmnEngine
 var engineStorage *inmemory.Storage
 var ctx context.Context
 
@@ -102,44 +89,18 @@ func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	assert.NotEqual(t, decisionDefinition2.Key, decisionDefinition1.Key)
 }
 
-func loadBulkTestConfigs() ([]configuration, error) {
-	files, err := os.ReadDir(BulkEvaluationTestPath)
-	if err != nil {
-		return nil, err
-	}
-
-	configurations := make([]configuration, 0)
-
-	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".dmn" {
-			dmnFile := file.Name()
-			testFile := strings.TrimSuffix(dmnFile, ".dmn") + ".results.yml"
-
-			configFilePath := filepath.Join(BulkEvaluationTestPath, testFile)
-			_, err := os.Stat(configFilePath)
-
-			if os.IsNotExist(err) {
-				return nil, errors.New("Found DMN file without corresponding test file: [" + dmnFile + "]. Create test file: [" + testFile + "] to fix this issue")
-			}
-
-			data, err := os.ReadFile(filepath.Join(BulkEvaluationTestPath, testFile))
-			if err != nil {
-				return nil, err
-			}
-
-			var config configuration
-			err = yaml.Unmarshal(data, &config)
-			if err != nil {
-				return nil, err
-			}
-
-			config.DMN = dmnFile
-			configurations = append(configurations, config)
-		}
-	}
-
-	return configurations, nil
+type testCase struct {
+	Decision       string                 `yaml:"decision"`
+	Input          map[string]interface{} `yaml:"input"`
+	ExpectedOutput interface{}            `yaml:"expectedOutput"`
 }
+
+type configuration struct {
+	DMN   string
+	Tests []testCase `yaml:"tests"`
+}
+
+const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
 
 func Test_BulkEvaluateDRD(t *testing.T) {
 	// setup
@@ -185,4 +146,43 @@ func Test_BulkEvaluateDRD(t *testing.T) {
 			})
 		}
 	}
+}
+
+func loadBulkTestConfigs() ([]configuration, error) {
+	files, err := os.ReadDir(BulkEvaluationTestPath)
+	if err != nil {
+		return nil, err
+	}
+
+	configurations := make([]configuration, 0)
+
+	for _, file := range files {
+		if filepath.Ext(file.Name()) == ".dmn" {
+			dmnFile := file.Name()
+			testFile := strings.TrimSuffix(dmnFile, ".dmn") + ".results.yml"
+
+			configFilePath := filepath.Join(BulkEvaluationTestPath, testFile)
+			_, err := os.Stat(configFilePath)
+
+			if os.IsNotExist(err) {
+				return nil, errors.New("Found DMN file without corresponding test file: [" + dmnFile + "]. Create test file: [" + testFile + "] to fix this issue")
+			}
+
+			data, err := os.ReadFile(filepath.Join(BulkEvaluationTestPath, testFile))
+			if err != nil {
+				return nil, err
+			}
+
+			var config configuration
+			err = yaml.Unmarshal(data, &config)
+			if err != nil {
+				return nil, err
+			}
+
+			config.DMN = dmnFile
+			configurations = append(configurations, config)
+		}
+	}
+
+	return configurations, nil
 }

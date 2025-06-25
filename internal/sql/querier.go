@@ -13,6 +13,7 @@ type Querier interface {
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
+	// ActivityStateActive
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)

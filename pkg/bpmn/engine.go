@@ -135,9 +135,17 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 		State:                       runtime.ActivityStateReady,
 		ParentProcessExecutionToken: parentToken,
 	}
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	))
+	defer createSpan.End()
 	batch := engine.persistence.NewBatch()
 	err := batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
@@ -185,7 +193,40 @@ func (b *Engine) Stop() {
 
 // Start will start the process engine instance.
 // Engine will start to pull process instances with execution tokens that need to be processed
-func (b *Engine) Start() {
+func (b *Engine) Start() error {
+	ctx := context.Background()
+	tokens, err := b.persistence.GetRunningTokens(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load running tokens: %w", err)
+	}
+	type instanceToStart struct {
+		instance *runtime.ProcessInstance
+		tokens   []runtime.ExecutionToken
+	}
+	instancesToStart := make(map[int64]instanceToStart)
+	for _, token := range tokens {
+		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
+			val.tokens = append(val.tokens, token)
+			instancesToStart[token.ProcessInstanceKey] = val
+		} else {
+			instance, err := b.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			if err != nil {
+				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
+			}
+			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
+				instance: &instance,
+				tokens:   []runtime.ExecutionToken{token},
+			}
+		}
+	}
+	for _, instance := range instancesToStart {
+		err := b.runProcessInstance(ctx, instance.instance, instance.tokens)
+		if err != nil {
+			b.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
+		}
+	}
+
+	return nil
 }
 
 // runProcessInstance will
@@ -194,16 +235,17 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	runningExecutionTokens := executionTokens
 	var runErr error
 
+	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run:%s", instance.Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
+	))
+
 	instance.State = runtime.ActivityStateActive
 	err = engine.persistence.SaveProcessInstance(ctx, *instance)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.Key), err)
 	}
-	ctx, instanceSpan := engine.tracer.Start(ctx, instance.Definition.BpmnProcessId, trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
-	))
 	defer func() {
 		if err != nil {
 			instanceSpan.RecordError(err)
@@ -232,9 +274,10 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if currentToken.State != runtime.TokenStateRunning {
 			continue
 		}
-		ctx, tokenSpan := engine.tracer.Start(ctx, currentToken.ElementId, trace.WithAttributes(
+		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("%s-token", currentToken.ElementId), trace.WithAttributes(
 			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
+			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
 
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
@@ -341,7 +384,7 @@ func (engine *Engine) processFlowNode(
 	activity *elementActivity,
 	currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
-	ctx, activitySpan := engine.tracer.Start(ctx, activity.element.GetId(), trace.WithAttributes(
+	ctx, activitySpan := engine.tracer.Start(ctx, fmt.Sprintf("%s-node-processing", activity.element.GetId()), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeElementKey, activity.GetKey()),
 		attribute.String(otelPkg.AttributeElementName, activity.Element().GetName()),
 		attribute.String(otelPkg.AttributeElementType, string(activity.Element().GetType())),

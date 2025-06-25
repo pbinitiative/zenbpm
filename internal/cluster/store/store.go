@@ -105,6 +105,8 @@ type Store struct {
 	boltStore *raftboltdb.BoltStore
 	logger    hclog.Logger
 
+	appliedTarget *rsync.ReadyTarget[uint64]
+
 	// Raft changes observer
 	observer      *raft.Observer
 	observerChan  chan raft.Observation
@@ -180,6 +182,7 @@ func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *
 		},
 		raftTn:                     &raft.NetworkTransport{},
 		boltStore:                  &raftboltdb.BoltStore{},
+		appliedTarget:              rsync.NewReadyTarget[uint64](),
 		observer:                   &raft.Observer{},
 		observerChan:               make(chan raft.Observation),
 		observerClose:              make(chan struct{}),
@@ -252,6 +255,27 @@ func (s *Store) Open() (retErr error) {
 
 func (s *Store) ClusterState() ClusterState {
 	return s.state
+}
+
+// WaitForAllApplied waits for all Raft log entries to be applied to the
+// underlying database.
+func (s *Store) WaitForAllApplied(timeout time.Duration) error {
+	if timeout == 0 {
+		return nil
+	}
+	return s.WaitForAppliedIndex(s.raft.LastIndex(), timeout)
+}
+
+// WaitForAppliedIndex blocks until a given log index has been applied,
+// or the timeout expires.
+func (s *Store) WaitForAppliedIndex(idx uint64, timeout time.Duration) error {
+	ch := s.appliedTarget.Subscribe(idx)
+	select {
+	case <-ch:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("timeout waiting for index %d to be applied", idx)
+	}
 }
 
 // Join joins a node, identified by id and located at addr, to this store.

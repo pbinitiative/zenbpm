@@ -37,7 +37,8 @@ SELECT
 FROM
     job
 WHERE
-    type = @type;
+    type = @type
+AND state = 1; -- ActivityStateActive
 
 -- name: FindJobByElementId :one
 SELECT

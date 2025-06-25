@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
@@ -96,6 +97,10 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.server = clusterSrv
 
 	node.client = client.NewClientManager(node.store)
+	err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+	if err != nil {
+		node.logger.Error("Failed to apply log until timeout was reached: %s", err)
+	}
 	err = node.controller.Start(node.store, node.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
@@ -432,7 +437,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 
 func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
-	candidateNode, err := state.GetLeastStressedNode()
+	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node to create process instance: %w", err)
 	}
@@ -464,7 +469,7 @@ func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey in
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
 func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionKey int64, page int32, size int32) ([]*proto.PartitionedProcessInstances, error) {
 	state := node.store.ClusterState()
-	result := make([]*proto.PartitionedProcessInstances, len(state.Partitions))
+	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
 
 	for partitionId := range state.Partitions {
 		// TODO: we can smack these into goroutines

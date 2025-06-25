@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/stretchr/testify/assert"
@@ -72,4 +74,59 @@ func TestRqLiteStorage(t *testing.T) {
 	for name, testFunc := range tests {
 		t.Run(name, testFunc(db, t))
 	}
+	testInstanceParent(t, db)
+}
+
+func testInstanceParent(t *testing.T, db *RqLiteDB) {
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
+	r := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId:    fmt.Sprintf("id-%d", r),
+		Version:          1,
+		Key:              r,
+		BpmnData:         fmt.Sprintf(data, r),
+		BpmnChecksum:     [16]byte{1},
+		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+	}
+	err := db.SaveProcessDefinition(t.Context(), pd)
+	assert.NoError(t, err)
+
+	inst1 := runtime.ProcessInstance{
+		Definition:                  &pd,
+		Key:                         r,
+		VariableHolder:              runtime.VariableHolder{},
+		CreatedAt:                   time.Now(),
+		State:                       runtime.ActivityStateActive,
+		ParentProcessExecutionToken: nil,
+	}
+	err = db.SaveProcessInstance(t.Context(), inst1)
+	assert.NoError(t, err)
+
+	tok1 := runtime.ExecutionToken{
+		Key:                r,
+		ElementInstanceKey: 12345,
+		ElementId:          "some-id",
+		ProcessInstanceKey: inst1.Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	err = db.SaveToken(t.Context(), tok1)
+	assert.NoError(t, err)
+
+	inst2 := runtime.ProcessInstance{
+		Definition:                  &pd,
+		Key:                         r + 1,
+		VariableHolder:              runtime.VariableHolder{},
+		CreatedAt:                   time.Now(),
+		State:                       runtime.ActivityStateActive,
+		ParentProcessExecutionToken: &tok1,
+	}
+	err = db.SaveProcessInstance(t.Context(), inst2)
+	assert.NoError(t, err)
+	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.Key)
+	assert.NoError(t, err)
+	assert.Nil(t, dbInst1.ParentProcessExecutionToken)
+
+	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.Key)
+	assert.NoError(t, err)
+	assert.NotNil(t, dbInst2.ParentProcessExecutionToken)
 }

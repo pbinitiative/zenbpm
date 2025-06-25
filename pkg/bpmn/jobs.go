@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -81,23 +84,39 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 }
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
+	ctxOld := ctx
+	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job-%d", jobKey))
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
 	}
+	if job.State == runtime.ActivityStateCompleted {
+		return newEngineErrorf("job %d is already completed", jobKey)
+	}
+	completeJobSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, job.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
+	)
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
+		completeJobSpan.RecordError(err)
+		completeJobSpan.SetStatus(codes.Error, err.Error())
+		completeJobSpan.End()
 		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
 	}
 
 	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
 	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
+		completeJobSpan.RecordError(err)
+		completeJobSpan.SetStatus(codes.Error, err.Error())
+		completeJobSpan.End()
 		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 	}
 
-	if err := propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
+	if err = propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
 		job.State = runtime.ActivityStateFailed
 		instance.State = runtime.ActivityStateFailed
 	}
@@ -111,16 +130,27 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	tokens, err := engine.handleSimpleTransition(ctx, &instance, task, currentToken)
 	if err != nil {
+		completeJobSpan.RecordError(err)
+		completeJobSpan.SetStatus(codes.Error, err.Error())
+		completeJobSpan.End()
 		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
 	batch.SaveToken(ctx, currentToken)
 	err = batch.Flush(ctx)
 	if err != nil {
+		completeJobSpan.RecordError(err)
+		completeJobSpan.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
+	completeJobSpan.End()
 
 	// TODO: make sure that process instance is not running and if so modify currently running instance
-	engine.runProcessInstance(ctx, &instance, tokens)
+	err = engine.runProcessInstance(ctxOld, &instance, tokens)
+	if err != nil {
+		completeJobSpan.RecordError(err)
+		completeJobSpan.SetStatus(codes.Error, err.Error())
+		return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
+	}
 	return nil
 }
 

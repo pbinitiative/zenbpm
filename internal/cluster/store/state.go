@@ -32,6 +32,26 @@ func (c ClusterState) GetNode(nodeId string) (Node, error) {
 	return Node{}, ErrNodeNotFound
 }
 
+func (c ClusterState) GetLeastStressedPartitionLeader() (Node, error) {
+	minNode := Node{}
+node:
+	for _, node := range c.Nodes {
+		if len(node.Partitions) != 0 && (minNode.Partitions == nil || len(minNode.Partitions) > len(node.Partitions)) {
+			for _, partition := range node.Partitions {
+				if partition.Role != RoleLeader {
+					continue
+				}
+				minNode = node
+				continue node
+			}
+		}
+	}
+	if minNode.Id == "" {
+		return minNode, fmt.Errorf("failed to find node")
+	}
+	return minNode, nil
+}
+
 func (c ClusterState) GetLeastStressedNode() (Node, error) {
 	minNode := Node{}
 	for _, node := range c.Nodes {

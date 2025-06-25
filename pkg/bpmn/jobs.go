@@ -85,7 +85,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
 	ctxOld := ctx
-	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job-%d", jobKey))
+	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)

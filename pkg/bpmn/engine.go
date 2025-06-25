@@ -135,7 +135,7 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 		State:                       runtime.ActivityStateReady,
 		ParentProcessExecutionToken: parentToken,
 	}
-	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
 		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
@@ -235,7 +235,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	runningExecutionTokens := executionTokens
 	var runErr error
 
-	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run:%s", instance.Definition.BpmnProcessId), trace.WithAttributes(
+	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
 		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
 		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
@@ -274,7 +274,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if currentToken.State != runtime.TokenStateRunning {
 			continue
 		}
-		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("%s-token", currentToken.ElementId), trace.WithAttributes(
+		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", currentToken.ElementId), trace.WithAttributes(
 			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
 			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
@@ -384,24 +384,24 @@ func (engine *Engine) processFlowNode(
 	activity *elementActivity,
 	currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
-	ctx, activitySpan := engine.tracer.Start(ctx, fmt.Sprintf("%s-node-processing", activity.element.GetId()), trace.WithAttributes(
+	ctx, flowNodeSpan := engine.tracer.Start(ctx, fmt.Sprintf("flow-node:%s", activity.element.GetId()), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeElementKey, activity.GetKey()),
 		attribute.String(otelPkg.AttributeElementName, activity.Element().GetName()),
 		attribute.String(otelPkg.AttributeElementType, string(activity.Element().GetType())),
 	))
 	defer func() {
 		if err != nil {
-			activitySpan.RecordError(err)
-			activitySpan.SetStatus(codes.Error, err.Error())
+			flowNodeSpan.RecordError(err)
+			flowNodeSpan.SetStatus(codes.Error, err.Error())
 		}
-		activitySpan.End()
+		flowNodeSpan.End()
 	}()
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
 		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
 		if err != nil {
-			activitySpan.SetStatus(codes.Error, err.Error())
+			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil

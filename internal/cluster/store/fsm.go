@@ -45,8 +45,6 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		panic(fmt.Sprintf("failed to unmarshal command: %s", err.Error()))
 	}
 
-	fmt.Printf("------------------%+v", command)
-
 	var res interface{}
 	switch command.GetType() {
 	case proto.Command_TYPE_NODE_CHANGE:

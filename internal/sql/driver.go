@@ -2,6 +2,7 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -249,23 +250,23 @@ func Scan(ctx context.Context, columns []string, values *proto.Values, dest ...a
 		// 	default:
 		// 		return fmt.Errorf("invalid string col:%d type:%T val:%v", n, src, src)
 		// 	}
-		// case *NullInt64:
-		// 	switch src := src.(type) {
-		// 	case float64:
-		// 		*d = NullInt64{Valid: true, Int64: int64(src)}
-		// 	case int64:
-		// 		*d = NullInt64{Valid: true, Int64: src}
-		// 	case string:
-		// 		i, err := strconv.ParseInt(src, 10, 64)
-		// 		if err != nil {
-		// 			return err
-		// 		}
-		// 		*d = NullInt64{Valid: true, Int64: i}
-		// 	case nil:
-		// 		*d = NullInt64{Valid: false}
-		// 	default:
-		// 		return fmt.Errorf("invalid int64 col:%d type:%T val:%v", n, src, src)
-		// 	}
+		case *sql.NullInt64:
+			switch x := src.GetValue().(type) {
+			case *proto.Parameter_D:
+				*d = sql.NullInt64{Valid: true, Int64: int64(x.D)}
+			case *proto.Parameter_I:
+				*d = sql.NullInt64{Valid: true, Int64: x.I}
+			case *proto.Parameter_S:
+				i, err := strconv.Atoi(x.S)
+				if err != nil {
+					return err
+				}
+				*d = sql.NullInt64{Valid: true, Int64: int64(i)}
+			case nil:
+				*d = sql.NullInt64{Valid: false}
+			default:
+				return fmt.Errorf("invalid int64 col:%d type:%T val:%v", n, src, src)
+			}
 		// case *NullInt32:
 		// 	switch src := src.(type) {
 		// 	case float64:

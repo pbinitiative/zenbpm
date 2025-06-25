@@ -17,6 +17,17 @@ type ExecutionToken struct {
 	CreatedAt          int64  `json:"created_at"`
 }
 
+type Incident struct {
+	Key                int64         `json:"key"`
+	ElementInstanceKey int64         `json:"element_instance_key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	Message            string        `json:"message"`
+	CreatedAt          int64         `json:"created_at"`
+	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
+	ExecutionToken     int64         `json:"execution_token"`
+}
+
 type Job struct {
 	Key                int64  `json:"key"`
 	ElementInstanceKey int64  `json:"element_instance_key"`

@@ -241,9 +241,8 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if err != nil {
 			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			batch.SaveToken(ctx, currentToken)
-			// TODO: create incident here?
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -254,14 +253,9 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if err != nil {
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			// TODO: create incident here?
-			saveErr := batch.SaveToken(ctx, currentToken)
-			if saveErr != nil {
-				tokenSpan.RecordError(saveErr)
-				tokenSpan.SetStatus(codes.Error, saveErr.Error())
-				engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
-			}
+
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -312,6 +306,30 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		return errors.Join(newEngineErrorf("failed to run process instance %d", instance.Key), runErr)
 	}
 	return nil
+}
+
+func (engine *Engine) handleIncident(ctx context.Context, currentToken runtime.ExecutionToken, err error, tokenSpan trace.Span) {
+	errorBatch := engine.persistence.NewBatch()
+
+	currentToken.State = runtime.TokenStateFailed
+	saveErr := errorBatch.SaveToken(ctx, currentToken)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
+	}
+
+	saveErr = errorBatch.SaveIncident(ctx, createNewIncidentFromToken(err, currentToken, engine))
+	if saveErr != nil {
+		engine.logger.Error("failed to save incident [%v]: %w", currentToken, saveErr)
+	}
+
+	saveErr = errorBatch.Flush(ctx)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to close batch for token [%v]: %w", currentToken, saveErr)
+	}
 }
 
 func (engine *Engine) getExecutionTokenActivity(

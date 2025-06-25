@@ -23,6 +23,8 @@ type Storage interface {
 	MessageStorageWriter
 	TokenStorageReader
 	TokenStorageWriter
+	IncidentStorageReader
+	IncidentStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -35,6 +37,7 @@ type Batch interface {
 	JobStorageWriter
 	MessageStorageWriter
 	TokenStorageWriter
+	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
@@ -114,4 +117,13 @@ type TokenStorageReader interface {
 
 type TokenStorageWriter interface {
 	SaveToken(ctx context.Context, token runtime.ExecutionToken) error
+}
+
+type IncidentStorageReader interface {
+	FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error)
+	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error)
+}
+
+type IncidentStorageWriter interface {
+	SaveIncident(ctx context.Context, incident runtime.Incident) error
 }

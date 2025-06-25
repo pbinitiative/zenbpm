@@ -43,6 +43,8 @@ const (
 	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
 	ZenService_GetProcessInstance_FullMethodName        = "/cluster.ZenService/GetProcessInstance"
 	ZenService_GetProcessInstanceJobs_FullMethodName    = "/cluster.ZenService/GetProcessInstanceJobs"
+	ZenService_GetIncidents_FullMethodName              = "/cluster.ZenService/GetIncidents"
+	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
 )
 
 // ZenServiceClient is the client API for ZenService service.
@@ -85,6 +87,8 @@ type ZenServiceClient interface {
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error)
+	GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error)
+	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
 }
 
 type zenServiceClient struct {
@@ -334,6 +338,26 @@ func (c *zenServiceClient) GetProcessInstanceJobs(ctx context.Context, in *GetPr
 	return out, nil
 }
 
+func (c *zenServiceClient) GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetIncidentsResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetIncidents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveIncidentResponse)
+	err := c.cc.Invoke(ctx, ZenService_ResolveIncident_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZenServiceServer is the server API for ZenService service.
 // All implementations must embed UnimplementedZenServiceServer
 // for forward compatibility.
@@ -374,6 +398,8 @@ type ZenServiceServer interface {
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error)
+	GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error)
+	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
 }
 
@@ -452,6 +478,12 @@ func (UnimplementedZenServiceServer) GetProcessInstance(context.Context, *GetPro
 }
 func (UnimplementedZenServiceServer) GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstanceJobs not implemented")
+}
+func (UnimplementedZenServiceServer) GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIncidents not implemented")
+}
+func (UnimplementedZenServiceServer) ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveIncident not implemented")
 }
 func (UnimplementedZenServiceServer) mustEmbedUnimplementedZenServiceServer() {}
 func (UnimplementedZenServiceServer) testEmbeddedByValue()                    {}
@@ -881,6 +913,42 @@ func _ZenService_GetProcessInstanceJobs_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_GetIncidents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIncidentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetIncidents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetIncidents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetIncidents(ctx, req.(*GetIncidentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_ResolveIncident_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveIncidentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ResolveIncident(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_ResolveIncident_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ResolveIncident(ctx, req.(*ResolveIncidentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZenService_ServiceDesc is the grpc.ServiceDesc for ZenService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -975,6 +1043,14 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessInstanceJobs",
 			Handler:    _ZenService_GetProcessInstanceJobs_Handler,
+		},
+		{
+			MethodName: "GetIncidents",
+			Handler:    _ZenService_GetIncidents_Handler,
+		},
+		{
+			MethodName: "ResolveIncident",
+			Handler:    _ZenService_ResolveIncident_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

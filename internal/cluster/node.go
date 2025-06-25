@@ -555,6 +555,32 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 	return resp.Jobs, nil
 }
 
+// GetFlowElementHistory will contact follower node of partition that contains process instance
+func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]*proto.FlowElement, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(processInstanceKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
+	}
+	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
+		ProcessInstanceKey: processInstanceKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get process instance flow element history from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return resp.Flow, nil
+}
+
 func (node *ZenNode) GetStatus() store.ClusterState {
 	if node.store == nil {
 		return store.ClusterState{}

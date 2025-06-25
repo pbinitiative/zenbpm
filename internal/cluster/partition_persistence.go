@@ -942,6 +942,14 @@ func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (runtime
 		ElementId:          incident.ElementID,
 		ProcessInstanceKey: incident.ProcessInstanceKey,
 		Message:            incident.Message,
+		CreatedAt:          time.UnixMilli(incident.CreatedAt),
+		ResolvedAt: func() *time.Time {
+			if incident.ResolvedAt.Valid {
+				t := time.UnixMilli(incident.ResolvedAt.Int64)
+				return &t
+			}
+			return nil
+		}(),
 		Token: runtime.ExecutionToken{
 			Key:                token.Key,
 			ElementInstanceKey: token.ElementInstanceKey,

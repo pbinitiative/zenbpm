@@ -28,6 +28,10 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) error {
 		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
 	}
 
+	if incident.ResolvedAt != nil {
+		return errors.New("incident already resolved")
+	}
+
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)

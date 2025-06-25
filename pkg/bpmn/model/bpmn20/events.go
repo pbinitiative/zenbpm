@@ -123,6 +123,7 @@ func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
 }
 
 type TMessageEventDefinition struct {
+	TFlowNode
 	Id             string                     `xml:"id,attr"`
 	MessageRef     string                     `xml:"messageRef,attr"`
 	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`

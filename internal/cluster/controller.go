@@ -16,7 +16,9 @@ import (
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	rqproto "github.com/rqlite/rqlite/v8/command/proto"
 	rstore "github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
@@ -24,14 +26,14 @@ import (
 type controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions   map[uint32]*ZenPartitionNode
-	partitionsMu sync.RWMutex
-	store        ControlledStore
-	client       *client.ClientManager
-	config       config.Cluster
-	rqLiteConfig config.RqLite
-	mux          *tcp.Mux
-	logger       hclog.Logger
+	partitions        map[uint32]*ZenPartitionNode
+	partitionsMu      sync.RWMutex
+	store             ControlledStore
+	client            *client.ClientManager
+	config            config.Cluster
+	persistenceConfig config.Persistence
+	mux               *tcp.Mux
+	logger            hclog.Logger
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
@@ -58,17 +60,17 @@ type ControlledStore interface {
 func (c *controller) Start(s ControlledStore, clientMgr *client.ClientManager) error {
 	c.store = s
 	c.client = clientMgr
-	rqLiteConfig := c.config.RqLite
+	persistenceConfig := c.config.Persistence
 
-	if c.config.RqLite == nil {
+	if c.config.Persistence.RqLite == nil {
 		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
-		rqLiteConfig = &defaultConfig
+		persistenceConfig.RqLite = &defaultConfig
 	}
-	err := rqLiteConfig.Validate()
+	err := persistenceConfig.RqLite.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to start controller, rqLite config validation failed: %w", err)
 	}
-	c.rqLiteConfig = *rqLiteConfig
+	c.persistenceConfig = persistenceConfig
 	// TODO: wait until we catch up with raft log and verify that we have all the engines/partitions running
 	go c.monitor()
 	return nil
@@ -207,10 +209,10 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionId, err))
 	}
-	partitionConf := c.rqLiteConfig
-	partitionConf.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
-	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, &partitionConf, partitionId, PartitionChangesCallbacks{
+	partitionConf := c.persistenceConfig
+	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
+	partitionConf.RqLite.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
+	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, partitionId, PartitionChangesCallbacks{
 		addNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)
 		},
@@ -260,6 +262,18 @@ func (c *controller) handlePartitionStateInitializing(ctx context.Context, parti
 	}
 
 	if partitionNode.engine == nil && partitionNode.IsLeader(ctx) {
+		// TODO: add check for migrations and apply only missing
+		migrations, err := sql.GetMigrations()
+		if err != nil {
+			c.logger.Error("Failed to read migrations: %w", err)
+		}
+		statements := make([]*rqproto.Statement, len(migrations))
+		for i, migration := range migrations {
+			statements[i] = &rqproto.Statement{
+				Sql: migration.SQL,
+			}
+		}
+		partitionNode.rqliteDB.executeStatements(ctx, statements)
 		engine := bpmn.NewEngine(bpmn.EngineWithStorage(c.partitions[partitionId].rqliteDB))
 		partitionNode.engine = &engine
 	}
@@ -359,4 +373,30 @@ func (c *controller) IsAnyPartitionLeader(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+func (c *controller) PartitionEngine(ctx context.Context, partition uint32) *bpmn.Engine {
+	partitionNode, ok := c.partitions[partition]
+	if !ok {
+		return nil
+	}
+	return partitionNode.engine
+}
+
+func (c *controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
+	res := make(map[uint32]*bpmn.Engine, 0)
+	for partition, partitionNode := range c.partitions {
+		if partitionNode.engine != nil {
+			res[partition] = partitionNode.engine
+		}
+	}
+	return res
+}
+
+func (c *controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
+	partitionNode, ok := c.partitions[partitionId]
+	if !ok {
+		return nil
+	}
+	return partitionNode.rqliteDB.queries
 }

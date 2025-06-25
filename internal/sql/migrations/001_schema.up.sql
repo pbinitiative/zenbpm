@@ -1,5 +1,10 @@
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS migration(
+    name TEXT NOT NULL,
+    ran_at INTEGER NOT NULL 
+);
+
 -- table that holds information about all the process instances
 CREATE TABLE IF NOT EXISTS process_instance(
     key INTEGER PRIMARY KEY, -- int64 snowflake id where node is partition id which handles the process instance
@@ -7,6 +12,7 @@ CREATE TABLE IF NOT EXISTS process_instance(
     created_at INTEGER NOT NULL, -- unix millis of when the process instance was created
     state INTEGER NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     variables TEXT NOT NULL, -- serialized json variables of the process instance
+    parent_process_execution_token INTEGER, -- key of the execution_token of the parent process
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- process definition that describes this process instance
 );
 

@@ -56,11 +56,12 @@ func getFunctionName(i any) string {
 }
 
 func getProcessDefinition(r int64) runtime.ProcessDefinition {
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	return runtime.ProcessDefinition{
 		BpmnProcessId:    fmt.Sprintf("id-%d", r),
 		Version:          1,
 		Key:              r,
-		BpmnData:         fmt.Sprintf("data-%d", r),
+		BpmnData:         fmt.Sprintf(data, r),
 		BpmnChecksum:     [16]byte{1},
 		BpmnResourceName: fmt.Sprintf("resource-%d", r),
 	}
@@ -143,6 +144,7 @@ func getJob(key, piKey int64, token runtime.ExecutionToken) runtime.Job {
 		ElementInstanceKey: key + 200,
 		ProcessInstanceKey: piKey,
 		Key:                key,
+		Type:               "test-job",
 		State:              runtime.ActivityStateActive,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 		Token:              token,
@@ -318,6 +320,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		storeJob, err := s.FindJobByJobKey(ctx, job.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, job, storeJob)
+		assert.NotEmpty(t, job.Type)
 	}
 }
 

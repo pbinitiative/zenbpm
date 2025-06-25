@@ -1,0 +1,75 @@
+import ApiOperation from "@theme/ApiOperation";
+import ApiSchema from "@theme/ApiSchema";
+
+# How to Deploy a Process Definition
+
+This guide explains how to deploy a BPMN process definition to ZenBPM.
+
+## Prerequisites
+
+- ZenBPM server is running and accessible
+- A valid BPMN 2.0 process definition file
+
+## Steps
+
+### 1. Prepare Your BPMN File
+
+Ensure your BPMN file follows the BPMN 2.0 specification. You can create BPMN files using tools like:
+
+- [Camunda Modeler](https://camunda.com/download/modeler/)
+- [BPMN.io](https://bpmn.io/)
+
+Save your BPMN file with a `.bpmn` extension.
+
+### 2. Deploy Using REST API
+
+You can deploy your process definition using the REST API:
+
+<ApiOperation id="api" pointer="#/paths/~1process-definitions/post" example={true} />
+
+The response will include a `processDefinitionKey` that you can use to reference this process definition.
+
+### 3. Verify Deployment
+
+To verify that your process definition was deployed successfully, you can list all process definitions:
+
+<ApiOperation id="api" pointer="#/paths/~1process-definitions/get" example={true} />
+
+Look for your process definition in the response.
+
+#### ProcessDefinitionSimple Schema
+This schema represents an item in the process definitions list:
+
+<ApiSchema id="api" pointer="#/components/schemas/ProcessDefinitionSimple" />
+
+### 4. Get Process Definition Details
+
+Once you have deployed your process definition, you can retrieve its details using the process definition key:
+
+<ApiOperation id="api" pointer="#/paths/~1process-definitions~1{processDefinitionKey}/get" example={true} />
+
+## Troubleshooting
+
+### Invalid BPMN Format
+
+If you receive an error about invalid BPMN format, check that:
+
+- Your BPMN file is valid XML
+- The BPMN file follows the BPMN 2.0 specification
+- All referenced elements (like message definitions) are properly defined
+
+### Connection Issues
+
+If you can't connect to the ZenBPM server:
+
+1. Verify the server is running
+2. Check that you're using the correct host and port
+3. Ensure there are no network issues or firewalls blocking the connection
+
+## Next Steps
+
+After deploying your process definition, you can:
+
+[//]: # (TODO: Link documents after creation)
+- [Start a process instance](/future-feature) <sub>*`TODO`*</sub>
+- [Query process instances](/future-feature) <sub>*`TODO`*</sub>

@@ -67,7 +67,9 @@ type PartitionChangesCallbacks struct {
 	resumeNode func(id string) error
 }
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
+
+	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
 		statuses:             map[string]httpd.StatusReporter{},
@@ -96,8 +98,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, cfg *config.RqLite
 	zpn.rqliteDB, err = NewRqLiteDB(
 		zpn.store,
 		zpn.partitionId,
-		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
-	)
+		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)), persistenceConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)
 	}

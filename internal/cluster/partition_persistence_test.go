@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
+	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/rqlite/rqlite/v8/command/proto"
@@ -25,7 +26,12 @@ func TestRqLiteStorage(t *testing.T) {
 		t.TempDir(),
 		[]string{muxLn.Addr().String()},
 	)
-	partition, err := StartZenPartitionNode(ctx, mux, &c, 1, PartitionChangesCallbacks{})
+	conf := config.Persistence{
+		RqLite:           &c,
+		ProcDefCacheTTL:  24 * time.Hour,
+		ProcDefCacheSize: 200,
+	}
+	partition, err := StartZenPartitionNode(ctx, mux, conf, 1, PartitionChangesCallbacks{})
 	if err != nil {
 		t.Fatalf("failed to create partition node: %s", err)
 	}
@@ -37,7 +43,7 @@ func TestRqLiteStorage(t *testing.T) {
 	stmts := make([]*proto.Statement, len(migrations))
 	for i, mig := range migrations {
 		stmts[i] = &proto.Statement{
-			Sql: mig,
+			Sql: mig.SQL,
 		}
 	}
 	_, err = partition.WaitForLeader(5 * time.Second)
@@ -56,7 +62,7 @@ func TestRqLiteStorage(t *testing.T) {
 		t.Fatalf("failed to run migrations: %s", err)
 	}
 
-	db, err := NewRqLiteDB(partition.rqliteDB.store, partition.partitionId, hclog.Default().Named("test-rq-lite-db"))
+	db, err := NewRqLiteDB(partition.rqliteDB.store, partition.partitionId, hclog.Default().Named("test-rq-lite-db"), conf)
 	assert.NoError(t, err)
 
 	tester := storagetest.StorageTester{}

@@ -41,7 +41,8 @@ func startNodeMux(address string, ln net.Listener) (*tcp.Mux, error) {
 	}
 	go func() {
 		if err := mux.Serve(); err != nil {
-			panic(err)
+			// TODO: make sure the mux is closed correctly
+			_ = err
 		}
 	}()
 	return mux, nil

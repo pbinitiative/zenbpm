@@ -1,9 +1,9 @@
-@host=http://localhost:8080/v1
+@host=http://localhost:8080
 ### GetProcesses
-GET {{host}}/process-definitions
+GET {{host}}/v1/process-definitions
 Accept: application/json
 
 ###
 
 ### Metrics
-GET {{host}}/metrics
+GET {{host}}/system/metrics

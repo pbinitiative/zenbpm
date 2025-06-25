@@ -14,3 +14,9 @@ sqlite-test-data-*/
 cmd/zenbpm/__debug_*
 bin
 node-*
+cover.out
+
+docs/node_modules
+docs/.docusaurus
+docs/openapi
+docs/proto

@@ -8,7 +8,47 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
+
+const findAllProcessDefinitions = `-- name: FindAllProcessDefinitions :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+ORDER BY
+    version DESC
+`
+
+func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findAllProcessDefinitions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessDefinition{}
+	for rows.Next() {
+		var i ProcessDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnData,
+			&i.BpmnChecksum,
+			&i.BpmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const findLatestProcessDefinitionById = `-- name: FindLatestProcessDefinitionById :one
 SELECT
@@ -120,6 +160,55 @@ LIMIT 1
 
 func (q *Queries) FindProcessDefinitionsByIds(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsByIds, bpmnProcessIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessDefinition{}
+	for rows.Next() {
+		var i ProcessDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnData,
+			&i.BpmnChecksum,
+			&i.BpmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findProcessDefinitionsByKeys = `-- name: FindProcessDefinitionsByKeys :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error) {
+	query := findProcessDefinitionsByKeys
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

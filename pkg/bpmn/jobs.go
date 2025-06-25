@@ -18,8 +18,10 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		ElementInstanceKey: currentToken.ElementInstanceKey,
 		ProcessInstanceKey: currentToken.ProcessInstanceKey,
 		Key:                engine.generateKey(),
+		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
 		CreatedAt:          time.Now(),
+		Token:              currentToken,
 	}
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
@@ -70,6 +72,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			}
 		}
 		err = batch.SaveJob(ctx, job)
+		err = batch.Flush(ctx)
 		if err != nil {
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to add save job into batch: %w", err)
 		}
@@ -91,7 +94,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
 	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
-		return errors.Join(newEngineErrorf("failed to task with id: %s", job.Token.ElementId), err)
+		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 	}
 
 	if err := propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
@@ -99,13 +102,17 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		instance.State = runtime.ActivityStateFailed
 	}
 	// TODO: variable mapping needs to be implemented
-	job.State = runtime.ActivityStateCompleting
+	job.State = runtime.ActivityStateCompleted
 	batch := engine.persistence.NewBatch()
 	batch.SaveJob(ctx, job)
 	batch.SaveProcessInstance(ctx, instance)
 
 	currentToken := job.Token
-	currentToken.State = runtime.TokenStateRunning
+
+	tokens, err := engine.handleSimpleTransition(ctx, &instance, task, currentToken)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+	}
 	batch.SaveToken(ctx, currentToken)
 	err = batch.Flush(ctx)
 	if err != nil {
@@ -113,7 +120,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	// TODO: make sure that process instance is not running and if so modify currently running instance
-	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{currentToken})
+	engine.runProcessInstance(ctx, &instance, tokens)
 	return nil
 }
 
@@ -133,6 +140,9 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 		variableHolder := processInstance.VariableHolder
 
 		task := processInstance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+		if task == nil {
+			return nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
+		}
 		if err := evaluateLocalVariables(&variableHolder, task.GetInputMapping()); err != nil {
 			job.State = runtime.ActivityStateFailed
 			perr := engine.persistence.SaveJob(ctx, job)

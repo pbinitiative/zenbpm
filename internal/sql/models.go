@@ -4,6 +4,10 @@
 
 package sql
 
+import (
+	"database/sql"
+)
+
 type DecisionDefinition struct {
 	Key             int64  `json:"key"`
 	Version         int64  `json:"version"`
@@ -47,6 +51,11 @@ type MessageSubscription struct {
 	ExecutionToken       int64  `json:"execution_token"`
 }
 
+type Migration struct {
+	Name  string `json:"name"`
+	RanAt int64  `json:"ran_at"`
+}
+
 type ProcessDefinition struct {
 	Key              int64  `json:"key"`
 	Version          int64  `json:"version"`
@@ -57,11 +66,12 @@ type ProcessDefinition struct {
 }
 
 type ProcessInstance struct {
-	Key                  int64  `json:"key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	CreatedAt            int64  `json:"created_at"`
-	State                int64  `json:"state"`
-	Variables            string `json:"variables"`
+	Key                         int64         `json:"key"`
+	ProcessDefinitionKey        int64         `json:"process_definition_key"`
+	CreatedAt                   int64         `json:"created_at"`
+	State                       int           `json:"state"`
+	Variables                   string        `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
 }
 
 type Timer struct {

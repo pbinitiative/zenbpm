@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_exclusive_gateway_with_expressions_no_outgoing_creates_incident(t *testing.T) {
+func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -41,7 +41,7 @@ func Test_exclusive_gateway_with_expressions_no_outgoing_creates_incident(t *tes
 
 }
 
-func Test_exclusive_gateway_with_expressions_should_resolve_incident(t *testing.T) {
+func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))

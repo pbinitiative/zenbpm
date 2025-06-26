@@ -19,6 +19,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
@@ -1009,10 +1010,10 @@ token:
 var _ storage.IncidentStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveIncident(ctx context.Context, incident runtime.Incident) error {
-	return SaveIncident(ctx, rq.queries, incident)
+	return SaveIncidentWith(ctx, rq.queries, incident)
 }
 
-func SaveIncident(ctx context.Context, db *sql.Queries, incident runtime.Incident) error {
+func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident runtime.Incident) error {
 	return db.SaveIncident(ctx, sql.SaveIncidentParams{
 		Key:                incident.Key,
 		ElementInstanceKey: incident.ElementInstanceKey,
@@ -1020,12 +1021,10 @@ func SaveIncident(ctx context.Context, db *sql.Queries, incident runtime.Inciden
 		ProcessInstanceKey: incident.ProcessInstanceKey,
 		Message:            incident.Message,
 		CreatedAt:          incident.CreatedAt.UnixMilli(),
-		ResolvedAt: func() ssql.NullInt64 {
-			if incident.ResolvedAt == nil {
-				return ssql.NullInt64{Valid: false}
-			}
-			return ssql.NullInt64{Valid: true, Int64: incident.ResolvedAt.UnixMilli()}
-		}(),
+		ResolvedAt: ssql.NullInt64{
+			Int64: ptr.Deref(incident.ResolvedAt, time.Now()).UnixMilli(),
+			Valid: incident.ResolvedAt != nil,
+		},
 		ExecutionToken: incident.Token.Key,
 	})
 }
@@ -1100,5 +1099,5 @@ func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token runtime.ExecutionTo
 var _ storage.IncidentStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
-	return SaveIncident(ctx, b.queries, incident)
+	return SaveIncidentWith(ctx, b.queries, incident)
 }

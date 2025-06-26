@@ -172,7 +172,7 @@ message Incident {
   int64 process_instance_key = 4;
   string message = 5;
   int64 created_at = 6;
-  int64 resolved_at = 7;
+  optional int64 resolved_at = 7;
   int64 execution_token = 8;
 }
 

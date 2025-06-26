@@ -443,8 +443,8 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			ElementId:          incident.ElementId,
 			CreatedAt:          time.UnixMilli(incident.CreatedAt),
 			ResolvedAt: func() *time.Time {
-				if incident.ResolvedAt != 0 {
-					return ptr.To(time.UnixMilli(incident.ResolvedAt))
+				if incident.ResolvedAt != nil {
+					return ptr.To(time.UnixMilli(*incident.ResolvedAt))
 				}
 				return nil
 			}(),

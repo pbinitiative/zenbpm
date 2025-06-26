@@ -8,8 +8,6 @@ import (
 	"net"
 	"slices"
 
-	sqlDriver "database/sql"
-
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -526,9 +524,7 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
-	incidents, err := queries.FindIncidents(ctx, sql.FindIncidentsParams{
-		ProcessInstanceKey: sqlDriver.NullInt64{Valid: true, Int64: req.ProcessInstanceKey},
-	})
+	incidents, err := queries.FindIncidentsByProcessInstanceKey(ctx, req.ProcessInstanceKey)
 	if err != nil {
 		err := fmt.Errorf("failed to find incidents for instance %d", req.ProcessInstanceKey)
 		return &proto.GetIncidentsResponse{
@@ -547,11 +543,11 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			ProcessInstanceKey: incident.ProcessInstanceKey,
 			Message:            incident.Message,
 			CreatedAt:          incident.CreatedAt,
-			ResolvedAt: func() int64 {
+			ResolvedAt: func() *int64 {
 				if incident.ResolvedAt.Valid {
-					return incident.ResolvedAt.Int64
+					return &incident.ResolvedAt.Int64
 				}
-				return 0
+				return nil
 			}(),
 			ExecutionToken: incident.ExecutionToken,
 		}

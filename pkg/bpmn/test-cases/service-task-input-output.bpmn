@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1paldd5" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.5.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1paldd5" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.36.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.0.0">
   <bpmn:process id="service-task-input-output" name="service-task-input-output" isExecutable="true">
-    <bpmn:startEvent id="StartEvent_1">
-      <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
-    </bpmn:startEvent>
+    <bpmn:endEvent id="Event_1mhay4i">
+      <bpmn:incoming>Flow_1imra4b</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1imra4b" sourceRef="user-task-2" targetRef="Event_1mhay4i" />
+    <bpmn:sequenceFlow id="Flow_1mibmwr" sourceRef="service-task-1" targetRef="user-task-2" />
+    <bpmn:sequenceFlow id="Flow_1pv0o34" sourceRef="StartEvent_1" targetRef="service-task-1" />
     <bpmn:serviceTask id="service-task-1" name="service-task-1">
       <bpmn:extensionElements>
         <zeebe:ioMapping>
@@ -19,12 +22,9 @@
       <bpmn:incoming>Flow_1pv0o34</bpmn:incoming>
       <bpmn:outgoing>Flow_1mibmwr</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_1pv0o34" sourceRef="StartEvent_1" targetRef="service-task-1" />
-    <bpmn:sequenceFlow id="Flow_1mibmwr" sourceRef="service-task-1" targetRef="user-task-2" />
-    <bpmn:endEvent id="Event_1mhay4i">
-      <bpmn:incoming>Flow_1imra4b</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_1imra4b" sourceRef="user-task-2" targetRef="Event_1mhay4i" />
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
+    </bpmn:startEvent>
     <bpmn:userTask id="user-task-2" name="user-task-2">
       <bpmn:extensionElements>
         <zeebe:ioMapping>
@@ -37,6 +37,9 @@
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="service-task-input-output">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0296s40_di" bpmnElement="service-task-1">
         <dc:Bounds x="290" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
@@ -47,9 +50,6 @@
       <bpmndi:BPMNShape id="Activity_1flvjjq_di" bpmnElement="user-task-2">
         <dc:Bounds x="480" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="152" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1pv0o34_di" bpmnElement="Flow_1pv0o34">
         <di:waypoint x="188" y="120" />

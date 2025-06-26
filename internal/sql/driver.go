@@ -379,13 +379,11 @@ func toTime(src interface{}) (time.Time, error) {
 func (rs *Rows) Err() error {
 	// As we know potential error right at the beging ater the QueryContext is called we dont need this
 	return nil
-
 }
 
 func (r *Row) Scan(dest ...interface{}) error {
 	if r.values == nil {
 		return errors.New(ErrNoRows)
 	}
-	Scan(r.ctx, r.columns, r.values, dest...)
-	return nil
+	return Scan(r.ctx, r.columns, r.values, dest...)
 }

@@ -98,7 +98,8 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	zpn.rqliteDB, err = NewRqLiteDB(
 		zpn.store,
 		zpn.partitionId,
-		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)), persistenceConfig)
+		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)), persistenceConfig,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)
 	}

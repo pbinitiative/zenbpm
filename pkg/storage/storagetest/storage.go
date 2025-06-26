@@ -200,9 +200,6 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		// TODO: uncomment once its implemented
 		// assert.Equal(t, len(inst.Activities), len(instance.Activities))
 		// assert.Equal(t, inst.Activities[0], instance.Activities[0])
-		//
-		// assert.Equal(t, len(inst.CaughtEvents), len(instance.CaughtEvents))
-		// assert.Equal(t, inst.CaughtEvents[0], instance.CaughtEvents[0])
 	}
 }
 

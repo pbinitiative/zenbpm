@@ -1,16 +1,21 @@
 package otel
 
 const (
-	Prefix                        = "bpmn-"
-	AttributeProcessInstanceKey   = Prefix + "instance-key"
-	AttributeProcessId            = Prefix + "process-id"
+	Prefix                      = "bpmn-"
+	AttributeProcessInstanceKey = Prefix + "instance-key"
+	AttributeProcessId          = Prefix + "process-id"
+
 	AttributeProcessDefinitionKey = Prefix + "definition-key"
-	AttributeElementId            = Prefix + "element-id"
-	AttributeElementKey           = Prefix + "element-key"
-	AttributeElementName          = Prefix + "element-name"
-	AttributeElementType          = Prefix + "element-type"
-	AttributeIncidentKey          = Prefix + "incident-key"
-	AttributeToken                = Prefix + "token-key"
+
+	AttributeToken = Prefix + "token-key"
+
+	AttributeElementId   = Prefix + "element-id"
+	AttributeElementKey  = Prefix + "element-key"
+	AttributeElementName = Prefix + "element-name"
+	AttributeElementType = Prefix + "element-type"
+
+	AttributeJobKey      = Prefix + "job-key"
+	AttributeIncidentKey = Prefix + "incident-key"
 
 	SpanStatusToken = Prefix + "token-status"
 )

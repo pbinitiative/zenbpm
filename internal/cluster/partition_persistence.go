@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -23,6 +24,10 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type RqLiteDB struct {
@@ -31,6 +36,7 @@ type RqLiteDB struct {
 	logger    hclog.Logger
 	node      *snowflake.Node
 	partition uint32
+	tracer    trace.Tracer
 	pdCache   *expirable.LRU[int64, runtime.ProcessDefinition]
 }
 
@@ -48,6 +54,7 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 		store:     store,
 		logger:    logger,
 		node:      node,
+		tracer:    otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		partition: partition,
 		pdCache:   expirable.NewLRU[int64, runtime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
 	}
@@ -57,6 +64,13 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 }
 
 func (rq *RqLiteDB) executeStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
+	if len(statements) == 0 {
+		return []*proto.ExecuteQueryResponse{{
+			Result: &proto.ExecuteQueryResponse_E{
+				E: &proto.ExecuteResult{},
+			},
+		}}, nil
+	}
 	er := &proto.ExecuteRequest{
 		Request: &proto.Request{
 			Transaction: true,
@@ -171,14 +185,11 @@ func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*p
 	qr := &proto.QueryRequest{
 		Request: &proto.Request{
 			Transaction: false,
-			DbTimeout:   int64(0),
+			DbTimeout:   (10 * time.Second).Nanoseconds(),
 			Statements:  []*proto.Statement{stmts},
 		},
 		Timings: false,
 		Level:   proto.QueryRequest_QUERY_REQUEST_LEVEL_NONE,
-		// TODO: this needs to be revised
-		Freshness:       int64(10 * time.Second),
-		FreshnessStrict: true,
 	}
 
 	results, resultsErr := rq.store.Query(qr)
@@ -203,9 +214,18 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 }
 
 func (rq *RqLiteDB) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+	ctx, execSpan := rq.tracer.Start(ctx, "rqlite-exec", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeExec, sql),
+		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
+	))
+	defer func() {
+		execSpan.End()
+	}()
 	result, err := rq.executeStatements(ctx, []*proto.Statement{rq.generateStatement(sql, args...)})
 
 	if err != nil {
+		execSpan.RecordError(err)
+		execSpan.SetStatus(codes.Error, err.Error())
 		rq.logger.Error("Error executing SQL statements")
 		return nil, err
 	}
@@ -214,7 +234,10 @@ func (rq *RqLiteDB) ExecContext(ctx context.Context, sql string, args ...interfa
 	for _, r := range result {
 		err := r.GetError()
 		if err != "" {
-			return nil, errors.New(err)
+			nErr := errors.New(err)
+			execSpan.RecordError(nErr)
+			execSpan.SetStatus(codes.Error, nErr.Error())
+			return nil, nErr
 		}
 		lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
 	}
@@ -226,8 +249,17 @@ func (rq *RqLiteDB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt,
 }
 
 func (rq *RqLiteDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeQuery, query),
+		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
+	))
+	defer func() {
+		querySpan.End()
+	}()
 	results, err := rq.queryDatabase(query, args...)
 	if err != nil {
+		querySpan.RecordError(err)
+		querySpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	if len(results) > 1 {
@@ -323,10 +355,6 @@ func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	err = xml.Unmarshal([]byte(dbDefinition.BpmnData), &definitions)
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
-	}
-	err = definitions.ResolveReferences()
-	if err != nil {
-		return res, fmt.Errorf("failed to resolve references in definition %d: %w", processDefinitionKey, err)
 	}
 
 	res = runtime.ProcessDefinition{
@@ -472,6 +500,10 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
 		State:                int(processInstance.State),
 		Variables:            string(varStr),
+		ParentProcessExecutionToken: ssql.NullInt64{
+			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, runtime.ExecutionToken{}).Key,
+			Valid: processInstance.ParentProcessExecutionToken != nil,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
@@ -1056,7 +1088,15 @@ func (rq *RqLiteDBBatch) QueryRowContext(ctx context.Context, query string, args
 var _ storage.Batch = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
+	ctx, execSpan := b.db.tracer.Start(ctx, "rqlite-batch", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeExec, fmt.Sprintf("%v", b.stmtToRun)),
+	))
+	defer func() {
+		execSpan.End()
+	}()
 	_, err := b.db.executeStatements(ctx, b.stmtToRun)
+	if err != nil {
+	}
 	return err
 }
 

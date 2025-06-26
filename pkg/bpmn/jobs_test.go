@@ -159,6 +159,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 	})
 	assert.Equal(t, 1234.0, pi.GetVariable("orderId"))
 	assert.Equal(t, "order1", pi.GetVariable("orderName"))
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
 }
 
 func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {

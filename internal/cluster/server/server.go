@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"slices"
+	"time"
 
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -19,6 +20,7 @@ import (
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
@@ -63,7 +65,10 @@ func (s *Server) Open() error {
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
 		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
 
-	srv := grpc.NewServer(so)
+	srv := grpc.NewServer(so, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+		MinTime:             5 * time.Second,
+		PermitWithoutStream: true,
+	}))
 	proto.RegisterZenServiceServer(srv, s)
 	go srv.Serve(s.ln)
 	log.Info("zen cluster service listening on %s", s.addr)
@@ -257,6 +262,15 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 
 func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRequest) (*proto.CreateInstanceResponse, error) {
 	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.CreateInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
@@ -409,7 +423,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
-	resp := make([]*proto.PartitionedProcessInstances, len(req.Partitions))
+	resp := make([]*proto.PartitionedProcessInstances, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
@@ -584,6 +598,9 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 
 func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 	engines := s.controller.Engines(ctx)
+	if len(engines) == 0 {
+		return nil
+	}
 	index := rand.Intn(len(engines))
 	i := 0
 	for _, engine := range engines {

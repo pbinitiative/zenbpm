@@ -1,9 +1,44 @@
-@host=http://localhost:8080
-### GetProcesses
+@host=http://localhost:8082
+@definition_key=1ae34500fa400000
+### GetProcessDefinitions
 GET {{host}}/v1/process-definitions
 Accept: application/json
 
-###
+### DeployProcessDefinition
+POST {{host}}/v1/process-definitions
+Content-Type: application/xml
+
+< pkg/bpmn/test-cases/service-task-input-output.bpmn
+
+### StartProcessInstance
+POST {{host}}/v1/process-instances
+Content-Type: application/json
+
+{
+  "processDefinitionKey": "{{definition_key}}",
+	"variables":{
+	  "name": "Test name"
+	}
+}
+
+### GetProcessInstances
+GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
+
+### ActivateJob
+@job_type=input-task-1
+POST {{host}}/v1/jobs/{{job_type}}/activate
+
+### CompleteJob
+POST {{host}}/v1/jobs
+Content-Type: application/json
+
+{
+  "jobKey": "{{ActivateJob.response.body.$[0].key}}",
+	"variables": {}
+}
 
 ### Metrics
 GET {{host}}/system/metrics
+
+### Metrics
+GET {{host}}/system/status

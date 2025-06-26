@@ -40,7 +40,7 @@ func Test_callActivity_startsAndCompletes_rightAway(t *testing.T) {
 
 	v := engineStorage.ProcessInstances[instance.Key]
 	// then
-	assert.NotNil(t, v, "Process isntance needs to be present")
+	assert.NotNil(t, v, "Process instance needs to be present")
 	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }

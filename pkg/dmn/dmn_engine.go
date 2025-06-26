@@ -63,12 +63,12 @@ func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceNa
 		Id:              definitions.Id,
 		Key:             engine.generateKey(),
 		Definitions:     definitions,
-		RawData:         xmlData,
+		DmnData:         xmlData,
 		DmnChecksum:     md5sum,
 		DmnResourceName: resourceName,
 	}
 
-	decisionDefinitions, err := engine.persistence.FindDecisionDefinitionsById(context.TODO(), definitions.Id)
+	decisionDefinitions, err := engine.persistence.FindDecisionDefinitionsById(ctx, definitions.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load decision definition by id %s: %w", definitions.Id, err)
 	}
@@ -79,7 +79,7 @@ func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceNa
 		}
 		dmnDefinition.Version = decisionDefinitions[latestIndex].Version + 1
 	}
-	err = engine.persistence.SaveDecisionDefinition(context.TODO(), dmnDefinition)
+	err = engine.persistence.SaveDecisionDefinition(ctx, dmnDefinition)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save decision definition by id %s: %w", definitions.Id, err)
 	}

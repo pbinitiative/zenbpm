@@ -49,11 +49,14 @@ type Batch interface {
 }
 
 type DecisionDefinitionStorageReader interface {
-	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
-	// result array is ordered by version number, from 1 (first) and largest version (last)
-	FindDecisionDefinitionsById(ctx context.Context, DecisionId string) ([]dmnruntime.DecisionDefinition, error)
-}
+	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
 
+	FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
+
+	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
+	// result array is ordered by version number desc
+	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
+}
 type DecisionDefinitionStorageWriter interface {
 	// SaveDecisionDefinition persists a DecisionDefinition
 	// and potentially overwrites prior data stored with the given DecisionKey

@@ -1,7 +1,6 @@
 package dmn
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
@@ -17,7 +16,6 @@ import (
 
 var dmnEngine *ZenDmnEngine
 var engineStorage *inmemory.Storage
-var ctx context.Context
 
 func TestMain(m *testing.M) {
 	// setup
@@ -31,15 +29,13 @@ func TestMain(m *testing.M) {
 
 	dmnEngine = NewEngine(EngineWithStorage(engineStorage))
 
-	ctx = context.Background()
-
 	// Run the tests
 	exitCode = m.Run()
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
-	metadata, _ := dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	metadata, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 
 	assert.Equal(t, int64(1), metadata.Version)
 	assert.Greater(t, metadata.Key, int64(1))
@@ -48,11 +44,11 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefinitionKey(t *testing.T) {
 	// setup and test
-	metadata, _ := dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	metadata, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	keyOne := metadata.Key
 	assert.Equal(t, int64(1), metadata.Version)
 
-	metadata, _ = dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	metadata, _ = dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	keyTwo := metadata.Key
 	assert.Equal(t, int64(1), metadata.Version)
 	assert.Equal(t, keyTwo, keyOne)
@@ -60,9 +56,9 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefiniti
 
 func TestLoadingTheSameDecisionDefinitionWithModificationWillCreateNewVersion(t *testing.T) {
 	// setup
-	decisionDefinition1, _ := dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
-	decisionDefinition2, _ := dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule-modified.dmn")
-	decisionDefinition3, _ := dmnEngine.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	decisionDefinition1, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	decisionDefinition2, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule-modified.dmn")
+	decisionDefinition3, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 
 	assert.Equal(t, decisionDefinition1.Id, decisionDefinition2.Id, "both prepared files should have equal IDs")
 	assert.Equal(t, int64(1), decisionDefinition1.Version)
@@ -72,7 +68,7 @@ func TestLoadingTheSameDecisionDefinitionWithModificationWillCreateNewVersion(t 
 	assert.NotEqual(t, decisionDefinition2.Key, decisionDefinition1.Key)
 }
 
-func Test_multiple_engines_create_unique_Ids(t *testing.T) {
+func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	dmnEngine1 := NewEngine(EngineWithStorage(store))
@@ -80,9 +76,9 @@ func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	dmnEngine2 := NewEngine(EngineWithStorage(store2))
 
 	// when
-	decisionDefinition1, err := dmnEngine1.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	decisionDefinition1, err := dmnEngine1.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
-	decisionDefinition2, err := dmnEngine2.LoadFromFile(ctx, "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	decisionDefinition2, err := dmnEngine2.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 
 	// then
@@ -111,7 +107,7 @@ func Test_BulkEvaluateDRD(t *testing.T) {
 	}
 
 	for _, configuration := range bulkTestConfigs {
-		dmnDefinition, loadErr := dmnEngine.LoadFromFile(ctx, BulkEvaluationTestPath+"/"+configuration.DMN)
+		dmnDefinition, loadErr := dmnEngine.LoadFromFile(t.Context(), BulkEvaluationTestPath+"/"+configuration.DMN)
 
 		if loadErr != nil {
 			t.Fatalf("Failed to load DMN file - %v", loadErr.Error())
@@ -120,7 +116,7 @@ func Test_BulkEvaluateDRD(t *testing.T) {
 		for i, test := range configuration.Tests {
 			testName := fmt.Sprintf("decision: '%s', input: %v", test.Decision, test.Input)
 			t.Run(testName, func(t *testing.T) {
-				result, err := dmnEngine.EvaluateDRD(ctx, dmnDefinition, test.Decision, test.Input)
+				result, err := dmnEngine.EvaluateDRD(t.Context(), dmnDefinition, test.Decision, test.Input)
 
 				if err != nil {
 					t.Fatalf("Failed: %v", err)

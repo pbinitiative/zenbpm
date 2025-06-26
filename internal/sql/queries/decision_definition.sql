@@ -2,13 +2,31 @@
 INSERT INTO decision_definition(key, version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name)
     VALUES (?, ?, ?, ?, ?, ?);
 
--- name: FindDecisionDefinitionsByIds :many
+-- name: FindDecisionDefinitionByKey :one
 SELECT
     *
 FROM
     decision_definition
 WHERE
-    dmn_id IN (@dmn_decision_ids)
+    key = @key;
+
+-- name: FindLatestDecisionDefinitionById :one
+SELECT
+    *
+FROM
+    decision_definition
+WHERE
+    dmn_id = @dmn_id
 ORDER BY
-    version asc
+    version DESC
 LIMIT 1;
+
+-- name: FindDecisionDefinitionsById :many
+SELECT
+    *
+FROM
+    decision_definition
+WHERE
+    dmn_id = @dmn_id
+ORDER BY
+    version desc;

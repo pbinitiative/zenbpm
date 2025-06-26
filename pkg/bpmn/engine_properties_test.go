@@ -1,7 +1,6 @@
 package bpmn
 
 import (
-	"context"
 	"os"
 	"strings"
 	"testing"
@@ -14,7 +13,7 @@ import (
 func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
-	_, err := bpmnEngine.persistence.FindProcessInstanceByKey(context.TODO(), 1234)
+	_, err := bpmnEngine.FindProcessInstance(1234)
 
 	assert.NotNil(t, err)
 	assert.ErrorIs(t, err, storage.ErrNotFound, "expected ErrNotFound for not existing process")
@@ -23,7 +22,7 @@ func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *tes
 func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
-	instanceInfos, err := bpmnEngine.persistence.FindProcessDefinitionsById(context.TODO(), "unknown-id")
+	instanceInfos, err := bpmnEngine.FindProcessesById("unknown-id")
 
 	assert.Empty(t, instanceInfos)
 	assert.Nil(t, err)
@@ -46,7 +45,7 @@ func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
 	assert.Nil(t, err)
 
 	// when
-	infos, err := bpmnEngine.persistence.FindProcessDefinitionsById(context.TODO(), "Simple_Task_Process")
+	infos, err := bpmnEngine.FindProcessesById("Simple_Task_Process")
 	assert.Nil(t, err)
 
 	// then

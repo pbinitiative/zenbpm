@@ -386,7 +386,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context) ([]proto.Process
 	for _, def := range definitions {
 		resp = append(resp, proto.ProcessDefinition{
 			Key:        def.Key,
-			Version:    def.Version,
+			Version:    int32(def.Version),
 			ProcessId:  def.BpmnProcessID,
 			Definition: []byte(def.BpmnData),
 		})
@@ -406,7 +406,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 	}
 	return proto.ProcessDefinition{
 		Key:        def.Key,
-		Version:    def.Version,
+		Version:    int32(def.Version),
 		ProcessId:  def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
@@ -424,7 +424,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}
 	return proto.ProcessDefinition{
 		Key:        def.Key,
-		Version:    def.Version,
+		Version:    int32(def.Version),
 		ProcessId:  def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil

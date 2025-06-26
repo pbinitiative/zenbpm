@@ -9,20 +9,42 @@ import (
 	"context"
 )
 
-const findDecisionDefinitionsByIds = `-- name: FindDecisionDefinitionsByIds :many
+const findDecisionDefinitionByKey = `-- name: FindDecisionDefinitionByKey :one
 SELECT
     "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
 FROM
     decision_definition
 WHERE
-    dmn_id IN (?1)
-ORDER BY
-    version asc
-LIMIT 1
+    key = ?1
 `
 
-func (q *Queries) FindDecisionDefinitionsByIds(ctx context.Context, dmnDecisionIds string) ([]DecisionDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findDecisionDefinitionsByIds, dmnDecisionIds)
+func (q *Queries) FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findDecisionDefinitionByKey, key)
+	var i DecisionDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.DmnID,
+		&i.DmnData,
+		&i.DmnChecksum,
+		&i.DmnResourceName,
+	)
+	return i, err
+}
+
+const findDecisionDefinitionsById = `-- name: FindDecisionDefinitionsById :many
+SELECT
+    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+FROM
+    decision_definition
+WHERE
+    dmn_id = ?1
+ORDER BY
+    version desc
+`
+
+func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findDecisionDefinitionsById, dmnID)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +73,32 @@ func (q *Queries) FindDecisionDefinitionsByIds(ctx context.Context, dmnDecisionI
 	return items, nil
 }
 
+const findLatestDecisionDefinitionById = `-- name: FindLatestDecisionDefinitionById :one
+SELECT
+    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+FROM
+    decision_definition
+WHERE
+    dmn_id = ?1
+ORDER BY
+    version DESC
+LIMIT 1
+`
+
+func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionById, dmnID)
+	var i DecisionDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.DmnID,
+		&i.DmnData,
+		&i.DmnChecksum,
+		&i.DmnResourceName,
+	)
+	return i, err
+}
+
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec
 INSERT INTO decision_definition(key, version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -60,7 +108,7 @@ type SaveDecisionDefinitionParams struct {
 	Key             int64  `json:"key"`
 	Version         int64  `json:"version"`
 	DmnID           string `json:"dmn_id"`
-	DmnData         []byte `json:"dmn_data"`
+	DmnData         string `json:"dmn_data"`
 	DmnChecksum     []byte `json:"dmn_checksum"`
 	DmnResourceName string `json:"dmn_resource_name"`
 }

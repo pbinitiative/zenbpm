@@ -57,10 +57,36 @@ func (mem *Storage) SaveDecisionDefinition(ctx context.Context, definition dmnru
 
 var _ storage.DecisionDefinitionStorageReader = &Storage{}
 
-func (mem *Storage) FindDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
 	for _, def := range mem.DecisionDefinitions {
-		if def.Id != decisionId {
+		if def.Id != decisionDefinitionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
+}
+
+func (mem *Storage) FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+	res, ok := mem.DecisionDefinitions[decisionDefinitionKey]
+	if !ok {
+		return res, storage.ErrNotFound
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error) {
+	res := make([]dmnruntime.DecisionDefinition, 0)
+	for _, def := range mem.DecisionDefinitions {
+		if def.Id != decisionDefinitionId {
 			continue
 		}
 		res = append(res, def)

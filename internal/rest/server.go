@@ -453,6 +453,7 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			ExecutionToken:     fmt.Sprintf("%x", incident.ExecutionToken),
 		}
 	}
+	// TODO: Paging needs to be implemented properly
 	return public.GetIncidents200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{

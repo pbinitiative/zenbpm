@@ -316,19 +316,19 @@ func (engine *Engine) handleIncident(ctx context.Context, currentToken runtime.E
 	if saveErr != nil {
 		tokenSpan.RecordError(saveErr)
 		tokenSpan.SetStatus(codes.Error, saveErr.Error())
-		engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
+		engine.logger.Error("failed to save ExecutionToken", "token", currentToken, "err", saveErr)
 	}
 
 	saveErr = errorBatch.SaveIncident(ctx, createNewIncidentFromToken(err, currentToken, engine))
 	if saveErr != nil {
-		engine.logger.Error("failed to save incident [%v]: %w", currentToken, saveErr)
+		engine.logger.Error("failed to save incident for", "token", currentToken, "err", saveErr)
 	}
 
 	saveErr = errorBatch.Flush(ctx)
 	if saveErr != nil {
 		tokenSpan.RecordError(saveErr)
 		tokenSpan.SetStatus(codes.Error, saveErr.Error())
-		engine.logger.Error("failed to close batch for token [%v]: %w", currentToken, saveErr)
+		engine.logger.Error("failed to close batch for", "token", currentToken, "err", saveErr)
 	}
 }
 

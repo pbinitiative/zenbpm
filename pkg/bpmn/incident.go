@@ -3,10 +3,14 @@ package bpmn
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine *Engine) runtime.Incident {
@@ -22,11 +26,25 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 	}
 }
 
-func (engine *Engine) ResolveIncident(ctx context.Context, key int64) error {
+func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error) {
+	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
+	defer func() {
+		if err != nil {
+			resoveIncidentSpan.RecordError(err)
+			resoveIncidentSpan.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
 	incident, err := engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
 	}
+
+	resoveIncidentSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeIncidentKey, incident.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, incident.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, incident.Token.Key),
+	)
 
 	if incident.ResolvedAt != nil {
 		return errors.New("incident already resolved")
@@ -51,6 +69,8 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) error {
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
 	}
+
+	resoveIncidentSpan.End()
 
 	// TODO: make sure that process instance is not running and if so modify currently running instance
 	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{incident.Token})

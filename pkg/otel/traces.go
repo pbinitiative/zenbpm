@@ -9,6 +9,8 @@ const (
 	AttributeElementKey           = Prefix + "element-key"
 	AttributeElementName          = Prefix + "element-name"
 	AttributeElementType          = Prefix + "element-type"
+	AttributeIncidentKey          = Prefix + "incident-key"
+	AttributeToken                = Prefix + "token-key"
 
 	SpanStatusToken = Prefix + "token-status"
 )

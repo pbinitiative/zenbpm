@@ -18,6 +18,7 @@ FROM
     job
 WHERE
     type = ?1
+AND state = 1
 `
 
 func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error) {
@@ -100,6 +101,7 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 }
 
 const findJobByElementId = `-- name: FindJobByElementId :one
+
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
 FROM
@@ -114,6 +116,7 @@ type FindJobByElementIdParams struct {
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 }
 
+// ActivityStateActive
 func (q *Queries) FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error) {
 	row := q.db.QueryRowContext(ctx, findJobByElementId, arg.ElementID, arg.ProcessInstanceKey)
 	var i Job

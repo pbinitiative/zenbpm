@@ -51,6 +51,10 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				writeError(w, r, http.StatusBadRequest, apierror.ApiError{
+					Message: err.Error(),
+					Type:    "BAD_REQUEST",
+				})
 			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 				writeError(w, r, http.StatusInternalServerError, apierror.ApiError{
@@ -79,6 +83,7 @@ func (s *Server) Start() net.Listener {
 	if err != nil {
 		log.Error("failed to listen: %v", err)
 	}
+	log.Info("ZenBpm REST server listening on %s", s.addr)
 	go func() {
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Error("Error starting server: %s", err)

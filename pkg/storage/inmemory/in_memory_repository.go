@@ -19,6 +19,7 @@ type Storage struct {
 	Timers               map[int64]runtime.Timer
 	Jobs                 map[int64]runtime.Job
 	ExecutionTokens      map[int64]runtime.ExecutionToken
+	FlowElementHistory   map[int64]runtime.FlowElementHistoryItem
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -33,6 +34,7 @@ func NewStorage() *Storage {
 		Timers:               make(map[int64]runtime.Timer),
 		Jobs:                 make(map[int64]runtime.Job),
 		ExecutionTokens:      make(map[int64]runtime.ExecutionToken),
+		FlowElementHistory:   make(map[int64]runtime.FlowElementHistoryItem),
 	}
 }
 
@@ -260,6 +262,11 @@ func (mem *Storage) SaveToken(ctx context.Context, token runtime.ExecutionToken)
 	return nil
 }
 
+func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	mem.FlowElementHistory[historyItem.Key] = historyItem
+	return nil
+}
+
 type StorageBatch struct {
 	db        *Storage
 	stmtToRun []func() error
@@ -334,6 +341,13 @@ var _ storage.TokenStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveToken(ctx, token)
+	})
+	return nil
+}
+
+func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveFlowElementHistory(ctx, historyItem)
 	})
 	return nil
 }

@@ -151,7 +151,7 @@ func (engine *Engine) completeJob(
 
 	currentToken := job.Token
 
-	tokens, err = engine.handleSimpleTransition(ctx, instance, task, currentToken)
+	tokens, err = engine.handleSimpleTransition(ctx, batch, instance, task, currentToken)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}

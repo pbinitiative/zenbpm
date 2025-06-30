@@ -41,6 +41,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestMessageStorageWriter,
 		st.TestTokenStorageReader,
 		st.TestTokenStorageWriter,
+		st.TestSaveFlowElementHistoryWriter,
 	}
 
 	for _, function := range functions {
@@ -438,5 +439,21 @@ func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T)
 			}
 		}
 		assert.True(t, matched, "expected to find created token among active tokens for partition")
+	}
+}
+
+func (st *StorageTester) TestSaveFlowElementHistoryWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+
+		historyItem := runtime.FlowElementHistoryItem{
+			Key:                r,
+			ProcessInstanceKey: r,
+			ElementId:          "test-elem",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+		}
+		err := s.SaveFlowElementHistory(ctx, historyItem)
+		assert.Nil(t, err)
 	}
 }

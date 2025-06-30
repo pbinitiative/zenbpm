@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
@@ -23,6 +24,8 @@ type Storage interface {
 	TokenStorageReader
 	TokenStorageWriter
 	FlowElementHistoryWriter
+	IncidentStorageReader
+	IncidentStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -36,6 +39,7 @@ type Batch interface {
 	MessageStorageWriter
 	TokenStorageWriter
 	FlowElementHistoryWriter
+	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
@@ -119,4 +123,13 @@ type TokenStorageWriter interface {
 
 type FlowElementHistoryWriter interface {
 	SaveFlowElementHistory(ctx context.Context, item runtime.FlowElementHistoryItem) error
+}
+
+type IncidentStorageReader interface {
+	FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error)
+	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error)
+}
+
+type IncidentStorageWriter interface {
+	SaveIncident(ctx context.Context, incident runtime.Incident) error
 }

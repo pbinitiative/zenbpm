@@ -60,6 +60,8 @@ service ZenService {
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
+  rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
+  rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -171,6 +173,17 @@ message FlowElement {
   int64 created_at = 4;
 }
 
+message Incident {
+  int64 key = 1;
+  int64 element_instance_key = 2;
+  string element_id = 3;
+  int64 process_instance_key = 4;
+  string message = 5;
+  int64 created_at = 6;
+  optional int64 resolved_at = 7;
+  int64 execution_token = 8;
+}
+
 message DeployDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
@@ -273,6 +286,23 @@ message GetFlowElementHistoryRequest {
 message GetFlowElementHistoryResponse {
   optional ErrorResult error = 1;
   repeated FlowElement flow = 2;
+}
+
+message GetIncidentsRequest {
+  int64 process_instance_key = 1;
+}
+
+message GetIncidentsResponse {
+  optional ErrorResult error = 1;
+  repeated Incident incidents = 2;
+}
+
+message ResolveIncidentRequest {
+  int64 incident_key = 1;
+}
+
+message ResolveIncidentResponse {
+  optional ErrorResult error = 1;
 }
 // INTERNAL ENGINE API END
 

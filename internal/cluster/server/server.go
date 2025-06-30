@@ -562,6 +562,76 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 	return &proto.PublishMessageResponse{}, nil
 }
 
+func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsRequest) (*proto.GetIncidentsResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.ProcessInstanceKey)
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetIncidentsResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	incidents, err := queries.FindIncidentsByProcessInstanceKey(ctx, req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to find incidents for instance %d", req.ProcessInstanceKey)
+		return &proto.GetIncidentsResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	results := make([]*proto.Incident, len(incidents))
+	for i, incident := range incidents {
+		results[i] = &proto.Incident{
+			Key:                incident.Key,
+			ElementInstanceKey: incident.ElementInstanceKey,
+			ElementId:          incident.ElementID,
+			ProcessInstanceKey: incident.ProcessInstanceKey,
+			Message:            incident.Message,
+			CreatedAt:          incident.CreatedAt,
+			ResolvedAt: func() *int64 {
+				if incident.ResolvedAt.Valid {
+					return &incident.ResolvedAt.Int64
+				}
+				return nil
+			}(),
+			ExecutionToken: incident.ExecutionToken,
+		}
+	}
+	return &proto.GetIncidentsResponse{
+		Incidents: results,
+	}, nil
+}
+
+func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncidentRequest) (*proto.ResolveIncidentResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.IncidentKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		return &proto.ResolveIncidentResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	err := engine.ResolveIncident(ctx, req.IncidentKey)
+	if err != nil {
+		err := fmt.Errorf("failed to resolve incident %d: %w", req.IncidentKey, err)
+		return &proto.ResolveIncidentResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.ResolveIncidentResponse{}, err
+}
+
 func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 	engines := s.controller.Engines(ctx)
 	if len(engines) == 0 {

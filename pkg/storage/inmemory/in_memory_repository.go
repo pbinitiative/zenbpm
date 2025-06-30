@@ -20,6 +20,7 @@ type Storage struct {
 	Jobs                 map[int64]runtime.Job
 	ExecutionTokens      map[int64]runtime.ExecutionToken
 	FlowElementHistory   map[int64]runtime.FlowElementHistoryItem
+	Incidents            map[int64]runtime.Incident
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -35,6 +36,7 @@ func NewStorage() *Storage {
 		Jobs:                 make(map[int64]runtime.Job),
 		ExecutionTokens:      make(map[int64]runtime.ExecutionToken),
 		FlowElementHistory:   make(map[int64]runtime.FlowElementHistoryItem),
+		Incidents:            make(map[int64]runtime.Incident),
 	}
 }
 
@@ -223,6 +225,26 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
+func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
+	var res runtime.Incident
+	res, ok := mem.Incidents[key]
+	if !ok {
+		return res, storage.ErrNotFound
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error) {
+	res := make([]runtime.Incident, 0)
+	for _, inc := range mem.Incidents {
+		if inc.ProcessInstanceKey != processInstanceKey {
+			continue
+		}
+		res = append(res, inc)
+	}
+	return res, nil
+}
+
 var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
@@ -264,6 +286,11 @@ func (mem *Storage) SaveToken(ctx context.Context, token runtime.ExecutionToken)
 
 func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
 	mem.FlowElementHistory[historyItem.Key] = historyItem
+	return nil
+}
+
+func (mem *Storage) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	mem.Incidents[incident.Key] = incident
 	return nil
 }
 
@@ -348,6 +375,13 @@ func (b *StorageBatch) SaveToken(ctx context.Context, token runtime.ExecutionTok
 func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveFlowElementHistory(ctx, historyItem)
+	})
+	return nil
+}
+
+func (b *StorageBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveIncident(ctx, incident)
 	})
 	return nil
 }

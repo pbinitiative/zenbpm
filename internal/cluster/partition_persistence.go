@@ -968,6 +968,115 @@ func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyIte
 	)
 }
 
+var _ storage.IncidentStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
+	return FindIncidentByKey(ctx, rq.queries, key)
+}
+
+func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (runtime.Incident, error) {
+	incident, err := db.FindIncidentByKey(ctx, key)
+	if err != nil {
+		return runtime.Incident{}, err
+	}
+
+	tokens, err := db.GetTokens(ctx, []int64{incident.ExecutionToken})
+	if len(tokens) == 0 {
+		err = errors.Join(err, errors.New("no incidents found"))
+	}
+	token := tokens[0]
+	return runtime.Incident{
+		Key:                incident.Key,
+		ElementInstanceKey: incident.ElementInstanceKey,
+		ElementId:          incident.ElementID,
+		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Message:            incident.Message,
+		CreatedAt:          time.UnixMilli(incident.CreatedAt),
+		ResolvedAt: func() *time.Time {
+			if incident.ResolvedAt.Valid {
+				t := time.UnixMilli(incident.ResolvedAt.Int64)
+				return &t
+			}
+			return nil
+		}(),
+		Token: runtime.ExecutionToken{
+			Key:                token.Key,
+			ElementInstanceKey: token.ElementInstanceKey,
+			ElementId:          token.ElementID,
+			ProcessInstanceKey: token.ProcessInstanceKey,
+			State:              runtime.TokenState(token.State),
+		},
+	}, nil
+}
+
+func (rq *RqLiteDB) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error) {
+	return FindIncidentsByProcessInstanceKey(ctx, rq.queries, processInstanceKey)
+}
+
+func FindIncidentsByProcessInstanceKey(ctx context.Context, db *sql.Queries, processInstanceKey int64) ([]runtime.Incident, error) {
+	incidents, err := db.FindIncidentsByProcessInstanceKey(ctx, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]runtime.Incident, len(incidents))
+
+	tokensToLoad := make([]int64, len(incidents))
+	for i, incident := range incidents {
+		res[i] = runtime.Incident{
+			Key:                incident.Key,
+			ElementInstanceKey: incident.ElementInstanceKey,
+			ElementId:          incident.ElementID,
+			ProcessInstanceKey: incident.ProcessInstanceKey,
+			Message:            incident.Message,
+		}
+
+		tokensToLoad[i] = incident.ExecutionToken
+	}
+
+	tokens, err := db.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return res, fmt.Errorf("failed to find job tokens: %w", err)
+	}
+token:
+	for _, token := range tokens {
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+				continue token
+			}
+		}
+	}
+	return res, nil
+}
+
+var _ storage.IncidentStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	return SaveIncidentWith(ctx, rq.queries, incident)
+}
+
+func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident runtime.Incident) error {
+	return db.SaveIncident(ctx, sql.SaveIncidentParams{
+		Key:                incident.Key,
+		ElementInstanceKey: incident.ElementInstanceKey,
+		ElementID:          incident.ElementId,
+		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Message:            incident.Message,
+		CreatedAt:          incident.CreatedAt.UnixMilli(),
+		ResolvedAt: ssql.NullInt64{
+			Int64: ptr.Deref(incident.ResolvedAt, time.Now()).UnixMilli(),
+			Valid: incident.ResolvedAt != nil,
+		},
+		ExecutionToken: incident.Token.Key,
+	})
+}
+
 type RqLiteDBBatch struct {
 	db        *RqLiteDB
 	stmtToRun []*proto.Statement
@@ -1045,4 +1154,10 @@ func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token runtime.ExecutionTo
 
 func (b *RqLiteDBBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
 	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
+}
+
+var _ storage.IncidentStorageWriter = &RqLiteDBBatch{}
+
+func (b *RqLiteDBBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	return SaveIncidentWith(ctx, b.queries, incident)
 }

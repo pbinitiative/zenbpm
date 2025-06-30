@@ -71,6 +71,26 @@ type FlowElementHistoryPage struct {
 	PageMetadata `yaml:",inline"`
 }
 
+// Incident defines model for Incident.
+type Incident struct {
+	CreatedAt          time.Time  `json:"createdAt"`
+	ElementId          string     `json:"elementId"`
+	ElementInstanceKey string     `json:"elementInstanceKey"`
+	ExecutionToken     string     `json:"executionToken"`
+	Key                string     `json:"key"`
+	Message            string     `json:"message"`
+	ProcessInstanceKey string     `json:"processInstanceKey"`
+	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
+}
+
+// IncidentPage defines model for IncidentPage.
+type IncidentPage struct {
+	// Embedded fields due to inline allOf schema
+	Items []Incident `json:"items"`
+	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
+	PageMetadata `yaml:",inline"`
+}
+
 // Job defines model for Job.
 type Job struct {
 	CreatedAt          time.Time              `json:"createdAt"`
@@ -191,6 +211,9 @@ type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Resolve an incident
+	// (POST /incident/{incidentKey}/resolve)
+	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string)
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
@@ -224,6 +247,9 @@ type ServerInterface interface {
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey string)
+	// Get list of incidents for a process instance
+	// (GET /process-instances/{processInstanceKey}/incidents)
+	GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
@@ -232,6 +258,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Resolve an incident
+// (POST /incident/{incidentKey}/resolve)
+func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Complete a job
 // (POST /jobs)
@@ -299,6 +331,12 @@ func (_ Unimplemented) GetHistory(w http.ResponseWriter, r *http.Request, proces
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get list of incidents for a process instance
+// (GET /process-instances/{processInstanceKey}/incidents)
+func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
 func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
@@ -313,6 +351,31 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ResolveIncident operation middleware
+func (siw *ServerInterfaceWrapper) ResolveIncident(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "incidentKey" -------------
+	var incidentKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "incidentKey", chi.URLParam(r, "incidentKey"), &incidentKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "incidentKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveIncident(w, r, incidentKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // CompleteJob operation middleware
 func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Request) {
@@ -559,6 +622,31 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetIncidents operation middleware
+func (siw *ServerInterfaceWrapper) GetIncidents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIncidents(w, r, processInstanceKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetJobs operation middleware
 func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Request) {
 
@@ -698,6 +786,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/incident/{incidentKey}/resolve", wrapper.ResolveIncident)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
@@ -731,10 +822,47 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/history", wrapper.GetHistory)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/incidents", wrapper.GetIncidents)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetJobs)
 	})
 
 	return r
+}
+
+type ResolveIncidentRequestObject struct {
+	IncidentKey string `json:"incidentKey"`
+}
+
+type ResolveIncidentResponseObject interface {
+	VisitResolveIncidentResponse(w http.ResponseWriter) error
+}
+
+type ResolveIncident201Response struct {
+}
+
+func (response ResolveIncident201Response) VisitResolveIncidentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type ResolveIncident400JSONResponse Error
+
+func (response ResolveIncident400JSONResponse) VisitResolveIncidentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ResolveIncident502JSONResponse Error
+
+func (response ResolveIncident502JSONResponse) VisitResolveIncidentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type CompleteJobRequestObject struct {
@@ -1121,6 +1249,41 @@ func (response GetHistory502JSONResponse) VisitGetHistoryResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetIncidentsRequestObject struct {
+	ProcessInstanceKey string `json:"processInstanceKey"`
+}
+
+type GetIncidentsResponseObject interface {
+	VisitGetIncidentsResponse(w http.ResponseWriter) error
+}
+
+type GetIncidents200JSONResponse IncidentPage
+
+func (response GetIncidents200JSONResponse) VisitGetIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetIncidents400JSONResponse Error
+
+func (response GetIncidents400JSONResponse) VisitGetIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetIncidents500JSONResponse Error
+
+func (response GetIncidents500JSONResponse) VisitGetIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetJobsRequestObject struct {
 	ProcessInstanceKey string `json:"processInstanceKey"`
 }
@@ -1167,6 +1330,9 @@ func (response GetJobs502JSONResponse) VisitGetJobsResponse(w http.ResponseWrite
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Resolve an incident
+	// (POST /incident/{incidentKey}/resolve)
+	ResolveIncident(ctx context.Context, request ResolveIncidentRequestObject) (ResolveIncidentResponseObject, error)
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
@@ -1200,6 +1366,9 @@ type StrictServerInterface interface {
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
+	// Get list of incidents for a process instance
+	// (GET /process-instances/{processInstanceKey}/incidents)
+	GetIncidents(ctx context.Context, request GetIncidentsRequestObject) (GetIncidentsResponseObject, error)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetJobs(ctx context.Context, request GetJobsRequestObject) (GetJobsResponseObject, error)
@@ -1232,6 +1401,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ResolveIncident operation middleware
+func (sh *strictHandler) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string) {
+	var request ResolveIncidentRequestObject
+
+	request.IncidentKey = incidentKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveIncident(ctx, request.(ResolveIncidentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveIncident")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveIncidentResponseObject); ok {
+		if err := validResponse.VisitResolveIncidentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // CompleteJob operation middleware
@@ -1533,6 +1728,32 @@ func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, proc
 	}
 }
 
+// GetIncidents operation middleware
+func (sh *strictHandler) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+	var request GetIncidentsRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIncidents(ctx, request.(GetIncidentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIncidents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIncidentsResponseObject); ok {
+		if err := validResponse.VisitGetIncidentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetJobs operation middleware
 func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	var request GetJobsRequestObject
@@ -1562,32 +1783,34 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, process
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"p+v9PwEAAP//8iY3FsAuAAA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 
@@ -12,12 +13,15 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
 	proto.UnimplementedZenBpmServer
+	proto.UnimplementedGatewayServer
 	node   *cluster.ZenNode
 	addr   string // Address this server is listening on
 	server *grpc.Server
@@ -37,11 +41,13 @@ func NewServer(node *cluster.ZenNode, addr string) *Server {
 		server: grpcServer,
 	}
 	proto.RegisterZenBpmServer(grpcServer, server)
+	proto.RegisterGatewayServer(grpcServer, server)
 
 	return server
 }
 
 var _ proto.ZenBpmServer = &Server{}
+var _ proto.GatewayServer = &Server{}
 
 // Start starts the ZenBPM GRPC server.
 func (s *Server) Start() {
@@ -72,5 +78,17 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 }
 
 func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
-	return nil, errors.New("TODO: Not yet implemented")
+	var variables map[string]interface{}
+	if req.Variables != "" {
+		if err := json.Unmarshal([]byte(req.Variables), &variables); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid variables JSON: %v", err)
+		}
+	}
+
+	err := s.node.FailJob(ctx, req.JobKey, req.Retries, req.ErrorMessage, req.RetryBackOff, variables)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to fail job: %v", err)
+	}
+
+	return &proto.FailJobResponse{}, nil
 }

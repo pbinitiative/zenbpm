@@ -163,6 +163,90 @@ func (engine *Engine) completeJob(
 	return instance, tokens, nil
 }
 
+func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, retries int32, errorMessage string, retryBackOff int64, variables map[string]interface{}) error {
+	_, err := engine.failJob(ctx, jobKey, retries, errorMessage, retryBackOff, variables)
+	if err != nil {
+		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
+	}
+
+	if retries <= 0 {
+		// TODO: create an incident record with the error message
+		engine.logger.Error("job failed with no retries left", "jobKey", jobKey, "errorMessage", errorMessage)
+	}
+	return nil
+}
+
+func (engine *Engine) failJob(
+	ctx context.Context,
+	jobKey int64,
+	retries int32,
+	errorMessage string,
+	retryBackOff int64,
+	variables map[string]interface{},
+) (
+	instance *runtime.ProcessInstance,
+	retErr error,
+) {
+	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d:fail", jobKey))
+	defer func() {
+		if retErr != nil {
+			failJobSpan.RecordError(retErr)
+			failJobSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		failJobSpan.End()
+	}()
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	if job.State == runtime.ActivityStateCompleted || job.State == runtime.ActivityStateFailed {
+		return nil, newEngineErrorf("job %d is already in final state: %s", jobKey, job.State)
+	}
+	failJobSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, job.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
+	)
+
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+	}
+	instance = &inst
+
+	// Update variables if provided
+	if variables != nil {
+		variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
+		task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
+		if task == nil {
+			return nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
+		}
+
+		if err = propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
+			job.State = runtime.ActivityStateFailed
+			instance.State = runtime.ActivityStateFailed
+		}
+	}
+
+	job.State = runtime.ActivityStateFailed
+
+	// Mark the process instance as failed
+	if retries <= 0 {
+		instance.State = runtime.ActivityStateFailed
+		// TODO: Create an incident record with the error message
+	}
+
+	batch := engine.persistence.NewBatch()
+	batch.SaveJob(ctx, job)
+	batch.SaveProcessInstance(ctx, *instance)
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fail job %+v: %w", job, err)
+	}
+	return instance, nil
+}
+
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {
 	jobs, err := engine.persistence.FindActiveJobsByType(ctx, jobType)
 	if err != nil {

@@ -41,6 +41,35 @@ func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
 
+func Test_JobFailByKey_fails_job_and_sets_appropriate_state(t *testing.T) {
+	// setup
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+
+	// Create a job but don't complete it
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+
+	var job runtime.Job
+	for _, j := range engineStorage.Jobs {
+		if j.ProcessInstanceKey == instance.Key {
+			job = j
+			break
+		}
+	}
+	assert.NotEqual(t, int64(0), job.Key)
+
+	err = bpmnEngine.JobFailByKey(t.Context(), job.Key, 0, "test error message", 0, nil)
+	assert.NoError(t, err)
+
+	updatedJob := engineStorage.Jobs[job.Key]
+	assert.Equal(t, runtime.ActivityStateFailed, updatedJob.State)
+
+	updatedInstance, err := engineStorage.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateFailed, updatedInstance.State)
+}
+
 // Test_simple_count_loop requires correct Task-Output-Mapping in the BPMN file
 func Test_simple_count_loop(t *testing.T) {
 	// setup

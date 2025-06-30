@@ -49,11 +49,12 @@ service ZenService {
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 
   // engine endpoints
-  
+
   // Deploys definition into partitions that receiving node is leader of
   rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  rpc FailJob(FailJobRequest) returns (FailJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
@@ -186,6 +187,18 @@ message CompleteJobRequest {
 }
 
 message CompleteJobResponse {
+  optional ErrorResult error = 1;
+}
+
+message FailJobRequest {
+  int64 key = 1;
+  int32 retries = 2;
+  string error_message = 3;
+  int64 retry_back_off = 4;
+  bytes variables = 5; // []byte of json variables 
+}
+
+message FailJobResponse {
   optional ErrorResult error = 1;
 }
 

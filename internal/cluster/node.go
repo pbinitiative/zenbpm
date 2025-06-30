@@ -280,6 +280,34 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 	return nil
 }
 
+func (node *ZenNode) FailJob(ctx context.Context, key int64, retries int32, errorMessage string, retryBackOff int64, variables map[string]any) error {
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return fmt.Errorf("failed marshal variables: %w", err)
+	}
+	resp, err := client.FailJob(ctx, &proto.FailJobRequest{
+		Key:          key,
+		Retries:      retries,
+		ErrorMessage: errorMessage,
+		RetryBackOff: retryBackOff,
+		Variables:    vars,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("client call to fail job failed")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return nil
+}
+
 // ActivateJob will call activate on all partition leaders, when it receives the first batch of jobs from the stream it closes all the active streams and returns them.
 // TODO: we will need to have a locking logic on the server side + some round robin for active connections
 // This client will then have to ack and lock on the jobs it will send to the API client

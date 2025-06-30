@@ -43,6 +43,7 @@ const (
 	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
 	ZenService_GetProcessInstance_FullMethodName        = "/cluster.ZenService/GetProcessInstance"
 	ZenService_GetProcessInstanceJobs_FullMethodName    = "/cluster.ZenService/GetProcessInstanceJobs"
+	ZenService_GetFlowElementHistory_FullMethodName     = "/cluster.ZenService/GetFlowElementHistory"
 	ZenService_GetIncidents_FullMethodName              = "/cluster.ZenService/GetIncidents"
 	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
 )
@@ -87,6 +88,7 @@ type ZenServiceClient interface {
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error)
+	GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error)
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
 }
@@ -338,6 +340,16 @@ func (c *zenServiceClient) GetProcessInstanceJobs(ctx context.Context, in *GetPr
 	return out, nil
 }
 
+func (c *zenServiceClient) GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetFlowElementHistoryResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetFlowElementHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetIncidentsResponse)
@@ -398,6 +410,7 @@ type ZenServiceServer interface {
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error)
+	GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error)
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
@@ -478,6 +491,9 @@ func (UnimplementedZenServiceServer) GetProcessInstance(context.Context, *GetPro
 }
 func (UnimplementedZenServiceServer) GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstanceJobs not implemented")
+}
+func (UnimplementedZenServiceServer) GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFlowElementHistory not implemented")
 }
 func (UnimplementedZenServiceServer) GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIncidents not implemented")
@@ -913,6 +929,24 @@ func _ZenService_GetProcessInstanceJobs_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_GetFlowElementHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFlowElementHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetFlowElementHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetFlowElementHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetFlowElementHistory(ctx, req.(*GetFlowElementHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_GetIncidents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetIncidentsRequest)
 	if err := dec(in); err != nil {
@@ -1043,6 +1077,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessInstanceJobs",
 			Handler:    _ZenService_GetProcessInstanceJobs_Handler,
+		},
+		{
+			MethodName: "GetFlowElementHistory",
+			Handler:    _ZenService_GetFlowElementHistory_Handler,
 		},
 		{
 			MethodName: "GetIncidents",

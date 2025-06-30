@@ -415,9 +415,21 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
+	err = batch.SaveFlowElementHistory(ctx,
+		runtime.FlowElementHistoryItem{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: instance.GetInstanceKey(),
+			ElementId:          activity.element.GetId(),
+			CreatedAt:          time.Now(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save flow element history: %w", err)
+	}
+
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
@@ -501,7 +513,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -627,7 +639,13 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	return resTokens, nil
 }
 
-func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runtime.ProcessInstance, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleSimpleTransition(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
@@ -645,6 +663,18 @@ func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runt
 				State:              runtime.TokenStateRunning,
 			})
 		}
+
+		err := batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 	}
 	return resTokens, nil
 }
@@ -658,7 +688,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 		token, err := engine.createIntermediateTimerCatchEvent(ctx, batch, instance, ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, ice, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
 		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))

@@ -378,6 +378,43 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
 }
 
+func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
+	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
+	if err != nil {
+		return public.GetHistory400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	flow, err := s.node.GetFlowElementHistory(ctx, instanceKey)
+	if err != nil {
+		return public.GetHistory502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	resp := make([]public.FlowElementHistory, len(flow))
+	for i, flowNode := range flow {
+		key := fmt.Sprintf("%x", flowNode.Key)
+		createdAt := time.UnixMilli(flowNode.CreatedAt)
+		processInstanceKey := fmt.Sprintf("%x", flowNode.ProcessInstanceKey)
+		resp[i] = public.FlowElementHistory{
+			Key:                &key,
+			CreatedAt:          &createdAt,
+			ElementId:          &flowNode.ElementId,
+			ProcessInstanceKey: &processInstanceKey,
+		}
+	}
+	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{
+		Items: &resp,
+		PageMetadata: public.PageMetadata{
+			Count:  len(resp),
+			Offset: 0,
+			Size:   len(resp),
+		},
+	}), nil
+}
+
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
 	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
 	if err != nil {

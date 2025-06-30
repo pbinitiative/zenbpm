@@ -23,6 +23,7 @@ type Storage interface {
 	MessageStorageWriter
 	TokenStorageReader
 	TokenStorageWriter
+	FlowElementHistoryWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 
@@ -37,6 +38,7 @@ type Batch interface {
 	JobStorageWriter
 	MessageStorageWriter
 	TokenStorageWriter
+	FlowElementHistoryWriter
 	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
@@ -117,6 +119,10 @@ type TokenStorageReader interface {
 
 type TokenStorageWriter interface {
 	SaveToken(ctx context.Context, token runtime.ExecutionToken) error
+}
+
+type FlowElementHistoryWriter interface {
+	SaveFlowElementHistory(ctx context.Context, item runtime.FlowElementHistoryItem) error
 }
 
 type IncidentStorageReader interface {

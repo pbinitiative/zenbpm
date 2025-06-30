@@ -59,6 +59,7 @@ service ZenService {
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
+  rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
 }
@@ -165,6 +166,13 @@ message Job {
   bytes variables = 8;
 }
 
+message FlowElement {
+  int64 key = 1;
+  string element_id = 2;
+  int64 process_instance_key = 3;
+  int64 created_at = 4;
+}
+
 message Incident {
   int64 key = 1;
   int64 element_instance_key = 2;
@@ -269,6 +277,15 @@ message GetProcessInstanceJobsRequest {
 message GetProcessInstanceJobsResponse {
   optional ErrorResult error = 1;
   repeated Job jobs = 2;
+}
+
+message GetFlowElementHistoryRequest {
+  int64 process_instance_key = 1;
+}
+
+message GetFlowElementHistoryResponse {
+  optional ErrorResult error = 1;
+  repeated FlowElement flow = 2;
 }
 
 message GetIncidentsRequest {

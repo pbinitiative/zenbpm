@@ -952,6 +952,22 @@ func SaveToken(ctx context.Context, db *sql.Queries, token runtime.ExecutionToke
 	})
 }
 
+func (rq *RqLiteDB) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	return SaveFlowElementHistoryWith(ctx, rq.queries, historyItem)
+}
+
+func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem runtime.FlowElementHistoryItem) error {
+	return db.SaveFlowElementHistory(
+		ctx,
+		sql.SaveFlowElementHistoryParams{
+			historyItem.Key,
+			historyItem.ElementId,
+			historyItem.ProcessInstanceKey,
+			historyItem.CreatedAt.UnixMilli(),
+		},
+	)
+}
+
 var _ storage.IncidentStorageReader = &RqLiteDB{}
 
 func (rq *RqLiteDB) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
@@ -1134,6 +1150,10 @@ var _ storage.TokenStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
 	return SaveToken(ctx, b.queries, token)
+}
+
+func (b *RqLiteDBBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
 }
 
 var _ storage.IncidentStorageWriter = &RqLiteDBBatch{}

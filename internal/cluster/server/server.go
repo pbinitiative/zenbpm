@@ -422,6 +422,42 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 	}, nil
 }
 
+func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowElementHistoryRequest) (*proto.GetFlowElementHistoryResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.ProcessInstanceKey)
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetFlowElementHistoryResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	flowElements, err := queries.GetFlowElementHistory(ctx, req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.ProcessInstanceKey)
+		return &proto.GetFlowElementHistoryResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	result := make([]*proto.FlowElement, len(flowElements))
+	for i, flowElement := range flowElements {
+		result[i] = &proto.FlowElement{
+			Key:                flowElement.Key,
+			ElementId:          flowElement.ElementID,
+			ProcessInstanceKey: flowElement.ProcessInstanceKey,
+			CreatedAt:          flowElement.CreatedAt,
+		}
+	}
+	return &proto.GetFlowElementHistoryResponse{
+		Flow: result,
+	}, nil
+}
+
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
 	resp := make([]*proto.PartitionedProcessInstances, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {

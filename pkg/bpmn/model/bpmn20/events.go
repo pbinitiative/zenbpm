@@ -16,7 +16,7 @@ const (
 )
 
 type TEvent struct {
-	TActivity
+	TFlowNode
 }
 
 type TStartEvent struct {
@@ -86,18 +86,22 @@ type TIntermediateThrowEvent struct {
 	TEvent
 	EventDefinition EventDefinition
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
-	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
-	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Input          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
+
+func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.TypeName }
 
 func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
-		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
-		LinkEventDefinition    TLinkEventDefinition    `xml:"linkEventDefinition"`
-		Input                  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
-		Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+		MessageEventDefinition TMessageEventDefinition    `xml:"messageEventDefinition"`
+		TimerEventDefinition   TTimerEventDefinition      `xml:"timerEventDefinition"`
+		LinkEventDefinition    TLinkEventDefinition       `xml:"linkEventDefinition"`
+		TaskDefinition         extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+		Input                  []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+		Output                 []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -115,6 +119,7 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 		definitions.EventDefinition = tempStruct.LinkEventDefinition
 	}
 	definitions.Output = tempStruct.Output
+	definitions.TaskDefinition = tempStruct.TaskDefinition
 	return nil
 }
 
@@ -124,11 +129,10 @@ func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
 
 type TMessageEventDefinition struct {
 	TFlowNode
-	Id             string                     `xml:"id,attr"`
-	MessageRef     string                     `xml:"messageRef,attr"`
-	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-	input          []extensions.TIoMapping
-	output         []extensions.TIoMapping
+	Id         string `xml:"id,attr"`
+	MessageRef string `xml:"messageRef,attr"`
+	input      []extensions.TIoMapping
+	output     []extensions.TIoMapping
 }
 
 func (TMessageEventDefinition) eventDefinition() {}
@@ -136,7 +140,6 @@ func (d TMessageEventDefinition) GetId() string  { return d.Id }
 func (d TMessageEventDefinition) GetType() ElementType {
 	return ElementTypeIntermediateMessageThrowEvent
 }
-func (d TMessageEventDefinition) GetTaskType() string                       { return d.TaskDefinition.TypeName }
 func (d TMessageEventDefinition) GetInputMapping() []extensions.TIoMapping  { return d.input }
 func (d TMessageEventDefinition) GetOutputMapping() []extensions.TIoMapping { return d.output }
 

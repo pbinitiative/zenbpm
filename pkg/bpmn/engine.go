@@ -34,6 +34,7 @@ type Engine struct {
 	tracer         trace.Tracer
 	meter          metric.Meter
 	metrics        *otelPkg.EngineMetrics
+	timerManager   *timerManager
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -188,14 +189,16 @@ func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition,
 	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
 }
 
-func (b *Engine) Stop() {
-}
-
 // Start will start the process engine instance.
 // Engine will start to pull process instances with execution tokens that need to be processed
-func (b *Engine) Start() error {
+func (engine *Engine) Start() error {
 	ctx := context.Background()
-	tokens, err := b.persistence.GetRunningTokens(ctx)
+	if engine.timerManager != nil {
+		engine.timerManager.stop()
+	}
+	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.FindTimersTo, 10*time.Second)
+	engine.timerManager.start()
+	tokens, err := engine.persistence.GetRunningTokens(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load running tokens: %w", err)
 	}
@@ -209,7 +212,7 @@ func (b *Engine) Start() error {
 			val.tokens = append(val.tokens, token)
 			instancesToStart[token.ProcessInstanceKey] = val
 		} else {
-			instance, err := b.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
 			if err != nil {
 				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
 			}
@@ -220,13 +223,17 @@ func (b *Engine) Start() error {
 		}
 	}
 	for _, instance := range instancesToStart {
-		err := b.runProcessInstance(ctx, instance.instance, instance.tokens)
+		err := engine.runProcessInstance(ctx, instance.instance, instance.tokens)
 		if err != nil {
-			b.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
+			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
 		}
 	}
 
 	return nil
+}
+
+func (engine *Engine) Stop() {
+	engine.timerManager.stop()
 }
 
 // runProcessInstance will

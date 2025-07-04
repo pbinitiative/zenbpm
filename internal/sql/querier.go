@@ -13,6 +13,7 @@ type Querier interface {
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
+	// ActivityStateActive
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
@@ -29,8 +30,9 @@ type Querier interface {
 	FindProcessInstances(ctx context.Context, arg FindProcessInstancesParams) ([]ProcessInstance, error)
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error)
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
-	FindTimersInState(ctx context.Context, arg FindTimersInStateParams) ([]Timer, error)
+	FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error)
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
+	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)

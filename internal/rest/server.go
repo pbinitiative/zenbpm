@@ -38,11 +38,11 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	r := chi.NewRouter()
 	s := Server{
 		node: node,
-		addr: conf.Server.Addr,
+		addr: conf.HttpServer.Addr,
 		server: &http.Server{
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           r,
-			Addr:              conf.Server.Addr,
+			Addr:              conf.HttpServer.Addr,
 		},
 	}
 	r.Use(middleware.Cors())

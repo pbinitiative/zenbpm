@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/rand"
 	"slices"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -115,13 +116,27 @@ func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance run
 
 var _ storage.TimerStorageReader = &Storage{}
 
-func (mem *Storage) FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
+func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]runtime.Timer, error) {
 	res := make([]runtime.Timer, 0)
 	for _, timer := range mem.Timers {
-		if timer.ProcessInstanceKey != processInstanceKey {
+		if timer.TimerState != runtime.TimerStateCreated {
 			continue
 		}
-		if timer.TimerState != state {
+		if timer.Token.Key != tokenKey {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]runtime.Timer, error) {
+	res := make([]runtime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.DueAt.After(end) {
+			continue
+		}
+		if timer.TimerState != runtime.TimerStateCreated {
 			continue
 		}
 		res = append(res, timer)

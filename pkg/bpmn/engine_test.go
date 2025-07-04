@@ -35,6 +35,7 @@ func TestMain(m *testing.M) {
 	}()
 
 	bpmnEngine = NewEngine(EngineWithStorage(engineStorage))
+	bpmnEngine.Start()
 
 	// Run the tests
 	exitCode = m.Run()
@@ -271,4 +272,24 @@ func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
 	assert.Nil(t, instance)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
+}
+
+func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
+	// setup
+	cp := CallPath{}
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
+	mH := bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(mH)
+	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(tH)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+
+	// when
+	err := bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "message", nil)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, "task-for-message", cp.CallPath)
 }

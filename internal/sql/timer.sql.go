@@ -113,23 +113,71 @@ func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer
 	return items, nil
 }
 
-const findTimersInState = `-- name: FindTimersInState :many
+const findTimersInStateTillDueAt = `-- name: FindTimersInStateTillDueAt :many
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
 FROM
     timer
 WHERE
-    process_instance_key = ?1
+    due_at < ?1
     AND state = ?2
 `
 
-type FindTimersInStateParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int   `json:"state"`
+type FindTimersInStateTillDueAtParams struct {
+	DueAt int64 `json:"due_at"`
+	State int   `json:"state"`
 }
 
-func (q *Queries) FindTimersInState(ctx context.Context, arg FindTimersInStateParams) ([]Timer, error) {
-	rows, err := q.db.QueryContext(ctx, findTimersInState, arg.ProcessInstanceKey, arg.State)
+func (q *Queries) FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error) {
+	rows, err := q.db.QueryContext(ctx, findTimersInStateTillDueAt, arg.DueAt, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Timer{}
+	for rows.Next() {
+		var i Timer
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+			&i.DueAt,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findTokenTimers = `-- name: FindTokenTimers :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+FROM
+    timer
+WHERE
+    execution_token = ?1
+    AND state = ?2
+`
+
+type FindTokenTimersParams struct {
+	ExecutionToken int64 `json:"execution_token"`
+	State          int   `json:"state"`
+}
+
+func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error) {
+	rows, err := q.db.QueryContext(ctx, findTokenTimers, arg.ExecutionToken, arg.State)
 	if err != nil {
 		return nil, err
 	}

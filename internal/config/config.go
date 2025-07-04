@@ -23,7 +23,7 @@ const (
 )
 
 type Config struct {
-	Server     Server     `yaml:"server" json:"server"`         // configuration of the public REST server
+	HttpServer HttpServer `yaml:"httpServer" json:"httpServer"` // configuration of the public REST server
 	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
 	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
@@ -63,7 +63,7 @@ type GrpcServer struct {
 	Addr string `yaml:"addr" json:"addr" env:"GRPC_API_ADDR" env-default:":9090"`
 }
 
-type Server struct {
+type HttpServer struct {
 	Context string `yaml:"context" json:"context" env:"REST_API_CONTEXT" env-default:"/"`
 	Addr    string `yaml:"addr" json:"addr" env:"REST_API_ADDR" env-default:":8080"`
 }

@@ -27,7 +27,7 @@ func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *test
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), pi.GetInstanceKey(), "globalMsgRef", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), pi.GetInstanceKey(), "globalMsgRef", nil)
 	assert.NoError(t, err)
 
 	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi.Key)
@@ -66,7 +66,7 @@ func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_t
 	assert.NoError(t, err)
 
 	// when
-	bpmnEngine.PublishEventForInstance(t.Context(), pi1.GetInstanceKey(), "globalMsgRef", nil)
+	bpmnEngine.PublishMessageForInstance(t.Context(), pi1.GetInstanceKey(), "globalMsgRef", nil)
 
 	*pi1, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi1.Key)
 	assert.NoError(t, err)
@@ -78,7 +78,7 @@ func Test_IntermediateCatchEvent_multiple_instances_received_message_completes_t
 	assert.Equal(t, runtime.ActivityStateActive, pi2.GetState())
 
 	// when
-	bpmnEngine.PublishEventForInstance(t.Context(), pi2.GetInstanceKey(), "globalMsgRef", nil)
+	bpmnEngine.PublishMessageForInstance(t.Context(), pi2.GetInstanceKey(), "globalMsgRef", nil)
 
 	*pi2, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi2.Key)
 	assert.NoError(t, err)
@@ -110,7 +110,7 @@ func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "event-1", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "event-1", nil)
 	assert.NoError(t, err)
 
 	// then
@@ -137,7 +137,7 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -156,11 +156,11 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -176,7 +176,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
 
 	// then
@@ -190,11 +190,11 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.Nil(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -211,7 +211,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
 
 	// then
@@ -225,11 +225,11 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-1", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-3", nil)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -246,7 +246,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-event-2", nil)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -263,14 +263,14 @@ func Test_publishing_a_random_message_does_no_harm(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "random-message", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "random-message", nil)
 	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
-func Test_eventBasedGateway_just_fires_one_event_and_instance_COMPLETED(t *testing.T) {
+func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -285,7 +285,7 @@ func Test_eventBasedGateway_just_fires_one_event_and_instance_COMPLETED(t *testi
 	defer bpmnEngine.RemoveHandler(bH)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg-b", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg-b", nil)
 	assert.NoError(t, err)
 
 	// then
@@ -304,7 +304,7 @@ func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *
 
 	// when
 	vars := map[string]interface{}{"foo": "bar"}
-	err := bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg", vars)
+	err := bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", vars)
 	assert.NoError(t, err)
 
 	// then
@@ -322,7 +322,7 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
 	assert.Error(t, err)
 
 	// then

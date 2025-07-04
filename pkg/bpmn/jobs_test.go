@@ -79,10 +79,10 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
 	assert.NoError(t, err)
 
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
 	assert.NoError(t, err)
 
-	err = bpmnEngine.PublishEventForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)

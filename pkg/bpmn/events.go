@@ -91,7 +91,7 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storag
 		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
 	}
 
-	tokens, err := engine.handleSimpleTransition(ctx, instance, listener, token)
+	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, listener, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process MessageSubscription flow transition %s: %w", listener.GetId(), err)
 	}
@@ -170,7 +170,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 		engine.timerManager.removeTimer(sub)
 		batch.SaveTimer(ctx, sub)
 	}
-	tokens, err := engine.handleSimpleTransition(ctx, instance, catchEvent, token)
+	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, catchEvent, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process gateway event flow transition %s: %w", event.GetId(), err)
 	}
@@ -233,7 +233,7 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch st
 			currentToken.State = runtime.TokenStateWaiting
 			return []runtime.ExecutionToken{currentToken}, nil
 		case runtime.ActivityStateCompleted:
-			tokens, err := engine.handleSimpleTransition(ctx, instance, ite, currentToken)
+			tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ite, currentToken)
 			if err != nil {
 				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageThrowEvent flow transition %d: %w", currentToken.ElementInstanceKey, err)
 			}

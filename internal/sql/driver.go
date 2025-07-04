@@ -251,9 +251,17 @@ func Scan(ctx context.Context, columns []string, values *proto.Values, dest ...a
 		// 		return fmt.Errorf("invalid string col:%d type:%T val:%v", n, src, src)
 		// 	}
 		case *sql.NullInt64:
-			switch src := src.GetValue().(type) {
+			switch x := src.GetValue().(type) {
+			case *proto.Parameter_D:
+				*d = sql.NullInt64{Valid: true, Int64: int64(x.D)}
 			case *proto.Parameter_I:
-				*d = sql.NullInt64{Valid: true, Int64: src.I}
+				*d = sql.NullInt64{Valid: true, Int64: x.I}
+			case *proto.Parameter_S:
+				i, err := strconv.Atoi(x.S)
+				if err != nil {
+					return err
+				}
+				*d = sql.NullInt64{Valid: true, Int64: int64(i)}
 			case nil:
 				*d = sql.NullInt64{Valid: false}
 			default:

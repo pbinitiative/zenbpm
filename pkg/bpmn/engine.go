@@ -291,9 +291,8 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if err != nil {
 			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			batch.SaveToken(ctx, currentToken)
-			// TODO: create incident here?
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -304,14 +303,9 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if err != nil {
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			// TODO: create incident here?
-			saveErr := batch.SaveToken(ctx, currentToken)
-			if saveErr != nil {
-				tokenSpan.RecordError(saveErr)
-				tokenSpan.SetStatus(codes.Error, saveErr.Error())
-				engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
-			}
+
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -364,6 +358,30 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	return nil
 }
 
+func (engine *Engine) handleIncident(ctx context.Context, currentToken runtime.ExecutionToken, err error, tokenSpan trace.Span) {
+	errorBatch := engine.persistence.NewBatch()
+
+	currentToken.State = runtime.TokenStateFailed
+	saveErr := errorBatch.SaveToken(ctx, currentToken)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to save ExecutionToken", "token", currentToken, "err", saveErr)
+	}
+
+	saveErr = errorBatch.SaveIncident(ctx, createNewIncidentFromToken(err, currentToken, engine))
+	if saveErr != nil {
+		engine.logger.Error("failed to save incident for", "token", currentToken, "err", saveErr)
+	}
+
+	saveErr = errorBatch.Flush(ctx)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to close batch for", "token", currentToken, "err", saveErr)
+	}
+}
+
 func (engine *Engine) getExecutionTokenActivity(
 	ctx context.Context,
 	instance *runtime.ProcessInstance,
@@ -404,9 +422,21 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
+	err = batch.SaveFlowElementHistory(ctx,
+		runtime.FlowElementHistoryItem{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: instance.GetInstanceKey(),
+			ElementId:          activity.element.GetId(),
+			CreatedAt:          time.Now(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save flow element history: %w", err)
+	}
+
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
@@ -490,7 +520,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -616,7 +646,13 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	return resTokens, nil
 }
 
-func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runtime.ProcessInstance, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleSimpleTransition(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
@@ -634,6 +670,18 @@ func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runt
 				State:              runtime.TokenStateRunning,
 			})
 		}
+
+		err := batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 	}
 	return resTokens, nil
 }
@@ -647,7 +695,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 		token, err := engine.createIntermediateTimerCatchEvent(ctx, batch, instance, ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, ice, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
 		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))

@@ -14,7 +14,8 @@ const (
 	AttributeElementName = Prefix + "element-name"
 	AttributeElementType = Prefix + "element-type"
 
-	AttributeJobKey = Prefix + "job-key"
+	AttributeJobKey      = Prefix + "job-key"
+	AttributeIncidentKey = Prefix + "incident-key"
 
 	SpanStatusToken = Prefix + "token-status"
 )

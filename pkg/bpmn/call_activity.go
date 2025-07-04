@@ -82,7 +82,7 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 
 	element = ppi.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
 
-	tokens, err := engine.handleSimpleTransition(ctx, &ppi, element, *instance.ParentProcessExecutionToken)
+	tokens, err := engine.handleSimpleTransition(ctx, batch, &ppi, element, *instance.ParentProcessExecutionToken)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to handle simple transition for call activity: %s", instance.ParentProcessExecutionToken.ElementId), err)
 	}

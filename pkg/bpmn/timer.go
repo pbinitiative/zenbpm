@@ -113,7 +113,7 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 	case *bpmn20.TIntermediateCatchEvent:
 		timer.TimerState = runtime.TimerStateTriggered
 		batch.SaveTimer(ctx, timer)
-		tokens, err = engine.handleSimpleTransition(ctx, instance, nodeT, timer.Token)
+		tokens, err = engine.handleSimpleTransition(ctx, batch, instance, nodeT, timer.Token)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}

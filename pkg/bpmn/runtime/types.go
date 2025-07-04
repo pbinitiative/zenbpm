@@ -265,3 +265,22 @@ type ExecutionToken struct {
 	ProcessInstanceKey int64
 	State              TokenState
 }
+
+type FlowElementHistoryItem struct {
+	Key                int64
+	ProcessInstanceKey int64
+	ElementId          string
+	CreatedAt          time.Time
+}
+
+// Incident represent an incident that happened in process execution
+type Incident struct {
+	Key                int64
+	ElementInstanceKey int64
+	ElementId          string
+	ProcessInstanceKey int64
+	Message            string
+	CreatedAt          time.Time
+	ResolvedAt         *time.Time
+	Token              ExecutionToken
+}

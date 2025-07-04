@@ -80,5 +80,25 @@ CREATE TABLE IF NOT EXISTS execution_token(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
+-- table that holds information about all the process instance visited nodes and transitions
+CREATE TABLE IF NOT EXISTS flow_element_history(
+    key INTEGER PRIMARY KEY, -- int64 snowflake id of flow element history item
+    element_id TEXT NOT NULL, -- string id of the element from xml definition
+    process_instance_key INTEGER NOT NULL, -- int64 id of process instance
+    created_at INTEGER NOT NULL -- unix millis of when the process flow element was started
+);
+
+CREATE TABLE IF NOT EXISTS incident(
+    key INTEGER PRIMARY KEY, -- int64 snowflake id of the incident where node is partition id which handles the process instance
+    element_instance_key INTEGER NOT NULL, -- int64 id of the element instance
+    element_id TEXT NOT NULL, -- string id of the element from xml definition
+    process_instance_key INTEGER NOT NULL, -- int64 reference to process instance
+    message TEXT NOT NULL, -- message of the incident
+    created_at INTEGER NOT NULL, -- unix millis of when the instance of the incident was created
+    resolved_at INTEGER, -- unix millis of when the instance of the incident was resolved
+    execution_token INTEGER NOT NULL, -- key of the execution_token that created job
+    FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
+);
+
 -- TODO: create a table for dumb activities like gateway/...
 -- TODO: create a table for flow

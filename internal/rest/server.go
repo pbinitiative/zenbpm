@@ -378,6 +378,43 @@ func (s *Server) GetActivities(ctx context.Context, request public.GetActivities
 	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
 }
 
+func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
+	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
+	if err != nil {
+		return public.GetHistory400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	flow, err := s.node.GetFlowElementHistory(ctx, instanceKey)
+	if err != nil {
+		return public.GetHistory502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	resp := make([]public.FlowElementHistory, len(flow))
+	for i, flowNode := range flow {
+		key := fmt.Sprintf("%x", flowNode.Key)
+		createdAt := time.UnixMilli(flowNode.CreatedAt)
+		processInstanceKey := fmt.Sprintf("%x", flowNode.ProcessInstanceKey)
+		resp[i] = public.FlowElementHistory{
+			Key:                &key,
+			CreatedAt:          &createdAt,
+			ElementId:          &flowNode.ElementId,
+			ProcessInstanceKey: &processInstanceKey,
+		}
+	}
+	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{
+		Items: &resp,
+		PageMetadata: public.PageMetadata{
+			Count:  len(resp),
+			Offset: 0,
+			Size:   len(resp),
+		},
+	}), nil
+}
+
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
 	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
 	if err != nil {
@@ -422,6 +459,73 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			Size:   len(resp),
 		},
 	}, nil
+}
+
+func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {
+	incidentKey, err := getKeyFromString(request.ProcessInstanceKey)
+	if err != nil {
+		return public.GetIncidents400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	incidents, err := s.node.GetIncidents(ctx, incidentKey)
+	if err != nil {
+		return public.GetIncidents500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	resp := make([]public.Incident, len(incidents))
+	for i, incident := range incidents {
+		resp[i] = public.Incident{
+			Key:                fmt.Sprintf("%x", incident.Key),
+			ElementInstanceKey: fmt.Sprintf("%x", incident.ElementInstanceKey),
+			ElementId:          incident.ElementId,
+			CreatedAt:          time.UnixMilli(incident.CreatedAt),
+			ResolvedAt: func() *time.Time {
+				if incident.ResolvedAt != nil {
+					return ptr.To(time.UnixMilli(*incident.ResolvedAt))
+				}
+				return nil
+			}(),
+			ProcessInstanceKey: fmt.Sprintf("%x", incident.ProcessInstanceKey),
+			Message:            incident.Message,
+			ExecutionToken:     fmt.Sprintf("%x", incident.ExecutionToken),
+		}
+	}
+	// TODO: Paging needs to be implemented properly
+	return public.GetIncidents200JSONResponse{
+		Items: resp,
+		PageMetadata: public.PageMetadata{
+			Count:  len(resp),
+			Offset: 0,
+			Size:   len(resp),
+		},
+	}, nil
+}
+
+func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveIncidentRequestObject) (public.ResolveIncidentResponseObject, error) {
+	incidentKey, err := getKeyFromString(request.IncidentKey)
+	if err != nil {
+		return public.ResolveIncident400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	err = s.node.ResolveIncident(ctx, incidentKey)
+
+	if err != nil {
+		return public.ResolveIncident502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.ResolveIncident201Response{}, nil
+
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {

@@ -23,7 +23,7 @@ paths:
               type: string
               format: xml
       responses:
-        '200':
+        200:
           description: Process definition deployed
           content:
             application/json:
@@ -34,24 +34,24 @@ paths:
                 properties:
                   processDefinitionKey:
                     type: string
-        '502':
+        502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
     get:
       operationId: getProcessDefinitions
       summary: Get list of process definitions
       tags:
         - process-definitions
       responses:
-        '200':
+        200:
           description: List of process definitions
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProcessDefinitionsPage'
+                $ref: "#/components/schemas/ProcessDefinitionsPage"
   /process-definitions/{processDefinitionKey}:
     get:
       operationId: getProcessDefinition
@@ -65,24 +65,24 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: Process definition
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProcessDefinitionDetail'
-        '400':
+                $ref: "#/components/schemas/ProcessDefinitionDetail"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances:
     post:
       operationId: createProcessInstance
@@ -103,30 +103,30 @@ paths:
                 variables:
                   type: object
       responses:
-        '200':
+        200:
           description: Process instance created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProcessInstance'
-        '400':
+                $ref: "#/components/schemas/ProcessInstance"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
     get:
       summary: Get list of running process instances
       operationId: getProcessInstances
@@ -151,30 +151,30 @@ paths:
             format: int32
             default: 10
       responses:
-        '200':
+        200:
           description: List of running process instances
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProcessInstancePage'
-        '400':
+                $ref: "#/components/schemas/ProcessInstancePage"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to collect data from responsible nodes
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}:
     get:
       operationId: getProcessInstance
@@ -188,30 +188,30 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: State of a process instance
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProcessInstance'
-        '400':
+                $ref: "#/components/schemas/ProcessInstance"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}/jobs:
     get:
       operationId: getJobs
@@ -225,30 +225,30 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: List of jobs
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JobPage'
-        '400':
+                $ref: "#/components/schemas/JobPage"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}/activities:
     get:
       operationId: getActivities
@@ -262,30 +262,30 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: List of activities
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ActivityPage'
-        '400':
+                $ref: "#/components/schemas/ActivityPage"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}/history:
     get:
       operationId: getHistory
@@ -299,30 +299,30 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: List of activities
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlowElementHistoryPage'
-        '400':
+                $ref: "#/components/schemas/FlowElementHistoryPage"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}/incidents:
     get:
       operationId: getIncidents
@@ -336,24 +336,25 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: List of incidents
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/IncidentPage'
-        '400':
+                $ref: "#/components/schemas/IncidentPage"
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '500':
+                $ref: "#/components/schemas/Error"
+        500:
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
+
   /jobs:
     post:
       operationId: completeJob
@@ -374,20 +375,20 @@ paths:
                 variables:
                   type: object
       responses:
-        '201':
+        201:
           description: Job completed
-        '400':
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /jobs/{jobType}/activate:
     post:
       operationId: activateJobs
@@ -401,14 +402,14 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        200:
           description: Jobs activated
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Job'
+                  $ref: "#/components/schemas/Job"
   /messages:
     post:
       operationId: publishMessage
@@ -432,20 +433,20 @@ paths:
                 variables:
                   type: object
       responses:
-        '201':
+        201:
           description: Message sent
-        '400':
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
   /incident/{incidentKey}/resolve:
     post:
       operationId: resolveIncident
@@ -459,20 +460,20 @@ paths:
           schema:
             type: string
       responses:
-        '201':
+        201:
           description: Incident resolved
-        '400':
+        400:
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '502':
+                $ref: "#/components/schemas/Error"
+        502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     PartitionedPageMetadata:
@@ -513,7 +514,7 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/ProcessInstance'
+            $ref: "#/components/schemas/ProcessInstance"
     ProcessDefinitionsPage:
       type: object
       allOf:
@@ -524,8 +525,8 @@ components:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/ProcessDefinitionSimple'
-        - $ref: '#/components/schemas/PageMetadata'
+                $ref: "#/components/schemas/ProcessDefinitionSimple"
+        - $ref: "#/components/schemas/PageMetadata"
     ProcessDefinitionSimple:
       type: object
       required:
@@ -542,7 +543,7 @@ components:
     ProcessDefinitionDetail:
       type: object
       allOf:
-        - $ref: '#/components/schemas/ProcessDefinitionSimple'
+        - $ref: "#/components/schemas/ProcessDefinitionSimple"
         - type: object
           properties:
             bpmnData:
@@ -557,8 +558,8 @@ components:
             partitions:
               type: array
               items:
-                $ref: '#/components/schemas/PartitionProcessInstances'
-        - $ref: '#/components/schemas/PartitionedPageMetadata'
+                $ref: "#/components/schemas/PartitionProcessInstances"
+        - $ref: "#/components/schemas/PartitionedPageMetadata"
     ProcessInstance:
       type: object
       required:
@@ -593,8 +594,8 @@ components:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/Job'
-        - $ref: '#/components/schemas/PageMetadata'
+                $ref: "#/components/schemas/Job"
+        - $ref: "#/components/schemas/PageMetadata"
     Job:
       type: object
       required:
@@ -629,8 +630,8 @@ components:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/Activity'
-        - $ref: '#/components/schemas/PageMetadata'
+                $ref: "#/components/schemas/Activity"
+        - $ref: "#/components/schemas/PageMetadata"
     Activity:
       type: object
       properties:
@@ -657,8 +658,8 @@ components:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/FlowElementHistory'
-        - $ref: '#/components/schemas/PageMetadata'
+                $ref: "#/components/schemas/FlowElementHistory"
+        - $ref: "#/components/schemas/PageMetadata"
     FlowElementHistory:
       type: object
       properties:
@@ -681,8 +682,8 @@ components:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/Incident'
-        - $ref: '#/components/schemas/PageMetadata'
+                $ref: "#/components/schemas/Incident"
+        - $ref: "#/components/schemas/PageMetadata"
     Incident:
       type: object
       required:

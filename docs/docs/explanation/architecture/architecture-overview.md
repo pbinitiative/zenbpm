@@ -1,3 +1,6 @@
+---
+sidebar_position: 1
+---
 # Architecture Overview
 
 ZenBPM is designed with a modular architecture that separates concerns and allows for flexibility and scalability. This document provides an overview of the system's architecture and its key components.

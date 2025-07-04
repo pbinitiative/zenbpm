@@ -116,17 +116,15 @@ func TestResolveReferencesSuccess(t *testing.T) {
 					StartEvents: []TStartEvent{
 						{
 							TEvent: TEvent{
-								TActivity: TActivity{
-									TFlowNode: TFlowNode{
-										TFlowElement: TFlowElement{
-											TBaseElement: TBaseElement{
-												Id: "one",
-											},
-											Name: "Start Event",
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "one",
 										},
-										IncomingAssociationsIDs: []string{},
-										OutgoingAssociationsIDs: []string{"one_to_two"}},
-								},
+										Name: "Start Event",
+									},
+									IncomingAssociationsIDs: []string{},
+									OutgoingAssociationsIDs: []string{"one_to_two"}},
 							},
 						},
 					},
@@ -171,16 +169,14 @@ func TestResolveReferencesSuccess(t *testing.T) {
 					EndEvents: []TEndEvent{
 						{
 							TEvent: TEvent{
-								TActivity: TActivity{
-									TFlowNode: TFlowNode{
-										TFlowElement: TFlowElement{
-											TBaseElement: TBaseElement{
-												Id: "four",
-											},
-											Name: "End Event",
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "four",
 										},
-										IncomingAssociationsIDs: []string{"two_to_four"},
+										Name: "End Event",
 									},
+									IncomingAssociationsIDs: []string{"two_to_four"},
 								},
 							},
 						},
@@ -236,17 +232,15 @@ func TestResolveReferencesFailNotFoundBaseElement(t *testing.T) {
 					StartEvents: []TStartEvent{
 						{
 							TEvent: TEvent{
-								TActivity: TActivity{
-									TFlowNode: TFlowNode{
-										TFlowElement: TFlowElement{
-											TBaseElement: TBaseElement{
-												Id: "one",
-											},
-											Name: "Start Event",
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "one",
 										},
-										IncomingAssociationsIDs: []string{},
-										OutgoingAssociationsIDs: []string{"one_to_two"}},
-								},
+										Name: "Start Event",
+									},
+									IncomingAssociationsIDs: []string{},
+									OutgoingAssociationsIDs: []string{"one_to_two"}},
 							},
 						},
 					},
@@ -285,17 +279,15 @@ func TestResolveReferencesSuccessEmptyIds(t *testing.T) {
 					StartEvents: []TStartEvent{
 						{
 							TEvent: TEvent{
-								TActivity: TActivity{
-									TFlowNode: TFlowNode{
-										TFlowElement: TFlowElement{
-											TBaseElement: TBaseElement{
-												Id: "one",
-											},
-											Name: "Start Event",
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "one",
 										},
-										IncomingAssociationsIDs: []string{""},
-										OutgoingAssociationsIDs: []string{""}},
-								},
+										Name: "Start Event",
+									},
+									IncomingAssociationsIDs: []string{""},
+									OutgoingAssociationsIDs: []string{""}},
 							},
 						},
 					},
@@ -334,17 +326,15 @@ func TestResolveReferencesFailWrongType(t *testing.T) {
 					StartEvents: []TStartEvent{
 						{
 							TEvent: TEvent{
-								TActivity: TActivity{
-									TFlowNode: TFlowNode{
-										TFlowElement: TFlowElement{
-											TBaseElement: TBaseElement{
-												Id: "one",
-											},
-											Name: "Start Event",
+								TFlowNode: TFlowNode{
+									TFlowElement: TFlowElement{
+										TBaseElement: TBaseElement{
+											Id: "one",
 										},
-										IncomingAssociationsIDs: []string{},
-										OutgoingAssociationsIDs: []string{"one_to_two"}},
-								},
+										Name: "Start Event",
+									},
+									IncomingAssociationsIDs: []string{},
+									OutgoingAssociationsIDs: []string{"one_to_two"}},
 							},
 						},
 					},

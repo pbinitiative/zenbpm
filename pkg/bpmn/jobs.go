@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -81,23 +84,62 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 }
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
-	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	instance, tokens, err := engine.completeJob(ctx, jobKey, variables)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
 
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	// TODO: make sure that process instance is not running and if so modify currently running instance
+	err = engine.runProcessInstance(ctx, instance, tokens)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+		return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
 	}
+	return nil
+}
+
+func (engine *Engine) completeJob(
+	ctx context.Context,
+	jobKey int64,
+	variables map[string]interface{},
+) (
+	instance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
+	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
+	defer func() {
+		if retErr != nil {
+			completeJobSpan.RecordError(retErr)
+			completeJobSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		completeJobSpan.End()
+	}()
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	if job.State == runtime.ActivityStateCompleted {
+		return nil, nil, newEngineErrorf("job %d is already completed", jobKey)
+	}
+	completeJobSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, job.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
+	)
+
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+	}
+	instance = &inst
 
 	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
 	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
-		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
+		return nil, nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 	}
 
-	if err := propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
+	if err = propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
 		job.State = runtime.ActivityStateFailed
 		instance.State = runtime.ActivityStateFailed
 	}
@@ -105,23 +147,20 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	job.State = runtime.ActivityStateCompleted
 	batch := engine.persistence.NewBatch()
 	batch.SaveJob(ctx, job)
-	batch.SaveProcessInstance(ctx, instance)
+	batch.SaveProcessInstance(ctx, *instance)
 
 	currentToken := job.Token
 
-	tokens, err := engine.handleSimpleTransition(ctx, &instance, task, currentToken)
+	tokens, err = engine.handleSimpleTransition(ctx, batch, instance, task, currentToken)
 	if err != nil {
-		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
 	batch.SaveToken(ctx, currentToken)
 	err = batch.Flush(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to complete job %+v: %w", job, err)
+		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
-
-	// TODO: make sure that process instance is not running and if so modify currently running instance
-	engine.runProcessInstance(ctx, &instance, tokens)
-	return nil
+	return instance, tokens, nil
 }
 
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {

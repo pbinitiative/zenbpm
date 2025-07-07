@@ -17,13 +17,19 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/rqlite/rqlite/v8/store"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type RqLiteDB struct {
@@ -32,6 +38,7 @@ type RqLiteDB struct {
 	logger    hclog.Logger
 	node      *snowflake.Node
 	partition uint32
+	tracer    trace.Tracer
 	pdCache   *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
 	ddCache   *expirable.LRU[int64, dmnruntime.DecisionDefinition]
 }
@@ -50,6 +57,7 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 		store:     store,
 		logger:    logger,
 		node:      node,
+		tracer:    otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		partition: partition,
 		pdCache:   expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
 		ddCache:   expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
@@ -60,6 +68,13 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 }
 
 func (rq *RqLiteDB) executeStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
+	if len(statements) == 0 {
+		return []*proto.ExecuteQueryResponse{{
+			Result: &proto.ExecuteQueryResponse_E{
+				E: &proto.ExecuteResult{},
+			},
+		}}, nil
+	}
 	er := &proto.ExecuteRequest{
 		Request: &proto.Request{
 			Transaction: true,
@@ -174,14 +189,11 @@ func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*p
 	qr := &proto.QueryRequest{
 		Request: &proto.Request{
 			Transaction: false,
-			DbTimeout:   int64(0),
+			DbTimeout:   (10 * time.Second).Nanoseconds(),
 			Statements:  []*proto.Statement{stmts},
 		},
 		Timings: false,
 		Level:   proto.QueryRequest_QUERY_REQUEST_LEVEL_NONE,
-		// TODO: this needs to be revised
-		Freshness:       int64(10 * time.Second),
-		FreshnessStrict: true,
 	}
 
 	results, resultsErr := rq.store.Query(qr)
@@ -206,9 +218,18 @@ func (r rqliteResult) RowsAffected() (int64, error) {
 }
 
 func (rq *RqLiteDB) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
+	ctx, execSpan := rq.tracer.Start(ctx, "rqlite-exec", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeExec, sql),
+		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
+	))
+	defer func() {
+		execSpan.End()
+	}()
 	result, err := rq.executeStatements(ctx, []*proto.Statement{rq.generateStatement(sql, args...)})
 
 	if err != nil {
+		execSpan.RecordError(err)
+		execSpan.SetStatus(codes.Error, err.Error())
 		rq.logger.Error("Error executing SQL statements")
 		return nil, err
 	}
@@ -217,7 +238,10 @@ func (rq *RqLiteDB) ExecContext(ctx context.Context, sql string, args ...interfa
 	for _, r := range result {
 		err := r.GetError()
 		if err != "" {
-			return nil, errors.New(err)
+			nErr := errors.New(err)
+			execSpan.RecordError(nErr)
+			execSpan.SetStatus(codes.Error, nErr.Error())
+			return nil, nErr
 		}
 		lastInsertId, rowsAffected = r.GetE().LastInsertId, r.GetE().RowsAffected+rowsAffected
 	}
@@ -229,8 +253,17 @@ func (rq *RqLiteDB) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt,
 }
 
 func (rq *RqLiteDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	ctx, querySpan := rq.tracer.Start(ctx, "rqlite-query", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeQuery, query),
+		attribute.String(otelPkg.AttributeArgs, fmt.Sprintf("%v", args)),
+	))
+	defer func() {
+		querySpan.End()
+	}()
 	results, err := rq.queryDatabase(query, args...)
 	if err != nil {
+		querySpan.RecordError(err)
+		querySpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	if len(results) > 1 {
@@ -450,10 +483,6 @@ func (rq *RqLiteDB) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
-	err = definitions.ResolveReferences()
-	if err != nil {
-		return res, fmt.Errorf("failed to resolve references in definition %d: %w", processDefinitionKey, err)
-	}
 
 	res = bpmnruntime.ProcessDefinition{
 		BpmnProcessId:    dbDefinition.BpmnProcessID,
@@ -598,6 +627,10 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
 		State:                int64(processInstance.State),
 		Variables:            string(varStr),
+		ParentProcessExecutionToken: ssql.NullInt64{
+			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, runtime.ExecutionToken{}).Key,
+			Valid: processInstance.ParentProcessExecutionToken != nil,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
@@ -1046,6 +1079,131 @@ func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.Execution
 	})
 }
 
+func (rq *RqLiteDB) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	return SaveFlowElementHistoryWith(ctx, rq.queries, historyItem)
+}
+
+func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem runtime.FlowElementHistoryItem) error {
+	return db.SaveFlowElementHistory(
+		ctx,
+		sql.SaveFlowElementHistoryParams{
+			historyItem.Key,
+			historyItem.ElementId,
+			historyItem.ProcessInstanceKey,
+			historyItem.CreatedAt.UnixMilli(),
+		},
+	)
+}
+
+var _ storage.IncidentStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
+	return FindIncidentByKey(ctx, rq.queries, key)
+}
+
+func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (runtime.Incident, error) {
+	incident, err := db.FindIncidentByKey(ctx, key)
+	if err != nil {
+		return runtime.Incident{}, err
+	}
+
+	tokens, err := db.GetTokens(ctx, []int64{incident.ExecutionToken})
+	if len(tokens) == 0 {
+		err = errors.Join(err, errors.New("no incidents found"))
+	}
+	token := tokens[0]
+	return runtime.Incident{
+		Key:                incident.Key,
+		ElementInstanceKey: incident.ElementInstanceKey,
+		ElementId:          incident.ElementID,
+		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Message:            incident.Message,
+		CreatedAt:          time.UnixMilli(incident.CreatedAt),
+		ResolvedAt: func() *time.Time {
+			if incident.ResolvedAt.Valid {
+				t := time.UnixMilli(incident.ResolvedAt.Int64)
+				return &t
+			}
+			return nil
+		}(),
+		Token: runtime.ExecutionToken{
+			Key:                token.Key,
+			ElementInstanceKey: token.ElementInstanceKey,
+			ElementId:          token.ElementID,
+			ProcessInstanceKey: token.ProcessInstanceKey,
+			State:              runtime.TokenState(token.State),
+		},
+	}, nil
+}
+
+func (rq *RqLiteDB) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error) {
+	return FindIncidentsByProcessInstanceKey(ctx, rq.queries, processInstanceKey)
+}
+
+func FindIncidentsByProcessInstanceKey(ctx context.Context, db *sql.Queries, processInstanceKey int64) ([]runtime.Incident, error) {
+	incidents, err := db.FindIncidentsByProcessInstanceKey(ctx, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]runtime.Incident, len(incidents))
+
+	tokensToLoad := make([]int64, len(incidents))
+	for i, incident := range incidents {
+		res[i] = runtime.Incident{
+			Key:                incident.Key,
+			ElementInstanceKey: incident.ElementInstanceKey,
+			ElementId:          incident.ElementID,
+			ProcessInstanceKey: incident.ProcessInstanceKey,
+			Message:            incident.Message,
+		}
+
+		tokensToLoad[i] = incident.ExecutionToken
+	}
+
+	tokens, err := db.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return res, fmt.Errorf("failed to find job tokens: %w", err)
+	}
+token:
+	for _, token := range tokens {
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+				continue token
+			}
+		}
+	}
+	return res, nil
+}
+
+var _ storage.IncidentStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	return SaveIncidentWith(ctx, rq.queries, incident)
+}
+
+func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident runtime.Incident) error {
+	return db.SaveIncident(ctx, sql.SaveIncidentParams{
+		Key:                incident.Key,
+		ElementInstanceKey: incident.ElementInstanceKey,
+		ElementID:          incident.ElementId,
+		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Message:            incident.Message,
+		CreatedAt:          incident.CreatedAt.UnixMilli(),
+		ResolvedAt: ssql.NullInt64{
+			Int64: ptr.Deref(incident.ResolvedAt, time.Now()).UnixMilli(),
+			Valid: incident.ResolvedAt != nil,
+		},
+		ExecutionToken: incident.Token.Key,
+	})
+}
+
 type RqLiteDBBatch struct {
 	db        *RqLiteDB
 	stmtToRun []*proto.Statement
@@ -1073,7 +1231,15 @@ func (rq *RqLiteDBBatch) QueryRowContext(ctx context.Context, query string, args
 var _ storage.Batch = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
+	ctx, execSpan := b.db.tracer.Start(ctx, "rqlite-batch", trace.WithAttributes(
+		attribute.String(otelPkg.AttributeExec, fmt.Sprintf("%v", b.stmtToRun)),
+	))
+	defer func() {
+		execSpan.End()
+	}()
 	_, err := b.db.executeStatements(ctx, b.stmtToRun)
+	if err != nil {
+	}
 	return err
 }
 
@@ -1111,4 +1277,14 @@ var _ storage.TokenStorageWriter = &RqLiteDBBatch{}
 
 func (b *RqLiteDBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	return SaveToken(ctx, b.queries, token)
+}
+
+func (b *RqLiteDBBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
+}
+
+var _ storage.IncidentStorageWriter = &RqLiteDBBatch{}
+
+func (b *RqLiteDBBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+	return SaveIncidentWith(ctx, b.queries, incident)
 }

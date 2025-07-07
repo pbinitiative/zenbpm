@@ -2,6 +2,8 @@ name: zenbpm
 server:
   context: /
   addr: :8081
+grpcServer:
+  addr: :9091
 cluster:
   addr: localhost:8091
   adv: localhost:8091
@@ -14,3 +16,7 @@ cluster:
       - localhost:8091
       - localhost:8092
   nodeId: node-1
+tracing:
+  enabled: true
+  endpoint: localhost:4318
+  name: ZenBPM-node-1

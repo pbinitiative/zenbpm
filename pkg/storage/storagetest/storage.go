@@ -42,6 +42,9 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestTokenStorageWriter,
 		st.TestDecisionDefinitionStorageWriter,
 		st.TestDecisionDefinitionStorageReader,
+		st.TestSaveFlowElementHistoryWriter,
+		st.TestIncidentStorageWriter,
+		st.TestIncidentStorageReader,
 	}
 
 	for _, function := range functions {
@@ -204,9 +207,6 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		// TODO: uncomment once its implemented
 		// assert.Equal(t, len(inst.Activities), len(instance.Activities))
 		// assert.Equal(t, inst.Activities[0], instance.Activities[0])
-		//
-		// assert.Equal(t, len(inst.CaughtEvents), len(instance.CaughtEvents))
-		// assert.Equal(t, inst.CaughtEvents[0], instance.CaughtEvents[0])
 	}
 }
 
@@ -396,7 +396,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 	}
 }
 
-func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -414,7 +414,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -441,6 +441,84 @@ func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T)
 			}
 		}
 		assert.True(t, matched, "expected to find created token among active tokens for partition")
+	}
+}
+
+func (st *StorageTester) TestSaveFlowElementHistoryWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+
+		historyItem := runtime.FlowElementHistoryItem{
+			Key:                r,
+			ProcessInstanceKey: r,
+			ElementId:          "test-elem",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+		}
+		err := s.SaveFlowElementHistory(ctx, historyItem)
+		assert.Nil(t, err)
+	}
+}
+
+func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+		tok := s.GenerateId()
+
+		incident := runtime.Incident{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			Message:            "test-message",
+			Token: runtime.ExecutionToken{
+				Key:                tok,
+				ElementInstanceKey: tok,
+				ElementId:          "test-elem",
+				ProcessInstanceKey: st.processInstance.Key,
+				State:              runtime.TokenStateWaiting,
+			},
+		}
+
+		err := s.SaveIncident(ctx, incident)
+		assert.Nil(t, err)
+
+	}
+}
+
+func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.TODO()
+		r := s.GenerateId()
+		tok := s.GenerateId()
+
+		token := runtime.ExecutionToken{
+			Key:                tok,
+			ElementInstanceKey: tok,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              runtime.TokenStateWaiting,
+		}
+
+		incident := runtime.Incident{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			Message:            "test-message",
+			Token:              token,
+		}
+
+		err := s.SaveIncident(ctx, incident)
+		assert.Nil(t, err)
+
+		err = s.SaveToken(ctx, token)
+		assert.Nil(t, err)
+
+		incident, err = s.FindIncidentByKey(ctx, r)
+		assert.Nil(t, err)
+		assert.Equal(t, incident, incident)
 	}
 }
 

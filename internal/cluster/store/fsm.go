@@ -23,7 +23,12 @@ type FSM struct {
 
 // NewFSM returns a new FSM.
 func NewFSM(s *Store) *FSM {
-	return &FSM{store: s, clusterStateChangeObserver: s.clusterStateChangeObserver}
+	return &FSM{store: s, clusterStateChangeObserver: func(ctx context.Context) {
+		// wait for store to be open until we start sending change notifications
+		if s.open.Load() {
+			s.clusterStateChangeObserver(ctx)
+		}
+	}}
 }
 
 var _ raft.FSM = &FSM{}
@@ -58,8 +63,9 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		f.previousChangeCtxCancel = cancel
-		go f.store.clusterStateChangeObserver(ctx)
+		go f.clusterStateChangeObserver(ctx)
 	}
+	f.store.appliedTarget.Signal(l.Index)
 	return res
 }
 

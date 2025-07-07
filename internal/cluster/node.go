@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
@@ -96,6 +97,10 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.server = clusterSrv
 
 	node.client = client.NewClientManager(node.store)
+	err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+	if err != nil {
+		node.logger.Error("Failed to apply log until timeout was reached: %s", err)
+	}
 	err = node.controller.Start(node.store, node.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
@@ -346,6 +351,26 @@ func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.
 	return jobs, nil
 }
 
+func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+	resp, err := client.ResolveIncident(ctx, &proto.ResolveIncidentRequest{
+		IncidentKey: key,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("client call to resolve incident failed")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return nil
+}
+
 func (node *ZenNode) PublishMessage(ctx context.Context, name string, instanceKey int64, variables map[string]any) error {
 	partition := zenflake.GetPartitionId(instanceKey)
 	client, err := node.client.PartitionLeader(partition)
@@ -432,7 +457,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 
 func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
-	candidateNode, err := state.GetLeastStressedNode()
+	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node to create process instance: %w", err)
 	}
@@ -464,7 +489,7 @@ func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey in
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
 func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionKey int64, page int32, size int32) ([]*proto.PartitionedProcessInstances, error) {
 	state := node.store.ClusterState()
-	result := make([]*proto.PartitionedProcessInstances, len(state.Partitions))
+	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
 
 	for partitionId := range state.Partitions {
 		// TODO: we can smack these into goroutines
@@ -548,6 +573,59 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 	}
 
 	return resp.Jobs, nil
+}
+
+// GetFlowElementHistory will contact follower node of partition that contains process instance
+func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]*proto.FlowElement, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(processInstanceKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
+	}
+	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
+		ProcessInstanceKey: processInstanceKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get process instance flow element history from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return resp.Flow, nil
+}
+
+// GetIncidents will contact follower node of partition that contains process instance
+func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64) ([]*proto.Incident, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(processInstanceKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
+	}
+	resp, err := client.GetIncidents(ctx, &proto.GetIncidentsRequest{
+		ProcessInstanceKey: processInstanceKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get incidents from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return resp.Incidents, nil
 }
 
 func (node *ZenNode) GetStatus() store.ClusterState {

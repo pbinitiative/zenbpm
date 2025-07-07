@@ -135,9 +135,17 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 		State:                       runtime.ActivityStateReady,
 		ParentProcessExecutionToken: parentToken,
 	}
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	))
+	defer createSpan.End()
 	batch := engine.persistence.NewBatch()
 	err := batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
@@ -185,7 +193,40 @@ func (b *Engine) Stop() {
 
 // Start will start the process engine instance.
 // Engine will start to pull process instances with execution tokens that need to be processed
-func (b *Engine) Start() {
+func (b *Engine) Start() error {
+	ctx := context.Background()
+	tokens, err := b.persistence.GetRunningTokens(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load running tokens: %w", err)
+	}
+	type instanceToStart struct {
+		instance *runtime.ProcessInstance
+		tokens   []runtime.ExecutionToken
+	}
+	instancesToStart := make(map[int64]instanceToStart)
+	for _, token := range tokens {
+		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
+			val.tokens = append(val.tokens, token)
+			instancesToStart[token.ProcessInstanceKey] = val
+		} else {
+			instance, err := b.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			if err != nil {
+				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
+			}
+			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
+				instance: &instance,
+				tokens:   []runtime.ExecutionToken{token},
+			}
+		}
+	}
+	for _, instance := range instancesToStart {
+		err := b.runProcessInstance(ctx, instance.instance, instance.tokens)
+		if err != nil {
+			b.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
+		}
+	}
+
+	return nil
 }
 
 // runProcessInstance will
@@ -194,16 +235,17 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	runningExecutionTokens := executionTokens
 	var runErr error
 
+	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
+	))
+
 	instance.State = runtime.ActivityStateActive
 	err = engine.persistence.SaveProcessInstance(ctx, *instance)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.Key), err)
 	}
-	ctx, instanceSpan := engine.tracer.Start(ctx, instance.Definition.BpmnProcessId, trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
-	))
 	defer func() {
 		if err != nil {
 			instanceSpan.RecordError(err)
@@ -232,18 +274,18 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if currentToken.State != runtime.TokenStateRunning {
 			continue
 		}
-		ctx, tokenSpan := engine.tracer.Start(ctx, currentToken.ElementId, trace.WithAttributes(
+		ctx, tokenSpan := engine.tracer.Start(ctx, fmt.Sprintf("token:%s", currentToken.ElementId), trace.WithAttributes(
 			attribute.String(otelPkg.AttributeElementId, currentToken.ElementId),
 			attribute.Int64(otelPkg.AttributeElementKey, currentToken.ElementInstanceKey),
+			attribute.Int64(otelPkg.AttributeToken, currentToken.Key),
 		))
 
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {
 			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			batch.SaveToken(ctx, currentToken)
-			// TODO: create incident here?
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -254,14 +296,9 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		if err != nil {
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
-			currentToken.State = runtime.TokenStateFailed
-			// TODO: create incident here?
-			saveErr := batch.SaveToken(ctx, currentToken)
-			if saveErr != nil {
-				tokenSpan.RecordError(saveErr)
-				tokenSpan.SetStatus(codes.Error, saveErr.Error())
-				engine.logger.Error("failed to save ExecutionToken [%v]: %w", currentToken, saveErr)
-			}
+
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
@@ -314,6 +351,30 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	return nil
 }
 
+func (engine *Engine) handleIncident(ctx context.Context, currentToken runtime.ExecutionToken, err error, tokenSpan trace.Span) {
+	errorBatch := engine.persistence.NewBatch()
+
+	currentToken.State = runtime.TokenStateFailed
+	saveErr := errorBatch.SaveToken(ctx, currentToken)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to save ExecutionToken", "token", currentToken, "err", saveErr)
+	}
+
+	saveErr = errorBatch.SaveIncident(ctx, createNewIncidentFromToken(err, currentToken, engine))
+	if saveErr != nil {
+		engine.logger.Error("failed to save incident for", "token", currentToken, "err", saveErr)
+	}
+
+	saveErr = errorBatch.Flush(ctx)
+	if saveErr != nil {
+		tokenSpan.RecordError(saveErr)
+		tokenSpan.SetStatus(codes.Error, saveErr.Error())
+		engine.logger.Error("failed to close batch for", "token", currentToken, "err", saveErr)
+	}
+}
+
 func (engine *Engine) getExecutionTokenActivity(
 	ctx context.Context,
 	instance *runtime.ProcessInstance,
@@ -341,24 +402,36 @@ func (engine *Engine) processFlowNode(
 	activity *elementActivity,
 	currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
-	ctx, activitySpan := engine.tracer.Start(ctx, activity.element.GetId(), trace.WithAttributes(
+	ctx, flowNodeSpan := engine.tracer.Start(ctx, fmt.Sprintf("flow-node:%s", activity.element.GetId()), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeElementKey, activity.GetKey()),
 		attribute.String(otelPkg.AttributeElementName, activity.Element().GetName()),
 		attribute.String(otelPkg.AttributeElementType, string(activity.Element().GetType())),
 	))
 	defer func() {
 		if err != nil {
-			activitySpan.RecordError(err)
-			activitySpan.SetStatus(codes.Error, err.Error())
+			flowNodeSpan.RecordError(err)
+			flowNodeSpan.SetStatus(codes.Error, err.Error())
 		}
-		activitySpan.End()
+		flowNodeSpan.End()
 	}()
+
+	err = batch.SaveFlowElementHistory(ctx,
+		runtime.FlowElementHistoryItem{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: instance.GetInstanceKey(),
+			ElementId:          activity.element.GetId(),
+			CreatedAt:          time.Now(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save flow element history: %w", err)
+	}
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.element, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.element, currentToken)
 		if err != nil {
-			activitySpan.SetStatus(codes.Error, err.Error())
+			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
@@ -440,7 +513,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -566,7 +639,13 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	return resTokens, nil
 }
 
-func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runtime.ProcessInstance, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleSimpleTransition(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
@@ -584,6 +663,18 @@ func (engine *Engine) handleSimpleTransition(ctx context.Context, instance *runt
 				State:              runtime.TokenStateRunning,
 			})
 		}
+
+		err := batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 	}
 	return resTokens, nil
 }
@@ -597,7 +688,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 		token, err := engine.createIntermediateTimerCatchEvent(ctx, batch, instance, ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
-		tokens, err := engine.handleSimpleTransition(ctx, instance, ice, currentToken)
+		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
 		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))

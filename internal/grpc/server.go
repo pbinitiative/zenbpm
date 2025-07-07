@@ -50,11 +50,11 @@ func (s *Server) Start() {
 		log.Error("failed to listen: %v", err)
 	}
 	go func() {
+		log.Info("ZenBpm GRPC server listening on %s", s.addr)
 		err := s.server.Serve(listener)
 		if err != nil {
 			log.Error("ZenBPM GRPC server startup failed: %s", err)
 		}
-		log.Info("ZenBpm GRPC server listening on %s", s.addr)
 	}()
 }
 

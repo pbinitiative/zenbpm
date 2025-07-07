@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 )
@@ -95,7 +96,10 @@ type ProcessInstanceStorageWriter interface {
 }
 
 type TimerStorageReader interface {
-	FindTimersByState(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+	// FindTimersTo returns a list of timers that have dueDate before end and are in CREATED state
+	FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
+
+	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 
 type TimerStorageWriter interface {

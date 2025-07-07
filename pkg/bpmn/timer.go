@@ -2,12 +2,14 @@ package bpmn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/senseyeio/duration"
@@ -40,22 +42,92 @@ func (engine *Engine) createTimer(
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
 			"from Activity with ID=%s. Error:%s", ice.Id, err.Error())}
 	}
-	var be bpmn20.FlowNode = ice
 	now := time.Now()
 	t := runtime.Timer{
 		ElementId:            ice.Id,
 		Key:                  engine.generateKey(),
+		ElementInstanceKey:   token.ElementInstanceKey,
 		ProcessDefinitionKey: instance.Definition.Key,
 		ProcessInstanceKey:   instance.Key,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            now,
 		DueAt:                durationVal.Shift(now),
 		Duration:             time.Duration(durationVal.TS) * time.Second,
-		BaseElement:          be,
 		Token:                token,
 	}
-	_err := timerStorageWriter.SaveTimer(ctx, t)
-	return &t, _err
+	err = timerStorageWriter.SaveTimer(ctx, t)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save timer: %w", err)
+	}
+	engine.timerManager.registerTimer(t)
+	return &t, nil
+}
+
+func (engine *Engine) processTimer(ctx context.Context, timer runtime.Timer) {
+	instance, tokens, err := engine.triggerTimer(ctx, timer)
+	if err != nil {
+		engine.logger.Error(fmt.Sprintf("failed to trigger timer %d: %s", timer.Key, err))
+	}
+
+	// TODO: make sure that process instance is not running and if so modify currently running instance
+	err = engine.runProcessInstance(ctx, instance, tokens)
+	if err != nil {
+		engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.Key, err))
+		return
+	}
+}
+
+func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
+	instance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
+	ctx, completeTimerSpan := engine.tracer.Start(ctx, fmt.Sprintf("timer:%d", timer.Key))
+	defer func() {
+		if retErr != nil {
+			completeTimerSpan.RecordError(retErr)
+			completeTimerSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		completeTimerSpan.End()
+	}()
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", timer.ProcessInstanceKey), err)
+	}
+	instance = &inst
+
+	currentToken := timer.Token
+	tokenNode := instance.Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
+	if tokenNode.GetId() == "" {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId), err)
+	}
+
+	batch := engine.persistence.NewBatch()
+
+	switch nodeT := tokenNode.(type) {
+	case *bpmn20.TEventBasedGateway:
+		tokens, err = engine.publishEventOnEventGateway(ctx, batch, nodeT, timer, instance, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
+		}
+	case *bpmn20.TIntermediateCatchEvent:
+		timer.TimerState = runtime.TimerStateTriggered
+		batch.SaveTimer(ctx, timer)
+		tokens, err = engine.handleSimpleTransition(ctx, batch, instance, nodeT, timer.Token)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
+		}
+	default:
+		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)
+		engine.logger.Error(msg)
+		return nil, nil, &BpmnEngineError{Msg: msg}
+	}
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
+	}
+
+	return instance, tokens, nil
 }
 
 func findDurationValue(timerDef bpmn20.TTimerEventDefinition) (duration.Duration, error) {

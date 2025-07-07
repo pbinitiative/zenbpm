@@ -146,6 +146,7 @@ type TTimerEventDefinition struct {
 }
 
 func (TTimerEventDefinition) eventDefinition() {}
+func (t TTimerEventDefinition) GetId() string  { return t.Id }
 
 type TLinkEventDefinition struct {
 	Id   string `xml:"id,attr"`

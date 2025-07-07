@@ -29,11 +29,20 @@ WHERE
     element_instance_key = @element_instance_key
     AND state = @state;
 
--- name: FindTimersInState :many
+-- name: FindTokenTimers :many
 SELECT
     *
 FROM
     timer
 WHERE
-    process_instance_key = @process_instance_key
+    execution_token = @execution_token
+    AND state = @state;
+
+-- name: FindTimersInStateTillDueAt :many
+SELECT
+    *
+FROM
+    timer
+WHERE
+    due_at < @due_at
     AND state = @state;

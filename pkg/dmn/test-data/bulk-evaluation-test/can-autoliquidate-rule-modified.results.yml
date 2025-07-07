@@ -1,5 +1,5 @@
 tests:
-  - decision: "example_canAutoliqudateRule"
+  - decision: "example_canAutoLiquidateRule"
     input:
       claim:
         amountOfDamage: 1000

@@ -12,6 +12,8 @@ type Querier interface {
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
+	FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error)
+	FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
 	FindIncidents(ctx context.Context, arg FindIncidentsParams) ([]Incident, error)
@@ -21,11 +23,12 @@ type Querier interface {
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
 	FindJobsWithStates(ctx context.Context, arg FindJobsWithStatesParams) ([]Job, error)
+	FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)
-	FindProcessDefinitionsByIds(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
+	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
 	FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error)
 	FindProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]Job, error)
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
@@ -44,6 +47,7 @@ type Querier interface {
 	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
 	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
+	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveMigration(ctx context.Context, arg SaveMigrationParams) error

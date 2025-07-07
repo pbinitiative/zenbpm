@@ -15,4 +15,3 @@ cluster:
     joinAddresses: 
       - localhost:8090
   nodeId: test-node-1
-

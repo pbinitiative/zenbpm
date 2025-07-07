@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestControllerCanStartNewParitions(t *testing.T) {
+func TestControllerCanStartNewPartitions(t *testing.T) {
 	mux, ln, err := network.NewNodeMux("")
 	assert.NoError(t, err)
 	go func() {

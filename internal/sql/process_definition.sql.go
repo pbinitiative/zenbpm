@@ -146,20 +146,19 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 	return items, nil
 }
 
-const findProcessDefinitionsByIds = `-- name: FindProcessDefinitionsByIds :many
+const findProcessDefinitionsById = `-- name: FindProcessDefinitionsById :many
 SELECT
     "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
 FROM
     process_definition
 WHERE
-    bpmn_process_id IN (?1)
+    bpmn_process_id = ?1
 ORDER BY
     version asc
-LIMIT 1
 `
 
-func (q *Queries) FindProcessDefinitionsByIds(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsByIds, bpmnProcessIds)
+func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsById, bpmnProcessIds)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +243,7 @@ INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_ch
 
 type SaveProcessDefinitionParams struct {
 	Key              int64  `json:"key"`
-	Version          int32  `json:"version"`
+	Version          int64  `json:"version"`
 	BpmnProcessID    string `json:"bpmn_process_id"`
 	BpmnData         string `json:"bpmn_data"`
 	BpmnChecksum     []byte `json:"bpmn_checksum"`

@@ -304,8 +304,8 @@ WHERE
 `
 
 type FindProcessInstanceJobsInStateParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	States             []int `json:"states"`
+	ProcessInstanceKey int64   `json:"process_instance_key"`
+	States             []int64 `json:"states"`
 }
 
 func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error) {
@@ -367,7 +367,7 @@ type SaveJobParams struct {
 	ElementInstanceKey int64  `json:"element_instance_key"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 	Type               string `json:"type"`
-	State              int    `json:"state"`
+	State              int64  `json:"state"`
 	CreatedAt          int64  `json:"created_at"`
 	Variables          string `json:"variables"`
 	ExecutionToken     int64  `json:"execution_token"`

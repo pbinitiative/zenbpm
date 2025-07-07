@@ -40,16 +40,15 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindProcessDefinitionsByIds :many
+-- name: FindProcessDefinitionsById :many
 SELECT
     *
 FROM
     process_definition
 WHERE
-    bpmn_process_id IN (@bpmn_process_ids)
+    bpmn_process_id = @bpmn_process_ids
 ORDER BY
-    version asc
-LIMIT 1;
+    version asc;
 
 -- name: FindProcessDefinitionsByKeys :many
 SELECT

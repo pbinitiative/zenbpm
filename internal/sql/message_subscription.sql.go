@@ -85,7 +85,7 @@ WHERE
 
 type FindProcessInstanceMessageSubscriptionsParams struct {
 	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int   `json:"state"`
+	State              int64 `json:"state"`
 }
 
 func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error) {
@@ -134,7 +134,7 @@ WHERE
 
 type FindTokenMessageSubscriptionsParams struct {
 	ExecutionToken int64 `json:"execution_token"`
-	State          int   `json:"state"`
+	State          int64 `json:"state"`
 }
 
 func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error) {
@@ -187,7 +187,7 @@ type SaveMessageSubscriptionParams struct {
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
 	Name                 string `json:"name"`
-	State                int    `json:"state"`
+	State                int64  `json:"state"`
 	CreatedAt            int64  `json:"created_at"`
 	CorrelationKey       string `json:"correlation_key"`
 	ExecutionToken       int64  `json:"execution_token"`

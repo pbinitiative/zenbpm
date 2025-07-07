@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 	"time"
-
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 )
 
 // PersistentStorageNew interface for reading and writing process data into a (persistent) state.
@@ -24,12 +24,20 @@ type Storage interface {
 	MessageStorageWriter
 	TokenStorageReader
 	TokenStorageWriter
+	DecisionStorage
 	FlowElementHistoryWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
+}
+
+type DecisionStorage interface {
+	DecisionDefinitionStorageReader
+	DecisionDefinitionStorageWriter
+
+	GenerateId() int64
 }
 
 type Batch interface {
@@ -46,94 +54,109 @@ type Batch interface {
 	Flush(ctx context.Context) error
 }
 
-type ProcessDefinitionStorageReader interface {
-	FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (runtime.ProcessDefinition, error)
+type DecisionDefinitionStorageReader interface {
+	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
 
-	FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (runtime.ProcessDefinition, error)
+	FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
+
+	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
+	// result array is ordered by version number desc
+	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
+}
+type DecisionDefinitionStorageWriter interface {
+	// SaveDecisionDefinition persists a DecisionDefinition
+	// and potentially overwrites prior data stored with the given DecisionKey
+	SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error
+}
+
+type ProcessDefinitionStorageReader interface {
+	FindLatestProcessDefinitionById(ctx context.Context, ProcessDefinitionId string) (bpmnruntime.ProcessDefinition, error)
+
+	FindProcessDefinitionByKey(ctx context.Context, ProcessDefinitionKey int64) (bpmnruntime.ProcessDefinition, error)
 
 	// FindProcessDefinitionsById return zero or many registered processes with given ID
 	// result array is ordered by version number, from 1 (first) and largest version (last)
-	FindProcessDefinitionsById(ctx context.Context, processId string) ([]runtime.ProcessDefinition, error)
+	FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
 }
 
 type ProcessDefinitionStorageWriter interface {
 	// SaveProcessDefinition persists a ProcessDefinition
 	// and potentially overwrites prior data stored with the given ProcessKey
-	SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error
+	SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error
 }
 
 type ProcessInstanceStorageReader interface {
-	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (runtime.ProcessInstance, error)
+	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
 }
 
 type ProcessInstanceStorageWriter interface {
 	// SaveProcessInstance persists the instance
 	// and potentially overwrites prior data stored with given process instance key
-	SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error
+	SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error
 }
 
 type TimerStorageReader interface {
 	// FindTimersTo returns a list of timers that have dueDate before end and are in CREATED state
-	FindTimersTo(ctx context.Context, end time.Time) ([]runtime.Timer, error)
+	FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
 
-	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]runtime.Timer, error)
+	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 
 type TimerStorageWriter interface {
 	// SaveTimer persists the Timer
 	// and potentially overwrites prior data stored with given key
-	SaveTimer(ctx context.Context, timer runtime.Timer) error
+	SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error
 }
 
 type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
-	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]runtime.Job, error)
+	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
-	FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.Job, error)
+	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
 
-	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (runtime.Job, error)
+	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
 
-	FindActiveJobsByType(ctx context.Context, jobType string) ([]runtime.Job, error)
+	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
 }
 
 type JobStorageWriter interface {
 	// SaveJob persists the Job
 	// and potentially overwrites prior data stored with given JobKey
-	SaveJob(ctx context.Context, job runtime.Job) error
+	SaveJob(ctx context.Context, job bpmnruntime.Job) error
 }
 
 type MessageStorageReader interface {
 	// FindProcessInstanceMessageSubscription return message subscriptions for process instance that are in Active or Ready state
-	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error)
+	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 
-	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error)
+	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 }
 
 type MessageStorageWriter interface {
 	// SaveMessageSubscription persists the MessageSubscription
 	// and potentially overwrites prior data stored with given key
-	SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error
+	SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error
 }
 
 type TokenStorageReader interface {
-	GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error)
+	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
 	// TODO: update this so it doesn't have to return all the tokens
-	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error)
+	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {
-	SaveToken(ctx context.Context, token runtime.ExecutionToken) error
+	SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error
 }
 
 type FlowElementHistoryWriter interface {
-	SaveFlowElementHistory(ctx context.Context, item runtime.FlowElementHistoryItem) error
+	SaveFlowElementHistory(ctx context.Context, item bpmnruntime.FlowElementHistoryItem) error
 }
 
 type IncidentStorageReader interface {
-	FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error)
-	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error)
+	FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error)
+	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error)
 }
 
 type IncidentStorageWriter interface {
-	SaveIncident(ctx context.Context, incident runtime.Incident) error
+	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
 }

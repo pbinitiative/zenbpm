@@ -7,26 +7,38 @@ import (
 	"fmt"
 	"github.com/pbinitiative/feel"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"os"
 	"strings"
 )
 
-type DmnEngine interface {
-	LoadFromFile(ctx context.Context, filename string) (*DecisionDefinition, error)
-	EvaluateDRD(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error)
-	EvaluateDecision(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error)
-	Validate(ctx context.Context, dmnDefinition *DecisionDefinition) error
-}
-
 type ZenDmnEngine struct {
+	persistence storage.DecisionStorage
 }
 
-// New creates a new instance of the BPMN Engine;
-func New() DmnEngine {
-	return &ZenDmnEngine{}
+type EngineOption = func(*ZenDmnEngine)
+
+// NewEngine creates a new instance of the BPMN Engine;
+func NewEngine(options ...EngineOption) *ZenDmnEngine {
+	engine := ZenDmnEngine{
+		persistence: nil,
+	}
+
+	for _, option := range options {
+		option(&engine)
+	}
+
+	return &engine
 }
 
-func (engine *ZenDmnEngine) LoadFromFile(ctx context.Context, filename string) (*DecisionDefinition, error) {
+func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
+	return func(engine *ZenDmnEngine) {
+		engine.persistence = persistence
+	}
+}
+
+func (engine *ZenDmnEngine) LoadFromFile(ctx context.Context, filename string) (*runtime.DecisionDefinition, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load dmn definition from file: %v, %w", filename, err)
@@ -34,28 +46,57 @@ func (engine *ZenDmnEngine) LoadFromFile(ctx context.Context, filename string) (
 	return engine.load(ctx, xmlData, filename)
 }
 
-func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceName string) (*DecisionDefinition, error) {
+func (engine *ZenDmnEngine) LoadFromBytes(ctx context.Context, xmlData []byte) (*runtime.DecisionDefinition, error) {
+	return engine.load(ctx, xmlData, "")
+}
+
+func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceName string) (*runtime.DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions dmn.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse dmn definition from file: %v, %w", resourceName, err)
+		return nil, fmt.Errorf("failed to parse decision definition from file: %v, %w", resourceName, err)
 	}
 
-	dmnDefinition := DecisionDefinition{
-		definitions: definitions,
-		checksum:    md5sum,
+	dmnDefinition := runtime.DecisionDefinition{
+		Version:         1,
+		Id:              definitions.Id,
+		Key:             engine.generateKey(),
+		Definitions:     definitions,
+		DmnData:         xmlData,
+		DmnChecksum:     md5sum,
+		DmnResourceName: resourceName,
+	}
+
+	decisionDefinitions, err := engine.persistence.FindDecisionDefinitionsById(ctx, definitions.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load decision definition by id %s: %w", definitions.Id, err)
+	}
+	if len(decisionDefinitions) > 0 {
+		latestIndex := len(decisionDefinitions) - 1
+		if decisionDefinitions[latestIndex].DmnChecksum == md5sum {
+			return &decisionDefinitions[latestIndex], nil
+		}
+		dmnDefinition.Version = decisionDefinitions[latestIndex].Version + 1
+	}
+	err = engine.persistence.SaveDecisionDefinition(ctx, dmnDefinition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save decision definition by id %s: %w", definitions.Id, err)
 	}
 
 	return &dmnDefinition, engine.Validate(ctx, &dmnDefinition)
 }
 
-func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *DecisionDefinition) error {
+func (engine *ZenDmnEngine) generateKey() int64 {
+	return engine.persistence.GenerateId()
+}
+
+func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DecisionDefinition) error {
 	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
 	return nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDRD(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
+func (engine *ZenDmnEngine) EvaluateDRD(ctx context.Context, dmnDefinition *runtime.DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
 	result, dependencies, err := engine.EvaluateDecision(ctx, dmnDefinition, decisionId, inputVariableContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate decision: %v, %w", decisionId, err)
@@ -69,7 +110,7 @@ func (engine *ZenDmnEngine) EvaluateDRD(ctx context.Context, dmnDefinition *Deci
 	}, nil
 }
 
-func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition *DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
+func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition *runtime.DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
 	foundDecision := findDecision(dmnDefinition, decisionId)
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
@@ -155,15 +196,15 @@ func (engine *ZenDmnEngine) EvaluateDecision(ctx context.Context, dmnDefinition 
 	}
 
 	return EvaluatedDecisionResult{
-		tenantId:        "<default>", //TODO: Fill out tenantId. TenantId makes sense only in
-		decisionId:      decisionId,
-		decisionKey:     "<default>", //TODO: Fill out decisionKey. Will get implemented with persistence
-		decisionName:    "<default>", //TODO: Fill out decisionName. Will get implemented with persistence
-		decisionType:    "<default>", //TODO: Fill out decisionType. Will get implemented with persistence
-		decisionVersion: 0,           //TODO: Fill out decisionVersion. Will get implemented with persistence
-		matchedRules:    matchedRules,
-		evaluatedInputs: evaluatedInputs,
-		decisionOutput:  EvaluateHitPolicyOutput(foundDecision.DecisionTable.HitPolicy, foundDecision.DecisionTable.HitPolicyAggregation, matchedRules),
+		decisionId:                foundDecision.Id,
+		decisionName:              foundDecision.Name,
+		decisionType:              "<default>",
+		decisionDefinitionVersion: dmnDefinition.Version,
+		decisionDefinitionKey:     dmnDefinition.Key,
+		decisionDefinitionId:      dmnDefinition.Id,
+		matchedRules:              matchedRules,
+		evaluatedInputs:           evaluatedInputs,
+		decisionOutput:            EvaluateHitPolicyOutput(foundDecision.DecisionTable.HitPolicy, foundDecision.DecisionTable.HitPolicyAggregation, matchedRules),
 	}, evaluatedDependencies, nil
 
 }

@@ -18,7 +18,7 @@ func (engine *Engine) PublishMessageForInstance(ctx context.Context, processInst
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find subscriptions for instance: %d", processInstanceKey), err)
 	}
-	instance, err := engine.FindProcessInstance(processInstanceKey)
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("no process instance with key: %d", processInstanceKey), err)
 	}

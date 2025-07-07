@@ -141,7 +141,7 @@ type SaveProcessInstanceParams struct {
 	Key                         int64         `json:"key"`
 	ProcessDefinitionKey        int64         `json:"process_definition_key"`
 	CreatedAt                   int64         `json:"created_at"`
-	State                       int           `json:"state"`
+	State                       int64         `json:"state"`
 	Variables                   string        `json:"variables"`
 	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
 }

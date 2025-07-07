@@ -3,25 +3,27 @@ package inmemory
 import (
 	"context"
 	"errors"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"math/rand"
 	"slices"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
-	ProcessDefinitions   map[int64]runtime.ProcessDefinition
-	ProcessInstances     map[int64]runtime.ProcessInstance
-	MessageSubscriptions map[int64]runtime.MessageSubscription
-	Timers               map[int64]runtime.Timer
-	Jobs                 map[int64]runtime.Job
-	ExecutionTokens      map[int64]runtime.ExecutionToken
-	FlowElementHistory   map[int64]runtime.FlowElementHistoryItem
-	Incidents            map[int64]runtime.Incident
+	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
+	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
+	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
+	MessageSubscriptions map[int64]bpmnruntime.MessageSubscription
+	Timers               map[int64]bpmnruntime.Timer
+	Jobs                 map[int64]bpmnruntime.Job
+	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
+	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
+	Incidents            map[int64]bpmnruntime.Incident
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -30,14 +32,15 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
-		ProcessDefinitions:   make(map[int64]runtime.ProcessDefinition),
-		ProcessInstances:     make(map[int64]runtime.ProcessInstance),
-		MessageSubscriptions: make(map[int64]runtime.MessageSubscription),
-		Timers:               make(map[int64]runtime.Timer),
-		Jobs:                 make(map[int64]runtime.Job),
-		ExecutionTokens:      make(map[int64]runtime.ExecutionToken),
-		FlowElementHistory:   make(map[int64]runtime.FlowElementHistoryItem),
-		Incidents:            make(map[int64]runtime.Incident),
+		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
+		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptions: make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:               make(map[int64]bpmnruntime.Timer),
+		Jobs:                 make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:      make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementHistory:   make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		Incidents:            make(map[int64]bpmnruntime.Incident),
 	}
 }
 
@@ -50,10 +53,60 @@ func (mem *Storage) NewBatch() storage.Batch {
 	}
 }
 
+var _ storage.DecisionDefinitionStorageWriter = &Storage{}
+
+func (mem *Storage) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
+	mem.DecisionDefinitions[definition.Key] = definition
+	return nil
+}
+
+var _ storage.DecisionDefinitionStorageReader = &Storage{}
+
+func (mem *Storage) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+	res := make([]dmnruntime.DecisionDefinition, 0)
+	for _, def := range mem.DecisionDefinitions {
+		if def.Id != decisionDefinitionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
+}
+
+func (mem *Storage) FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+	res, ok := mem.DecisionDefinitions[decisionDefinitionKey]
+	if !ok {
+		return res, storage.ErrNotFound
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error) {
+	res := make([]dmnruntime.DecisionDefinition, 0)
+	for _, def := range mem.DecisionDefinitions {
+		if def.Id != decisionDefinitionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
+		return int(a.Version - b.Version)
+	})
+
+	return res, nil
+}
+
 var _ storage.ProcessDefinitionStorageReader = &Storage{}
 
-func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (runtime.ProcessDefinition, error) {
-	var res runtime.ProcessDefinition
+func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (bpmnruntime.ProcessDefinition, error) {
+	var res bpmnruntime.ProcessDefinition
 	found := false
 	for _, def := range mem.ProcessDefinitions {
 		if def.BpmnProcessId != processDefinitionId {
@@ -71,7 +124,7 @@ func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, process
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (runtime.ProcessDefinition, error) {
+func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (bpmnruntime.ProcessDefinition, error) {
 	res, ok := mem.ProcessDefinitions[processDefinitionKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -79,15 +132,15 @@ func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]runtime.ProcessDefinition, error) {
-	res := make([]runtime.ProcessDefinition, 0)
+func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
+	res := make([]bpmnruntime.ProcessDefinition, 0)
 	for _, def := range mem.ProcessDefinitions {
 		if def.BpmnProcessId != processId {
 			continue
 		}
 		res = append(res, def)
 	}
-	slices.SortFunc(res, func(a, b runtime.ProcessDefinition) int {
+	slices.SortFunc(res, func(a, b bpmnruntime.ProcessDefinition) int {
 		return int(a.Version - b.Version)
 	})
 
@@ -96,14 +149,14 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 
-func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
+func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	mem.ProcessDefinitions[definition.Key] = definition
 	return nil
 }
 
 var _ storage.ProcessInstanceStorageReader = &Storage{}
 
-func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (runtime.ProcessInstance, error) {
+func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
 	res, ok := mem.ProcessInstances[processInstanceKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -113,17 +166,17 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
-func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
 	mem.ProcessInstances[processInstance.Key] = processInstance
 	return nil
 }
 
 var _ storage.TimerStorageReader = &Storage{}
 
-func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]runtime.Timer, error) {
-	res := make([]runtime.Timer, 0)
+func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
+	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
-		if timer.TimerState != runtime.TimerStateCreated {
+		if timer.TimerState != bpmnruntime.TimerStateCreated {
 			continue
 		}
 		if timer.Token.Key != tokenKey {
@@ -134,13 +187,13 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 	return res, nil
 }
 
-func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]runtime.Timer, error) {
-	res := make([]runtime.Timer, 0)
+func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
+	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
 		if timer.DueAt.After(end) {
 			continue
 		}
-		if timer.TimerState != runtime.TimerStateCreated {
+		if timer.TimerState != bpmnruntime.TimerStateCreated {
 			continue
 		}
 		res = append(res, timer)
@@ -150,15 +203,15 @@ func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]runtime.
 
 var _ storage.TimerStorageWriter = &Storage{}
 
-func (mem *Storage) SaveTimer(ctx context.Context, timer runtime.Timer) error {
+func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	mem.Timers[timer.GetKey()] = timer
 	return nil
 }
 
 var _ storage.JobStorageReader = &Storage{}
 
-func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]runtime.Job, error) {
-	res := make([]runtime.Job, 0)
+func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
+	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
 		// TODO: uncomment once we have type
 		// if job.Type != jobType{
@@ -169,8 +222,8 @@ func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([
 	return res, nil
 }
 
-func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (runtime.Job, error) {
-	var res runtime.Job
+func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error) {
+	var res bpmnruntime.Job
 	for _, job := range mem.Jobs {
 		if job.ProcessInstanceKey != processInstanceKey {
 			continue
@@ -183,8 +236,8 @@ func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey i
 	return res, storage.ErrNotFound
 }
 
-func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.Job, error) {
-	var res runtime.Job
+func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
+	var res bpmnruntime.Job
 	res, ok := mem.Jobs[jobKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -192,13 +245,13 @@ func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (runtime.
 	return res, nil
 }
 
-func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]runtime.Job, error) {
-	res := make([]runtime.Job, 0)
+func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
+	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
 		if job.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if job.GetState() != runtime.ActivityStateActive && job.GetState() != runtime.ActivityStateCompleting {
+		if job.GetState() != bpmnruntime.ActivityStateActive && job.GetState() != bpmnruntime.ActivityStateCompleting {
 			continue
 		}
 		res = append(res, job)
@@ -208,7 +261,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 
 var _ storage.JobStorageWriter = &Storage{}
 
-func (mem *Storage) SaveJob(ctx context.Context, job runtime.Job) error {
+func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	mem.Jobs[job.GetKey()] = job
 	return nil
 }
@@ -216,8 +269,8 @@ func (mem *Storage) SaveJob(ctx context.Context, job runtime.Job) error {
 var _ storage.MessageStorageReader = &Storage{}
 
 // FindTokenMessageSubscriptions implements storage.Storage.
-func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
-	res := make([]runtime.MessageSubscription, 0)
+func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.Token.Key == tokenKey {
 			res = append(res, sub)
@@ -226,8 +279,8 @@ func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state runtime.ActivityState) ([]runtime.MessageSubscription, error) {
-	res := make([]runtime.MessageSubscription, 0)
+func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.ProcessInstanceKey != processInstanceKey {
 			continue
@@ -240,8 +293,8 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
-func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
-	var res runtime.Incident
+func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
+	var res bpmnruntime.Incident
 	res, ok := mem.Incidents[key]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -249,8 +302,8 @@ func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (runtime.I
 	return res, nil
 }
 
-func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error) {
-	res := make([]runtime.Incident, 0)
+func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
+	res := make([]bpmnruntime.Incident, 0)
 	for _, inc := range mem.Incidents {
 		if inc.ProcessInstanceKey != processInstanceKey {
 			continue
@@ -262,7 +315,7 @@ func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, proce
 
 var _ storage.MessageStorageWriter = &Storage{}
 
-func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
+func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	mem.MessageSubscriptions[subscription.GetKey()] = subscription
 	return nil
 }
@@ -270,8 +323,8 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription ru
 var _ storage.TokenStorageReader = &Storage{}
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
-func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]runtime.ExecutionToken, error) {
-	res := make([]runtime.ExecutionToken, 0)
+func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	res := make([]bpmnruntime.ExecutionToken, 0)
 	for _, tok := range mem.ExecutionTokens {
 		if tok.ProcessInstanceKey == processInstanceKey {
 			res = append(res, tok)
@@ -281,10 +334,10 @@ func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInst
 }
 
 // GetActiveTokensForPartition implements storage.Storage.
-func (mem *Storage) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionToken, error) {
-	activeTokens := make([]runtime.ExecutionToken, 0)
+func (mem *Storage) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
+	activeTokens := make([]bpmnruntime.ExecutionToken, 0)
 	for _, token := range mem.ExecutionTokens {
-		if token.State == runtime.TokenStateRunning {
+		if token.State == bpmnruntime.TokenStateRunning {
 			activeTokens = append(activeTokens, token)
 		}
 	}
@@ -294,17 +347,17 @@ func (mem *Storage) GetRunningTokens(ctx context.Context) ([]runtime.ExecutionTo
 var _ storage.TokenStorageWriter = &Storage{}
 
 // SaveToken implements storage.Storage.
-func (mem *Storage) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	mem.ExecutionTokens[token.Key] = token
 	return nil
 }
 
-func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
 	mem.FlowElementHistory[historyItem.Key] = historyItem
 	return nil
 }
 
-func (mem *Storage) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	mem.Incidents[incident.Key] = incident
 	return nil
 }
@@ -335,7 +388,7 @@ func (b *StorageBatch) Flush(ctx context.Context) error {
 
 var _ storage.ProcessDefinitionStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveProcessDefinition(ctx context.Context, definition runtime.ProcessDefinition) error {
+func (b *StorageBatch) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveProcessDefinition(ctx, definition)
 	})
@@ -344,7 +397,7 @@ func (b *StorageBatch) SaveProcessDefinition(ctx context.Context, definition run
 
 var _ storage.ProcessInstanceStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveProcessInstance(ctx context.Context, processInstance runtime.ProcessInstance) error {
+func (b *StorageBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveProcessInstance(ctx, processInstance)
 	})
@@ -353,7 +406,7 @@ func (b *StorageBatch) SaveProcessInstance(ctx context.Context, processInstance 
 
 var _ storage.TimerStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error {
+func (b *StorageBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveTimer(ctx, timer)
 	})
@@ -362,7 +415,7 @@ func (b *StorageBatch) SaveTimer(ctx context.Context, timer runtime.Timer) error
 
 var _ storage.JobStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveJob(ctx context.Context, job runtime.Job) error {
+func (b *StorageBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveJob(ctx, job)
 	})
@@ -371,7 +424,7 @@ func (b *StorageBatch) SaveJob(ctx context.Context, job runtime.Job) error {
 
 var _ storage.MessageStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription runtime.MessageSubscription) error {
+func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveMessageSubscription(ctx, subscription)
 	})
@@ -380,21 +433,21 @@ func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription
 
 var _ storage.TokenStorageWriter = &StorageBatch{}
 
-func (b *StorageBatch) SaveToken(ctx context.Context, token runtime.ExecutionToken) error {
+func (b *StorageBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveToken(ctx, token)
 	})
 	return nil
 }
 
-func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveFlowElementHistory(ctx, historyItem)
 	})
 	return nil
 }
 
-func (b *StorageBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+func (b *StorageBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveIncident(ctx, incident)
 	})

@@ -78,6 +78,8 @@ type Tracing struct {
 type Persistence struct {
 	ProcDefCacheTTL  time.Duration `yaml:"procDefCacheTTL" env:"PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
 	ProcDefCacheSize int           `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
+	DecDefCacheTTL   time.Duration `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
+	DecDefCacheSize  int           `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
 	RqLite           *RqLite       `yaml:"rqlite" json:"rqlite"`
 }
 

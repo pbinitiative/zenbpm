@@ -60,7 +60,7 @@ func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg 
 		tracer:    otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		partition: partition,
 		pdCache:   expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
-		ddCache:   expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
+		ddCache:   expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, cfg.DecDefCacheTTL),
 	}
 	queries := sql.New(db)
 	db.queries = queries

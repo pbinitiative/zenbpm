@@ -1,0 +1,725 @@
+openapi: 3.0.0
+info:
+  title: BPMN Engine OpenAPI
+  description: REST API for lib-bpmn-engine
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080/v1
+tags:
+  - name: process-definitions
+  - name: process-instances
+paths:
+  /process-definitions:
+    post:
+      operationId: createProcessDefinition
+      summary: Deploy a new process definition
+      tags:
+        - process-definitions
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: string
+              format: xml
+      responses:
+        200:
+          description: Process definition deployed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - processDefinitionKey
+                properties:
+                  processDefinitionKey:
+                    type: string
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: getProcessDefinitions
+      summary: Get list of process definitions
+      tags:
+        - process-definitions
+      responses:
+        200:
+          description: List of process definitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDefinitionsPage"
+  /process-definitions/{processDefinitionKey}:
+    get:
+      operationId: getProcessDefinition
+      summary: Get process definition
+      tags:
+        - process-definitions
+      parameters:
+        - name: processDefinitionKey
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        200:
+          description: Process definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDefinitionDetail"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances:
+    post:
+      operationId: createProcessInstance
+      summary: Create a new process instance
+      tags:
+        - process-instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processDefinitionKey
+              properties:
+                processDefinitionKey:
+                  type: string
+                variables:
+                  type: object
+      responses:
+        200:
+          description: Process instance created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstance"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      summary: Get list of running process instances
+      operationId: getProcessInstances
+      tags:
+        - process-instances
+      parameters:
+        - name: processDefinitionKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 10
+      responses:
+        200:
+          description: List of running process instances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstancePage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}:
+    get:
+      operationId: getProcessInstance
+      tags:
+        - process-instances
+      summary: Get state of a process instance selected by processInstanceId
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: State of a process instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstance"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/jobs:
+    get:
+      operationId: getJobs
+      tags:
+        - process-instances
+      summary: Get list of jobs for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/activities:
+    get:
+      operationId: getActivities
+      tags:
+        - process-instances
+      summary: Get list of activities for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/history:
+    get:
+      operationId: getHistory
+      tags:
+        - process-instances
+      summary: Get list of visited flow elements for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlowElementHistoryPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/incidents:
+    get:
+      operationId: getIncidents
+      tags:
+        - process-instances
+      summary: Get list of incidents for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /jobs:
+    post:
+      operationId: completeJob
+      tags:
+        - jobs
+      summary: Complete a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jobKey
+              properties:
+                jobKey:
+                  type: string
+                variables:
+                  type: object
+      responses:
+        201:
+          description: Job completed
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{jobType}/activate:
+    post:
+      operationId: activateJobs
+      tags:
+        - jobs
+      summary: Activate jobs
+      parameters:
+        - name: jobType
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Jobs activated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+  /messages:
+    post:
+      operationId: publishMessage
+      tags:
+        - messages
+      summary: Publish a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processInstanceKey
+                - messageName
+              properties:
+                processInstanceKey:
+                  type: string
+                messageName:
+                  type: string
+                variables:
+                  type: object
+      responses:
+        201:
+          description: Message sent
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /incident/{incidentKey}/resolve:
+    post:
+      operationId: resolveIncident
+      tags:
+        - incidents
+      summary: Resolve an incident
+      parameters:
+        - name: incidentKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        201:
+          description: Incident resolved
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    PartitionedPageMetadata:
+      type: object
+      required:
+        - page
+        - size
+        - count
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        count:
+          description: number of items returned
+          type: integer
+    PageMetadata:
+      type: object
+      required:
+        - offset
+        - size
+        - count
+      properties:
+        offset:
+          type: integer
+        size:
+          type: integer
+        count:
+          type: integer
+    PartitionProcessInstances:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessInstance"
+    ProcessDefinitionsPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProcessDefinitionSimple"
+        - $ref: "#/components/schemas/PageMetadata"
+    ProcessDefinitionSimple:
+      type: object
+      required:
+        - key
+        - version
+        - bpmnProcessId
+      properties:
+        key:
+          type: string
+        version:
+          type: integer
+        bpmnProcessId:
+          type: string
+    ProcessDefinitionDetail:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/ProcessDefinitionSimple"
+        - type: object
+          properties:
+            bpmnData:
+              type: string
+    ProcessInstancePage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - partitions
+          properties:
+            partitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartitionProcessInstances"
+        - $ref: "#/components/schemas/PartitionedPageMetadata"
+    ProcessInstance:
+      type: object
+      required:
+        - key
+        - processDefinitionKey
+        - createdAt
+        - state
+        - variables
+      properties:
+        key:
+          type: string
+        processDefinitionKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum:
+            - active
+            - completed
+            - terminated
+        variables:
+          type: object
+    JobPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Job"
+        - $ref: "#/components/schemas/PageMetadata"
+    Job:
+      type: object
+      required:
+        - key
+        - elementId
+        - type
+        - processInstanceKey
+        - state
+        - createdAt
+        - variables
+      properties:
+        key:
+          type: string
+        elementId:
+          type: string
+        type:
+          type: string
+        processInstanceKey:
+          type: string
+        state:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        variables:
+          type: object
+    ActivityPage:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Activity"
+        - $ref: "#/components/schemas/PageMetadata"
+    Activity:
+      type: object
+      properties:
+        key:
+          type: string
+        processInstanceKey:
+          type: string
+        processDefinitionKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+        elementId:
+          type: string
+        bpmnElementType:
+          type: string
+    FlowElementHistoryPage:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/FlowElementHistory"
+        - $ref: "#/components/schemas/PageMetadata"
+    FlowElementHistory:
+      type: object
+      properties:
+        key:
+          type: string
+        processInstanceKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        elementId:
+          type: string
+    IncidentPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Incident"
+        - $ref: "#/components/schemas/PageMetadata"
+    Incident:
+      type: object
+      required:
+        - key
+        - elementInstanceKey
+        - elementId
+        - processInstanceKey
+        - message
+        - createdAt
+        - executionToken
+      properties:
+        key:
+          type: string
+        elementInstanceKey:
+          type: string
+        elementId:
+          type: string
+        processInstanceKey:
+          type: string
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        executionToken:
+          type: string
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"html"
 	"strings"
-
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
 // TDocumentation  BPMN elements that inherit from the BaseElement will have the capability,
@@ -138,13 +136,7 @@ type TFlowNode struct {
 	OutgoingAssociationsIDs []string       `xml:"outgoing"`
 	IncomingAssociations    []SequenceFlow `idField:"IncomingAssociationsIDs"`
 	OutgoingAssociations    []SequenceFlow `idField:"OutgoingAssociationsIDs"`
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
-	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
-	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
-
-func (task TFlowNode) GetInputMapping() []extensions.TIoMapping  { return task.Input }
-func (task TFlowNode) GetOutputMapping() []extensions.TIoMapping { return task.Output }
 
 func (flowNode *TFlowNode) GetIncomingAssociation() []SequenceFlow {
 	return flowNode.IncomingAssociations

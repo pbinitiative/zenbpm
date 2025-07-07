@@ -91,6 +91,9 @@ type TIntermediateThrowEvent struct {
 	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
+func (d TIntermediateThrowEvent) GetInputMapping() []extensions.TIoMapping  { return d.Input }
+func (d TIntermediateThrowEvent) GetOutputMapping() []extensions.TIoMapping { return d.Output }
+
 func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.TypeName }
 
 func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {

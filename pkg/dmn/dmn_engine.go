@@ -9,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"os"
 	"strings"
 )
@@ -22,7 +23,7 @@ type EngineOption = func(*ZenDmnEngine)
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
-		persistence: nil,
+		persistence: inmemory.NewStorage(),
 	}
 
 	for _, option := range options {

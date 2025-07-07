@@ -268,6 +268,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActivityPage'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /process-instances/{processInstanceKey}/history:
+    get:
+      operationId: getHistory
+      tags:
+        - process-instances
+      summary: Get list of visited flow elements for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowElementHistoryPage'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /process-instances/{processInstanceKey}/incidents:
+    get:
+      operationId: getIncidents
+      tags:
+        - process-instances
+      summary: Get list of incidents for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of incidents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentPage'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /jobs:
     post:
       operationId: completeJob
@@ -348,6 +434,33 @@ paths:
       responses:
         '201':
           description: Message sent
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /incident/{incidentKey}/resolve:
+    post:
+      operationId: resolveIncident
+      tags:
+        - incidents
+      summary: Resolve an incident
+      parameters:
+        - name: incidentKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Incident resolved
         '400':
           description: Bad request
           content:
@@ -535,6 +648,69 @@ components:
         elementId:
           type: string
         bpmnElementType:
+          type: string
+    FlowElementHistoryPage:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/FlowElementHistory'
+        - $ref: '#/components/schemas/PageMetadata'
+    FlowElementHistory:
+      type: object
+      properties:
+        key:
+          type: string
+        processInstanceKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        elementId:
+          type: string
+    IncidentPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Incident'
+        - $ref: '#/components/schemas/PageMetadata'
+    Incident:
+      type: object
+      required:
+        - key
+        - elementInstanceKey
+        - elementId
+        - processInstanceKey
+        - message
+        - createdAt
+        - executionToken
+      properties:
+        key:
+          type: string
+        elementInstanceKey:
+          type: string
+        elementId:
+          type: string
+        processInstanceKey:
+          type: string
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        executionToken:
           type: string
     Error:
       type: object

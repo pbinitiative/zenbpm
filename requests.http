@@ -40,5 +40,5 @@ Content-Type: application/json
 ### Metrics
 GET {{host}}/system/metrics
 
-### Metrics
+### Status
 GET {{host}}/system/status

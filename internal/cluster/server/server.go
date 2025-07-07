@@ -549,7 +549,7 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 			},
 		}, err
 	}
-	err = engine.PublishEventForInstance(ctx, req.InstanceKey, req.Name, vars)
+	err = engine.PublishMessageForInstance(ctx, req.InstanceKey, req.Name, vars)
 	if err != nil {
 		err := fmt.Errorf("failed to publish message event for %d: %w", req.InstanceKey, err)
 		return &proto.PublishMessageResponse{

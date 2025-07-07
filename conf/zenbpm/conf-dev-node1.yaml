@@ -1,5 +1,5 @@
 name: zenbpm
-server:
+httpServer:
   context: /
   addr: :8081
 grpcServer:

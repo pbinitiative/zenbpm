@@ -12,8 +12,8 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-// PublishEventForInstance publishes a message with a given name and also adds variables to the process instance, which fetches this event
-func (engine *Engine) PublishEventForInstance(ctx context.Context, processInstanceKey int64, messageName string, variables map[string]interface{}) error {
+// PublishMessageForInstance publishes a message with a given name and also adds variables to the process instance, which fetches this event
+func (engine *Engine) PublishMessageForInstance(ctx context.Context, processInstanceKey int64, messageName string, variables map[string]interface{}) error {
 	subs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, processInstanceKey, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find subscriptions for instance: %d", processInstanceKey), err)
@@ -41,7 +41,7 @@ func (engine *Engine) PublishEventForInstance(ctx context.Context, processInstan
 	node := pd.GetFlowNodeById(message.Token.ElementId)
 	switch nodeT := node.(type) {
 	case *bpmn20.TEventBasedGateway:
-		tokens, err := engine.publishMessageOnEventGateway(ctx, batch, nodeT, &message, &instance, variables)
+		tokens, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, message, &instance, variables)
 		if err != nil {
 			return newEngineErrorf("failed to publish message %s to event gateway in instance %d. Unexpected node type %T", messageName, processInstanceKey, nodeT)
 		}
@@ -98,56 +98,83 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storag
 	return tokens, nil
 }
 
-func (engine *Engine) publishMessageOnEventGateway(ctx context.Context, batch storage.Batch, gateway *bpmn20.TEventBasedGateway, message *runtime.MessageSubscription, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
+type GatewayEvent interface {
+	GetId() string
+	GetKey() int64
+	GatewayEvent()
+}
+
+// publishEventOnEventGateway currently supports gateway events:
+// runtime.MessageSubscription
+// runtime.Timer
+func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch storage.Batch, gateway *bpmn20.TEventBasedGateway, event GatewayEvent, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	outgoing := gateway.GetOutgoingAssociation()
-	var event *bpmn20.TIntermediateCatchEvent
+	var catchEvent *bpmn20.TIntermediateCatchEvent
 	for _, flow := range outgoing {
-		if _, ok := flow.GetTargetRef().(*bpmn20.TIntermediateCatchEvent); !ok {
+		if flow.GetTargetRef().GetId() != event.GetId() {
 			continue
 		}
-		catchEvent := flow.GetTargetRef().(*bpmn20.TIntermediateCatchEvent)
-		if _, ok := catchEvent.EventDefinition.(bpmn20.TMessageEventDefinition); !ok {
+		e := flow.GetTargetRef().(*bpmn20.TIntermediateCatchEvent)
+		_, isMessage := e.EventDefinition.(bpmn20.TMessageEventDefinition)
+		_, isTimer := e.EventDefinition.(bpmn20.TTimerEventDefinition)
+		isMessageOrTimer := isMessage || isTimer
+		if !isMessageOrTimer {
 			continue
 		}
-		med := catchEvent.EventDefinition.(bpmn20.TMessageEventDefinition)
-		for _, mDef := range instance.Definition.Definitions.Messages {
-			if mDef.Id == med.MessageRef && message.Name == mDef.Name {
-				event = catchEvent
-				break
-			}
-		}
+		catchEvent = e
 	}
-	if event == nil {
+	if catchEvent == nil {
 		return nil, nil
 	}
-	// TODO: cancel all the subs on the gateway not only messages
-	token := message.Token
-	subs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find subscriptions to cancel for token %+v", token.Key)
+	var token runtime.ExecutionToken
+	switch catchEvent.EventDefinition.(type) {
+	case bpmn20.TMessageEventDefinition:
+		message := event.(runtime.MessageSubscription)
+		message.MessageState = runtime.ActivityStateCompleted
+		batch.SaveMessageSubscription(ctx, message)
+		token = message.Token
+		vars := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+		propagateProcessInstanceVariables(&vars, catchEvent.Output)
+		instance.VariableHolder = vars
+		err := batch.SaveProcessInstance(ctx, *instance)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+		}
+	case bpmn20.TTimerEventDefinition:
+		timer := event.(runtime.Timer)
+		timer.TimerState = runtime.TimerStateTriggered
+		batch.SaveTimer(ctx, timer)
+		token = timer.Token
 	}
-	message.MessageState = runtime.ActivityStateCompleted
-	batch.SaveMessageSubscription(ctx, *message)
-	for _, sub := range subs {
-		if message.ElementInstanceKey == sub.ElementInstanceKey {
+	// cancel all the subs on the gateway
+	msubs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find message subscriptions to cancel for token %+v", token.Key)
+	}
+	for _, sub := range msubs {
+		if event.GetKey() == sub.ElementInstanceKey {
 			continue
 		}
 		sub.MessageState = runtime.ActivityStateTerminated
 		batch.SaveMessageSubscription(ctx, sub)
 	}
-
-	vars := runtime.NewVariableHolder(&instance.VariableHolder, variables)
-	propagateProcessInstanceVariables(&vars, event.Output)
-	instance.VariableHolder = vars
-	err = batch.SaveProcessInstance(ctx, *instance)
+	tsubs, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+		return nil, fmt.Errorf("failed to find timer subscriptions to cancel for token %+v", token.Key)
+	}
+	for _, sub := range tsubs {
+		if event.GetKey() == sub.ElementInstanceKey {
+			continue
+		}
+		sub.TimerState = runtime.TimerStateCancelled
+		engine.timerManager.removeTimer(sub)
+		batch.SaveTimer(ctx, sub)
+	}
+	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, catchEvent, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process gateway event flow transition %s: %w", event.GetId(), err)
 	}
 
-	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, event, token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process MessageSubscription flow transition %s: %w", event.GetId(), err)
-	}
 	return tokens, nil
 }
 

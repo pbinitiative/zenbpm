@@ -142,6 +142,10 @@ func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
 	return false
 }
 
+func (m MessageSubscription) GetId() string {
+	return m.ElementId
+}
+func (m MessageSubscription) GatewayEvent() {}
 func (m MessageSubscription) GetKey() int64 {
 	return m.ElementInstanceKey
 }
@@ -164,8 +168,9 @@ const (
 // The logic is simple: CreatedAt + Duration = DueAt
 // The TimerState is one of [ TimerCreated, TimerTriggered, TimerCancelled ]
 type Timer struct {
-	ElementId            string
+	ElementId            string // id of the intermediateCatchEvent
 	Key                  int64
+	ElementInstanceKey   int64
 	ProcessDefinitionKey int64
 	ProcessInstanceKey   int64
 	TimerState           TimerState
@@ -173,8 +178,12 @@ type Timer struct {
 	DueAt                time.Time
 	Duration             time.Duration
 	Token                ExecutionToken
-	BaseElement          bpmn20.FlowNode // Deprecated: FIXME, should not be public, nor serialized
 }
+
+func (t Timer) GetId() string {
+	return t.ElementId
+}
+func (t Timer) GatewayEvent() {}
 
 func (t Timer) GetKey() int64 {
 	return t.Key
@@ -187,7 +196,8 @@ func (t Timer) EqualTo(t2 Timer) bool {
 		t.TimerState == t2.TimerState &&
 		t.CreatedAt.Truncate(time.Millisecond).Equal(t2.CreatedAt.Truncate(time.Millisecond)) &&
 		t.DueAt.Truncate(time.Millisecond).Equal(t2.DueAt.Truncate(time.Millisecond)) &&
-		t.Duration == t2.Duration {
+		t.Duration == t2.Duration &&
+		t.Token == t2.Token {
 		return true
 	}
 	return false
@@ -203,10 +213,6 @@ func (t Timer) GetState() ActivityState {
 		return ActivityStateWithdrawn
 	}
 	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
-}
-
-func (t Timer) Element() bpmn20.FlowNode {
-	return t.BaseElement
 }
 
 type Activity interface {

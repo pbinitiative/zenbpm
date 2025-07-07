@@ -513,49 +513,93 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 
 var _ storage.TimerStorageReader = &RqLiteDB{}
 
-func (rq *RqLiteDB) FindActivityTimers(ctx context.Context, activityKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
-	dbTimers, err := rq.queries.FindElementTimers(ctx, sql.FindElementTimersParams{
-		ElementInstanceKey: activityKey,
-		State:              int(state),
+func (rq *RqLiteDB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]runtime.Timer, error) {
+	dbTimers, err := rq.queries.FindTokenTimers(ctx, sql.FindTokenTimersParams{
+		ExecutionToken: tokenKey,
+		State:          int(runtime.TimerStateCreated),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to find element timers %d: %w", activityKey, err)
+		return nil, fmt.Errorf("failed to find element timers for token %d: %w", tokenKey, err)
 	}
 	res := make([]runtime.Timer, len(dbTimers))
+	tokensToLoad := make([]int64, len(dbTimers))
 	for i, timer := range dbTimers {
 		res[i] = runtime.Timer{
 			ElementId:            timer.ElementID,
-			Key:                  timer.ElementInstanceKey,
+			ElementInstanceKey:   timer.ElementInstanceKey,
+			Key:                  timer.Key,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
 			TimerState:           runtime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
+			Token:                runtime.ExecutionToken{Key: timer.ExecutionToken},
 		}
+		tokensToLoad[i] = timer.ExecutionToken
 		res[i].Duration = res[i].DueAt.Sub(res[i].CreatedAt)
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load timer subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+			}
+		}
 	}
 	return res, nil
 }
 
-func (rq *RqLiteDB) FindTimersByState(ctx context.Context, processInstanceKey int64, state runtime.TimerState) ([]runtime.Timer, error) {
-	dbTimers, err := rq.queries.FindTimersInState(ctx, sql.FindTimersInStateParams{
-		ProcessInstanceKey: processInstanceKey,
-		State:              int(state),
+func (rq *RqLiteDB) FindTimersTo(ctx context.Context, end time.Time) ([]runtime.Timer, error) {
+	dbTimers, err := rq.queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
+		State: int(runtime.TimerStateCreated),
+		DueAt: end.UnixMilli(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to find process instance timers %d: %w", processInstanceKey, err)
+		return nil, fmt.Errorf("failed to find timers till %s in state CREATED: %w", end, err)
 	}
 	res := make([]runtime.Timer, len(dbTimers))
+	tokensToLoad := make([]int64, len(dbTimers))
 	for i, timer := range dbTimers {
 		res[i] = runtime.Timer{
 			ElementId:            timer.ElementID,
-			Key:                  timer.ElementInstanceKey,
+			ElementInstanceKey:   timer.ElementInstanceKey,
+			Key:                  timer.Key,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
 			ProcessInstanceKey:   timer.ProcessInstanceKey,
 			TimerState:           runtime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
 			Duration:             time.Millisecond * time.Duration(timer.DueAt-timer.CreatedAt),
+			Token:                runtime.ExecutionToken{Key: timer.ExecutionToken},
+		}
+		tokensToLoad[i] = timer.ExecutionToken
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load timer subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = runtime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              runtime.TokenState(token.State),
+				}
+			}
 		}
 	}
 	return res, nil
@@ -571,12 +615,13 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer runtime.Timer) er
 	err := db.SaveTimer(ctx, sql.SaveTimerParams{
 		Key:                  timer.GetKey(),
 		ElementID:            timer.ElementId,
-		ElementInstanceKey:   timer.Key,
+		ElementInstanceKey:   timer.ElementInstanceKey,
 		ProcessDefinitionKey: timer.ProcessDefinitionKey,
 		ProcessInstanceKey:   timer.ProcessInstanceKey,
 		State:                int(timer.GetState()),
 		CreatedAt:            timer.CreatedAt.UnixMilli(),
 		DueAt:                timer.DueAt.UnixMilli(),
+		ExecutionToken:       timer.Token.Key,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save timer %d: %w", timer.GetKey(), err)

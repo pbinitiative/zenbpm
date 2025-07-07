@@ -267,10 +267,17 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 
 		timer := getTimer(r, st.processDefinition.Key, st.processInstance.Key, job)
 
+		err = s.SaveToken(ctx, timer.Token)
+		assert.NoError(t, err)
+
 		err = s.SaveTimer(ctx, timer)
 		assert.NoError(t, err)
 
-		timers, err := s.FindTimersByState(ctx, st.processInstance.Key, runtime.TimerStateCreated)
+		timers, err := s.FindTimersTo(ctx, timer.DueAt.Add(1*time.Second))
+		assert.NoError(t, err)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
+
+		timers, err = s.FindTokenActiveTimerSubscriptions(ctx, timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 	}

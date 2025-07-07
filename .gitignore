@@ -3,7 +3,6 @@
 .nvim.json
 *.iml
 .DS_Store
-docs/build
 site/
 temp.*.json
 _
@@ -16,7 +15,4 @@ bin
 node-*
 cover.out
 
-docs/node_modules
-docs/.docusaurus
-docs/openapi
-docs/proto
+docs/docusaurus/

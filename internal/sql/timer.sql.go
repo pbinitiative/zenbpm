@@ -125,7 +125,7 @@ WHERE
 
 type FindTimersInStateTillDueAtParams struct {
 	DueAt int64 `json:"due_at"`
-	State int64   `json:"state"`
+	State int64 `json:"state"`
 }
 
 func (q *Queries) FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error) {
@@ -173,7 +173,7 @@ WHERE
 
 type FindTokenTimersParams struct {
 	ExecutionToken int64 `json:"execution_token"`
-	State          int   `json:"state"`
+	State          int64 `json:"state"`
 }
 
 func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error) {

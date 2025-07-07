@@ -688,7 +688,7 @@ func (rq *RqLiteDB) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 
 func (rq *RqLiteDB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
-		State: int(bpmnruntime.TimerStateCreated),
+		State: int64(bpmnruntime.TimerStateCreated),
 		DueAt: end.UnixMilli(),
 	})
 	if err != nil {

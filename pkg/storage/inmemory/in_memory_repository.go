@@ -14,14 +14,15 @@ import (
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
-	ProcessDefinitions   map[int64]runtime.ProcessDefinition
-	ProcessInstances     map[int64]runtime.ProcessInstance
-	MessageSubscriptions map[int64]runtime.MessageSubscription
-	Timers               map[int64]runtime.Timer
-	Jobs                 map[int64]runtime.Job
-	ExecutionTokens      map[int64]runtime.ExecutionToken
-	FlowElementHistory   map[int64]runtime.FlowElementHistoryItem
-	Incidents            map[int64]runtime.Incident
+	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
+	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
+	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
+	MessageSubscriptions map[int64]bpmnruntime.MessageSubscription
+	Timers               map[int64]bpmnruntime.Timer
+	Jobs                 map[int64]bpmnruntime.Job
+	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
+	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
+	Incidents            map[int64]bpmnruntime.Incident
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -30,14 +31,15 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
-		ProcessDefinitions:   make(map[int64]runtime.ProcessDefinition),
-		ProcessInstances:     make(map[int64]runtime.ProcessInstance),
-		MessageSubscriptions: make(map[int64]runtime.MessageSubscription),
-		Timers:               make(map[int64]runtime.Timer),
-		Jobs:                 make(map[int64]runtime.Job),
-		ExecutionTokens:      make(map[int64]runtime.ExecutionToken),
-		FlowElementHistory:   make(map[int64]runtime.FlowElementHistoryItem),
-		Incidents:            make(map[int64]runtime.Incident),
+		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
+		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptions: make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:               make(map[int64]bpmnruntime.Timer),
+		Jobs:                 make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:      make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementHistory:   make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		Incidents:            make(map[int64]bpmnruntime.Incident),
 	}
 }
 
@@ -276,8 +278,8 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
-func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error) {
-	var res runtime.Incident
+func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
+	var res bpmnruntime.Incident
 	res, ok := mem.Incidents[key]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -285,8 +287,8 @@ func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (runtime.I
 	return res, nil
 }
 
-func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error) {
-	res := make([]runtime.Incident, 0)
+func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
+	res := make([]bpmnruntime.Incident, 0)
 	for _, inc := range mem.Incidents {
 		if inc.ProcessInstanceKey != processInstanceKey {
 			continue
@@ -335,12 +337,12 @@ func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionTo
 	return nil
 }
 
-func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
 	mem.FlowElementHistory[historyItem.Key] = historyItem
 	return nil
 }
 
-func (mem *Storage) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	mem.Incidents[incident.Key] = incident
 	return nil
 }
@@ -423,14 +425,14 @@ func (b *StorageBatch) SaveToken(ctx context.Context, token bpmnruntime.Executio
 	return nil
 }
 
-func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem runtime.FlowElementHistoryItem) error {
+func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveFlowElementHistory(ctx, historyItem)
 	})
 	return nil
 }
 
-func (b *StorageBatch) SaveIncident(ctx context.Context, incident runtime.Incident) error {
+func (b *StorageBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveIncident(ctx, incident)
 	})

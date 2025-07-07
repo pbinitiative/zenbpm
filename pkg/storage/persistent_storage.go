@@ -145,14 +145,14 @@ type TokenStorageWriter interface {
 }
 
 type FlowElementHistoryWriter interface {
-	SaveFlowElementHistory(ctx context.Context, item runtime.FlowElementHistoryItem) error
+	SaveFlowElementHistory(ctx context.Context, item bpmnruntime.FlowElementHistoryItem) error
 }
 
 type IncidentStorageReader interface {
-	FindIncidentByKey(ctx context.Context, key int64) (runtime.Incident, error)
-	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]runtime.Incident, error)
+	FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error)
+	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error)
 }
 
 type IncidentStorageWriter interface {
-	SaveIncident(ctx context.Context, incident runtime.Incident) error
+	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
 }

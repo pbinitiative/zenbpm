@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -315,6 +316,10 @@ func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.
 				wg.Done()
 			}()
 			if err != nil || resp.Error != nil {
+				if err == io.EOF {
+					errChan <- nil
+					return
+				}
 				e := fmt.Errorf("client call to activate job failed")
 				if err != nil {
 					errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))

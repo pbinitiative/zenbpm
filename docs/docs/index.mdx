@@ -1,0 +1,26 @@
+---
+slug: /
+title: Introduction
+hide_title: true
+---
+
+import React from 'react';
+import Readme from '@site/../README.md';
+
+export const DOUBLE_DOCS = /^\/?docs\/docs\//i;   // note **export** keyword
+
+export function SmartLink({href, ...props}) {
+  let newHref = href;
+
+  if (DOUBLE_DOCS.test(href)) {
+    newHref = href
+      .replace(DOUBLE_DOCS, './')
+      .replace(/\.mdx?$/i, '');
+  }
+
+  return <a href={newHref} {...props} />;
+}
+
+export default function Home() {
+  return <Readme components={{a: SmartLink}} />;
+}

@@ -1,9 +1,5 @@
 package bpmn20
 
-import (
-	"fmt"
-)
-
 type TFlowElementsContainer struct {
 	StartEvents            []TStartEvent             `xml:"startEvent"`
 	EndEvents              []TEndEvent               `xml:"endEvent"`
@@ -51,14 +47,9 @@ func (p *TProcess) GetInternalTaskById(id string) InternalTask {
 			return &e
 		}
 	}
-	for _, e := range p.IntermediateCatchEvent {
-		switch def := e.EventDefinition.(type) {
-		case TMessageEventDefinition:
-			if def.Id == id {
-				return &def
-			}
-		default:
-			panic(fmt.Sprintf("unexpected type in EventDefinition %T", def))
+	for _, e := range p.IntermediateThrowEvent {
+		if e.GetId() == id {
+			return &e
 		}
 	}
 	return nil

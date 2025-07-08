@@ -447,7 +447,7 @@ func (engine *Engine) processFlowNode(
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
-	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity:
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
 
 	case *bpmn20.TIntermediateCatchEvent:
@@ -501,6 +501,10 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TBusinessRuleTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TSendTask:
 		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
 	case *bpmn20.TUserTask:
 		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)

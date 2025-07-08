@@ -1,79 +1,83 @@
-# ZenBPM
+---
+sidebar_position: 1
+---
 
-This is a Go written BPM engine.
+# ZenBPM - Go BPMN Engine
 
-> ⚠️ Warning: Right now this project is in early stages and is not suitable for any other than testing and development purposes.
+ZenBPM is a next-generation Business Process Management (BPM) engine written in Go, designed to execute BPMN 2.0 process
+definitions.
 
-## Getting started
+It provides a lightweight, cloud-ready platform for defining, deploying, and executing business processes with minimal
+overhead and maximum flexibility.
 
-For simple example process you can use [Showcase example process](test-cases/showcase-process.bpmn)
+> ⚠️ **Warning**: This project is in early stages and is not suitable for production use yet.
 
-```bash
-# 1. Clone the repository
-git clone <FILL_REPO_URL>
+## What is BPMN?
 
-# 2. Load the dependencies
-cd go-bpms-engine
-go mod download
+Business Process Model and Notation (BPMN) is a graphical representation for specifying business processes in a business process model. It provides businesses with a standard notation that is readily understandable by all business stakeholders.
 
-# 3. Run the server
-cd cmd
-go run main.go #plus chosen flags see the usage bellow
+## Key Features
 
-# 4. Deploy process definition for example:
-curl -X 'POST' \
-  'http://localhost:8080/process-definitions' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/xml' \
-  -d '<PLACE_PROCESS_DEFINITIONS_XML_HERE>'
+- **Cloud-Native Architecture**: Designed for cloud environments with containerization and orchestration support
+- **Lightweight Design**: Minimal resource footprint with fast startup time and efficient execution
+- **BPMN 2.0 Support**: Execute standard BPMN 2.0 process definitions
+- **REST API**: Comprehensive REST API for process management
+- **gRPC Interface**: High-performance gRPC interface for system integration
+- **Distributed Architecture**: Support for clustering and distributed execution
+- **Process Elements Support**:
+  - Start and End Events
+  - Service Tasks
+  - User Tasks - handled as Service Tasks
+  - Exclusive Gateways
+  - Inclusive Gateways
+  - Parallel Gateways
+  - Event-Based Gateways
+  - Intermediate Catch and Throw Events
+- **Persistence**: Durable state storage using rqlite
+- **Observability**: Integrated with OpenTelemetry for tracing and metrics
 
-# 5. Start a process instance
-curl -X 'POST' \
-  'http://localhost:8080/process-instances' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "processDefinitionKey": "<PLACE_PROCESS_DEFINITION_KEY>",
-  "variables": {"price":100000}
-}'
-# 6. ...
+## Getting Started
 
-```
-
-### Usage
+### Installation
 
 ```bash
-Usage of main:
-  -path string
-        DB Data path (default "/tmp/bpmn_engine/data")
-  -port string
-        port where to serve traffic (default "8080")
+# Clone the repository
+git clone git@github.com:pbinitiative/zenbpm.git
+
+# Start application
+cd zenbpm
+make run
+
+# Run tests
+make test
 ```
-
-> For more check the [openapi/api.yaml](openapi/api.yaml)
-
-> Or try [https://github.com/pbinitiative/go-bpms-showcase-fe](https://github.com/pbinitiative/go-bpms-showcase-fe)
 
 ### Docker
 
-You can run this in a docker container with the following command:
+You can run ZenBPM in a Docker container:
 
 ```bash
-docker build -t gobpms-engine .
-docker run -p 8080:8080 -p 4001:4001 gobpms-engine
+docker build -t zenbpm .
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm
 ```
 
-## Links to used dependencies
+## Architecture
 
-- [https://github.com/pbinitiative/zenbpm](https://github.com/pbinitiative/zenbpm)
-- [https://github.com/rqlite/rqlite](https://github.com/rqlite/rqlite)
+ZenBPM is built with a modular architecture:
 
-## Local development
+- **BPMN Engine**: Core component that executes process definitions, manages process instances, and handles task execution
+- **DMN Engine**: Decision Model and Notation (DMN) engine that evaluates business rules and decision tables
+- **Storage Layer**: Manages persistence of process state
+- **API Layer**: Provides REST and gRPC interfaces
+- **Cluster Management**: Coordinates distributed execution
 
-Setting up the cluster locally
+## API Reference
 
-```bash
-go run cmd/main.go  -port 8090 -node-id 0 -join localhost:4000,localhost:4001,localhost:4002 -http-addr=localhost:8080 -raft-addr=localhost:4000 -bootstrap-expect 3 -path /tmp/bpmn_engine/data-0
-go run cmd/main.go  -port 8091 -node-id 1 -join localhost:4000,localhost:4001,localhost:4002 -http-addr=localhost:8081 -raft-addr=localhost:4001 -bootstrap-expect 3 -path /tmp/bpmn_engine/data-1
-go run cmd/main.go  -port 8092 -node-id 2 -join localhost:4000,localhost:4001,localhost:4002 -http-addr=localhost:8082 -raft-addr=localhost:4002 -bootstrap-expect 3 -path /tmp/bpmn_engine/data-2
-```
+ZenBPM provides both REST and gRPC APIs:
+
+- **REST API**: Documented in OpenAPI format: [specification](/openapi/api.yaml) [documentation](https://pbinitiative.github.io/zenbpm-docusaurus/openapi)
+- **gRPC API**: Defined in Protocol Buffers format: [specification](/internal/grpc/proto/zenbpm.proto)
+
+## Documentation
+
+ZenBPM documentation can be found at [pbinitiative.github.io/zenbpm-docusaurus](https://pbinitiative.github.io/zenbpm-docusaurus).

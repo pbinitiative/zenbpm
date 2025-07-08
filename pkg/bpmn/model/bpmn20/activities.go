@@ -36,6 +36,7 @@ type TActivity struct {
 	CompletionQuantity int  `xml:"completionQuantity,attr"`
 	IsForCompensation  bool `xml:"isForCompensation,attr"`
 	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
+
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`

@@ -238,8 +238,8 @@ func (engine *Engine) Stop() {
 // Lock will be released once the runProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
 func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
-	engine.runningInstances.addInstance(instance)
-	defer engine.runningInstances.removeInstance(instance)
+	engine.runningInstances.lockInstance(instance)
+	defer engine.runningInstances.unlockInstance(instance)
 	// we have to load the instance from DB because previous run could change it
 	inst, err := engine.FindProcessInstance(instance.Key)
 	if err != nil {

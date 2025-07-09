@@ -57,8 +57,8 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	}
 	parentInstance := &ppi
 
-	engine.runningInstances.addInstance(parentInstance)
-	defer engine.runningInstances.removeInstance(parentInstance)
+	engine.runningInstances.lockInstance(parentInstance)
+	defer engine.runningInstances.unlockInstance(parentInstance)
 
 	element := ppi.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	// map the variables back to the parent

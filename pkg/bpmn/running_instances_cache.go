@@ -6,19 +6,33 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
+type RunningInstance struct {
+	instance *runtime.ProcessInstance
+	mu       *sync.RWMutex
+}
+
 type RunningInstancesCache struct {
-	processInstances map[int64]*runtime.ProcessInstance
-	mu               sync.RWMutex
+	processInstances map[int64]*RunningInstance
+	mu               *sync.RWMutex
 }
 
 func (c *RunningInstancesCache) addInstance(instance *runtime.ProcessInstance) {
 	c.mu.Lock()
-	c.processInstances[instance.Key] = instance
+	if ins, ok := c.processInstances[instance.Key]; ok {
+		ins.mu.Lock()
+	} else {
+		c.processInstances[instance.Key] = &RunningInstance{
+			instance: instance,
+			mu:       &sync.RWMutex{},
+		}
+		c.processInstances[instance.Key].mu.Lock()
+	}
 	c.mu.Unlock()
 }
 
 func (c *RunningInstancesCache) removeInstance(instance *runtime.ProcessInstance) {
 	c.mu.Lock()
+	c.processInstances[instance.Key].mu.Unlock()
 	delete(c.processInstances, instance.Key)
 	c.mu.Unlock()
 }

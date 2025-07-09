@@ -69,7 +69,6 @@ func (engine *Engine) processTimer(ctx context.Context, timer runtime.Timer) {
 		engine.logger.Error(fmt.Sprintf("failed to trigger timer %d: %s", timer.Key, err))
 	}
 
-	// TODO: make sure that process instance is not running and if so modify currently running instance
 	err = engine.runProcessInstance(ctx, instance, tokens)
 	if err != nil {
 		engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.Key, err))

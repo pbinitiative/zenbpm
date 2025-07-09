@@ -32,7 +32,6 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 		return err
 	}
 
-	// TODO: make sure that process instance is not running and if so modify currently running instance
 	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{incident.Token})
 	return nil
 }

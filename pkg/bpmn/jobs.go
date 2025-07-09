@@ -74,7 +74,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 				job.State = runtime.ActivityStateCompleted
 			}
 		}
-		err = batch.SaveJob(ctx, job)
+		batch.SaveJob(ctx, job)
 		err = batch.Flush(ctx)
 		if err != nil {
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to add save job into batch: %w", err)
@@ -89,7 +89,6 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
 
-	// TODO: make sure that process instance is not running and if so modify currently running instance
 	err = engine.runProcessInstance(ctx, instance, tokens)
 	if err != nil {
 		return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)

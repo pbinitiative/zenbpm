@@ -2,13 +2,13 @@ package bpmn
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_callActivity_startsAndCompletes_rightAway(t *testing.T) {
-
+func Test_callActivity_startsAndCompletes(t *testing.T) {
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -39,6 +39,9 @@ func Test_callActivity_startsAndCompletes_rightAway(t *testing.T) {
 	assert.NoError(t, err)
 
 	v := engineStorage.ProcessInstances[instance.Key]
+	time.Sleep(1 * time.Second)
+	*instance, err = bpmnEngine.FindProcessInstance(instance.Key)
+	assert.NoError(t, err)
 	// then
 	assert.NotNil(t, v, "Process instance needs to be present")
 	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
@@ -47,9 +50,9 @@ func Test_callActivity_startsAndCompletes_rightAway(t *testing.T) {
 
 func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	process, err = bpmnEngine.LoadFromFile("./test-cases/call-activity-simple.bpmn")
+	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-simple.bpmn")
 	assert.NoError(t, err)
 
 	variableName := "variable_name"
@@ -60,10 +63,13 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
+	// wait for call activity process to be created
+	time.Sleep(1 * time.Second)
+
 	parentInstanceKey := instance.Key
 	var foundInstance *runtime.ProcessInstance
 	for _, pi := range engineStorage.ProcessInstances {
-		if pi.ParentProcessExecutionToken != nil && *&pi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
+		if pi.ParentProcessExecutionToken != nil && pi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
 			foundInstance = &pi
 			break
 		}
@@ -85,9 +91,12 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 
 	v := engineStorage.ProcessInstances[instance.Key]
 
-	// then
-	assert.NotNil(t, v, "Process instance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
-	assert.Equal(t, runtime.ActivityStateCompleted, v.State)
+	// wait for parent process instance to continue
+	time.Sleep(1 * time.Second)
 
+	v, err = bpmnEngine.FindProcessInstance(v.Key)
+	assert.NoError(t, err)
+	assert.NotNil(t, v, "Process instance needs to be present")
+	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.State.String())
+	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
 }

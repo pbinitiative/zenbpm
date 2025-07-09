@@ -58,8 +58,8 @@ func NewEngine(options ...EngineOption) Engine {
 		persistence:    inmemory.NewStorage(),
 		logger:         logger,
 		runningInstances: &RunningInstancesCache{
-			processInstances: map[int64]*runtime.ProcessInstance{},
-			mu:               sync.RWMutex{},
+			processInstances: map[int64]*RunningInstance{},
+			mu:               &sync.RWMutex{},
 		},
 		tracer:  tracer,
 		meter:   meter,
@@ -160,11 +160,8 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 			State:              runtime.TokenStateRunning,
 		})
 	}
-	// add to runningInstances to prevent loading tokens from storage for running instance
-	engine.runningInstances.addInstance(&processInstance)
 	err = batch.Flush(ctx)
 	if err != nil {
-		engine.runningInstances.removeInstance(&processInstance)
 		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
 	engine.metrics.ProcessesStartedTotal.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
@@ -236,8 +233,20 @@ func (engine *Engine) Stop() {
 	engine.timerManager.stop()
 }
 
-// runProcessInstance will
+// runProcessInstance will run the process instance with supplied tokens.
+// As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
+// Lock will be released once the runProcessInstance function finishes the processing.
+// Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
 func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
+	engine.runningInstances.lockInstance(instance)
+	defer engine.runningInstances.unlockInstance(instance)
+	// we have to load the instance from DB because previous run could change it
+	inst, err := engine.FindProcessInstance(instance.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance to run: %w", err)
+	}
+
+	*instance = inst
 	process := instance.Definition
 	runningExecutionTokens := executionTokens
 	var runErr error
@@ -260,18 +269,6 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 		instanceSpan.End()
 	}()
-
-	var parentProcessInstance *runtime.ProcessInstance
-	if instance.ParentProcessExecutionToken != nil {
-		ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
-		if err != nil {
-			return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey), err)
-		}
-		parentProcessInstance = &ppi
-	}
-
-	engine.runningInstances.addInstance(instance)
-	defer engine.runningInstances.removeInstance(instance)
 
 	// *** MAIN LOOP ***
 	for len(runningExecutionTokens) > 0 {
@@ -324,7 +321,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 
 		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
-			engine.handleCallActivityParentContinuation(ctx, batch, *instance, *parentProcessInstance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
+			engine.handleCallActivityParentContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
 		}
 
 		err = batch.Flush(ctx)
@@ -510,6 +507,11 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+		// we created process instance and its running in separate goroutine
+		if activityResult == runtime.ActivityStateActive {
+			currentToken.State = runtime.TokenStateWaiting
+			return []runtime.ExecutionToken{currentToken}, nil
+		}
 	default:
 		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
 	}
@@ -604,6 +606,9 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage
 	return resTokens, nil
 }
 
+// handleExclusiveGateway handles Exclusive gateway behaviour
+// A diverging Exclusive Gateway (Decision) is used to create alternative paths within a Process flow. This is basically
+// the “diversion point in the road” for a Process. For a given instance of the Process, only one of the paths can be taken.
 func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
@@ -612,19 +617,11 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runt
 		instance.State = runtime.ActivityStateFailed
 		return nil, fmt.Errorf("failed to filter outgoing associations from ExclusiveGateway: %w", err)
 	}
-	resTokens := make([]runtime.ExecutionToken, len(activatedFlows)+1)
-	currentToken.State = runtime.TokenStateCompleted
-	resTokens[0] = currentToken
-	for i, flow := range activatedFlows {
-		resTokens[i+1] = runtime.ExecutionToken{
-			Key:                engine.generateKey(),
-			ElementInstanceKey: engine.generateKey(),
-			ElementId:          flow.GetTargetRef().GetId(),
-			ProcessInstanceKey: instance.Key,
-			State:              runtime.TokenStateRunning,
-		}
+	if len(activatedFlows) != 0 {
+		currentToken.ElementId = activatedFlows[0].GetTargetRef().GetId()
+		currentToken.ElementInstanceKey = engine.generateKey()
 	}
-	return resTokens, nil
+	return []runtime.ExecutionToken{currentToken}, nil
 }
 
 func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

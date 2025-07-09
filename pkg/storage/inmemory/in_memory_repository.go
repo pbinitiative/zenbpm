@@ -48,8 +48,9 @@ var _ storage.Storage = &Storage{}
 
 func (mem *Storage) NewBatch() storage.Batch {
 	return &StorageBatch{
-		db:        mem,
-		stmtToRun: make([]func() error, 0, 10),
+		db:                  mem,
+		stmtToRun:           make([]func() error, 0, 10),
+		flushSuccessActions: make([]func(), 0, 5),
 	}
 }
 
@@ -363,14 +364,17 @@ func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incid
 }
 
 type StorageBatch struct {
-	db        *Storage
-	stmtToRun []func() error
+	db                  *Storage
+	stmtToRun           []func() error
+	flushSuccessActions []func()
 }
 
 var _ storage.Batch = &StorageBatch{}
 
-// TODO: for now close just calls the functions
-// in the future we want to actually execute this as one statement into memlite
+func (b *StorageBatch) AddFlushSuccessAction(ctx context.Context, f func()) {
+	b.flushSuccessActions = append(b.flushSuccessActions, f)
+}
+
 func (b *StorageBatch) Flush(ctx context.Context) error {
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
@@ -381,6 +385,9 @@ func (b *StorageBatch) Flush(ctx context.Context) error {
 	}
 	if joinErr != nil {
 		return joinErr
+	}
+	for _, action := range b.flushSuccessActions {
+		action()
 	}
 	b.stmtToRun = make([]func() error, 0)
 	return nil

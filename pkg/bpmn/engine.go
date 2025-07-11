@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type Engine struct {
 	meter          metric.Meter
 	metrics        *otelPkg.EngineMetrics
 	timerManager   *timerManager
+	dmnEngine      *dmn.ZenDmnEngine
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -51,19 +53,21 @@ func NewEngine(options ...EngineOption) Engine {
 	if err != nil {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
+	persistence := inmemory.NewStorage()
 	engine := Engine{
 		taskhandlersMu: &sync.RWMutex{},
 		taskHandlers:   []*taskHandler{},
 		exporters:      []exporter.EventExporter{},
-		persistence:    inmemory.NewStorage(),
+		persistence:    persistence,
 		logger:         logger,
 		runningInstances: &RunningInstancesCache{
 			processInstances: map[int64]*RunningInstance{},
 			mu:               &sync.RWMutex{},
 		},
-		tracer:  tracer,
-		meter:   meter,
-		metrics: metrics,
+		tracer:    tracer,
+		meter:     meter,
+		metrics:   metrics,
+		dmnEngine: dmn.NewEngine(dmn.EngineWithStorage(persistence)),
 	}
 
 	for _, option := range options {
@@ -80,6 +84,7 @@ func EngineWithExporter(exporter exporter.EventExporter) EngineOption {
 func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
+		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence))
 	}
 }
 
@@ -446,7 +451,6 @@ func (engine *Engine) processFlowNode(
 		}
 	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
-
 	case *bpmn20.TIntermediateCatchEvent:
 		// intermediate catch events following event based gateway are handled in event based gateway
 		tokens, err := engine.createIntermediateCatchEvent(ctx, batch, instance, element, currentToken)
@@ -499,8 +503,6 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
 		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
 	case *bpmn20.TSendTask:
 		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
 	case *bpmn20.TUserTask:
@@ -512,6 +514,8 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 			currentToken.State = runtime.TokenStateWaiting
 			return []runtime.ExecutionToken{currentToken}, nil
 		}
+	case *bpmn20.TBusinessRuleTask:
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
 	default:
 		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
 	}
@@ -534,6 +538,53 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	}
 
 	return []runtime.ExecutionToken{}, nil
+}
+
+func (engine *Engine) createBusinessRuleTask(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element *bpmn20.TBusinessRuleTask,
+	currentToken runtime.ExecutionToken,
+) (runtime.ActivityState, error) {
+	switch element.Implementation.(type) {
+	case bpmn20.TBusinessRuleTaskDefault:
+		token, err := engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		return token, err
+	case bpmn20.TBusinessRuleTaskLocal:
+		token, err := engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		return token, err
+	case bpmn20.TBusinessRuleTaskExternal:
+		tokens, err := engine.createExternalBusinessRuleTask(ctx, instance, element, currentToken)
+		return tokens, err
+	default:
+		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", element))
+	}
+	return runtime.ActivityStateActive, nil
+}
+
+func (engine *Engine) handleLocalBusinessRuleTask(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element *bpmn20.TBusinessRuleTask,
+	currentToken runtime.ExecutionToken,
+) (runtime.ExecutionToken, error) {
+	element.Implementation
+	engine.dmnEngine.EvaluateDecision(ctx, ba)
+}
+
+func (engine *Engine) createExternalBusinessRuleTask(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element *bpmn20.TBusinessRuleTask,
+	currentToken runtime.ExecutionToken,
+) (runtime.ExecutionToken, error) {
+	task, err := engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	if err != nil {
+		return runtime.ExecutionToken{}, err
+	}
 }
 
 func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

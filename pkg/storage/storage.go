@@ -37,6 +37,8 @@ type Storage interface {
 type DecisionStorage interface {
 	DecisionDefinitionStorageReader
 	DecisionDefinitionStorageWriter
+	DecisionStorageReader
+	DecisionStorageWriter
 
 	GenerateId() int64
 }
@@ -58,6 +60,20 @@ type Batch interface {
 	AddFlushSuccessAction(ctx context.Context, f func())
 }
 
+type DecisionStorageReader interface {
+	GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+
+	GetLatestDecisionByVersionTag(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+
+	GetLatestDecisionByDecisionDefinition(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+
+	GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error)
+}
+
+type DecisionStorageWriter interface {
+	SaveDecision(ctx context.Context, decision dmnruntime.Decision) error
+}
+
 type DecisionDefinitionStorageReader interface {
 	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
 
@@ -67,6 +83,7 @@ type DecisionDefinitionStorageReader interface {
 	// result array is ordered by version number desc
 	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
 }
+
 type DecisionDefinitionStorageWriter interface {
 	// SaveDecisionDefinition persists a DecisionDefinition
 	// and potentially overwrites prior data stored with the given DecisionKey

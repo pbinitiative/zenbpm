@@ -15,6 +15,7 @@ import (
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
+	Decision             map[int64]dmnruntime.Decision
 	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
 	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
 	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
@@ -32,6 +33,7 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
+		Decision:             make(map[int64]dmnruntime.Decision),
 		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
 		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
 		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
@@ -54,12 +56,64 @@ func (mem *Storage) NewBatch() storage.Batch {
 	}
 }
 
+var _ storage.DecisionStorageReader = &Storage{}
+
+func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (mem *Storage) GetLatestDecisionByVersionTag(ctx context.Context, versionTag string) (dmnruntime.Decision, error) {
+	var res *dmnruntime.Decision
+	var latestVersion int64
+	for _, decision := range mem.Decision {
+		if decision.VersionTag == versionTag && latestVersion < decision.Version {
+			res = &decision
+			latestVersion = decision.Version
+		}
+	}
+	if res != nil {
+		return *res, nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
+}
+
+func (mem *Storage) GetLatestDecisionByDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
+	var res *dmnruntime.Decision
+	var latestVersion int64
+	for _, decision := range mem.Decision {
+		if decision.DecisionDefinitionId == decisionDefinitionId &&
+			decision.Id == decisionId &&
+			latestVersion < decision.Version {
+			res = &decision
+			latestVersion = decision.Version
+		}
+	}
+	if res != nil {
+		return *res, nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
+}
+
+func (mem *Storage) GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error) {
+	return mem.Decision[decisionKey], nil
+}
+
+var _ storage.DecisionStorageWriter = &Storage{}
+
+func (mem *Storage) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
+	mem.Decision[decision.Key] = decision
+	return nil
+}
+
 var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
 	mem.DecisionDefinitions[definition.Key] = definition
 	return nil
 }
+
+var _ storage.DecisionStorageWriter = &Storage{}
 
 var _ storage.DecisionDefinitionStorageReader = &Storage{}
 

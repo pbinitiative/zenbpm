@@ -1,6 +1,9 @@
 package bpmn20
 
-import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
+import (
+	"encoding/xml"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
+)
 
 const (
 	ElementTypeServiceTask  ElementType = "SERVICE_TASK"
@@ -69,9 +72,57 @@ type TServiceTask struct {
 func (serviceTask TServiceTask) GetType() ElementType { return ElementTypeServiceTask }
 
 type TBusinessRuleTask struct {
-	TExternallyProcessedTask
-	OperationRef   string `xml:"operationRef,attr"`
+	TTask
+	Implementation TBusinessRuleTaskImplementation
+}
+
+type TBusinessRuleTaskImplementation interface {
+	businessRuleTaskImplementation()
+}
+
+// TBusinessRuleTaskDefault Implementation according to BPMN 2.0 spec
+type TBusinessRuleTaskDefault struct {
 	Implementation string `xml:"implementation,attr"`
+}
+
+func (d TBusinessRuleTaskDefault) businessRuleTaskImplementation() {}
+
+// TBusinessRuleTaskLocal Camunda modeler DMN decision
+type TBusinessRuleTaskLocal struct {
+	CalledDecision extensions.TCalledDecision `xml:"extensionElements>calledDecision"`
+}
+
+func (d TBusinessRuleTaskLocal) businessRuleTaskImplementation() {}
+
+// TBusinessRuleTaskExternal Camunda modeler Job Worker decision
+type TBusinessRuleTaskExternal struct {
+	TExternallyProcessedTask
+	Headers extensions.THeader `xml:"extensionElements>taskHeaders"`
+}
+
+func (d TBusinessRuleTaskExternal) businessRuleTaskImplementation() {}
+
+func (businessRuleTask *TBusinessRuleTask) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	tempStruct := struct {
+		TBusinessRuleTaskDefault
+		TBusinessRuleTaskLocal
+		TBusinessRuleTaskExternal
+		TTask
+	}{}
+	err := d.DecodeElement(&tempStruct, &start)
+	if err != nil {
+		return err
+	}
+	businessRuleTask.TTask = tempStruct.TTask
+	switch {
+	case tempStruct.TBusinessRuleTaskDefault.Implementation != "":
+		businessRuleTask.Implementation = &tempStruct.TBusinessRuleTaskDefault
+	case tempStruct.TBusinessRuleTaskLocal.CalledDecision.DecisionId != "":
+		businessRuleTask.Implementation = &tempStruct.TBusinessRuleTaskLocal
+	case tempStruct.TBusinessRuleTaskExternal.TaskDefinition.TypeName != "":
+		businessRuleTask.Implementation = &tempStruct.TBusinessRuleTaskExternal
+	}
+	return nil
 }
 
 func (businessRuleTask TBusinessRuleTask) GetType() ElementType { return ElementTypeServiceTask }

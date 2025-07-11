@@ -1,8 +1,6 @@
 package grpc
 
 import (
-	"context"
-	"errors"
 	"net"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
@@ -61,16 +59,4 @@ func (s *Server) Start() {
 // Stop stops the ZenBPM GRPC server.
 func (s *Server) Stop() {
 	s.server.Stop()
-}
-
-func (s *Server) ActivateJobs(req *proto.ActivateJobsRequest, stream proto.ZenBpm_ActivateJobsServer) error {
-	return errors.New("TODO: Not yet implemented")
-}
-
-func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
-	return nil, errors.New("TODO: Not yet implemented")
-}
-
-func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
-	return nil, errors.New("TODO: Not yet implemented")
 }

@@ -87,7 +87,6 @@ func (tm *timerManager) run() {
 	for {
 		select {
 		case <-tm.ctx.Done():
-			close(tm.ch)
 			return
 		case timer := <-tm.ch:
 			// process timer firing
@@ -141,7 +140,7 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 		case <-timerCtx.Done():
 			return
 		case <-tm.ctx.Done():
-			close(tm.ch)
+			return
 		}
 	}()
 }
@@ -153,4 +152,5 @@ func (tm *timerManager) start() {
 
 func (tm *timerManager) stop() {
 	tm.ctxCancelFunc()
+	close(tm.ch)
 }

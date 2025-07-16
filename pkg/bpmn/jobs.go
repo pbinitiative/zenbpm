@@ -16,6 +16,10 @@ import (
 )
 
 func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+	jobVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+	if err := evaluateLocalVariables(&jobVarHolder, element.GetInputMapping()); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
+	}
 	job := runtime.Job{
 		ElementId:          currentToken.ElementId,
 		ElementInstanceKey: currentToken.ElementInstanceKey,
@@ -23,6 +27,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		Key:                engine.generateKey(),
 		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
+		Variables:          jobVarHolder.Variables(),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}
@@ -38,7 +43,6 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 	}
 	// if we have the handler handle the task directly
 	// TODO: pull this out into function that will be called by API as well
-	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if job.State != runtime.ActivityStateCompleting {
 		job.State = runtime.ActivityStateActive
 		activatedJob := &activatedJob{
@@ -52,21 +56,11 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			processDefinitionKey:     instance.Definition.Key,
 			elementId:                job.ElementId,
 			createdAt:                job.CreatedAt,
-			variableHolder:           variableHolder,
-		}
-		if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
-			job.State = runtime.ActivityStateFailed
-			instance.State = runtime.ActivityStateFailed
-			err := batch.SaveJob(ctx, job)
-			if err != nil {
-				engine.logger.Error("failed to save job", "job", job.Key, "err", err)
-				return runtime.ActivityStateFailed, fmt.Errorf("failed to save job: %w", err)
-			}
-			return runtime.ActivityStateFailed, nil
+			variableHolder:           jobVarHolder,
 		}
 		handler(activatedJob)
 		if job.State == runtime.ActivityStateCompleting {
-			err = propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping())
+			err = propagateProcessInstanceVariables(&jobVarHolder, element.GetOutputMapping())
 			if err != nil {
 				instance.State = runtime.ActivityStateFailed
 				job.State = runtime.ActivityStateFailed
@@ -154,7 +148,9 @@ func (engine *Engine) completeJob(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
-	batch.SaveToken(ctx, currentToken)
+	for _, token := range tokens {
+		batch.SaveToken(ctx, token)
+	}
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)

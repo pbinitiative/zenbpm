@@ -173,7 +173,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 
 	// when
 	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, err)
+	assert.ErrorContains(t, err, "failed to evaluate input variables")
 
 	// then
 	jobs := make([]runtime.Job, 0)
@@ -183,8 +183,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 		}
 	}
 	assert.Equal(t, "", cp.CallPath)
-	assert.Nil(t, pi.GetVariable("id"))
-	assert.Equal(t, runtime.ActivityStateFailed, jobs[0].State)
+	assert.Len(t, jobs, 0)
 	assert.Equal(t, runtime.ActivityStateFailed, pi.GetState())
 }
 
@@ -393,4 +392,68 @@ func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *te
 	// then
 	assert.Nil(t, err)
 	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
+}
+
+func TestJobCompleteIsHandledCorrectly(t *testing.T) {
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
+
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Nil(t, err)
+
+	foundServiceJob := runtime.Job{}
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+			foundServiceJob = job
+			break
+		}
+	}
+	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
+
+	err = bpmnEngine.JobCompleteByKey(t.Context(), foundServiceJob.Key, foundServiceJob.Variables)
+	assert.NoError(t, err)
+
+	serviceToken := runtime.ExecutionToken{}
+	for _, tok := range engineStorage.ExecutionTokens {
+		if tok.Key == foundServiceJob.Token.Key {
+			serviceToken = tok
+		}
+	}
+	assert.NotZero(t, serviceToken, "expected to find token from service-task-1 job")
+	assert.NotEqual(t, foundServiceJob.ElementId, serviceToken.ElementId)
+
+	foundUserJob := runtime.Job{}
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == pi.Key && job.ElementId == "user-task-2" {
+			foundUserJob = job
+			break
+		}
+	}
+	assert.NotZero(t, foundUserJob, "expected to find user-task-2 job created for process instance")
+
+	err = bpmnEngine.JobCompleteByKey(t.Context(), foundUserJob.Key, foundUserJob.Variables)
+	assert.NoError(t, err)
+
+	userToken := runtime.ExecutionToken{}
+	for _, tok := range engineStorage.ExecutionTokens {
+		if tok.Key == foundUserJob.Token.Key {
+			userToken = tok
+		}
+	}
+	assert.NotZero(t, userToken, "expected to find token from user-task-2 job")
+	assert.NotEqual(t, foundUserJob.ElementId, userToken.ElementId)
+
+	*pi, err = engineStorage.FindProcessInstanceByKey(t.Context(), pi.Key)
+	assert.NoError(t, err)
+
+	// id from input should not exist in instance scope
+	assert.Nil(t, pi.GetVariable("id"))
+	// output should exist in instance scope
+	assert.Equal(t, "beijing", pi.GetVariable("dstcity"))
+	assert.Equal(t, pi.GetVariable("order"), map[string]interface{}{
+		"name": "order1",
+		"id":   "1234",
+	})
+	assert.Equal(t, 1234.0, pi.GetVariable("orderId"))
+	assert.Equal(t, "order1", pi.GetVariable("orderName"))
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
 }

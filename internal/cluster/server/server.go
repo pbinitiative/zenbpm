@@ -19,9 +19,11 @@ import (
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 )
 
 // Server provides information about the node and cluster.
@@ -646,4 +648,8 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 		i++
 	}
 	return nil
+}
+
+func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.InternalJob]) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeJob not implemented")
 }

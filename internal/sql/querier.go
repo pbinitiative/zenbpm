@@ -45,9 +45,9 @@ type Querier interface {
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
+	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
-	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
 	SaveMigration(ctx context.Context, arg SaveMigrationParams) error

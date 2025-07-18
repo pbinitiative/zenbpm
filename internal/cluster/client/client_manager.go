@@ -72,18 +72,24 @@ func (c *ClientManager) ClusterLeader() (proto.ZenServiceClient, error) {
 }
 
 func (c *ClientManager) PartitionLeader(partition uint32) (proto.ZenServiceClient, error) {
-	leaderAddr, _ := c.store.PartitionLeaderWithID(partition)
+	client, _, err := c.PartitionLeaderWithID(partition)
+	return client, err
+}
+
+func (c *ClientManager) PartitionLeaderWithID(partition uint32) (proto.ZenServiceClient, string, error) {
+	leaderAddr, nodeId := c.store.PartitionLeaderWithID(partition)
 	var err error
 	if leaderAddr == "" {
-		return nil, fmt.Errorf("failed to get leader address for cluster client: no leader available")
+		return nil, "", fmt.Errorf("failed to get leader address for cluster client: no leader available")
 	}
 	c.mu.RLock()
 	client, ok := c.activeClients[leaderAddr]
 	c.mu.RUnlock()
 	if !ok {
-		return c.newClient(leaderAddr)
+		client, err := c.newClient(leaderAddr)
+		return client, nodeId, err
 	}
-	return client.c, err
+	return client.c, nodeId, err
 }
 
 func (c *ClientManager) For(targetAddr string) (proto.ZenServiceClient, error) {

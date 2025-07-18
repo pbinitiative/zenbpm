@@ -46,6 +46,8 @@ const (
 	ZenService_GetFlowElementHistory_FullMethodName     = "/cluster.ZenService/GetFlowElementHistory"
 	ZenService_GetIncidents_FullMethodName              = "/cluster.ZenService/GetIncidents"
 	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
+	ZenService_SubscribeJob_FullMethodName              = "/cluster.ZenService/SubscribeJob"
+	ZenService_ReassignJob_FullMethodName               = "/cluster.ZenService/ReassignJob"
 )
 
 // ZenServiceClient is the client API for ZenService service.
@@ -91,6 +93,10 @@ type ZenServiceClient interface {
 	GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error)
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
+	// Subscribes node to receive jobs of type
+	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
+	// Used by client to let server know that the job needs to be reassigned to another node
+	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 }
 
 type zenServiceClient struct {
@@ -370,6 +376,29 @@ func (c *zenServiceClient) ResolveIncident(ctx context.Context, in *ResolveIncid
 	return out, nil
 }
 
+func (c *zenServiceClient) SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[1], ZenService_SubscribeJob_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SubscribeJobRequest, SubscribeJobResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_SubscribeJobClient = grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse]
+
+func (c *zenServiceClient) ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReassignJobResponse)
+	err := c.cc.Invoke(ctx, ZenService_ReassignJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZenServiceServer is the server API for ZenService service.
 // All implementations must embed UnimplementedZenServiceServer
 // for forward compatibility.
@@ -413,6 +442,10 @@ type ZenServiceServer interface {
 	GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error)
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
+	// Subscribes node to receive jobs of type
+	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
+	// Used by client to let server know that the job needs to be reassigned to another node
+	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
 }
 
@@ -500,6 +533,12 @@ func (UnimplementedZenServiceServer) GetIncidents(context.Context, *GetIncidents
 }
 func (UnimplementedZenServiceServer) ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveIncident not implemented")
+}
+func (UnimplementedZenServiceServer) SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeJob not implemented")
+}
+func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReassignJob not implemented")
 }
 func (UnimplementedZenServiceServer) mustEmbedUnimplementedZenServiceServer() {}
 func (UnimplementedZenServiceServer) testEmbeddedByValue()                    {}
@@ -983,6 +1022,31 @@ func _ZenService_ResolveIncident_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_SubscribeJob_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ZenServiceServer).SubscribeJob(&grpc.GenericServerStream[SubscribeJobRequest, SubscribeJobResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenService_SubscribeJobServer = grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]
+
+func _ZenService_ReassignJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReassignJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ReassignJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_ReassignJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ReassignJob(ctx, req.(*ReassignJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZenService_ServiceDesc is the grpc.ServiceDesc for ZenService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1090,12 +1154,22 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ResolveIncident",
 			Handler:    _ZenService_ResolveIncident_Handler,
 		},
+		{
+			MethodName: "ReassignJob",
+			Handler:    _ZenService_ReassignJob_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "ActivateJob",
 			Handler:       _ZenService_ActivateJob_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeJob",
+			Handler:       _ZenService_SubscribeJob_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "zen_cluster.proto",

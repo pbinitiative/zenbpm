@@ -641,6 +641,9 @@ func (s *Store) Close(wait bool) (retErr error) {
 	}
 	return nil
 }
+func (s *Store) NodeID() string {
+	return s.cfg.NodeId
+}
 
 func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 	command := &proto.Command{

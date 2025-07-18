@@ -62,6 +62,10 @@ service ZenService {
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
+  // Subscribes client to receive jobs of type
+  rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
+  // Used by client to let server know that the job needs to be reassigned to another node
+  rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -302,6 +306,31 @@ message ResolveIncidentRequest {
 }
 
 message ResolveIncidentResponse {
+  optional ErrorResult error = 1;
+}
+
+message SubscribeJobRequest {
+  string job_type = 1;
+  enum Type {
+    TYPE_UNKNOWN = 0;
+    TYPE_SUBSCRIBE = 1;
+    TYPE_UNSUBSCRIBE = 2;
+  }
+  Type type = 2;
+  string client_id = 3;
+}
+
+message SubscribeJobResponse {
+  string job_type = 1;
+  string client_id = 2;
+  InternalJob job = 3;
+}
+
+message ReassignJobRequest {
+  int64 key = 1;
+}
+
+message ReassignJobResponse {
   optional ErrorResult error = 1;
 }
 // INTERNAL ENGINE API END

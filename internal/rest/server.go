@@ -102,7 +102,7 @@ func (s *Server) Stop(ctx context.Context) {
 }
 
 func getKeyFromString(s string) (int64, error) {
-	key, err := strconv.ParseInt(s, 16, 64)
+	key, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return key, fmt.Errorf("failed to parse key: %w", err)
 	}
@@ -123,7 +123,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	}
 
 	return public.CreateProcessDefinition200JSONResponse{
-		ProcessDefinitionKey: fmt.Sprintf("%x", key),
+		ProcessDefinitionKey: fmt.Sprintf("%d", key),
 	}, nil
 }
 
@@ -153,8 +153,8 @@ func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRe
 
 	items := make([]public.Job, 0, len(jobs))
 	for _, j := range jobs {
-		key := fmt.Sprintf("%x", j.GetKey())
-		processInstanceKey := fmt.Sprintf("%x", j.GetInstanceKey())
+		key := fmt.Sprintf("%d", j.GetKey())
+		processInstanceKey := fmt.Sprintf("%d", j.GetInstanceKey())
 		variables := map[string]any{}
 		err := json.Unmarshal(j.GetVariables(), &variables)
 		if err != nil {
@@ -204,7 +204,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for _, p := range definitions {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:           fmt.Sprintf("%x", p.Key),
+			Key:           fmt.Sprintf("%d", p.Key),
 			Version:       int(p.Version),
 			BpmnProcessId: p.ProcessId,
 		}
@@ -234,7 +234,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	return public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: definition.ProcessId,
-			Key:           fmt.Sprintf("%x", definition.Key),
+			Key:           fmt.Sprintf("%d", definition.Key),
 			Version:       int(definition.Version),
 		},
 		BpmnData: ptr.To(string(definition.Definition)),
@@ -270,8 +270,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}
 	return public.CreateProcessInstance200JSONResponse{
 		CreatedAt:            time.UnixMilli(process.CreatedAt),
-		Key:                  fmt.Sprintf("%x", process.Key),
-		ProcessDefinitionKey: fmt.Sprintf("%x", process.DefinitionKey),
+		Key:                  fmt.Sprintf("%d", process.Key),
+		ProcessDefinitionKey: fmt.Sprintf("%d", process.DefinitionKey),
 		// TODO: make sure its the same string
 		State:     public.ProcessInstanceState(runtime.ActivityState(process.State).String()),
 		Variables: processVars,
@@ -330,8 +330,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
 				CreatedAt:            time.UnixMilli(instance.CreatedAt),
-				Key:                  fmt.Sprintf("%x", instance.Key),
-				ProcessDefinitionKey: fmt.Sprintf("%x", instance.DefinitionKey),
+				Key:                  fmt.Sprintf("%d", instance.Key),
+				ProcessDefinitionKey: fmt.Sprintf("%d", instance.DefinitionKey),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.State).String()),
 				Variables:            vars,
 			}
@@ -366,8 +366,8 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 	}
 	return public.GetProcessInstance200JSONResponse{
 		CreatedAt:            time.UnixMilli(instance.CreatedAt),
-		Key:                  fmt.Sprintf("%x", instance.Key),
-		ProcessDefinitionKey: fmt.Sprintf("%x", instance.DefinitionKey),
+		Key:                  fmt.Sprintf("%d", instance.Key),
+		ProcessDefinitionKey: fmt.Sprintf("%d", instance.DefinitionKey),
 		State:                public.ProcessInstanceState(runtime.ActivityState(instance.State).String()),
 		Variables:            vars,
 	}, nil
@@ -395,9 +395,9 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	}
 	resp := make([]public.FlowElementHistory, len(flow))
 	for i, flowNode := range flow {
-		key := fmt.Sprintf("%x", flowNode.Key)
+		key := fmt.Sprintf("%d", flowNode.Key)
 		createdAt := time.UnixMilli(flowNode.CreatedAt)
-		processInstanceKey := fmt.Sprintf("%x", flowNode.ProcessInstanceKey)
+		processInstanceKey := fmt.Sprintf("%d", flowNode.ProcessInstanceKey)
 		resp[i] = public.FlowElementHistory{
 			Key:                &key,
 			CreatedAt:          &createdAt,
@@ -443,8 +443,8 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		resp[i] = public.Job{
 			CreatedAt:          time.UnixMilli(job.CreatedAt),
 			ElementId:          job.ElementId,
-			Key:                fmt.Sprintf("%x", job.Key),
-			ProcessInstanceKey: fmt.Sprintf("%x", job.ProcessInstanceKey),
+			Key:                fmt.Sprintf("%d", job.Key),
+			ProcessInstanceKey: fmt.Sprintf("%d", job.ProcessInstanceKey),
 			State:              runtime.ActivityState(job.State).String(),
 			Type:               job.Type,
 			Variables:          vars,
@@ -480,8 +480,8 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	resp := make([]public.Incident, len(incidents))
 	for i, incident := range incidents {
 		resp[i] = public.Incident{
-			Key:                fmt.Sprintf("%x", incident.Key),
-			ElementInstanceKey: fmt.Sprintf("%x", incident.ElementInstanceKey),
+			Key:                fmt.Sprintf("%d", incident.Key),
+			ElementInstanceKey: fmt.Sprintf("%d", incident.ElementInstanceKey),
 			ElementId:          incident.ElementId,
 			CreatedAt:          time.UnixMilli(incident.CreatedAt),
 			ResolvedAt: func() *time.Time {
@@ -490,9 +490,9 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 				}
 				return nil
 			}(),
-			ProcessInstanceKey: fmt.Sprintf("%x", incident.ProcessInstanceKey),
+			ProcessInstanceKey: fmt.Sprintf("%d", incident.ProcessInstanceKey),
 			Message:            incident.Message,
-			ExecutionToken:     fmt.Sprintf("%x", incident.ExecutionToken),
+			ExecutionToken:     fmt.Sprintf("%d", incident.ExecutionToken),
 		}
 	}
 	// TODO: Paging needs to be implemented properly

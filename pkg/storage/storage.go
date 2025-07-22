@@ -63,9 +63,11 @@ type Batch interface {
 type DecisionStorageReader interface {
 	GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
 
-	GetLatestDecisionByVersionTag(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+	GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error)
 
-	GetLatestDecisionByDecisionDefinition(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+	GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error)
+
+	GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error)
 
 	GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error)
 }

@@ -63,36 +63,19 @@ func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string
 	panic("implement me")
 }
 
-func (mem *Storage) GetLatestDecisionByVersionTag(ctx context.Context, versionTag string) (dmnruntime.Decision, error) {
-	var res *dmnruntime.Decision
-	var latestVersion int64
-	for _, decision := range mem.Decision {
-		if decision.VersionTag == versionTag && latestVersion < decision.Version {
-			res = &decision
-			latestVersion = decision.Version
-		}
-	}
-	if res != nil {
-		return *res, nil
-	}
-	return dmnruntime.Decision{}, storage.ErrNotFound
+func (mem *Storage) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
-func (mem *Storage) GetLatestDecisionByDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
-	var res *dmnruntime.Decision
-	var latestVersion int64
-	for _, decision := range mem.Decision {
-		if decision.DecisionDefinitionId == decisionDefinitionId &&
-			decision.Id == decisionId &&
-			latestVersion < decision.Version {
-			res = &decision
-			latestVersion = decision.Version
-		}
-	}
-	if res != nil {
-		return *res, nil
-	}
-	return dmnruntime.Decision{}, storage.ErrNotFound
+func (mem *Storage) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (mem *Storage) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (mem *Storage) GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error) {

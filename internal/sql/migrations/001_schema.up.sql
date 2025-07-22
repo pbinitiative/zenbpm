@@ -110,13 +110,13 @@ CREATE TABLE IF NOT EXISTS decision_definition(
     dmn_resource_name TEXT NOT NULL -- resource name from deployment
 );
 
--- table that holds information about all the decision definitions
+-- table that holds information about all the decision
 CREATE TABLE IF NOT EXISTS decision(
     key INTEGER PRIMARY KEY, -- int64 id of the decision
-    version INTEGER NOT NULL, -- int64 version of the decision definition
+    version INTEGER NOT NULL, -- int64 version of the decision
     decision_id TEXT NOT NULL, -- id of the decision from xml
     version_tag TEXT NOT NULL, -- string version tag of the decision (user defined)
-    dmn_id TEXT NOT NULL, -- id of the decision definition from xml definition
+    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml definition
     decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
     FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key) -- reference to decision definition
 );

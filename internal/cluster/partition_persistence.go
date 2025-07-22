@@ -306,6 +306,135 @@ func (rq *RqLiteDB) NewBatch() storage.Batch {
 	return batch
 }
 
+var _ storage.DecisionStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
+	var res dmnruntime.Decision
+	dbDecision, err := rq.queries.FindLatestDecisionById(ctx, decisionId)
+	if err != nil {
+		return res, fmt.Errorf("failed to find latest decision by id: %w", err)
+	}
+
+	res = dmnruntime.Decision{
+		Key:                   dbDecision.Key,
+		Version:               dbDecision.Version,
+		Id:                    dbDecision.DecisionID,
+		VersionTag:            dbDecision.VersionTag,
+		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
+		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	}
+
+	return res, nil
+}
+
+func (rq *RqLiteDB) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
+	dbDecisions, err := rq.queries.FindDecisionsById(ctx, decisionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find decisions by id: %w", err)
+	}
+
+	res := make([]dmnruntime.Decision, len(dbDecisions))
+	for i, dec := range dbDecisions {
+		res[i] = dmnruntime.Decision{
+			Key:                   dec.Key,
+			Version:               dec.Version,
+			Id:                    dec.DecisionID,
+			VersionTag:            dec.VersionTag,
+			DecisionDefinitionId:  dec.DecisionDefinitionID,
+			DecisionDefinitionKey: dec.DecisionDefinitionKey,
+		}
+	}
+	return res, nil
+}
+
+func (rq *RqLiteDB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
+	var res dmnruntime.Decision
+	dbDecision, err := rq.queries.FindLatestDecisionByIdAndVersionTag(ctx,
+		sql.FindLatestDecisionByIdAndVersionTagParams{
+			DecisionID: decisionId,
+			VersionTag: versionTag,
+		},
+	)
+	if err != nil {
+		return res, fmt.Errorf("failed to find latest decision by id and version tag: %w", err)
+	}
+
+	res = dmnruntime.Decision{
+		Key:                   dbDecision.Key,
+		Version:               dbDecision.Version,
+		Id:                    dbDecision.DecisionID,
+		VersionTag:            dbDecision.VersionTag,
+		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
+		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	}
+
+	return res, nil
+}
+
+func (rq *RqLiteDB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
+	var res dmnruntime.Decision
+	dbDecision, err := rq.queries.FindLatestDecisionByIdAndDecisionDefinitionId(ctx,
+		sql.FindLatestDecisionByIdAndDecisionDefinitionIdParams{
+			DecisionID:           decisionId,
+			DecisionDefinitionID: decisionDefinitionId,
+		},
+	)
+	if err != nil {
+		return res, fmt.Errorf("failed to find latest decision by id and decisionDefinitionId: %w", err)
+	}
+
+	res = dmnruntime.Decision{
+		Key:                   dbDecision.Key,
+		Version:               dbDecision.Version,
+		Id:                    dbDecision.DecisionID,
+		VersionTag:            dbDecision.VersionTag,
+		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
+		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	}
+
+	return res, nil
+}
+
+func (rq *RqLiteDB) GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error) {
+	var res dmnruntime.Decision
+	dbDecision, err := rq.queries.FindDecisionByKey(ctx, decisionKey)
+	if err != nil {
+		return res, fmt.Errorf("failed to find decision by key: %w", err)
+	}
+
+	res = dmnruntime.Decision{
+		Key:                   dbDecision.Key,
+		Version:               dbDecision.Version,
+		Id:                    dbDecision.DecisionID,
+		VersionTag:            dbDecision.VersionTag,
+		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
+		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	}
+
+	return res, nil
+}
+
+var _ storage.DecisionStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
+	return SaveDecisionWith(ctx, rq.queries, decision)
+}
+
+func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.Decision) error {
+	err := db.SaveDecision(ctx, sql.SaveDecisionParams{
+		Key:                   decision.Key,
+		Version:               decision.Version,
+		DecisionID:            decision.Id,
+		VersionTag:            decision.VersionTag,
+		DecisionDefinitionID:  decision.DecisionDefinitionId,
+		DecisionDefinitionKey: decision.DecisionDefinitionKey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save decision: %w", err)
+	}
+	return nil
+}
+
 var _ storage.DecisionDefinitionStorageWriter = &RqLiteDB{}
 
 func (rq *RqLiteDB) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
@@ -322,7 +451,7 @@ func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, definition
 		DmnResourceName: definition.DmnResourceName,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save decision table definition: %w", err)
+		return fmt.Errorf("failed to save decision definition: %w", err)
 	}
 	return nil
 }

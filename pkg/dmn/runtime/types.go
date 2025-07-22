@@ -18,5 +18,5 @@ type Decision struct {
 	Id                    string // The decision ID as defined in the DMN file
 	VersionTag            string // The VersionTag as defined in the DMN file
 	DecisionDefinitionId  string // The DecisionDefinitionId is the parent DMN file's id
-	DecisionDefinitionKey string // An id to decision definition that hosts the decision table
+	DecisionDefinitionKey int64  // An id to decision definition that hosts the decision table
 }

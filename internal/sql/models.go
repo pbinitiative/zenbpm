@@ -13,7 +13,7 @@ type Decision struct {
 	Version               int64  `json:"version"`
 	DecisionID            string `json:"decision_id"`
 	VersionTag            string `json:"version_tag"`
-	DmnID                 string `json:"dmn_id"`
+	DecisionDefinitionID  string `json:"decision_definition_id"`
 	DecisionDefinitionKey int64  `json:"decision_definition_key"`
 }
 

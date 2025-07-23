@@ -76,6 +76,10 @@ type TBusinessRuleTask struct {
 	Implementation TBusinessRuleTaskImplementation
 }
 
+func (businessRuleTask *TBusinessRuleTask) GetTaskType() string {
+	return "business-rule-task-type"
+}
+
 type TBusinessRuleTaskImplementation interface {
 	businessRuleTaskImplementation()
 }

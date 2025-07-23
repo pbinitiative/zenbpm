@@ -59,23 +59,68 @@ func (mem *Storage) NewBatch() storage.Batch {
 var _ storage.DecisionStorageReader = &Storage{}
 
 func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
-	//TODO implement me
-	panic("implement me")
+	res := make([]dmnruntime.Decision, 0)
+	for _, def := range mem.Decision {
+		if def.Id != decisionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
 }
 
 func (mem *Storage) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
-	//TODO implement me
-	panic("implement me")
+	res := make([]dmnruntime.Decision, 0)
+	for _, def := range mem.Decision {
+		if def.Id != decisionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	return res, nil
 }
 
 func (mem *Storage) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
-	//TODO implement me
-	panic("implement me")
+	res := make([]dmnruntime.Decision, 0)
+	for _, def := range mem.Decision {
+		if def.Id != decisionId && def.VersionTag != versionTag {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
 }
 
 func (mem *Storage) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
-	//TODO implement me
-	panic("implement me")
+	res := make([]dmnruntime.Decision, 0)
+	for _, def := range mem.Decision {
+		if def.Id != decisionId && def.DecisionDefinitionId != decisionDefinitionId {
+			continue
+		}
+		res = append(res, def)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
 }
 
 func (mem *Storage) GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error) {

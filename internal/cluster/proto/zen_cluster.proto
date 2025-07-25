@@ -52,6 +52,7 @@ service ZenService {
   
   // Deploys definition into partitions that receiving node is leader of
   rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
+  // TODO: remove ActivateJob (replaced by SubscribeJob)
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
@@ -313,8 +314,9 @@ message SubscribeJobRequest {
   string job_type = 1;
   enum Type {
     TYPE_UNKNOWN = 0;
-    TYPE_SUBSCRIBE = 1;
-    TYPE_UNSUBSCRIBE = 2;
+    TYPE_SUBSCRIBE = 1; // subscribe client to provided job_type
+    TYPE_UNSUBSCRIBE = 2; // unsubscribe client from provided job_type
+    TYPE_UNSUBSCRIBE_ALL = 3; // client is no longer available and we should clean up
   }
   Type type = 2;
   string client_id = 3;

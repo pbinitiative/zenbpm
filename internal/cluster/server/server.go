@@ -10,6 +10,7 @@ import (
 	"time"
 
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -19,11 +20,9 @@ import (
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/stats/opentelemetry"
-	"google.golang.org/grpc/status"
 )
 
 // Server provides information about the node and cluster.
@@ -33,6 +32,7 @@ type Server struct {
 	addr       net.Addr     // Address on which this service is listening
 	store      StoreService
 	controller ControllerService
+	jobManager *jobmanager.JobManager
 }
 
 type StoreService interface {
@@ -634,6 +634,10 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 	return &proto.ResolveIncidentResponse{}, err
 }
 
+func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {
+	return s.jobManager.AddNodeSubscription(stream)
+}
+
 func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 	engines := s.controller.Engines(ctx)
 	if len(engines) == 0 {
@@ -648,8 +652,4 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 		i++
 	}
 	return nil
-}
-
-func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.InternalJob]) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeJob not implemented")
 }

@@ -122,6 +122,5 @@ Tiemr intermediate catch event is fully supported.
 ### Script task
 :::
 
-
 ## XML parser
 TODO: add information about how we are parsing xml definitions of processes

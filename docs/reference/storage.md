@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 ---
 # Storage
 [RqLite](https://rqlite.io/) is used as a storage layer. Read more about partitions in [cluster section](/reference/cluster)

@@ -93,7 +93,7 @@ type ZenServiceClient interface {
 	GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error)
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
-	// Subscribes node to receive jobs of type
+	// Subscribes client to receive jobs of type
 	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
@@ -442,7 +442,7 @@ type ZenServiceServer interface {
 	GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error)
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
-	// Subscribes node to receive jobs of type
+	// Subscribes client to receive jobs of type
 	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)

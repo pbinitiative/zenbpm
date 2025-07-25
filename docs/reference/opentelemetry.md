@@ -1,5 +1,5 @@
 ---
-sidebar_position: 8
+sidebar_position: 110
 ---
 # OpenTelemetry
 [OpenTelemetry](https://opentelemetry.io/) is a collection of APIs, SDKs, and tools to instrument, generate, collect, and export telemetry data (metrics, logs, and traces) that help us analyze application performance and behavior.

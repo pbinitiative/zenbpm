@@ -2,6 +2,8 @@ package jobmanager
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -10,25 +12,31 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/pkg/zenflake"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type clientSub struct {
 	ctx      context.Context
 	ch       chan Job
-	clientId ClientId
-	jobTypes []JobType
+	clientID ClientID
+}
+
+type clientNodeStream struct {
+	stream     grpc.BidiStreamingClient[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
+	nodeID     string
+	partitions []uint32
 }
 
 type jobClient struct {
-	clientSubs     map[ClientId]*clientSub
-	jobTypeClients map[JobType][]ClientId
-	clientIdx      map[JobType]int // iterates over clientIds to provide round robin
-	clientMu       *sync.RWMutex
+	clientSubs map[ClientID]*clientSub
+	clientMu   *sync.RWMutex
 
-	currentNodeTypes  []JobType
 	store             Store
+	nodeID            NodeId
 	nodeClientManager *client.ClientManager
-	nodeStreams       []*nodeStream
+	nodeStreams       []*clientNodeStream
 	nodeMu            *sync.RWMutex
 	// jobs are streamed in here by a server and distributed to clients
 	jobsChan chan Job
@@ -37,16 +45,34 @@ type jobClient struct {
 	ctx    context.Context
 }
 
-func newJobClient(ctx context.Context, store Store, clientManager *client.ClientManager) *jobClient {
+func (c *jobClient) updateNodeSubs(ctx context.Context, leaders []string) {
+	c.nodeMu.Lock()
+	partitionsToSubscribe := []uint32{}
+	for i := len(c.nodeStreams) - 1; i >= 0; i-- {
+		stream := c.nodeStreams[i]
+		if !slices.Contains(leaders, stream.nodeID) {
+			err := stream.stream.CloseSend()
+			if err != nil {
+				c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
+			}
+			c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
+			partitionsToSubscribe = append(partitionsToSubscribe, stream.partitions...)
+		}
+	}
+	c.nodeMu.Unlock()
+	for _, partition := range partitionsToSubscribe {
+		c.subscribeNodeToPartition(ctx, partition)
+	}
+}
+
+func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager *client.ClientManager) *jobClient {
 	return &jobClient{
-		clientSubs:        map[ClientId]*clientSub{},
-		jobTypeClients:    map[JobType][]ClientId{},
-		clientIdx:         map[JobType]int{},
+		clientSubs:        map[ClientID]*clientSub{},
 		clientMu:          &sync.RWMutex{},
-		currentNodeTypes:  []JobType{},
 		store:             store,
+		nodeID:            nodeID,
 		nodeClientManager: clientManager,
-		nodeStreams:       []*nodeStream{},
+		nodeStreams:       []*clientNodeStream{},
 		nodeMu:            &sync.RWMutex{},
 		jobsChan:          make(chan Job),
 		logger:            hclog.Default().Named("job-manager-client"),
@@ -55,80 +81,64 @@ func newJobClient(ctx context.Context, store Store, clientManager *client.Client
 }
 
 // subscribeNode subscribes current node to all partition leaders
-func (m *jobClient) subscribeNode(ctx context.Context, jobType ...JobType) {
-	clusterState := m.store.ClusterState()
+func (c *jobClient) subscribeNode(ctx context.Context) {
+	clusterState := c.store.ClusterState()
 	for _, partition := range clusterState.Partitions {
-		m.subscribeNodeToPartition(ctx, partition.Id, jobType...)
+		c.subscribeNodeToPartition(ctx, partition.Id)
 	}
 }
 
-func (m *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint32, jobType ...JobType) {
-	m.nodeMu.Lock()
-	defer m.nodeMu.Unlock()
-	lClient, nodeId, err := m.nodeClientManager.PartitionLeaderWithID(partition)
+func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint32) {
+	c.nodeMu.Lock()
+	defer c.nodeMu.Unlock()
+	lClient, nodeID, err := c.nodeClientManager.PartitionLeaderWithID(partition)
 	if err != nil {
-		m.logger.Error(fmt.Sprintf("failed to create client for partition %d leader", partition))
+		c.logger.Error(fmt.Sprintf("failed to create client for partition %d leader", partition))
+		return
 	}
+	md := metadata.New(map[string]string{
+		metadataNodeId: string(c.nodeID),
+	})
+	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := lClient.SubscribeJob(ctx)
 	if err != nil {
-		m.logger.Error(fmt.Sprintf("failed to open stream for partition %d leader", partition))
+		c.logger.Error(fmt.Sprintf("failed to open stream for partition %d leader", partition), "err", err)
+		return
 	}
-	nodeStream := nodeStream{
-		stream:      stream,
-		nodeId:      nodeId,
-		partitionId: partition,
+	nodeStream := clientNodeStream{
+		stream: stream,
+		nodeID: nodeID,
 	}
-	m.nodeStreams = append(m.nodeStreams, &nodeStream)
-	go m.handleJobStreamRecv(&nodeStream)
+	c.nodeStreams = append(c.nodeStreams, &nodeStream)
+	go c.handleJobStreamRecv(&nodeStream)
 }
 
-func (m *jobClient) handleJobStreamRecv(stream *nodeStream) {
+func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 	for {
-		job, err := stream.stream.Recv()
+		resp, err := stream.stream.Recv()
 		if err == io.EOF {
 			// read done.
 			return
 		}
 		if err != nil {
-			m.logger.Error("Failed to receive a job", "err", err, "streamNodeId", stream.nodeId)
+			c.logger.Error("Failed to receive a job", "err", err, "streamNodeId", stream.nodeID)
+			return
 		}
-		m.jobsChan <- Job{
-			Key:         job.Key,
-			InstanceKey: job.InstanceKey,
-			Variables:   job.Variables,
-			Type:        JobType(job.Type),
-			State:       job.State,
-			ElementId:   job.ElementId,
-			CreatedAt:   job.CreatedAt,
+		if resp.Job == nil {
+			c.logger.Error("closing stream", "err", err, "streamNodeId", stream.nodeID)
+			return
 		}
-	}
-}
-
-// unsubscribeNode unsubscribes current node from open jobType on current streams
-func (m *jobClient) unsubscribeNode(ctx context.Context, jobType JobType) error {
-	m.nodeMu.Lock()
-	defer m.nodeMu.Unlock()
-	for i := len(m.nodeStreams) - 1; i >= 0; i-- {
-		stream := m.nodeStreams[i]
-		err := stream.stream.Send(&proto.SubscribeJobRequest{
-			JobType: string(jobType),
-			Type:    proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE,
-		})
-		stream.jobTypes = slices.DeleteFunc(stream.jobTypes, func(a JobType) bool {
-			return a == jobType
-		})
-		m.nodeStreams[i] = stream
-		if err == io.EOF {
-			m.nodeStreams = slices.Delete(m.nodeStreams, i, i+1)
-			// stream was closed we need to reconnect to partition leader
-			go m.subscribeNodeToPartition(ctx, stream.partitionId, stream.jobTypes...)
-			continue
-		}
-		if err != nil {
-			m.logger.Error(fmt.Sprintf("failed to unsubscribe job", "jobType", jobType, "streamNodeId", stream.nodeId, "err", err))
+		c.jobsChan <- Job{
+			Key:         resp.Job.Key,
+			InstanceKey: resp.Job.InstanceKey,
+			Variables:   resp.Job.Variables,
+			Type:        JobType(resp.Job.Type),
+			State:       resp.Job.State,
+			ElementID:   resp.Job.ElementId,
+			CreatedAt:   resp.Job.CreatedAt,
+			ClientID:    ClientID(resp.ClientId),
 		}
 	}
-	return nil
 }
 
 func (c *jobClient) distributeToClients() {
@@ -145,20 +155,14 @@ func (c *jobClient) distributeToClients() {
 
 func (c *jobClient) sendJobToClient(job Job) {
 	c.clientMu.RLock()
-	idx := c.clientIdx[job.Type]
-	jobTypeClients := c.jobTypeClients[job.Type]
-	idx++
-	if idx >= len(jobTypeClients) {
-		idx = 0
+	pickedClient := c.clientSubs[job.ClientID]
+	if pickedClient == nil {
+		// TODO send msg to server to free the job
+		return
 	}
-	c.clientIdx[job.Type] = idx
-	pickedClientId := jobTypeClients[idx]
-	pickedClient := c.clientSubs[pickedClientId]
 	if pickedClient.ctx.Err() != nil {
-		// TODO: the client can already be disconnected we need to:
-		//   try and pick another client or notify node that job is unprocessed
 		c.clientMu.RUnlock()
-		c.removeClient(pickedClient.ctx, pickedClient.clientId)
+		c.removeClient(pickedClient.ctx, pickedClient.clientID)
 		return
 	}
 	pickedClient.ch <- job
@@ -166,91 +170,94 @@ func (c *jobClient) sendJobToClient(job Job) {
 }
 
 func (c *jobClient) startClient() {
+	c.subscribeNode(c.ctx)
 	go c.distributeToClients()
 }
 
-func (c *jobClient) addClient(ctx context.Context, clientId ClientId) error {
+func (c *jobClient) broadcastToNodes(req *proto.SubscribeJobRequest) error {
+	var errJoin error
+	c.nodeMu.RLock()
+	defer c.nodeMu.RUnlock()
+	for _, stream := range c.nodeStreams {
+		err := stream.stream.Send(req)
+		if err != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("failed to send request to nodeID %s: %w", stream.nodeID, err))
+		}
+	}
+	return errJoin
+}
+
+func (c *jobClient) addClient(ctx context.Context, clientID ClientID, clientRcv chan Job) error {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
-	if _, ok := c.clientSubs[clientId]; ok {
+	if _, ok := c.clientSubs[clientID]; ok {
 		return fmt.Errorf("client with this id is already subscribed")
 	}
-	c.clientSubs[clientId] = &clientSub{
+	c.clientSubs[clientID] = &clientSub{
 		ctx:      ctx,
-		ch:       make(chan Job),
-		clientId: clientId,
-		jobTypes: []JobType{},
+		ch:       clientRcv,
+		clientID: clientID,
 	}
 	return nil
 }
 
-func (c *jobClient) removeClient(ctx context.Context, clientId ClientId) {
+func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
-	sub, subFound := c.clientSubs[clientId]
+	sub, subFound := c.clientSubs[clientID]
 	if subFound {
-		delete(c.clientSubs, clientId)
-		for _, jobType := range sub.jobTypes {
-			c.removeJobSub(ctx, clientId, jobType)
-		}
+		delete(c.clientSubs, clientID)
 		close(sub.ch)
+		err := c.broadcastToNodes(&proto.SubscribeJobRequest{
+			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL,
+			ClientId: string(clientID),
+		})
+		if err != nil {
+			c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
+		}
 	}
 }
 
-func (m *jobClient) addJobSub(ctx context.Context, clientId ClientId, jobType JobType) error {
-	m.clientMu.Lock()
-	defer m.clientMu.Unlock()
-
-	if _, ok := m.clientSubs[clientId]; !ok {
-		return fmt.Errorf("client with id %s not subscribed", clientId)
-	}
-	m.clientSubs[clientId].jobTypes = append(m.clientSubs[clientId].jobTypes, jobType)
-
-	if jobClients, ok := m.jobTypeClients[jobType]; !ok {
-		m.jobTypeClients[jobType] = []ClientId{clientId}
-	} else {
-		if !slices.Contains(jobClients, clientId) {
-			m.jobTypeClients[jobType] = append(jobClients, clientId)
-		}
-	}
-
-	if !slices.Contains(m.currentNodeTypes, jobType) {
-		m.currentNodeTypes = append(m.currentNodeTypes, jobType)
-		m.subscribeNode(ctx, jobType)
+func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
+		JobType:  string(jobType),
+		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE,
+		ClientId: string(clientID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to subscribe client %s to jobType %s: %w", clientID, jobType, err)
 	}
 	return nil
 }
 
-func (m *jobClient) removeJobSub(ctx context.Context, clientId ClientId, jobType JobType) error {
-	m.clientMu.Lock()
-	defer m.clientMu.Unlock()
-	if _, ok := m.clientSubs[clientId]; !ok {
-		return fmt.Errorf("client with id %s is not subscribed", clientId)
+func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
+	partitionId := zenflake.GetPartitionId(jobKey)
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionId, err)
 	}
-	m.clientSubs[clientId].jobTypes = slices.DeleteFunc(
-		m.clientSubs[clientId].jobTypes,
-		func(a JobType) bool {
-			return a == jobType
-		},
-	)
-	jobTypeSubscribed := false
-pubSubs:
-	for _, sub := range m.clientSubs {
-		for _, t := range sub.jobTypes {
-			if t == jobType {
-				jobTypeSubscribed = true
-				break pubSubs
-			}
-		}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for job completion: %w", err)
 	}
-	if !jobTypeSubscribed {
-		m.currentNodeTypes = slices.DeleteFunc(m.currentNodeTypes, func(a JobType) bool {
-			return a == jobType
-		})
-		err := m.unsubscribeNode(ctx, jobType)
-		if err != nil {
-			m.logger.Error(fmt.Sprintf("failed to unsubscribe type %s", jobType), "err", err)
-		}
+	_, err = lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
+		Key:       jobKey,
+		Variables: vars,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to complete job %d from client: %w", jobKey, err)
+	}
+	return nil
+}
+
+func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
+	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
+		JobType:  string(jobType),
+		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE,
+		ClientId: string(clientID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to unsubscribe client %s from jobType %s: %w", clientID, jobType, err)
 	}
 	return nil
 }

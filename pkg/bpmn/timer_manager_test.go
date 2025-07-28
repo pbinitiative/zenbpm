@@ -3,6 +3,7 @@ package bpmn
 import (
 	"context"
 	"math/rand"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -49,18 +50,38 @@ func TestTimerManagerLoadsAndFiresTimers(t *testing.T) {
 		processedTimers: []runtime.Timer{},
 		mu:              sync.Mutex{},
 	}
-	tm := newTimerManager(tester.processTimer, tester.generateTimers, 1*time.Second)
+	tm := newTimerManager(tester.processTimer, tester.generateTimers, 500*time.Millisecond)
 	tm.start()
 	defer tm.stop()
-	time.Sleep(2 * time.Second)
 	now := time.Now()
+	assert.Eventually(t, func() bool {
+		if len(tester.generatedTimers) > 0 {
+			now = time.Now()
+			return true
+		}
+		return false
+	}, 2*time.Second, 100*time.Millisecond, "timers should be generated in time")
+
+	assert.Eventually(t, func() bool {
+		for _, timerToFire := range tester.generatedTimers {
+			if timerToFire.DueAt.After(now) {
+				continue
+			}
+			if timerToFire.DueAt.Before(now) {
+				if !slices.Contains(tester.processedTimers, timerToFire) {
+					return false
+				}
+			}
+		}
+		return true
+	}, 2*time.Second, 100*time.Millisecond, "processed timers did not contain timer that should be fired")
 
 	// verify that timers that should have fired fired
 	assert.NotEmpty(t, tester.generatedTimers)
 	assert.NotEmpty(t, tester.processedTimers)
 	for _, timerToFire := range tester.generatedTimers {
 		if timerToFire.DueAt.Before(now) {
-			assert.Contains(t, tester.processedTimers, timerToFire)
+			assert.Contains(t, tester.processedTimers, timerToFire, "processed timers did not contain timer that should be fired")
 		}
 	}
 }

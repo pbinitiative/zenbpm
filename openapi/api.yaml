@@ -83,6 +83,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /decision-definitions:
+    post:
+      operationId: createDecisionDefinition
+      summary: Deploy a new process definition
+      tags:
+        - decision-definitions
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: string
+              format: xml
+      responses:
+        200:
+          description: Decision definition deployed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - decisionDefinitionKey
+                properties:
+                  decisionDefinitionKey:
+                    type: string
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: getDecisionDefinitions
+      summary: Get list of decision definitions
+      tags:
+        - decision-definitions
+      responses:
+        200:
+          description: List of process definitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionDefinitionsPage"
+  /decision-definitions/{decisionDefinitionKey}:
+    get:
+      operationId: getDecisionDefinition
+      summary: Get decision definition
+      tags:
+        - decision-definitions
+      parameters:
+        - name: decisionDefinitionKey
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        200:
+          description: Process definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionDefinitionDetail"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /decision-definitions/evaluate/{decisionDefinitionKey}:
+    post:
+      operationId: evaluateDecision
+      summary: Evaluate deployed decision for testing purpose
+      tags:
+        - decision-definitions
+      parameters:
+        - name: decisionDefinitionKey
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+              format: json
+      responses:
+        200:
+          description: Process definition
+          content:
+            application/json:
+              schema:
+                type: object
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /process-instances:
     post:
       operationId: createProcessInstance
@@ -547,6 +659,39 @@ components:
         - type: object
           properties:
             bpmnData:
+              type: string
+    DecisionDefinitionsPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DecisionDefinitionSimple"
+        - $ref: "#/components/schemas/PageMetadata"
+    DecisionDefinitionSimple:
+      type: object
+      required:
+        - key
+        - version
+        - dmnDecisionId
+      properties:
+        key:
+          type: string
+        version:
+          type: integer
+        dmnDecisionId:
+          type: string
+    DecisionDefinitionDetail:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/DecisionDefinitionSimple"
+        - type: object
+          properties:
+            dmnData:
               type: string
     ProcessInstancePage:
       type: object

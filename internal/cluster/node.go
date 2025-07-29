@@ -265,6 +265,81 @@ func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data [
 	return definitionKey.Int64(), nil
 }
 
+func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	key, err := node.GetDecisionDefinitionKeyByBytes(ctx, data)
+	if err != nil {
+		log.Error("Failed to get definition key by bytes: %s", err)
+	}
+	if key != 0 {
+		return key, err
+	}
+	gen, _ := snowflake.NewNode(0)
+	definitionKey := gen.Generate()
+	state := node.store.ClusterState()
+	var errJoin error
+	for _, partition := range state.Partitions {
+		pLeader := state.Nodes[partition.LeaderId]
+		client, err := node.client.For(pLeader.Addr)
+		if err != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
+		}
+		resp, err := client.DeployDecisionDefinition(ctx, &proto.DeployDecisionDefinitionRequest{
+			Key:  definitionKey.Int64(),
+			Data: data,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("client call to deploy definition failed")
+			if err != nil {
+				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
+			} else if resp.Error != nil {
+				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage())))
+			}
+		}
+	}
+	if errJoin != nil {
+		return definitionKey.Int64(), errJoin
+	}
+	return definitionKey.Int64(), nil
+}
+
+func (node *ZenNode) GetDecisionDefinitions(ctx context.Context) ([]proto.DecisionDefinition, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decision definitions: %w", err)
+	}
+	definitions, err := db.queries.GetAllDecisionDefinitions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read decision definitions from database: %w", err)
+	}
+	resp := make([]proto.DecisionDefinition, 0, len(definitions))
+	for _, def := range definitions {
+		resp = append(resp, proto.DecisionDefinition{
+			Key:          def.Key,
+			Version:      int32(def.Version),
+			DefinitionId: def.DmnID,
+			Definition:   []byte(def.DmnData),
+		})
+	}
+	return resp, nil
+}
+
+func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (proto.DecisionDefinition, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return proto.DecisionDefinition{}, fmt.Errorf("failed to get decision definitions: %w", err)
+	}
+	definition, err := db.queries.FindDecisionDefinitionByKey(ctx, key)
+	if err != nil {
+		return proto.DecisionDefinition{}, fmt.Errorf("failed to read decision definition from database: %w", err)
+	}
+	return proto.DecisionDefinition{
+		Key:          definition.Key,
+		Version:      int32(definition.Version),
+		DefinitionId: definition.DmnID,
+		Definition:   []byte(definition.DmnData),
+	}, nil
+}
+
 func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
@@ -274,6 +349,19 @@ func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (
 	key, err := db.queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
 	if err != nil && err.Error() != "No result row" {
 		return 0, fmt.Errorf("failed to find process definition by checksum: %w", err)
+	}
+	return key, nil
+}
+
+func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database for decision definition key lookup: %w", err)
+	}
+	md5sum := md5.Sum(data)
+	key, err := db.queries.GetDecisionDefinitionKeyByChecksum(ctx, md5sum[:])
+	if err != nil && err.Error() != "No result row" {
+		return 0, fmt.Errorf("failed to find decision definition by checksum: %w", err)
 	}
 	return key, nil
 }

@@ -52,6 +52,7 @@ service ZenService {
   
   // Deploys definition into partitions that receiving node is leader of
   rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
+  rpc DeployDecisionDefinition(DeployDecisionDefinitionRequest) returns (DeployDecisionDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
@@ -146,6 +147,13 @@ message ProcessDefinition {
   bytes definition = 4;
 }
 
+message DecisionDefinition {
+  int64 key = 1;
+  int32 version = 2;
+  string definition_id = 3;
+  bytes definition = 4;
+}
+
 message ProcessInstance {
   int64 key = 1;
   string process_id = 2;
@@ -190,6 +198,15 @@ message DeployDefinitionRequest {
 }
 
 message DeployDefinitionResponse {
+  optional ErrorResult error = 1;
+}
+
+message DeployDecisionDefinitionRequest {
+  int64 key = 1;
+  bytes data = 2;
+}
+
+message DeployDecisionDefinitionResponse {
   optional ErrorResult error = 1;
 }
 

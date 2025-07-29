@@ -99,6 +99,62 @@ func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, dmnID st
 	return i, err
 }
 
+const getAllDecisionDefinitions = `-- name: GetAllDecisionDefinitions :many
+SELECT
+    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+FROM
+    decision_definition
+ORDER BY
+    key desc
+`
+
+func (q *Queries) GetAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, getAllDecisionDefinitions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DecisionDefinition{}
+	for rows.Next() {
+		var i DecisionDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.DmnID,
+			&i.DmnData,
+			&i.DmnChecksum,
+			&i.DmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDecisionDefinitionKeyByChecksum = `-- name: GetDecisionDefinitionKeyByChecksum :one
+SELECT
+    key
+FROM
+    decision_definition
+WHERE
+    dmn_checksum = ?1
+LIMIT 1
+`
+
+func (q *Queries) GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getDecisionDefinitionKeyByChecksum, dmnChecksum)
+	var key int64
+	err := row.Scan(&key)
+	return key, err
+}
+
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec
 INSERT INTO decision_definition(key, version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name)
     VALUES (?, ?, ?, ?, ?, ?)

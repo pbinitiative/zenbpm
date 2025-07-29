@@ -30,3 +30,20 @@ WHERE
     dmn_id = @dmn_id
 ORDER BY
     version desc;
+
+-- name: GetAllDecisionDefinitions :many
+SELECT
+    *
+FROM
+    decision_definition
+ORDER BY
+    key desc;
+
+-- name: GetDecisionDefinitionKeyByChecksum :one
+SELECT
+    key
+FROM
+    decision_definition
+WHERE
+    dmn_checksum = @dmn_checksum
+LIMIT 1;

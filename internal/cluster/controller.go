@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"path"
 	"sync"
 	"time"
@@ -437,6 +438,17 @@ func (c *controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
 	for partition, partitionNode := range c.partitions {
 		if partitionNode.engine != nil {
 			res[partition] = partitionNode.engine
+		}
+	}
+	return res
+}
+
+func (c *controller) DmnEngines(ctx context.Context) map[uint32]*dmn.ZenDmnEngine {
+	res := make(map[uint32]*dmn.ZenDmnEngine, 0)
+	for partition, partitionNode := range c.partitions {
+		emnEngine := partitionNode.engine.GetDmnEngine()
+		if emnEngine != nil {
+			res[partition] = emnEngine
 		}
 	}
 	return res

@@ -528,6 +528,77 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 
 }
 
+func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.CreateDecisionDefinitionRequestObject) (public.CreateDecisionDefinitionResponseObject, error) {
+	data, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
+	if err != nil {
+		return public.CreateDecisionDefinition502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	stringKey := fmt.Sprintf("%d", key)
+	return public.CreateDecisionDefinition200JSONResponse{
+		DecisionDefinitionKey: stringKey,
+	}, nil
+}
+
+func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetDecisionDefinitionsRequestObject) (public.GetDecisionDefinitionsResponseObject, error) {
+	definitions, err := s.node.GetDecisionDefinitions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]public.DecisionDefinitionSimple, 0)
+	for _, d := range definitions {
+		items = append(items, public.DecisionDefinitionSimple{
+			DmnDecisionId: d.DefinitionId,
+			Key:           fmt.Sprintf("%d", d.Key),
+			Version:       int(d.Version),
+		})
+	}
+	total := len(items)
+
+	return public.GetDecisionDefinitions200JSONResponse{
+		Items: items,
+		PageMetadata: public.PageMetadata{
+			Count:  total,
+			Offset: 0,
+			Size:   len(definitions),
+		},
+	}, nil
+}
+
+func (s *Server) GetDecisionDefinition(ctx context.Context, request public.GetDecisionDefinitionRequestObject) (public.GetDecisionDefinitionResponseObject, error) {
+	key, err := getKeyFromString(request.DecisionDefinitionKey)
+	if err != nil {
+		return public.GetDecisionDefinition400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	definition, err := s.node.GetDecisionDefinition(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return public.GetDecisionDefinition200JSONResponse{
+		DecisionDefinitionSimple: public.DecisionDefinitionSimple{
+			DmnDecisionId: definition.DefinitionId,
+			Key:           fmt.Sprintf("%d", definition.Key),
+			Version:       int(definition.Version),
+		},
+		DmnData: ptr.To(string(definition.Definition)),
+	}, nil
+}
+
+func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
+	// TODO
+	return nil, nil
+}
+
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {
 	w.WriteHeader(status)
 	body, err := json.Marshal(resp)

@@ -36,6 +36,7 @@ const (
 	ZenService_PartitionRestore_FullMethodName          = "/cluster.ZenService/PartitionRestore"
 	ZenService_NodeCommand_FullMethodName               = "/cluster.ZenService/NodeCommand"
 	ZenService_DeployDefinition_FullMethodName          = "/cluster.ZenService/DeployDefinition"
+	ZenService_DeployDecisionDefinition_FullMethodName  = "/cluster.ZenService/DeployDecisionDefinition"
 	ZenService_ActivateJob_FullMethodName               = "/cluster.ZenService/ActivateJob"
 	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
 	ZenService_PublishMessage_FullMethodName            = "/cluster.ZenService/PublishMessage"
@@ -81,6 +82,7 @@ type ZenServiceClient interface {
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(ctx context.Context, in *DeployDefinitionRequest, opts ...grpc.CallOption) (*DeployDefinitionResponse, error)
+	DeployDecisionDefinition(ctx context.Context, in *DeployDecisionDefinitionRequest, opts ...grpc.CallOption) (*DeployDecisionDefinitionResponse, error)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
@@ -261,6 +263,16 @@ func (c *zenServiceClient) DeployDefinition(ctx context.Context, in *DeployDefin
 	return out, nil
 }
 
+func (c *zenServiceClient) DeployDecisionDefinition(ctx context.Context, in *DeployDecisionDefinitionRequest, opts ...grpc.CallOption) (*DeployDecisionDefinitionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployDecisionDefinitionResponse)
+	err := c.cc.Invoke(ctx, ZenService_DeployDecisionDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_ActivateJob_FullMethodName, cOpts...)
@@ -403,6 +415,7 @@ type ZenServiceServer interface {
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error)
+	DeployDecisionDefinition(context.Context, *DeployDecisionDefinitionRequest) (*DeployDecisionDefinitionResponse, error)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
@@ -470,6 +483,9 @@ func (UnimplementedZenServiceServer) NodeCommand(context.Context, *proto.Command
 }
 func (UnimplementedZenServiceServer) DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeployDefinition not implemented")
+}
+func (UnimplementedZenServiceServer) DeployDecisionDefinition(context.Context, *DeployDecisionDefinitionRequest) (*DeployDecisionDefinitionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeployDecisionDefinition not implemented")
 }
 func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ActivateJob not implemented")
@@ -810,6 +826,24 @@ func _ZenService_DeployDefinition_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_DeployDecisionDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployDecisionDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).DeployDecisionDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_DeployDecisionDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).DeployDecisionDefinition(ctx, req.(*DeployDecisionDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_ActivateJob_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ActivateJobRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1053,6 +1087,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeployDefinition",
 			Handler:    _ZenService_DeployDefinition_Handler,
+		},
+		{
+			MethodName: "DeployDecisionDefinition",
+			Handler:    _ZenService_DeployDecisionDefinition_Handler,
 		},
 		{
 			MethodName: "CompleteJob",

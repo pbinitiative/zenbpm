@@ -44,14 +44,14 @@ func (engine *ZenDmnEngine) LoadFromFile(ctx context.Context, filename string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to load dmn definition from file: %v, %w", filename, err)
 	}
-	return engine.load(ctx, xmlData, filename)
+	return engine.load(ctx, xmlData, filename, engine.generateKey())
 }
 
-func (engine *ZenDmnEngine) LoadFromBytes(ctx context.Context, xmlData []byte) (*runtime.DecisionDefinition, error) {
-	return engine.load(ctx, xmlData, "")
+func (engine *ZenDmnEngine) LoadFromBytes(ctx context.Context, xmlData []byte, key int64) (*runtime.DecisionDefinition, error) {
+	return engine.load(ctx, xmlData, "", key)
 }
 
-func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceName string) (*runtime.DecisionDefinition, error) {
+func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceName string, key int64) (*runtime.DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	var definitions dmn.TDefinitions
 	err := xml.Unmarshal(xmlData, &definitions)
@@ -62,7 +62,7 @@ func (engine *ZenDmnEngine) load(ctx context.Context, xmlData []byte, resourceNa
 	dmnDefinition := runtime.DecisionDefinition{
 		Version:         1,
 		Id:              definitions.Id,
-		Key:             engine.generateKey(),
+		Key:             key,
 		Definitions:     definitions,
 		DmnData:         xmlData,
 		DmnChecksum:     md5sum,

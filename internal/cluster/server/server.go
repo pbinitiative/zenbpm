@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"math/rand"
 	"net"
 	"slices"
@@ -43,6 +44,7 @@ type StoreService interface {
 type ControllerService interface {
 	PartitionEngine(ctx context.Context, partitionId uint32) *bpmn.Engine
 	Engines(ctx context.Context) map[uint32]*bpmn.Engine
+	DmnEngines(ctx context.Context) map[uint32]*dmn.ZenDmnEngine
 	PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries
 }
 
@@ -336,6 +338,24 @@ func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefiniti
 		}
 	}
 	return &proto.DeployDefinitionResponse{}, nil
+}
+
+func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.DeployDecisionDefinitionRequest) (*proto.DeployDecisionDefinitionResponse, error) {
+	engines := s.controller.DmnEngines(ctx)
+	var err error
+	for _, engine := range engines {
+		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.Key)
+		if err != nil {
+			err = fmt.Errorf("failed to deploy process definition: %w", err)
+			return &proto.DeployDecisionDefinitionResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+	}
+	return &proto.DeployDecisionDefinitionResponse{}, nil
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {

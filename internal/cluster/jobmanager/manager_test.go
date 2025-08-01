@@ -110,11 +110,11 @@ func TestManagerDistributesJob(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Contains(t, completer.completedJobs, generatedJobs[0].Key)
-	assert.NotEmpty(t, jm1.server.jobClients[job.Type])
+	assert.NotEmpty(t, jm1.server.jobTypes[job.Type])
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobClients[job.Type]) == 0
+		return len(jm1.server.jobTypes[job.Type].clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -163,7 +163,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobClients["test-job"]) == 0
+		return len(jm1.server.jobTypes["test-job"].clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -220,7 +220,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobClients["test-job"]) == 1
+		return len(jm1.server.jobTypes["test-job"].clients) == 1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -235,7 +235,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobClients["test-job"]) == 0
+		return len(jm1.server.jobTypes["test-job"].clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -376,7 +376,7 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 	md, found := metadata.FromIncomingContext(ctx)
 	clientID := ClientID("")
 	if found {
-		clientIDs := md.Get(metadataClientID)
+		clientIDs := md.Get(MetadataClientID)
 		if len(clientIDs) == 1 {
 			clientID = ClientID(clientIDs[0])
 		}
@@ -435,10 +435,10 @@ func (l *testLoader) addJobs(jobs ...sql.Job) {
 	l.mu.Unlock()
 }
 
-func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int) ([]sql.Job, error) {
+func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error) {
 	distributedJobs := make([]sql.Job, 0)
 	l.mu.Lock()
-	currentCount := 0
+	currentCount := int64(0)
 	idsToSkipMap := make(map[int64]struct{}, len(idsToSkip))
 	for _, id := range idsToSkip {
 		idsToSkipMap[id] = struct{}{}
@@ -543,7 +543,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-			return len(jm1.server.jobClients["test-job"]) == i+1
+			return len(jm1.server.jobTypes["test-job"].clients) == i+1
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)

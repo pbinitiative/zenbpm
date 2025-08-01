@@ -49,12 +49,13 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
 		controller: controller,
+		jobManager: jobManager,
 	}
 }
 

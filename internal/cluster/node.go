@@ -13,6 +13,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
@@ -53,19 +54,22 @@ import (
 // When leader decides that this change should take place it writes it into the raft log.
 // Change takes effect only after it has been applied to the state from the raft log.
 type ZenNode struct {
+	ctx        context.Context
 	store      *store.Store
 	controller *controller
 	server     *server.Server
 	client     *client.ClientManager
 	logger     hclog.Logger
 	muxLn      net.Listener
+	JobManager *jobmanager.JobManager
 	// TODO: add tracing to all the methods on ZenNode where it makes sense
 }
 
 // StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
-	node := ZenNode{
+	node := &ZenNode{
 		logger: hclog.Default().Named(fmt.Sprintf("zen-node-%s", conf.Cluster.NodeId)),
+		ctx:    mainCtx,
 	}
 
 	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr)
@@ -90,22 +94,20 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		return nil, fmt.Errorf("failed to open store: %w", err)
 	}
 
-	clusterSrvLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(clusterSrvLn, node.store, node.controller)
-	if err = clusterSrv.Open(); err != nil {
-		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
-	}
-	node.server = clusterSrv
-
 	node.client = client.NewClientManager(node.store)
-	err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
-	if err != nil {
-		node.logger.Error("Failed to apply log until timeout was reached: %s", err)
-	}
 	err = node.controller.Start(node.store, node.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
 	}
+
+	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
+
+	clusterSrvLn := network.NewZenBpmClusterListener(mux)
+	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
+	if err = clusterSrv.Open(); err != nil {
+		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
+	}
+	node.server = clusterSrv
 
 	// bootstrapping logic
 	nodes, err := node.store.Nodes()
@@ -116,7 +118,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 	if len(nodes) > 0 {
 		node.logger.Info("Preexisting configuration detected. Skipping bootstrap.")
-		return &node, nil
+		return node, nil
 	}
 
 	bootDoneFn := func() bool {
@@ -133,21 +135,29 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 			return nil, fmt.Errorf("failed to join cluster: %s", err.Error())
 		}
 		node.logger.Info(fmt.Sprintf("successfully joined cluster at %s", j))
-		return &node, nil
-	}
-
-	if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect > 0 {
+	} else if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect > 0 {
 		// Bootstrap with explicit join addresses requests.
 		bs := NewBootstrapper(
 			cluster.NewAddressProviderString(conf.Cluster.Raft.JoinAddresses),
 			node.client,
 		)
 		err := bs.Boot(mainCtx, node.store.ID(), conf.Cluster.Adv, clusterSuf, bootDoneFn, conf.Cluster.Raft.BootstrapExpectTimeout)
-		return &node, err
-
+		if err != nil {
+			return nil, fmt.Errorf("failed to bootstrap cluster: %s", err.Error())
+		}
+	}
+	_, err = node.store.WaitForLeader(5 * time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("timeout expired before leader information was received")
+	}
+	err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+	if err != nil {
+		node.logger.Error("Failed to apply log until timeout was reached: %s", err)
 	}
 
-	return &node, nil
+	node.JobManager.Start()
+
+	return node, nil
 }
 
 func (node *ZenNode) Stop() error {
@@ -638,4 +648,38 @@ func (node *ZenNode) GetStatus() store.ClusterState {
 		return store.ClusterState{}
 	}
 	return node.store.ClusterState()
+}
+
+func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error) {
+	// read jobs from all the partitions where this node is a leader
+	databases := node.controller.AllPartitionLeaderDBs(node.ctx)
+	if len(databases) == 0 {
+		return nil, fmt.Errorf("no partitions where node is a leader were found")
+	}
+	jobsAcc := make([]sql.Job, 0)
+	for _, db := range databases {
+		jobs, err := db.queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
+			KeySkip: idsToSkip,
+			Type:    jobTypes,
+			Size:    count,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.partition, err)
+		}
+		jobsAcc = append(jobsAcc, jobs...)
+	}
+	return jobsAcc, nil
+}
+
+func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error {
+	partitionId := zenflake.GetPartitionId(jobKey)
+	engine := node.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		return fmt.Errorf("Engine to complete job was not found on the node")
+	}
+	err := engine.JobCompleteByKey(ctx, jobKey, variables)
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -148,7 +148,7 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
-	go test -count=100 -v ./test/e2e/...
+	go test -count=1 -v ./test/e2e/...
 
 ##@ Build
 

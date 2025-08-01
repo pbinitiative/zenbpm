@@ -6,10 +6,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
-	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"strings"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 
 	ssql "database/sql"
 

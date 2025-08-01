@@ -7,7 +7,6 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 )
 
@@ -18,7 +17,7 @@ FROM
     job
 WHERE
     type = ?1
-AND state = 1
+    AND state = 1
 `
 
 func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error) {
@@ -101,7 +100,6 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 }
 
 const findJobByElementId = `-- name: FindJobByElementId :one
-
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
 FROM
@@ -184,71 +182,6 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 		&i.ExecutionToken,
 	)
 	return i, err
-}
-
-const findJobsWithStates = `-- name: FindJobsWithStates :many
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
-FROM
-    job
-WHERE
-    COALESCE(?1, "key") = "key"
-    AND COALESCE(?2, process_instance_key) = process_instance_key
-    AND COALESCE(?3, "element_id") = "element_id"
-    AND COALESCE(?4, "type") = "type"
-    AND (?5 IS NULL
-        OR "state" IN (
-            SELECT
-                value
-            FROM
-                json_each(?5)))
-`
-
-type FindJobsWithStatesParams struct {
-	Key                sql.NullInt64  `json:"key"`
-	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
-	ElementID          sql.NullString `json:"element_id"`
-	Type               sql.NullString `json:"type"`
-	States             interface{}    `json:"states"`
-}
-
-func (q *Queries) FindJobsWithStates(ctx context.Context, arg FindJobsWithStatesParams) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findJobsWithStates,
-		arg.Key,
-		arg.ProcessInstanceKey,
-		arg.ElementID,
-		arg.Type,
-		arg.States,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Job{}
-	for rows.Next() {
-		var i Job
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.Variables,
-			&i.ExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
@@ -352,13 +285,84 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 	return items, nil
 }
 
+const findWaitingJobs = `-- name: FindWaitingJobs :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    key NOT IN (/*SLICE:key_skip*/?)
+    AND type IN (/*SLICE:type*/?)
+ORDER BY
+    created ASC
+LIMIT ?3
+`
+
+type FindWaitingJobsParams struct {
+	KeySkip []int64  `json:"key_skip"`
+	Type    []string `json:"type"`
+	Size    int64    `json:"size"`
+}
+
+func (q *Queries) FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error) {
+	query := findWaitingJobs
+	var queryParams []interface{}
+	if len(arg.KeySkip) > 0 {
+		for _, v := range arg.KeySkip {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:key_skip*/?", strings.Repeat(",?", len(arg.KeySkip))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:key_skip*/?", "NULL", 1)
+	}
+	if len(arg.Type) > 0 {
+		for _, v := range arg.Type {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:type*/?", strings.Repeat(",?", len(arg.Type))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:type*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Size)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveJob = `-- name: SaveJob :exec
 INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-				variables = excluded.variables
+        variables = excluded.variables
 `
 
 type SaveJobParams struct {

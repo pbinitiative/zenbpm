@@ -83,6 +83,7 @@ type ZenServiceClient interface {
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(ctx context.Context, in *DeployDefinitionRequest, opts ...grpc.CallOption) (*DeployDefinitionResponse, error)
+	// TODO: remove ActivateJob (replaced by SubscribeJob)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
@@ -432,6 +433,7 @@ type ZenServiceServer interface {
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error)
+	// TODO: remove ActivateJob (replaced by SubscribeJob)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)

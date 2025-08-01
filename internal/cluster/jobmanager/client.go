@@ -30,6 +30,7 @@ type clientNodeStream struct {
 }
 
 type jobClient struct {
+	// TODO: add mechanism to handle max_active_jobs and lock_duration
 	clientSubs map[ClientID]*clientSub
 	clientMu   *sync.RWMutex
 
@@ -97,7 +98,7 @@ func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint
 		return
 	}
 	md := metadata.New(map[string]string{
-		metadataNodeId: string(c.nodeID),
+		MetadataNodeID: string(c.nodeID),
 	})
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := lClient.SubscribeJob(ctx)

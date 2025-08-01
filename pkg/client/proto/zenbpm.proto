@@ -1,0 +1,51 @@
+syntax = "proto3";
+package grpc;
+
+option go_package = "github.com/pbinitiative/zenbpm/internal/grpc/proto";
+
+service ZenBpm {
+  rpc JobStream(stream JobStreamRequest) returns (stream JobStreamResponse);
+}
+
+message JobStreamRequest{
+  oneof request{
+    StreamSubscriptionRequest subscription = 1;
+    StreamCompleteRequest complete = 2;
+  }
+}
+
+message StreamSubscriptionRequest{
+  enum Type {
+    TYPE_UNDEFINED = 0; 
+    TYPE_SUBSCRIBE = 1; // subscribe client to provided job_type
+    TYPE_UNSUBSCRIBE = 2; // unsubscribe client from provided job_type
+  }
+  string job_type = 1;
+  Type type = 2;
+  // int32 lock_duration = 3; // the duration in ms that the job will be locked for completion only by client_id
+  // int32 max_active_jobs = 4; // maximum active jobs of provided job_type for current stream and client_id, uniqueness across streams is not guaranteed as new streams can reach different node in the cluster.
+}
+
+message StreamCompleteRequest{
+  int64 key = 1; // job key
+  bytes variables = 2; // json variables 
+}
+
+message JobStreamResponse {
+  optional ErrorResult error = 1;
+  WaitingJob job = 2;
+}
+
+message WaitingJob {
+  int64 key = 1;
+  int64 instance_key = 2;
+  bytes variables = 3;
+  string type = 4;
+  string element_id = 5;
+  int64 created_at = 6;
+}
+
+message ErrorResult {
+  uint32 code = 1;
+  string message = 2;
+}

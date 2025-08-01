@@ -40,7 +40,7 @@ FROM
 WHERE
     dmn_id = ?1
 ORDER BY
-    version desc
+    version asc
 `
 
 func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {

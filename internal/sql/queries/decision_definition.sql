@@ -29,7 +29,7 @@ FROM
 WHERE
     dmn_id = @dmn_id
 ORDER BY
-    version desc;
+    version asc;
 
 -- name: GetAllDecisionDefinitions :many
 SELECT

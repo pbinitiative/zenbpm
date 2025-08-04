@@ -2,9 +2,11 @@ package cluster
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"io"
 	"net"
 	"sync"
@@ -237,6 +239,13 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*RqLiteDB, error) {
 }
 
 func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	key, err := node.GetDefinitionKeyByBytes(ctx, data)
+	if err != nil {
+		log.Error("Failed to get definition key by bytes: %s", err)
+	}
+	if key != 0 {
+		return key, err
+	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
 	state := node.store.ClusterState()
@@ -264,6 +273,19 @@ func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data [
 		return definitionKey.Int64(), errJoin
 	}
 	return definitionKey.Int64(), nil
+}
+
+func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
+	}
+	md5sum := md5.Sum(data)
+	key, err := db.queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
+	if err != nil && err.Error() != "No result row" {
+		return 0, fmt.Errorf("failed to find process definition by checksum: %w", err)
+	}
+	return key, nil
 }
 
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {

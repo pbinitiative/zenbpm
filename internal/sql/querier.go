@@ -39,6 +39,7 @@ type Querier interface {
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error)
+	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
 	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)

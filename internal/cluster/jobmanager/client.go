@@ -98,7 +98,11 @@ func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint
 		return
 	}
 	md := metadata.New(map[string]string{
+<<<<<<< HEAD
 		MetadataNodeID: string(c.nodeID),
+=======
+		metadataNodeId: string(c.nodeID),
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	})
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := lClient.SubscribeJob(ctx)

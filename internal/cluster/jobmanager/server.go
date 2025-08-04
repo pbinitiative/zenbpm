@@ -15,16 +15,28 @@ import (
 )
 
 const (
+<<<<<<< HEAD
 	MetadataNodeID   string = "node_id"
 	MetadataClientID string = "client_id"
 	// each job will remain assigned to client until this duration expires
 	jobLockDuration       time.Duration = 30 * time.Second
 	partitionJobLoadCount int64         = 100
+=======
+	metadataNodeId   string = "node_id"
+	metadataClientID string = "client_id"
+	// each job will remain assigned to client until this duration expires
+	jobLockDuration time.Duration = 30 * time.Second
+	jobLoadCount    int           = 100
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 )
 
 type JobLoader interface {
 	// LoadJobsToDistribute loads a number of jobs (sorted from oldest) from each partition that the node is leader on
+<<<<<<< HEAD
 	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error)
+=======
+	LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int) ([]sql.Job, error)
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 }
 
 type JobCompleter interface {
@@ -42,11 +54,14 @@ type nodeSub struct {
 	stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
 }
 
+<<<<<<< HEAD
 type jobTypeData struct {
 	index   int64
 	clients []ClientID
 }
 
+=======
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 type jobServer struct {
 	ctx      context.Context
 	nodeID   NodeId
@@ -55,14 +70,25 @@ type jobServer struct {
 
 	clientMu      *sync.RWMutex
 	subscriptions map[JobType]map[ClientID]*nodeSub
+<<<<<<< HEAD
 	jobTypes      map[JobType]jobTypeData
+=======
+	jobClients    map[JobType][]ClientID
+	jobTypeIdx    map[JobType]int64
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 
 	loader    JobLoader
 	completer JobCompleter
 
+<<<<<<< HEAD
 	partitionJobLoadCount int64
 	distributedJobs       []distributedJob
 	distributedJobsMu     *sync.RWMutex
+=======
+	jobLoadCount      int
+	distributedJobs   []distributedJob
+	distributedJobsMu *sync.RWMutex
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 
 	logger hclog.Logger
 }
@@ -73,6 +99,7 @@ func newJobServer(
 	jobCompleter JobCompleter,
 ) *jobServer {
 	return &jobServer{
+<<<<<<< HEAD
 		nodeMu:                &sync.RWMutex{},
 		nodeSubs:              map[NodeId]*nodeSub{},
 		nodeID:                nodeID,
@@ -85,6 +112,21 @@ func newJobServer(
 		loader:                jobLoader,
 		partitionJobLoadCount: partitionJobLoadCount,
 		completer:             jobCompleter,
+=======
+		nodeMu:            &sync.RWMutex{},
+		nodeSubs:          map[NodeId]*nodeSub{},
+		nodeID:            nodeID,
+		distributedJobs:   []distributedJob{},
+		distributedJobsMu: &sync.RWMutex{},
+		subscriptions:     map[JobType]map[ClientID]*nodeSub{},
+		jobClients:        map[JobType][]ClientID{},
+		jobTypeIdx:        map[JobType]int64{},
+		clientMu:          &sync.RWMutex{},
+		logger:            hclog.Default().Named("job-manager-server"),
+		loader:            jobLoader,
+		jobLoadCount:      jobLoadCount,
+		completer:         jobCompleter,
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	}
 }
 
@@ -196,7 +238,11 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 	if !found {
 		return fmt.Errorf("expected metadata to be present in SubscribeJob stream")
 	}
+<<<<<<< HEAD
 	nodeIds := md.Get(MetadataNodeID)
+=======
+	nodeIds := md.Get(metadataNodeId)
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	if len(nodeIds) != 1 {
 		return fmt.Errorf("expected nodeId to be present in metadata in SubscribeJob stream")
 	}
@@ -253,7 +299,11 @@ func (s *jobServer) removeNode(nodeId NodeId) {
 	s.clientMu.Unlock()
 }
 
+<<<<<<< HEAD
 func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jType JobType) {
+=======
+func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jobType JobType) {
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
 	s.nodeMu.RLock()
@@ -263,6 +313,7 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 		return
 	}
 	s.nodeMu.RUnlock()
+<<<<<<< HEAD
 	if _, ok := s.subscriptions[jType]; !ok {
 		s.subscriptions[jType] = map[ClientID]*nodeSub{}
 	}
@@ -284,6 +335,24 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	delete(s.subscriptions[jType], clientID)
 	index := -1
 	for i, client := range s.jobTypes[jType].clients {
+=======
+	if _, ok := s.subscriptions[jobType]; !ok {
+		s.subscriptions[jobType] = map[ClientID]*nodeSub{}
+	}
+	if _, ok := s.jobClients[jobType]; !ok {
+		s.jobClients[jobType] = make([]ClientID, 0)
+	}
+	s.subscriptions[jobType][clientID] = clientsNode
+	s.jobClients[jobType] = append(s.jobClients[jobType], clientID)
+}
+
+func (s *jobServer) unsubscribeClient(clientID ClientID, jobType JobType) {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	delete(s.subscriptions[jobType], clientID)
+	index := -1
+	for i, client := range s.jobClients[jobType] {
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 		if client == clientID {
 			index = i
 			break
@@ -292,9 +361,13 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	if index < 0 {
 		return
 	}
+<<<<<<< HEAD
 	jobTypeData := s.jobTypes[jType]
 	jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
 	s.jobTypes[jType] = jobTypeData
+=======
+	s.jobClients[jobType] = append(s.jobClients[jobType][:index], s.jobClients[jobType][index+1:]...)
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 }
 
 func (s *jobServer) removeClient(clientID ClientID) {
@@ -303,24 +376,41 @@ func (s *jobServer) removeClient(clientID ClientID) {
 	for jobType := range s.subscriptions {
 		delete(s.subscriptions[jobType], clientID)
 	}
+<<<<<<< HEAD
 	for jType, jobTypeData := range s.jobTypes {
 		index := -1
 		for k, client := range jobTypeData.clients {
+=======
+	for jobType, clients := range s.jobClients {
+		index := -1
+		for k, client := range clients {
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 			if client == clientID {
 				index = k
 				break
 			}
 		}
 		if index >= 0 {
+<<<<<<< HEAD
 			jobTypeData := s.jobTypes[jType]
 			jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
 			s.jobTypes[jType] = jobTypeData
+=======
+			s.jobClients[jobType] = append(s.jobClients[jobType][:index], s.jobClients[jobType][index+1:]...)
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 		}
 	}
 }
 
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
 	var dJob distributedJob
+<<<<<<< HEAD
+=======
+	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
+	}
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	s.distributedJobsMu.Lock()
 	for i, job := range s.distributedJobs {
 		if job.jobKey != jobKey {
@@ -332,12 +422,16 @@ func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	}
 	s.distributedJobsMu.Unlock()
 	if dJob.jobKey == 0 {
+<<<<<<< HEAD
 		return fmt.Errorf("job with key %d was not distributed", jobKey)
 	}
 
 	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
+=======
+		return fmt.Errorf("job with key %d was not distributed for this client", jobKey)
+>>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	}
 	return nil
 }

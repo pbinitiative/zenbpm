@@ -520,7 +520,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), err)
 	}
 
-	// Now check wheter the activity ended rightaway and the process can move on or it needs to wait for external event
+	// Now check whether the activity ended right away and the process can move on or it needs to wait for external event
 	switch activityResult {
 	case runtime.ActivityStateActive:
 		currentToken.State = runtime.TokenStateWaiting

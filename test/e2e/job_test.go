@@ -63,7 +63,7 @@ func readWaitingJobs(t testing.TB, jobType string) (public.JobPartitionPage, err
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 	respBytes, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/jobs?jobType=%s", jobType)).
+		WithPath(fmt.Sprintf("/v1/jobs?jobType=%s&state=%s", jobType, public.JobStateActive)).
 		WithMethod("GET").
 		WithContext(ctx).
 		DoOk()

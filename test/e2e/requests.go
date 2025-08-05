@@ -8,11 +8,14 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster"
 )
 
 type Application struct {
 	httpAddr string
 	grpcAddr string
+	node     *cluster.ZenNode
 }
 
 type request struct {

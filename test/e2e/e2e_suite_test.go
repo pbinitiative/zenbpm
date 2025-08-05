@@ -65,6 +65,7 @@ func TestMain(m *testing.M) {
 
 	app = Application{
 		httpAddr: ln.Addr().String(),
+		node:     zenNode,
 	}
 
 	// Start ZenBpm GRPC API

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,14 +32,14 @@ func TestRestApiJob(t *testing.T) {
 
 	var jobToComplete public.Job
 	var jobsProcessInstance public.ProcessInstance
-	t.Run("activate job", func(t *testing.T) {
-		jobs, err := activateJobs(t, "input-task-1")
+	t.Run("read waiting jobs", func(t *testing.T) {
+		jobsPartitionPage, err := readWaitingJobs(t, "input-task-1")
 		assert.NoError(t, err)
-		assert.NotEmpty(t, jobs)
-		jobToComplete = jobs[0]
+		assert.NotEmpty(t, jobsPartitionPage)
+		jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
 		assert.NotEmpty(t, jobToComplete.Key)
 		assert.NotEmpty(t, jobToComplete.ProcessInstanceKey)
-		assert.Equal(t, runtime.ActivityStateActive.String(), jobToComplete.State)
+		assert.Equal(t, public.JobStateActive, jobToComplete.State)
 
 		jobsProcessInstance, err = getProcessInstance(t, jobToComplete.ProcessInstanceKey)
 		assert.NoError(t, err)
@@ -60,18 +59,18 @@ func TestRestApiJob(t *testing.T) {
 
 }
 
-func activateJobs(t testing.TB, jobType string) ([]public.Job, error) {
+func readWaitingJobs(t testing.TB, jobType string) (public.JobPartitionPage, error) {
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 	respBytes, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/jobs/%s/activate", jobType)).
-		WithMethod("POST").
+		WithPath(fmt.Sprintf("/v1/jobs?jobType=%s", jobType)).
+		WithMethod("GET").
 		WithContext(ctx).
 		DoOk()
 	if err != nil {
-		return nil, fmt.Errorf("failed to activate job: %w", err)
+		return public.JobPartitionPage{}, fmt.Errorf("failed to activate job: %w", err)
 	}
-	resp := []public.Job{}
+	resp := public.JobPartitionPage{}
 	err = json.Unmarshal(respBytes, &resp)
 	if err != nil {
 		return resp, fmt.Errorf("failed to unmarshal activated jobs: %w", err)

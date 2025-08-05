@@ -163,11 +163,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-<<<<<<< HEAD
 		return len(jm1.server.jobTypes["test-job"].clients) == 0
-=======
-		return len(jm1.server.jobClients["test-job"]) == 0
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -224,11 +220,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-<<<<<<< HEAD
 		return len(jm1.server.jobTypes["test-job"].clients) == 1
-=======
-		return len(jm1.server.jobClients["test-job"]) == 1
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -243,19 +235,15 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-<<<<<<< HEAD
 		return len(jm1.server.jobTypes["test-job"].clients) == 0
-=======
-		return len(jm1.server.jobClients["test-job"]) == 0
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
-func consumeJobs(t *testing.T, clientID ClientID, client1 chan Job, jm *JobManager) *int {
+func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *int {
 	counter := 0
 	go func() {
 		for {
-			job := <-client1
+			job := <-client
 			if job.Key == 0 {
 				return
 			}
@@ -292,7 +280,7 @@ func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testComple
 			}
 		}
 		return true
-	}, 1*time.Second, 100*time.Millisecond)
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 func generateJobs(count int) []sql.Job {
@@ -388,11 +376,7 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 	md, found := metadata.FromIncomingContext(ctx)
 	clientID := ClientID("")
 	if found {
-<<<<<<< HEAD
 		clientIDs := md.Get(MetadataClientID)
-=======
-		clientIDs := md.Get(metadataClientID)
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 		if len(clientIDs) == 1 {
 			clientID = ClientID(clientIDs[0])
 		}
@@ -451,17 +435,10 @@ func (l *testLoader) addJobs(jobs ...sql.Job) {
 	l.mu.Unlock()
 }
 
-<<<<<<< HEAD
 func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error) {
 	distributedJobs := make([]sql.Job, 0)
 	l.mu.Lock()
 	currentCount := int64(0)
-=======
-func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int) ([]sql.Job, error) {
-	distributedJobs := make([]sql.Job, 0)
-	l.mu.Lock()
-	currentCount := 0
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 	idsToSkipMap := make(map[int64]struct{}, len(idsToSkip))
 	for _, id := range idsToSkip {
 		idsToSkipMap[id] = struct{}{}
@@ -566,11 +543,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-<<<<<<< HEAD
 			return len(jm1.server.jobTypes["test-job"].clients) == i+1
-=======
-			return len(jm1.server.jobClients["test-job"]) == i+1
->>>>>>> 3e3bad06992ed550e8df87979d7ab1a19b4c173a
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)

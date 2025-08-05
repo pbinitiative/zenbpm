@@ -100,7 +100,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			vars := map[string]any{}
 			err := json.Unmarshal(req.Complete.Variables, &vars)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    0,
 						Message: fmt.Sprintf("Failed to unmarshal variables: %s", err),
@@ -113,7 +113,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.node.JobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.Key, vars)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    0,
 						Message: fmt.Sprintf("Failed to complete job: %s", err),

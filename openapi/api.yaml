@@ -214,7 +214,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /process-instances/{processInstanceKey}/jobs:
     get:
-      operationId: getJobs
+      operationId: getProcessInstanceJobs
       tags:
         - process-instances
       summary: Get list of jobs for a process instance
@@ -356,6 +356,54 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /jobs:
+    get:
+      operationId: getJobs
+      tags:
+        - jobs
+      summary: Get list of jobs on partitions
+      parameters:
+        - name: jobType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/JobState'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 10
+      responses:
+        200:
+          description: List of jobs on partitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPartitionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
     post:
       operationId: completeJob
       tags:
@@ -389,27 +437,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /jobs/{jobType}/activate:
-    post:
-      operationId: activateJobs
-      tags:
-        - jobs
-      summary: Activate jobs
-      parameters:
-        - name: jobType
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        200:
-          description: Jobs activated
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Job"
   /messages:
     post:
       operationId: publishMessage
@@ -596,6 +623,30 @@ components:
               items:
                 $ref: "#/components/schemas/Job"
         - $ref: "#/components/schemas/PageMetadata"
+    JobPartitionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - partitions
+          properties:
+            partitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartitionJobs"
+        - $ref: "#/components/schemas/PartitionedPageMetadata"
+    PartitionJobs:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
     Job:
       type: object
       required:
@@ -616,12 +667,18 @@ components:
         processInstanceKey:
           type: string
         state:
-          type: string
+          $ref: '#/components/schemas/JobState'
         createdAt:
           type: string
           format: date-time
         variables:
           type: object
+    JobState:
+      type: string
+      enum:
+        - active
+        - completed
+        - terminated
     ActivityPage:
       type: object
       allOf:

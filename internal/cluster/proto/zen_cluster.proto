@@ -52,12 +52,10 @@ service ZenService {
   
   // Deploys definition into partitions that receiving node is leader of
   rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
-  // TODO: remove ActivateJob (replaced by SubscribeJob)
-  rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
-  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -65,6 +63,7 @@ service ZenService {
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
 }
@@ -201,6 +200,7 @@ message DeployDefinitionResponse {
 message CompleteJobRequest {
   int64 key = 1;
   bytes variables = 2; // []byte of json variables 
+  string client_id = 3; 
 }
 
 message CompleteJobResponse {
@@ -300,6 +300,24 @@ message GetIncidentsRequest {
 message GetIncidentsResponse {
   optional ErrorResult error = 1;
   repeated Incident incidents = 2;
+}
+
+message GetJobsRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  optional string jobType = 4;
+  optional int64 state = 5;
+}
+
+message PartitionedJobs {
+  uint32 partition_id = 1;
+  repeated Job jobs = 2;
+}
+
+message GetJobsResponse {
+  optional ErrorResult error = 1;
+  repeated PartitionedJobs partitions = 2;
 }
 
 message ResolveIncidentRequest {

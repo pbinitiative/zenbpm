@@ -145,36 +145,6 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 	return public.CompleteJob201Response{}, nil
 }
 
-func (s *Server) ActivateJobs(ctx context.Context, request public.ActivateJobsRequestObject) (public.ActivateJobsResponseObject, error) {
-	jobs, err := s.node.ActivateJob(ctx, request.JobType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to activate jobs: %w", err)
-	}
-
-	items := make([]public.Job, 0, len(jobs))
-	for _, j := range jobs {
-		key := fmt.Sprintf("%d", j.GetKey())
-		processInstanceKey := fmt.Sprintf("%d", j.GetInstanceKey())
-		variables := map[string]any{}
-		err := json.Unmarshal(j.GetVariables(), &variables)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
-		}
-		jobSimple := public.Job{
-			Key:                key,
-			ElementId:          j.GetElementId(),
-			CreatedAt:          time.UnixMilli(j.GetCreatedAt()),
-			ProcessInstanceKey: processInstanceKey,
-			Variables:          variables,
-			State:              runtime.ActivityState(j.GetState()).String(),
-			Type:               j.GetType(),
-		}
-		items = append(items, jobSimple)
-	}
-
-	return public.ActivateJobs200JSONResponse(items), nil
-}
-
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
 	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
 	if err != nil {
@@ -415,17 +385,17 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	}), nil
 }
 
-func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
+func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetProcessInstanceJobsRequestObject) (public.GetProcessInstanceJobsResponseObject, error) {
 	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
 	if err != nil {
-		return public.GetJobs400JSONResponse{
+		return public.GetProcessInstanceJobs400JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
 	jobs, err := s.node.GetProcessInstanceJobs(ctx, instanceKey)
 	if err != nil {
-		return public.GetJobs502JSONResponse{
+		return public.GetProcessInstanceJobs502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
@@ -435,7 +405,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		vars := map[string]any{}
 		err := json.Unmarshal(job.Variables, &vars)
 		if err != nil {
-			return public.GetJobs500JSONResponse{
+			return public.GetProcessInstanceJobs500JSONResponse{
 				Code:    "TODO",
 				Message: err.Error(),
 			}, nil
@@ -445,13 +415,13 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			ElementId:          job.ElementId,
 			Key:                fmt.Sprintf("%d", job.Key),
 			ProcessInstanceKey: fmt.Sprintf("%d", job.ProcessInstanceKey),
-			State:              runtime.ActivityState(job.State).String(),
+			State:              getRestJobState(runtime.ActivityState(job.State)),
 			Type:               job.Type,
 			Variables:          vars,
 		}
 
 	}
-	return public.GetJobs200JSONResponse{
+	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
 			Count:  len(resp),
@@ -459,6 +429,90 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			Size:   len(resp),
 		},
 	}, nil
+}
+
+func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
+	page := int32(1)
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	size := int32(10)
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	var reqState *runtime.ActivityState
+	if request.Params.State != nil {
+		switch *request.Params.State {
+		case public.JobStateActive:
+			reqState = ptr.To(runtime.ActivityStateActive)
+		case public.JobStateCompleted:
+			reqState = ptr.To(runtime.ActivityStateCompleted)
+		case public.JobStateTerminated:
+			reqState = ptr.To(runtime.ActivityStateActive)
+		default:
+			panic("unexpected public.JobState")
+		}
+	}
+	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState)
+	if err != nil {
+		return public.GetJobs500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobsPage := public.GetJobs200JSONResponse{
+		Partitions: make([]public.PartitionJobs, len(jobs)),
+		PartitionedPageMetadata: public.PartitionedPageMetadata{
+			Page: int(page),
+			Size: int(size),
+		},
+	}
+
+	count := 0
+	for i, partitionJobs := range jobs {
+		jobsPage.Partitions[i] = public.PartitionJobs{
+			Items:     make([]public.Job, len(partitionJobs.Jobs)),
+			Partition: int(partitionJobs.PartitionId),
+		}
+		count += len(partitionJobs.Jobs)
+		for k, job := range partitionJobs.Jobs {
+			vars := map[string]any{}
+			err = json.Unmarshal(job.Variables, &vars)
+			if err != nil {
+				return public.GetJobs500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+
+			jobsPage.Partitions[i].Items[k] = public.Job{
+				CreatedAt:          time.UnixMilli(job.CreatedAt),
+				Key:                fmt.Sprintf("%d", job.Key),
+				State:              getRestJobState(runtime.ActivityState(job.State)),
+				Variables:          vars,
+				ElementId:          job.ElementId,
+				ProcessInstanceKey: fmt.Sprintf("%d", job.ProcessInstanceKey),
+				Type:               job.Type,
+			}
+		}
+	}
+	jobsPage.Count = count
+	return jobsPage, nil
+}
+
+func getRestJobState(state runtime.ActivityState) public.JobState {
+	switch state {
+	case runtime.ActivityStateActive:
+		return public.JobStateActive
+	case runtime.ActivityStateCompleted:
+		return public.JobStateCompleted
+	case runtime.ActivityStateTerminated:
+		return public.JobStateTerminated
+	default:
+		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+	}
 }
 
 func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {

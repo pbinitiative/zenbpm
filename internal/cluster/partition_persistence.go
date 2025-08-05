@@ -6,10 +6,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
-	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"strings"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 
 	ssql "database/sql"
 
@@ -200,6 +201,11 @@ func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*p
 	if resultsErr != nil {
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
 		return nil, resultsErr
+	}
+	if len(results) == 1 && results[0].Error != "" {
+		err := fmt.Errorf("error executing SQL statement %s %+v: %s", query, parameters, results[0].Error)
+		rq.logger.Error(err.Error())
+		return nil, err
 	}
 	return results, nil
 }

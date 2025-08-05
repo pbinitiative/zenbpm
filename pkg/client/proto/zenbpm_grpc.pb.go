@@ -7,7 +7,10 @@
 package proto
 
 import (
+	context "context"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -15,10 +18,15 @@ import (
 // Requires gRPC-Go v1.64.0 or later.
 const _ = grpc.SupportPackageIsVersion9
 
+const (
+	ZenBpm_JobStream_FullMethodName = "/grpc.ZenBpm/JobStream"
+)
+
 // ZenBpmClient is the client API for ZenBpm service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ZenBpmClient interface {
+	JobStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JobStreamRequest, JobStreamResponse], error)
 }
 
 type zenBpmClient struct {
@@ -29,10 +37,24 @@ func NewZenBpmClient(cc grpc.ClientConnInterface) ZenBpmClient {
 	return &zenBpmClient{cc}
 }
 
+func (c *zenBpmClient) JobStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JobStreamRequest, JobStreamResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ZenBpm_ServiceDesc.Streams[0], ZenBpm_JobStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[JobStreamRequest, JobStreamResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenBpm_JobStreamClient = grpc.BidiStreamingClient[JobStreamRequest, JobStreamResponse]
+
 // ZenBpmServer is the server API for ZenBpm service.
 // All implementations must embed UnimplementedZenBpmServer
 // for forward compatibility.
 type ZenBpmServer interface {
+	JobStream(grpc.BidiStreamingServer[JobStreamRequest, JobStreamResponse]) error
 	mustEmbedUnimplementedZenBpmServer()
 }
 
@@ -43,6 +65,9 @@ type ZenBpmServer interface {
 // pointer dereference when methods are called.
 type UnimplementedZenBpmServer struct{}
 
+func (UnimplementedZenBpmServer) JobStream(grpc.BidiStreamingServer[JobStreamRequest, JobStreamResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method JobStream not implemented")
+}
 func (UnimplementedZenBpmServer) mustEmbedUnimplementedZenBpmServer() {}
 func (UnimplementedZenBpmServer) testEmbeddedByValue()                {}
 
@@ -64,6 +89,13 @@ func RegisterZenBpmServer(s grpc.ServiceRegistrar, srv ZenBpmServer) {
 	s.RegisterService(&ZenBpm_ServiceDesc, srv)
 }
 
+func _ZenBpm_JobStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ZenBpmServer).JobStream(&grpc.GenericServerStream[JobStreamRequest, JobStreamResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ZenBpm_JobStreamServer = grpc.BidiStreamingServer[JobStreamRequest, JobStreamResponse]
+
 // ZenBpm_ServiceDesc is the grpc.ServiceDesc for ZenBpm service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -71,6 +103,13 @@ var ZenBpm_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "grpc.ZenBpm",
 	HandlerType: (*ZenBpmServer)(nil),
 	Methods:     []grpc.MethodDesc{},
-	Streams:     []grpc.StreamDesc{},
-	Metadata:    "zenbpm.proto",
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "JobStream",
+			Handler:       _ZenBpm_JobStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "zenbpm.proto",
 }

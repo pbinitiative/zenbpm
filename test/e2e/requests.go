@@ -8,10 +8,14 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster"
 )
 
 type Application struct {
-	addr string
+	httpAddr string
+	grpcAddr string
+	node     *cluster.ZenNode
 }
 
 type request struct {
@@ -31,7 +35,7 @@ func (app *Application) NewRequest(t testing.TB) *request {
 		ctx:         nil,
 		method:      "GET",
 		path:        "",
-		addr:        app.addr,
+		addr:        app.httpAddr,
 		requestBody: nil,
 		headers:     map[string][]string{},
 		transport:   &http.Transport{},

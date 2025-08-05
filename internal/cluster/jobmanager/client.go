@@ -30,6 +30,7 @@ type clientNodeStream struct {
 }
 
 type jobClient struct {
+	// TODO: add mechanism to handle max_active_jobs and lock_duration
 	clientSubs map[ClientID]*clientSub
 	clientMu   *sync.RWMutex
 
@@ -97,7 +98,7 @@ func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint
 		return
 	}
 	md := metadata.New(map[string]string{
-		metadataNodeId: string(c.nodeID),
+		MetadataNodeID: string(c.nodeID),
 	})
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	stream, err := lClient.SubscribeJob(ctx)
@@ -158,6 +159,7 @@ func (c *jobClient) sendJobToClient(job Job) {
 	pickedClient := c.clientSubs[job.ClientID]
 	if pickedClient == nil {
 		// TODO send msg to server to free the job
+		c.clientMu.RUnlock()
 		return
 	}
 	if pickedClient.ctx.Err() != nil {
@@ -206,8 +208,6 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	defer c.clientMu.Unlock()
 	sub, subFound := c.clientSubs[clientID]
 	if subFound {
-		delete(c.clientSubs, clientID)
-		close(sub.ch)
 		err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL,
 			ClientId: string(clientID),
@@ -215,6 +215,8 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 		if err != nil {
 			c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
 		}
+		delete(c.clientSubs, clientID)
+		close(sub.ch)
 	}
 }
 
@@ -231,10 +233,10 @@ func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType Jo
 }
 
 func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
-	partitionId := zenflake.GetPartitionId(jobKey)
-	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
+	partitionID := zenflake.GetPartitionId(jobKey)
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionID)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionId, err)
+		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionID, err)
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
@@ -243,6 +245,7 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	_, err = lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
 		Key:       jobKey,
 		Variables: vars,
+		ClientId:  string(clientID),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d from client: %w", jobKey, err)

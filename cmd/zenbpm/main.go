@@ -41,7 +41,7 @@ func main() {
 	svr.Start()
 
 	// Start ZenBpm GRPC API
-	grpcSrv := grpc.NewServer(zenNode, conf.GrpcServer.Addr)
+	grpcSrv := grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
 	grpcSrv.Start()
 
 	appStop := make(chan os.Signal, 2)

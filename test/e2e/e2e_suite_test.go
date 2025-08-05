@@ -64,12 +64,14 @@ func TestMain(m *testing.M) {
 	ln := svr.Start()
 
 	app = Application{
-		addr: ln.Addr().String(),
+		httpAddr: ln.Addr().String(),
+		node:     zenNode,
 	}
 
 	// Start ZenBpm GRPC API
-	grpcSrv := grpc.NewServer(zenNode, conf.GrpcServer.Addr)
+	grpcSrv := grpc.NewServer(appContext, zenNode, conf.GrpcServer.Addr)
 	grpcSrv.Start()
+	app.grpcAddr = conf.GrpcServer.Addr
 
 	// wait until node is ready
 	timeout := time.Now().Add(30 * time.Second)

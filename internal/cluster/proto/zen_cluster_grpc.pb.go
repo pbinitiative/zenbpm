@@ -36,17 +36,17 @@ const (
 	ZenService_PartitionRestore_FullMethodName          = "/cluster.ZenService/PartitionRestore"
 	ZenService_NodeCommand_FullMethodName               = "/cluster.ZenService/NodeCommand"
 	ZenService_DeployDefinition_FullMethodName          = "/cluster.ZenService/DeployDefinition"
-	ZenService_ActivateJob_FullMethodName               = "/cluster.ZenService/ActivateJob"
-	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
 	ZenService_PublishMessage_FullMethodName            = "/cluster.ZenService/PublishMessage"
 	ZenService_CreateInstance_FullMethodName            = "/cluster.ZenService/CreateInstance"
 	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
+	ZenService_GetJobs_FullMethodName                   = "/cluster.ZenService/GetJobs"
 	ZenService_GetProcessInstance_FullMethodName        = "/cluster.ZenService/GetProcessInstance"
 	ZenService_GetProcessInstanceJobs_FullMethodName    = "/cluster.ZenService/GetProcessInstanceJobs"
 	ZenService_GetFlowElementHistory_FullMethodName     = "/cluster.ZenService/GetFlowElementHistory"
 	ZenService_GetIncidents_FullMethodName              = "/cluster.ZenService/GetIncidents"
 	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
 	ZenService_SubscribeJob_FullMethodName              = "/cluster.ZenService/SubscribeJob"
+	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
 	ZenService_ReassignJob_FullMethodName               = "/cluster.ZenService/ReassignJob"
 )
 
@@ -83,11 +83,10 @@ type ZenServiceClient interface {
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(ctx context.Context, in *DeployDefinitionRequest, opts ...grpc.CallOption) (*DeployDefinitionResponse, error)
-	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
-	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
+	GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error)
 	GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error)
@@ -95,6 +94,7 @@ type ZenServiceClient interface {
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
 	// Subscribes client to receive jobs of type
 	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
+	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 }
@@ -267,35 +267,6 @@ func (c *zenServiceClient) DeployDefinition(ctx context.Context, in *DeployDefin
 	return out, nil
 }
 
-func (c *zenServiceClient) ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_ActivateJob_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ActivateJobRequest, ActivateJobResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ZenService_ActivateJobClient = grpc.ServerStreamingClient[ActivateJobResponse]
-
-func (c *zenServiceClient) CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CompleteJobResponse)
-	err := c.cc.Invoke(ctx, ZenService_CompleteJob_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *zenServiceClient) PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PublishMessageResponse)
@@ -320,6 +291,16 @@ func (c *zenServiceClient) GetProcessInstances(ctx context.Context, in *GetProce
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProcessInstancesResponse)
 	err := c.cc.Invoke(ctx, ZenService_GetProcessInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetJobsResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetJobs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +359,7 @@ func (c *zenServiceClient) ResolveIncident(ctx context.Context, in *ResolveIncid
 
 func (c *zenServiceClient) SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[1], ZenService_SubscribeJob_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ZenService_ServiceDesc.Streams[0], ZenService_SubscribeJob_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -388,6 +369,16 @@ func (c *zenServiceClient) SubscribeJob(ctx context.Context, opts ...grpc.CallOp
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ZenService_SubscribeJobClient = grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse]
+
+func (c *zenServiceClient) CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteJobResponse)
+	err := c.cc.Invoke(ctx, ZenService_CompleteJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *zenServiceClient) ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -432,11 +423,10 @@ type ZenServiceServer interface {
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
 	// Deploys definition into partitions that receiving node is leader of
 	DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error)
-	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
-	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
+	GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error)
 	GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error)
@@ -444,6 +434,7 @@ type ZenServiceServer interface {
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
 	// Subscribes client to receive jobs of type
 	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
+	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
@@ -504,12 +495,6 @@ func (UnimplementedZenServiceServer) NodeCommand(context.Context, *proto.Command
 func (UnimplementedZenServiceServer) DeployDefinition(context.Context, *DeployDefinitionRequest) (*DeployDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeployDefinition not implemented")
 }
-func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method ActivateJob not implemented")
-}
-func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CompleteJob not implemented")
-}
 func (UnimplementedZenServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
 }
@@ -518,6 +503,9 @@ func (UnimplementedZenServiceServer) CreateInstance(context.Context, *CreateInst
 }
 func (UnimplementedZenServiceServer) GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstances not implemented")
+}
+func (UnimplementedZenServiceServer) GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetJobs not implemented")
 }
 func (UnimplementedZenServiceServer) GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstance not implemented")
@@ -536,6 +524,9 @@ func (UnimplementedZenServiceServer) ResolveIncident(context.Context, *ResolveIn
 }
 func (UnimplementedZenServiceServer) SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeJob not implemented")
+}
+func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompleteJob not implemented")
 }
 func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReassignJob not implemented")
@@ -849,35 +840,6 @@ func _ZenService_DeployDefinition_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_ActivateJob_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ActivateJobRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ZenServiceServer).ActivateJob(m, &grpc.GenericServerStream[ActivateJobRequest, ActivateJobResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ZenService_ActivateJobServer = grpc.ServerStreamingServer[ActivateJobResponse]
-
-func _ZenService_CompleteJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CompleteJobRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ZenServiceServer).CompleteJob(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ZenService_CompleteJob_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).CompleteJob(ctx, req.(*CompleteJobRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ZenService_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PublishMessageRequest)
 	if err := dec(in); err != nil {
@@ -928,6 +890,24 @@ func _ZenService_GetProcessInstances_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).GetProcessInstances(ctx, req.(*GetProcessInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetJobs(ctx, req.(*GetJobsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1029,6 +1009,24 @@ func _ZenService_SubscribeJob_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ZenService_SubscribeJobServer = grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]
 
+func _ZenService_CompleteJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).CompleteJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_CompleteJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).CompleteJob(ctx, req.(*CompleteJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_ReassignJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReassignJobRequest)
 	if err := dec(in); err != nil {
@@ -1119,10 +1117,6 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_DeployDefinition_Handler,
 		},
 		{
-			MethodName: "CompleteJob",
-			Handler:    _ZenService_CompleteJob_Handler,
-		},
-		{
 			MethodName: "PublishMessage",
 			Handler:    _ZenService_PublishMessage_Handler,
 		},
@@ -1133,6 +1127,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessInstances",
 			Handler:    _ZenService_GetProcessInstances_Handler,
+		},
+		{
+			MethodName: "GetJobs",
+			Handler:    _ZenService_GetJobs_Handler,
 		},
 		{
 			MethodName: "GetProcessInstance",
@@ -1155,16 +1153,15 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_ResolveIncident_Handler,
 		},
 		{
+			MethodName: "CompleteJob",
+			Handler:    _ZenService_CompleteJob_Handler,
+		},
+		{
 			MethodName: "ReassignJob",
 			Handler:    _ZenService_ReassignJob_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "ActivateJob",
-			Handler:       _ZenService_ActivateJob_Handler,
-			ServerStreams: true,
-		},
 		{
 			StreamName:    "SubscribeJob",
 			Handler:       _ZenService_SubscribeJob_Handler,

@@ -55,6 +55,7 @@ service ZenService {
   // TODO: remove ActivateJob (replaced by SubscribeJob)
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  rpc FailJob(FailJobRequest) returns (FailJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
@@ -203,7 +204,18 @@ message CompleteJobRequest {
   bytes variables = 2; // []byte of json variables 
 }
 
+
 message CompleteJobResponse {
+  optional ErrorResult error = 1;
+}
+message FailJobRequest {
+  int64 key = 1;
+  string message = 2;
+  optional string error_code = 3;
+  optional bytes variables = 4;
+}
+
+message FailJobResponse {
   optional ErrorResult error = 1;
 }
 

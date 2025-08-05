@@ -38,6 +38,7 @@ const (
 	ZenService_DeployDefinition_FullMethodName          = "/cluster.ZenService/DeployDefinition"
 	ZenService_ActivateJob_FullMethodName               = "/cluster.ZenService/ActivateJob"
 	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
+	ZenService_FailJob_FullMethodName                   = "/cluster.ZenService/FailJob"
 	ZenService_PublishMessage_FullMethodName            = "/cluster.ZenService/PublishMessage"
 	ZenService_CreateInstance_FullMethodName            = "/cluster.ZenService/CreateInstance"
 	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
@@ -86,6 +87,7 @@ type ZenServiceClient interface {
 	// TODO: remove ActivateJob (replaced by SubscribeJob)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
+	FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error)
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
@@ -297,6 +299,16 @@ func (c *zenServiceClient) CompleteJob(ctx context.Context, in *CompleteJobReque
 	return out, nil
 }
 
+func (c *zenServiceClient) FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FailJobResponse)
+	err := c.cc.Invoke(ctx, ZenService_FailJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PublishMessageResponse)
@@ -436,6 +448,7 @@ type ZenServiceServer interface {
 	// TODO: remove ActivateJob (replaced by SubscribeJob)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
+	FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error)
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
@@ -511,6 +524,9 @@ func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.Serve
 }
 func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CompleteJob not implemented")
+}
+func (UnimplementedZenServiceServer) FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FailJob not implemented")
 }
 func (UnimplementedZenServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
@@ -880,6 +896,24 @@ func _ZenService_CompleteJob_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_FailJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FailJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).FailJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_FailJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).FailJob(ctx, req.(*FailJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PublishMessageRequest)
 	if err := dec(in); err != nil {
@@ -1123,6 +1157,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CompleteJob",
 			Handler:    _ZenService_CompleteJob_Handler,
+		},
+		{
+			MethodName: "FailJob",
+			Handler:    _ZenService_FailJob_Handler,
 		},
 		{
 			MethodName: "PublishMessage",

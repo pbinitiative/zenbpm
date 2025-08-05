@@ -162,6 +162,64 @@ func (engine *Engine) completeJob(
 	return instance, tokens, nil
 }
 
+func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+	instance, tokens, err := engine.failJob(ctx, jobKey, message, errorCode, variables)
+	if err != nil {
+		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
+	}
+
+	if len(tokens) > 0 {
+		err = engine.runProcessInstance(ctx, instance, tokens)
+		if err != nil {
+			return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
+		}
+		return nil
+	}
+	return nil
+}
+
+func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) (
+	instance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
+	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
+	defer func() {
+		if retErr != nil {
+			failJobSpan.RecordError(retErr)
+			failJobSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		failJobSpan.End()
+	}()
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	if job.State == runtime.ActivityStateFailed {
+		return nil, nil, newEngineErrorf("job %d is already failed", jobKey)
+	}
+	failJobSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, job.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
+	)
+
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+	}
+	instance = &inst
+
+	engine.handleIncident(ctx, job.Token, newEngineErrorf(""), failJobSpan)
+
+	if errorCode != nil {
+		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow
+		return instance, []runtime.ExecutionToken{}, nil
+	} else {
+		return instance, []runtime.ExecutionToken{}, nil
+	}
+}
+
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {
 	jobs, err := engine.persistence.FindActiveJobsByType(ctx, jobType)
 	if err != nil {

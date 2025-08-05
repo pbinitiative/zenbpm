@@ -21,7 +21,7 @@ import (
 )
 
 func TestGrpcJobStream(t *testing.T) {
-	t.SkipNow()
+	// t.SkipNow()
 	var instance public.ProcessInstance
 	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
 	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, randomID)
@@ -43,6 +43,45 @@ func TestGrpcJobStream(t *testing.T) {
 		return map[string]any{
 			"testVar": 456,
 		}, nil
+	}, randomID)
+	assert.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		jobs, err := getProcessInstanceJobs(t, instance.Key)
+		fmt.Println("instance jobs", jobs)
+		if err != nil {
+			return false
+		}
+		if len(jobs) != 0 {
+			return false
+		}
+		return true
+	}, 10*time.Second, 1*time.Second, "Process instance should have all jobs completed")
+}
+
+func TestGrpcJobStreamFailjob(t *testing.T) {
+	// t.SkipNow()
+	var instance public.ProcessInstance
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, randomID)
+	assert.NoError(t, err)
+	instance, err = createProcessInstance(t, definition.ProcessDefinitionKey, map[string]any{
+		"testVar": 123,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, instance.Key)
+
+	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	fmt.Println("conn", conn.GetState())
+	assert.NoError(t, err)
+	zenClient := client.NewGrpc(conn)
+
+	fmt.Println("registering worker")
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, error) {
+		assert.Equal(t, randomID, job.Type)
+		return map[string]any{
+			"testVar": 456,
+		}, fmt.Errorf("Testing failed job")
 	}, randomID)
 	assert.NoError(t, err)
 

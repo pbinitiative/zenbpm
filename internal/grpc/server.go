@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
@@ -74,6 +75,9 @@ func (s *Server) Stop() {
 
 func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse]) error {
 	clientID := getClientID(stream.Context())
+	if (clientID) == "" {
+		clientID = jobmanager.ClientID(uuid.New().String())
+	}
 	clientCh := make(chan jobmanager.Job)
 	err := s.node.JobManager.AddClient(stream.Context(), clientID, clientCh)
 	if err != nil {

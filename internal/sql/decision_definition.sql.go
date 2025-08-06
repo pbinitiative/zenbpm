@@ -9,6 +9,45 @@ import (
 	"context"
 )
 
+const findAllDecisionDefinitions = `-- name: FindAllDecisionDefinitions :many
+SELECT
+    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+FROM
+    decision_definition
+ORDER BY
+    version DESC
+`
+
+func (q *Queries) FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findAllDecisionDefinitions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DecisionDefinition{}
+	for rows.Next() {
+		var i DecisionDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.DmnID,
+			&i.DmnData,
+			&i.DmnChecksum,
+			&i.DmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findDecisionDefinitionByKey = `-- name: FindDecisionDefinitionByKey :one
 SELECT
     "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name

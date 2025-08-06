@@ -30,3 +30,11 @@ WHERE
     dmn_id = @dmn_id
 ORDER BY
     version desc;
+
+-- name: FindAllDecisionDefinitions :many
+SELECT
+    *
+FROM
+    decision_definition
+ORDER BY
+    version DESC;

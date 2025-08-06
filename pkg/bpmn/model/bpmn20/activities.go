@@ -1,11 +1,15 @@
 package bpmn20
 
-import "github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
+import (
+	"encoding/xml"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
+)
 
 const (
 	ElementTypeServiceTask  ElementType = "SERVICE_TASK"
 	ElementTypeUserTask     ElementType = "USER_TASK"
 	ElementTypeSequenceFlow ElementType = "SEQUENCE_FLOW"
+	ElementBusinessRuleTask ElementType = "BUSINESS_RULE_TASK"
 )
 
 type Activity interface {
@@ -69,12 +73,53 @@ type TServiceTask struct {
 func (serviceTask TServiceTask) GetType() ElementType { return ElementTypeServiceTask }
 
 type TBusinessRuleTask struct {
-	TExternallyProcessedTask
-	OperationRef   string `xml:"operationRef,attr"`
-	Implementation string `xml:"implementation,attr"`
+	TTask
+	Implementation TBusinessRuleTaskImplementation
 }
 
-func (businessRuleTask TBusinessRuleTask) GetType() ElementType { return ElementTypeServiceTask }
+func (businessRuleTask *TBusinessRuleTask) GetType() ElementType { return ElementBusinessRuleTask }
+
+func (businessRuleTask *TBusinessRuleTask) GetTaskType() string {
+	return businessRuleTask.Implementation.(TBusinessRuleTaskExternal).TaskDefinition.TypeName
+}
+
+// TODO: implement data quality checks
+func (businessRuleTask *TBusinessRuleTask) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	tempStruct := struct {
+		TBusinessRuleTaskLocal
+		TBusinessRuleTaskExternal
+		TTask
+	}{}
+	err := d.DecodeElement(&tempStruct, &start)
+	if err != nil {
+		return err
+	}
+	businessRuleTask.TTask = tempStruct.TTask
+	switch {
+	case tempStruct.TBusinessRuleTaskLocal.CalledDecision.DecisionId != "":
+		businessRuleTask.Implementation = &tempStruct.TBusinessRuleTaskLocal
+	case tempStruct.TBusinessRuleTaskExternal.TaskDefinition.TypeName != "":
+		businessRuleTask.Implementation = &tempStruct.TBusinessRuleTaskExternal
+	}
+	return nil
+}
+
+type TBusinessRuleTaskImplementation interface {
+	businessRuleTaskImplementation()
+}
+
+type TBusinessRuleTaskLocal struct {
+	CalledDecision extensions.TCalledDecision `xml:"extensionElements>calledDecision"`
+}
+
+func (d TBusinessRuleTaskLocal) businessRuleTaskImplementation() {}
+
+type TBusinessRuleTaskExternal struct {
+	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Headers        extensions.THeader         `xml:"extensionElements>taskHeaders"`
+}
+
+func (d TBusinessRuleTaskExternal) businessRuleTaskImplementation() {}
 
 type TSendTask struct {
 	TExternallyProcessedTask

@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS migration(
     name TEXT NOT NULL,
-    ran_at INTEGER NOT NULL 
+    ran_at INTEGER NOT NULL
 );
 
 -- table that holds information about all the process instances
@@ -104,10 +104,21 @@ CREATE TABLE IF NOT EXISTS incident(
 CREATE TABLE IF NOT EXISTS decision_definition(
     key INTEGER PRIMARY KEY, -- int64 id of the decision definition
     version INTEGER NOT NULL, -- int64 version of the decision definition
-    dmn_id TEXT NOT NULL, -- id of the decision from xml definition
+    dmn_id TEXT NOT NULL, -- id of the decision definition from xml definition
     dmn_data TEXT NOT NULL, -- string of the decision definition
     dmn_checksum BLOB NOT NULL, -- md5 checksum of the decision definition
     dmn_resource_name TEXT NOT NULL -- resource name from deployment
+);
+
+-- table that holds information about all the decision
+CREATE TABLE IF NOT EXISTS decision(
+    key INTEGER PRIMARY KEY, -- int64 id of the decision
+    version INTEGER NOT NULL, -- int64 version of the decision
+    decision_id TEXT NOT NULL, -- id of the decision from xml
+    version_tag TEXT NOT NULL, -- string version tag of the decision (user defined)
+    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml definition
+    decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
+    FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key) -- reference to decision definition
 );
 
 -- TODO: create a table for dumb activities like gateway/...

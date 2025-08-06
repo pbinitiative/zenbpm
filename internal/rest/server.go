@@ -109,12 +109,180 @@ func getKeyFromString(s string) (int64, error) {
 	return key, nil
 }
 
+func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetDecisionDefinitionsRequestObject) (public.GetDecisionDefinitionsResponseObject, error) {
+	definitions, err := s.node.GetDecisionDefinitions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]public.DecisionDefinitionSimple, 0)
+	result := public.DecisionDefinitionsPage{
+		Items: items,
+	}
+	for _, p := range definitions {
+		processDefinitionSimple := public.DecisionDefinitionSimple{
+			Key:                  fmt.Sprintf("%x", p.Key),
+			Version:              int(p.Version),
+			DecisionDefinitionId: p.DecisionDefinitionId,
+		}
+		items = append(items, processDefinitionSimple)
+	}
+	result.Items = items
+	total := len(items)
+	result.Count = total
+	result.Offset = 0
+	result.Size = len(definitions)
+
+	return public.GetDecisionDefinitions200JSONResponse(result), nil
+}
+
+func (s *Server) GetDecisionDefinition(ctx context.Context, request public.GetDecisionDefinitionRequestObject) (public.GetDecisionDefinitionResponseObject, error) {
+	key, err := getKeyFromString(request.DecisionDefinitionKey)
+	if err != nil {
+		return public.GetDecisionDefinition400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	definition, err := s.node.GetDecisionDefinition(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return public.GetDecisionDefinition200JSONResponse{
+		DecisionDefinitionSimple: public.DecisionDefinitionSimple{
+			DecisionDefinitionId: definition.DecisionDefinitionId,
+			Key:                  fmt.Sprintf("%x", definition.Key),
+			Version:              int(definition.Version),
+		},
+		DmnData: ptr.To(string(definition.Definition)),
+	}, nil
+}
+
+func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.CreateDecisionDefinitionRequestObject) (public.CreateDecisionDefinitionResponseObject, error) {
+	data, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
+	if err != nil {
+		return public.CreateDecisionDefinition502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.CreateDecisionDefinition200JSONResponse{
+		DecisionDefinitionKey: fmt.Sprintf("%x", key),
+	}, nil
+}
+
+func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
+	result, err := s.node.EvaluateDecision(
+		ctx,
+		string(request.Body.BindingType),
+		request.Body.DecisionId,
+		request.Body.VersionTag,
+		request.Body.Variables,
+	)
+	if err != nil {
+		return public.EvaluateDecision500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	
+	//TODO: split into mapper methods
+	decisionOutput := make(map[string]any)
+	err = json.Unmarshal(result.DecisionOutput, &decisionOutput)
+	if err != nil {
+		return public.EvaluateDecision500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	evaluatedDecisions := make([]public.EvaluatedDecisionResult, 0)
+	for _, evaluatedDecision := range result.EvaluatedDecisions {
+
+		matchedRules := make([]public.EvaluatedDecisionRule, 0)
+		for _, matchedRule := range evaluatedDecision.MatchedRules {
+
+			evaluatedOutputs := make([]public.EvaluatedDecisionOutput, 0)
+			for _, evaluatedOutput := range matchedRule.EvaluatedOutputs {
+				resultEvaluatedOutput := public.EvaluatedDecisionOutput{
+					OutputId:    evaluatedOutput.OutputId,
+					OutputName:  evaluatedOutput.OutputName,
+					OutputValue: make(map[string]any),
+				}
+				err = json.Unmarshal(evaluatedOutput.OutputValue, &resultEvaluatedOutput.OutputValue)
+				if err != nil {
+					return public.EvaluateDecision500JSONResponse{
+						Code:    "TODO",
+						Message: err.Error(),
+					}, nil
+				}
+				evaluatedOutputs = append(evaluatedOutputs, resultEvaluatedOutput)
+			}
+
+			resultMatchedRule := public.EvaluatedDecisionRule{
+				RuleId:           matchedRule.RuleId,
+				RuleIndex:        int(matchedRule.RuleIndex),
+				EvaluatedOutputs: evaluatedOutputs,
+			}
+			matchedRules = append(matchedRules, resultMatchedRule)
+		}
+
+		resultDecisionOutput := make(map[string]any)
+		err = json.Unmarshal(result.DecisionOutput, &resultDecisionOutput)
+		if err != nil {
+			return public.EvaluateDecision500JSONResponse{
+				Code:    "TODO",
+				Message: err.Error(),
+			}, nil
+		}
+
+		evaluatedInputs := make([]public.EvaluatedDecisionInput, 0)
+		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
+			resultEvaluatedInput := public.EvaluatedDecisionInput{
+				InputId:         evaluatedInput.InputId,
+				InputName:       evaluatedInput.InputName,
+				InputExpression: evaluatedInput.InputExpression,
+				InputValue:      make(map[string]any),
+			}
+			err = json.Unmarshal(evaluatedInput.InputValue, &resultEvaluatedInput.InputValue)
+			if err != nil {
+				return public.EvaluateDecision500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			evaluatedInputs = append(evaluatedInputs, resultEvaluatedInput)
+		}
+
+		evaluatedDecisions = append(evaluatedDecisions, public.EvaluatedDecisionResult{
+			DecisionId:                evaluatedDecision.DecisionId,
+			DecisionName:              evaluatedDecision.DecisionName,
+			DecisionType:              evaluatedDecision.DecisionType,
+			DecisionDefinitionVersion: int(evaluatedDecision.DecisionDefinitionVersion),
+			DecisionDefinitionKey:     fmt.Sprintf("%x", evaluatedDecision.DecisionDefinitionKey),
+			DecisionDefinitionId:      evaluatedDecision.DecisionDefinitionId,
+			MatchedRules:              matchedRules,
+			DecisionOutput:            resultDecisionOutput,
+			EvaluatedInputs:           evaluatedInputs,
+		})
+	}
+
+	return public.EvaluateDecision200JSONResponse{
+		DecisionOutput:     decisionOutput,
+		EvaluatedDecisions: evaluatedDecisions,
+	}, nil
+}
+
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
 	data, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, err
 	}
-	key, err := s.node.DeployDefinitionToAllPartitions(ctx, data)
+	key, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		return public.CreateProcessDefinition502JSONResponse{
 			Code:    "TODO",

@@ -58,10 +58,10 @@ func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.H
 func evaluateCollectOutput(matchedRules []EvaluatedRule) interface{} {
 	result := make([]interface{}, len(matchedRules))
 	for i, rule := range matchedRules {
-		if len(rule.evaluatedOutputs) > 1 {
+		if len(rule.EvaluatedOutputs) > 1 {
 			result[i] = ruleOutputToMap(rule)
 		} else {
-			result[i] = rule.evaluatedOutputs[0].outputValue
+			result[i] = rule.EvaluatedOutputs[0].OutputValue
 		}
 	}
 
@@ -87,10 +87,10 @@ func evaluateCollectCountOutput(matchedRules []EvaluatedRule) interface{} {
 func evaluateFirstOutput(matchedRules []EvaluatedRule) interface{} {
 	if len(matchedRules) > 0 {
 		rule := matchedRules[0]
-		if len(rule.evaluatedOutputs) > 1 {
+		if len(rule.EvaluatedOutputs) > 1 {
 			return ruleOutputToMap(rule)
 		} else {
-			return rule.evaluatedOutputs[0].outputValue
+			return rule.EvaluatedOutputs[0].OutputValue
 		}
 	}
 	return nil
@@ -121,8 +121,8 @@ func evaluateUniqueOutput(matchedRules []EvaluatedRule) interface{} {
 
 func ruleOutputToMap(rule EvaluatedRule) map[string]interface{} {
 	outputMap := make(map[string]interface{})
-	for _, evaluatedOutput := range rule.evaluatedOutputs {
-		outputMap[evaluatedOutput.outputJsonName] = evaluatedOutput.outputValue
+	for _, evaluatedOutput := range rule.EvaluatedOutputs {
+		outputMap[evaluatedOutput.OutputJsonName] = evaluatedOutput.OutputValue
 	}
 
 	return outputMap

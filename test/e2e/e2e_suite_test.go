@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -47,7 +47,7 @@ func TestMain(m *testing.M) {
 	log.Init()
 	appContext, ctxCancel := context.WithCancel(context.Background())
 	conf := config.InitConfig()
-	tempDir := path.Join(os.TempDir(), fmt.Sprintf("zenbpm-e2e-test-%d", rand.Int()))
+	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("zenbpm-e2e-test-%d", rand.Int()))
 	conf.Cluster.Raft.Dir = tempDir
 	openTelemetry, err := otel.SetupOtel(conf.Tracing)
 	if err != nil {

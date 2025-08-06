@@ -41,7 +41,11 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestTokenStorageReader,
 		st.TestTokenStorageWriter,
 		st.TestDecisionDefinitionStorageWriter,
-		st.TestDecisionDefinitionStorageReader,
+		st.TestDecisionDefinitionStorageReaderGetSingle,
+		st.TestDecisionDefinitionStorageReaderGetMultiple,
+		st.TestDecisionStorageWriter,
+		st.TestDecisionStorageReaderGetSingle,
+		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementHistoryWriter,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
@@ -80,6 +84,17 @@ func getDecisionDefinition(r int64) dmnruntime.DecisionDefinition {
 		DmnData:         []byte(fmt.Sprintf(data, r)),
 		DmnChecksum:     [16]byte{1},
 		DmnResourceName: fmt.Sprintf("resource-%d", r),
+	}
+}
+
+func getDecision(r int64, decisionDefinitionKey int64) dmnruntime.Decision {
+	return dmnruntime.Decision{
+		Version:               1,
+		Key:                   r,
+		Id:                    fmt.Sprintf("id-%d", r),
+		VersionTag:            "123",
+		DecisionDefinitionId:  fmt.Sprintf("id-%d", decisionDefinitionKey),
+		DecisionDefinitionKey: decisionDefinitionKey,
 	}
 }
 
@@ -528,28 +543,30 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 
 func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
-
+		//setup
 		r := s.GenerateId()
-
 		def := getDecisionDefinition(r)
-
 		err := s.SaveDecisionDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
+		//run
 		definition, err := s.FindDecisionDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, def.Key, definition.Key)
 	}
 }
 
-func (st *StorageTester) TestDecisionDefinitionStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
-
 		def := getDecisionDefinition(r)
-
 		err := s.SaveDecisionDefinition(t.Context(), def)
+		assert.NoError(t, err)
+
+		r2 := s.GenerateId()
+		def2 := getDecisionDefinition(r2)
+		err = s.SaveDecisionDefinition(t.Context(), def2)
 		assert.NoError(t, err)
 
 		//run
@@ -560,10 +577,118 @@ func (st *StorageTester) TestDecisionDefinitionStorageReader(s storage.Storage, 
 		definition, err = s.FindDecisionDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
+	}
+}
 
+func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		//setup
+		r := s.GenerateId()
+		def := getDecisionDefinition(r)
+		err := s.SaveDecisionDefinition(t.Context(), def)
+		assert.NoError(t, err)
+
+		r2 := s.GenerateId()
+		def2 := getDecisionDefinition(r2)
+		err = s.SaveDecisionDefinition(t.Context(), def2)
+		assert.NoError(t, err)
+
+		//run
 		definitions, err := s.FindDecisionDefinitionsById(t.Context(), def.Id)
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
-		assert.Equal(t, definitions[0].Key, definition.Key)
+		assert.Equal(t, definitions[0].Key, def.Key)
+		assert.Equal(t, definitions[0].Id, def.Id)
+	}
+}
+
+func (st *StorageTester) TestDecisionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		//setup
+		decisionDefinitionKey := s.GenerateId()
+		def := getDecisionDefinition(decisionDefinitionKey)
+		err := s.SaveDecisionDefinition(t.Context(), def)
+		assert.NoError(t, err)
+
+		r := s.GenerateId()
+		dec := getDecision(r, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec)
+		assert.NoError(t, err)
+
+		r2 := s.GenerateId()
+		dec2 := getDecision(r2, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec2)
+		assert.NoError(t, err)
+
+		//run
+		decision, err := s.GetDecisionByKey(t.Context(), dec.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, dec.Key, decision.Key)
+	}
+}
+
+func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		//setup
+		decisionDefinitionKey := s.GenerateId()
+		def := getDecisionDefinition(decisionDefinitionKey)
+		err := s.SaveDecisionDefinition(t.Context(), def)
+		assert.NoError(t, err)
+
+		r := s.GenerateId()
+		dec := getDecision(r, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec)
+		assert.NoError(t, err)
+
+		r2 := s.GenerateId()
+		dec2 := getDecision(r2, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec2)
+		assert.NoError(t, err)
+
+		//run
+		decision, err := s.GetLatestDecisionById(t.Context(), dec.Id)
+		assert.NoError(t, err)
+		assert.Equal(t, r, decision.Key)
+		assert.Equal(t, dec.Id, decision.Id)
+		assert.Equal(t, dec.DecisionDefinitionId, decision.DecisionDefinitionId)
+
+		decision, err = s.GetLatestDecisionByIdAndDecisionDefinitionId(t.Context(), dec.Id, dec.DecisionDefinitionId)
+		assert.NoError(t, err)
+		assert.Equal(t, r, decision.Key)
+		assert.Equal(t, dec.Id, decision.Id)
+		assert.Equal(t, dec.DecisionDefinitionId, decision.DecisionDefinitionId)
+
+		decision, err = s.GetLatestDecisionByIdAndVersionTag(t.Context(), dec.Id, dec.VersionTag)
+		assert.NoError(t, err)
+		assert.Equal(t, r, decision.Key)
+		assert.Equal(t, dec.Id, decision.Id)
+		assert.Equal(t, dec.VersionTag, decision.VersionTag)
+	}
+}
+
+func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		//setup
+		decisionDefinitionKey := s.GenerateId()
+		def := getDecisionDefinition(decisionDefinitionKey)
+		err := s.SaveDecisionDefinition(t.Context(), def)
+		assert.NoError(t, err)
+
+		r := s.GenerateId()
+		dec := getDecision(r, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec)
+		assert.NoError(t, err)
+
+		r2 := s.GenerateId()
+		dec2 := getDecision(r2, decisionDefinitionKey)
+		err = s.SaveDecision(t.Context(), dec2)
+		assert.NoError(t, err)
+
+		//run
+		decisions, err := s.GetDecisionsById(t.Context(), dec.Id)
+		assert.NoError(t, err)
+		assert.Len(t, decisions, 1)
+		assert.Equal(t, decisions[0].Key, dec.Key)
+		assert.Equal(t, decisions[0].Id, dec.Id)
 	}
 }

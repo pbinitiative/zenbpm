@@ -162,7 +162,7 @@ func InitConfig() Config {
 		if err != nil {
 			panic(err)
 		}
-		fileName = fmt.Sprintf("%s/conf.yaml", wd)
+		fileName = filepath.Join(wd, "conf.yaml")
 	} else {
 		fileName = confFile
 	}

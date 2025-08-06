@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
-	"time"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	"time"
 )
 
 // PersistentStorageNew interface for reading and writing process data into a (persistent) state.
@@ -36,6 +36,8 @@ type Storage interface {
 type DecisionStorage interface {
 	DecisionDefinitionStorageReader
 	DecisionDefinitionStorageWriter
+	DecisionStorageReader
+	DecisionStorageWriter
 
 	GenerateId() int64
 }
@@ -54,6 +56,22 @@ type Batch interface {
 	Flush(ctx context.Context) error
 }
 
+type DecisionStorageReader interface {
+	GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
+
+	GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error)
+
+	GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error)
+
+	GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error)
+
+	GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error)
+}
+
+type DecisionStorageWriter interface {
+	SaveDecision(ctx context.Context, decision dmnruntime.Decision) error
+}
+
 type DecisionDefinitionStorageReader interface {
 	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
 
@@ -63,6 +81,7 @@ type DecisionDefinitionStorageReader interface {
 	// result array is ordered by version number desc
 	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
 }
+
 type DecisionDefinitionStorageWriter interface {
 	// SaveDecisionDefinition persists a DecisionDefinition
 	// and potentially overwrites prior data stored with the given DecisionKey

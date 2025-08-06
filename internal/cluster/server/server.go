@@ -320,14 +320,14 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	}, nil
 }
 
-func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefinitionRequest) (*proto.DeployDefinitionResponse, error) {
-	engines := s.controller.Engines(ctx)
+func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.DeployDecisionDefinitionRequest) (*proto.DeployDecisionDefinitionResponse, error) {
+	bpmnEngines := s.controller.Engines(ctx)
 	var err error
-	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.Key)
+	for _, bpmnEngine := range bpmnEngines {
+		_, _, err = bpmnEngine.GetDmnEngine().LoadFromBytes(ctx, req.GetData(), req.Key)
 		if err != nil {
-			err = fmt.Errorf("failed to deploy process definition: %w", err)
-			return &proto.DeployDefinitionResponse{
+			err = fmt.Errorf("failed to deploy decision definition: %w", err)
+			return &proto.DeployDecisionDefinitionResponse{
 				Error: &proto.ErrorResult{
 					Code:    0,
 					Message: err.Error(),
@@ -335,7 +335,25 @@ func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefiniti
 			}, err
 		}
 	}
-	return &proto.DeployDefinitionResponse{}, nil
+	return &proto.DeployDecisionDefinitionResponse{}, nil
+}
+
+func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
+	engines := s.controller.Engines(ctx)
+	var err error
+	for _, engine := range engines {
+		_, err = engine.LoadFromBytes(req.GetData(), req.Key)
+		if err != nil {
+			err = fmt.Errorf("failed to deploy process definition: %w", err)
+			return &proto.DeployProcessDefinitionResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+	}
+	return &proto.DeployProcessDefinitionResponse{}, nil
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {

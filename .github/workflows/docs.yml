@@ -30,7 +30,7 @@ jobs:
           mkdir -p docusaurus/openapi/redocusaurus/
           cp openapi/api.yaml docusaurus/openapi/redocusaurus/
           mkdir -p docusaurus/proto
-          cp internal/grpc/proto/zenbpm.proto docusaurus/proto/
+          cp pkg/client/proto/zenbpm.proto docusaurus/proto/
 
       - name: Set up Git
         run: |

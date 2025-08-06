@@ -115,7 +115,6 @@ type FindJobByElementIdParams struct {
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 }
 
-// ActivityStateActive
 func (q *Queries) FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error) {
 	row := q.db.QueryRowContext(ctx, findJobByElementId, arg.ElementID, arg.ProcessInstanceKey)
 	var i Job

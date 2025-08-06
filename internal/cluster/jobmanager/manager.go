@@ -123,12 +123,12 @@ func (m *JobManager) CompleteJob(ctx context.Context, clientId ClientID, jobKey 
 }
 
 // FailJobReq is called by a client to request job failure
-func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+func (m *JobManager) FailJobReq(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]any) error {
 	return m.client.failJob(ctx, clientID, jobKey, message, errorCode, variables)
 }
 
 // FailJob is called by internal GRPC server to fail job with optional error code which triggers BPMN error execution
-func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]any) error {
 	if m.server == nil {
 		return NodeIsNotALeader
 	}

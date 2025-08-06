@@ -8,6 +8,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -206,7 +207,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 	}
 	instance = &inst
 
-	engine.handleIncident(ctx, job.Token, newEngineErrorf("failing job with message: %s, error code: %s", message, errorCode), failJobSpan)
+	engine.handleIncident(ctx, job.Token, newEngineErrorf("failing job with message: %s, error code: %s", message, ptr.Deref(errorCode, "n/a")), failJobSpan)
 
 	// TODO: variable mapping needs to be implemented
 	job.State = runtime.ActivityStateFailed

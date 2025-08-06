@@ -104,7 +104,7 @@ func (w *Worker) performWork() {
 		}
 		err = w.stream.Send(&proto.JobStreamRequest{
 			Request: &proto.JobStreamRequest_Complete{
-				Complete: &proto.StreamCompleteRequest{
+				Complete: &proto.JobCompleteRequest{
 					Key:       jobToComplete.Job.Key,
 					Variables: varsMarshaled,
 				},

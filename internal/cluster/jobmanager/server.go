@@ -18,8 +18,9 @@ const (
 	MetadataNodeID   string = "node_id"
 	MetadataClientID string = "client_id"
 	// each job will remain assigned to client until this duration expires
-	jobLockDuration       time.Duration = 30 * time.Second
-	partitionJobLoadCount int64         = 100
+	jobLockDuration               time.Duration = 30 * time.Second
+	partitionJobLoadCount         int64         = 100
+	emptyDistributionCounterSleep int           = 20 // counter that puts job loader to sleep for 1 second
 )
 
 type JobLoader interface {
@@ -44,7 +45,7 @@ type nodeSub struct {
 }
 
 type jobTypeData struct {
-	index   int64
+	index   int
 	clients []ClientID
 }
 
@@ -61,9 +62,10 @@ type jobServer struct {
 	loader    JobLoader
 	completer JobCompleter
 
-	partitionJobLoadCount int64
-	distributedJobs       []distributedJob
-	distributedJobsMu     *sync.RWMutex
+	partitionJobLoadCount    int64
+	distributedJobs          []distributedJob
+	distributedJobsMu        *sync.RWMutex
+	emptyDistributionCounter int
 
 	logger hclog.Logger
 }
@@ -127,33 +129,35 @@ func (s *jobServer) distributeJobs() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		fmt.Println("jobs", jobs)
-		fmt.Println("jobTypes", jobTypes)
-		fmt.Println("nodes", s.nodeSubs)
-		fmt.Println("clients", s.jobTypes)
 		if len(jobs) == 0 {
 			// wait for something to happen
-			time.Sleep(1 * time.Second)
+			s.emptyDistributionCounter++
+			if s.emptyDistributionCounter >= emptyDistributionCounterSleep {
+				time.Sleep(1 * time.Second)
+			} else {
+				time.Sleep(20 * time.Millisecond)
+			}
 			continue
 		}
+		s.emptyDistributionCounter = 0
 		for _, job := range jobs {
 			s.clientMu.RLock()
 			jType := JobType(job.Type)
+			jobTypeData := s.jobTypes[jType]
 			// check if there are any clients able to process
-			fmt.Println("clients", s.jobTypes)
-			if len(s.jobTypes[jType].clients) == 0 {
+			if len(jobTypeData.clients) == 0 {
 				s.clientMu.RUnlock()
 				continue
 			}
-			jobTypeData := s.jobTypes[jType]
 			jobTypeData.index++
 			// index overflow
-			if int64(len(jobTypeData.clients)) <= jobTypeData.index {
+			if jobTypeData.index >= len(jobTypeData.clients)-1 {
 				jobTypeData.index = 0
 			}
 			clientIdx := jobTypeData.index
-			clientID := s.jobTypes[jType].clients[clientIdx]
+			clientID := jobTypeData.clients[clientIdx]
 			s.jobTypes[jType] = jobTypeData // set the updated index
+
 			nodeStream, ok := s.subscriptions[jType][clientID]
 			if !ok {
 				s.logger.Warn("Stream for job was not found", "jobType", jType, "key", job.Key)
@@ -321,25 +325,19 @@ func (s *jobServer) removeClient(clientID ClientID) {
 }
 
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {
-	var dJob distributedJob
+	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
+	if err != nil {
+		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
+	}
 	s.distributedJobsMu.Lock()
 	for i, job := range s.distributedJobs {
 		if job.jobKey != jobKey {
 			continue
 		}
-		dJob = job
 		s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
 		break
 	}
 	s.distributedJobsMu.Unlock()
-	if dJob.jobKey == 0 {
-		return fmt.Errorf("job with key %d was not distributed", jobKey)
-	}
-
-	err := s.completer.JobCompleteByKey(ctx, jobKey, variables)
-	if err != nil {
-		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
-	}
 	return nil
 }
 

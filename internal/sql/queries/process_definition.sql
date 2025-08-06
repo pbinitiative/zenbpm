@@ -57,3 +57,12 @@ FROM
     process_definition
 WHERE
     key IN (sqlc.slice('keys'));
+
+-- name: GetDefinitionKeyByChecksum :one
+SELECT
+    key
+FROM
+    process_definition
+WHERE
+    bpmn_checksum = @bpmn_checksum
+LIMIT 1;

@@ -202,6 +202,11 @@ func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*p
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
 		return nil, resultsErr
 	}
+	if len(results) == 1 && results[0].Error != "" {
+		err := fmt.Errorf("error executing SQL statement %s %+v: %s", query, parameters, results[0].Error)
+		rq.logger.Error(err.Error())
+		return nil, err
+	}
 	return results, nil
 }
 

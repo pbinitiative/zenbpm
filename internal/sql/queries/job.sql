@@ -23,7 +23,6 @@ WHERE
     type = @type
     AND state = 1;
 
--- ActivityStateActive
 -- name: FindJobByElementId :one
 SELECT
     *
@@ -65,14 +64,25 @@ FROM
     job
 LIMIT @size offset @offset;
 
+-- name: FindJobsFilter :many
+SELECT
+    *
+FROM
+    job
+WHERE
+    COALESCE(sqlc.narg('type'), type) = type
+    AND COALESCE(sqlc.narg('state'), state) = state
+LIMIT @size offset @offset;
+
 -- name: FindWaitingJobs :many
 SELECT
     *
 FROM
     job
 WHERE
-    key NOT IN (sqlc.slice('key_skip'))
+    state = 1
+    AND key NOT IN (sqlc.slice('key_skip'))
     AND type IN (sqlc.slice('type'))
 ORDER BY
-    created ASC
-LIMIT @size;
+    created_at ASC
+LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452

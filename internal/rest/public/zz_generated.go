@@ -23,11 +23,18 @@ import (
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
+// Defines values for JobState.
+const (
+	JobStateActive     JobState = "active"
+	JobStateCompleted  JobState = "completed"
+	JobStateTerminated JobState = "terminated"
+)
+
 // Defines values for ProcessInstanceState.
 const (
-	Active     ProcessInstanceState = "active"
-	Completed  ProcessInstanceState = "completed"
-	Terminated ProcessInstanceState = "terminated"
+	ProcessInstanceStateActive     ProcessInstanceState = "active"
+	ProcessInstanceStateCompleted  ProcessInstanceState = "completed"
+	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
 )
 
 // Activity defines model for Activity.
@@ -97,7 +104,7 @@ type Job struct {
 	ElementId          string                 `json:"elementId"`
 	Key                string                 `json:"key"`
 	ProcessInstanceKey string                 `json:"processInstanceKey"`
-	State              string                 `json:"state"`
+	State              JobState               `json:"state"`
 	Type               string                 `json:"type"`
 	Variables          map[string]interface{} `json:"variables"`
 }
@@ -110,11 +117,28 @@ type JobPage struct {
 	PageMetadata `yaml:",inline"`
 }
 
+// JobPartitionPage defines model for JobPartitionPage.
+type JobPartitionPage struct {
+	// Embedded fields due to inline allOf schema
+	Partitions []PartitionJobs `json:"partitions"`
+	// Embedded struct due to allOf(#/components/schemas/PartitionedPageMetadata)
+	PartitionedPageMetadata `yaml:",inline"`
+}
+
+// JobState defines model for JobState.
+type JobState string
+
 // PageMetadata defines model for PageMetadata.
 type PageMetadata struct {
 	Count  int `json:"count"`
 	Offset int `json:"offset"`
 	Size   int `json:"size"`
+}
+
+// PartitionJobs defines model for PartitionJobs.
+type PartitionJobs struct {
+	Items     []Job `json:"items"`
+	Partition int   `json:"partition"`
 }
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
@@ -174,6 +198,14 @@ type ProcessInstancePage struct {
 	PartitionedPageMetadata `yaml:",inline"`
 }
 
+// GetJobsParams defines parameters for GetJobs.
+type GetJobsParams struct {
+	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
+	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
+	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
+	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
 	JobKey    string                  `json:"jobKey"`
@@ -214,12 +246,12 @@ type ServerInterface interface {
 	// Resolve an incident
 	// (POST /incident/{incidentKey}/resolve)
 	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string)
+	// Get list of jobs on partitions
+	// (GET /jobs)
+	GetJobs(w http.ResponseWriter, r *http.Request, params GetJobsParams)
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
-	// Activate jobs
-	// (POST /jobs/{jobType}/activate)
-	ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(w http.ResponseWriter, r *http.Request)
@@ -252,7 +284,7 @@ type ServerInterface interface {
 	GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
-	GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
+	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -265,15 +297,15 @@ func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Complete a job
-// (POST /jobs)
-func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+// Get list of jobs on partitions
+// (GET /jobs)
+func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, params GetJobsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Activate jobs
-// (POST /jobs/{jobType}/activate)
-func (_ Unimplemented) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
+// Complete a job
+// (POST /jobs)
+func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -339,7 +371,7 @@ func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, proc
 
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
-func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -377,11 +409,48 @@ func (siw *ServerInterfaceWrapper) ResolveIncident(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// CompleteJob operation middleware
-func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Request) {
+// GetJobs operation middleware
+func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetJobsParams
+
+	// ------------- Optional query parameter "jobType" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "jobType", r.URL.Query(), &params.JobType)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobType", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CompleteJob(w, r)
+		siw.Handler.GetJobs(w, r, params)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -391,22 +460,11 @@ func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// ActivateJobs operation middleware
-func (siw *ServerInterfaceWrapper) ActivateJobs(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "jobType" -------------
-	var jobType string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "jobType", chi.URLParam(r, "jobType"), &jobType, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobType", Err: err})
-		return
-	}
+// CompleteJob operation middleware
+func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ActivateJobs(w, r, jobType)
+		siw.Handler.CompleteJob(w, r)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -647,8 +705,8 @@ func (siw *ServerInterfaceWrapper) GetIncidents(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// GetJobs operation middleware
-func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Request) {
+// GetProcessInstanceJobs operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -662,7 +720,7 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetJobs(w, r, processInstanceKey)
+		siw.Handler.GetProcessInstanceJobs(w, r, processInstanceKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -789,10 +847,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/incident/{incidentKey}/resolve", wrapper.ResolveIncident)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
+		r.Get(options.BaseURL+"/jobs", wrapper.GetJobs)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/jobs/{jobType}/activate", wrapper.ActivateJobs)
+		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
@@ -825,7 +883,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/incidents", wrapper.GetIncidents)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetJobs)
+		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetProcessInstanceJobs)
 	})
 
 	return r
@@ -865,6 +923,41 @@ func (response ResolveIncident502JSONResponse) VisitResolveIncidentResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetJobsRequestObject struct {
+	Params GetJobsParams
+}
+
+type GetJobsResponseObject interface {
+	VisitGetJobsResponse(w http.ResponseWriter) error
+}
+
+type GetJobs200JSONResponse JobPartitionPage
+
+func (response GetJobs200JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJobs400JSONResponse Error
+
+func (response GetJobs400JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJobs500JSONResponse Error
+
+func (response GetJobs500JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CompleteJobRequestObject struct {
 	Body *CompleteJobJSONRequestBody
 }
@@ -895,23 +988,6 @@ type CompleteJob502JSONResponse Error
 func (response CompleteJob502JSONResponse) VisitCompleteJobResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(502)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type ActivateJobsRequestObject struct {
-	JobType string `json:"jobType"`
-}
-
-type ActivateJobsResponseObject interface {
-	VisitActivateJobsResponse(w http.ResponseWriter) error
-}
-
-type ActivateJobs200JSONResponse []Job
-
-func (response ActivateJobs200JSONResponse) VisitActivateJobsResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1284,44 +1360,44 @@ func (response GetIncidents500JSONResponse) VisitGetIncidentsResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetJobsRequestObject struct {
+type GetProcessInstanceJobsRequestObject struct {
 	ProcessInstanceKey string `json:"processInstanceKey"`
 }
 
-type GetJobsResponseObject interface {
-	VisitGetJobsResponse(w http.ResponseWriter) error
+type GetProcessInstanceJobsResponseObject interface {
+	VisitGetProcessInstanceJobsResponse(w http.ResponseWriter) error
 }
 
-type GetJobs200JSONResponse JobPage
+type GetProcessInstanceJobs200JSONResponse JobPage
 
-func (response GetJobs200JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+func (response GetProcessInstanceJobs200JSONResponse) VisitGetProcessInstanceJobsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetJobs400JSONResponse Error
+type GetProcessInstanceJobs400JSONResponse Error
 
-func (response GetJobs400JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+func (response GetProcessInstanceJobs400JSONResponse) VisitGetProcessInstanceJobsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetJobs500JSONResponse Error
+type GetProcessInstanceJobs500JSONResponse Error
 
-func (response GetJobs500JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+func (response GetProcessInstanceJobs500JSONResponse) VisitGetProcessInstanceJobsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetJobs502JSONResponse Error
+type GetProcessInstanceJobs502JSONResponse Error
 
-func (response GetJobs502JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+func (response GetProcessInstanceJobs502JSONResponse) VisitGetProcessInstanceJobsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(502)
 
@@ -1333,12 +1409,12 @@ type StrictServerInterface interface {
 	// Resolve an incident
 	// (POST /incident/{incidentKey}/resolve)
 	ResolveIncident(ctx context.Context, request ResolveIncidentRequestObject) (ResolveIncidentResponseObject, error)
+	// Get list of jobs on partitions
+	// (GET /jobs)
+	GetJobs(ctx context.Context, request GetJobsRequestObject) (GetJobsResponseObject, error)
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
-	// Activate jobs
-	// (POST /jobs/{jobType}/activate)
-	ActivateJobs(ctx context.Context, request ActivateJobsRequestObject) (ActivateJobsResponseObject, error)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(ctx context.Context, request PublishMessageRequestObject) (PublishMessageResponseObject, error)
@@ -1371,7 +1447,7 @@ type StrictServerInterface interface {
 	GetIncidents(ctx context.Context, request GetIncidentsRequestObject) (GetIncidentsResponseObject, error)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
-	GetJobs(ctx context.Context, request GetJobsRequestObject) (GetJobsResponseObject, error)
+	GetProcessInstanceJobs(ctx context.Context, request GetProcessInstanceJobsRequestObject) (GetProcessInstanceJobsResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -1429,6 +1505,32 @@ func (sh *strictHandler) ResolveIncident(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// GetJobs operation middleware
+func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, params GetJobsParams) {
+	var request GetJobsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJobs(ctx, request.(GetJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobsResponseObject); ok {
+		if err := validResponse.VisitGetJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CompleteJob operation middleware
 func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 	var request CompleteJobRequestObject
@@ -1453,32 +1555,6 @@ func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompleteJobResponseObject); ok {
 		if err := validResponse.VisitCompleteJobResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ActivateJobs operation middleware
-func (sh *strictHandler) ActivateJobs(w http.ResponseWriter, r *http.Request, jobType string) {
-	var request ActivateJobsRequestObject
-
-	request.JobType = jobType
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ActivateJobs(ctx, request.(ActivateJobsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ActivateJobs")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ActivateJobsResponseObject); ok {
-		if err := validResponse.VisitActivateJobsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1754,25 +1830,25 @@ func (sh *strictHandler) GetIncidents(w http.ResponseWriter, r *http.Request, pr
 	}
 }
 
-// GetJobs operation middleware
-func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
-	var request GetJobsRequestObject
+// GetProcessInstanceJobs operation middleware
+func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+	var request GetProcessInstanceJobsRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetJobs(ctx, request.(GetJobsRequestObject))
+		return sh.ssi.GetProcessInstanceJobs(ctx, request.(GetProcessInstanceJobsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetJobs")
+		handler = middleware(handler, "GetProcessInstanceJobs")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetJobsResponseObject); ok {
-		if err := validResponse.VisitGetJobsResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetProcessInstanceJobsResponseObject); ok {
+		if err := validResponse.VisitGetProcessInstanceJobsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1783,34 +1859,35 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, process
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"63FlSHq3/isAAP//QyeW+v45AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

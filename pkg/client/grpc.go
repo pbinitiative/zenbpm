@@ -99,13 +99,13 @@ func (w *Worker) performWork() {
 			})
 			if err != nil {
 				w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
-				continue
 			}
+			continue
 		}
-
 		varsMarshaled, err := json.Marshal(vars)
 		if err != nil {
 			w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
+			continue
 		}
 		err = w.stream.Send(&proto.JobStreamRequest{
 			Request: &proto.JobStreamRequest_Complete{

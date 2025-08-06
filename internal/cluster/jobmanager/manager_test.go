@@ -239,11 +239,11 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
-func consumeJobs(t *testing.T, clientID ClientID, client1 chan Job, jm *JobManager) *int {
+func consumeJobs(t *testing.T, clientID ClientID, client chan Job, jm *JobManager) *int {
 	counter := 0
 	go func() {
 		for {
-			job := <-client1
+			job := <-client
 			if job.Key == 0 {
 				return
 			}
@@ -280,7 +280,7 @@ func waitForJobsToBeConsumed(t *testing.T, jobs []sql.Job, completer *testComple
 			}
 		}
 		return true
-	}, 1*time.Second, 100*time.Millisecond)
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 func generateJobs(count int) []sql.Job {

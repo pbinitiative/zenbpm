@@ -18,18 +18,21 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	var definition public.ProcessDefinitionSimple
+	stDefinitionCount := 0
+
 	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
 		err := deployDefinition(t, "service-task-input-output.bpmn")
 		assert.NoError(t, err)
 		defintitions, err := listProcessDefinitions(t)
 		assert.NoError(t, err)
-		count := 0
 		for _, def := range defintitions {
 			if def.BpmnProcessId == "service-task-input-output" {
-				count++
+				definition = def
+				stDefinitionCount++
 			}
 		}
-		assert.Equal(t, 1, count)
+		assert.Equal(t, 1, stDefinitionCount)
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
@@ -43,7 +46,7 @@ func TestRestApiProcessDefinition(t *testing.T) {
 				break
 			}
 		}
-		assert.Equal(t, deployedDefinition.BpmnProcessId, "service-task-input-output")
+		assert.Equal(t, "service-task-input-output", deployedDefinition.BpmnProcessId)
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
@@ -51,9 +54,9 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Greater(t, len(list), 0)
 
-		detail, err := getDefinitionDetail(t, list[0].Key)
+		detail, err := getDefinitionDetail(t, definition.Key)
 		assert.NoError(t, err)
-		assert.Equal(t, detail.BpmnProcessId, "service-task-input-output")
+		assert.Equal(t, "service-task-input-output", detail.BpmnProcessId)
 		assert.NotNil(t, detail.BpmnData)
 	})
 }

@@ -2,13 +2,14 @@ package cluster
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/internal/log"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
@@ -20,6 +21,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/rqlite/rqlite/v8/cluster"
@@ -237,6 +240,13 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*RqLiteDB, error) {
 }
 
 func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	key, err := node.GetDefinitionKeyByBytes(ctx, data)
+	if err != nil {
+		log.Error("Failed to get definition key by bytes: %s", err)
+	}
+	if key != 0 {
+		return key, err
+	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
 	state := node.store.ClusterState()
@@ -266,6 +276,19 @@ func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data [
 	return definitionKey.Int64(), nil
 }
 
+func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
+	}
+	md5sum := md5.Sum(data)
+	key, err := db.queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
+	if err != nil && err.Error() != "No result row" {
+		return 0, fmt.Errorf("failed to find process definition by checksum: %w", err)
+	}
+	return key, nil
+}
+
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
@@ -289,81 +312,6 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 		}
 	}
 	return nil
-}
-
-// ActivateJob will call activate on all partition leaders, when it receives the first batch of jobs from the stream it closes all the active streams and returns them.
-// TODO: we will need to have a locking logic on the server side + some round robin for active connections
-// This client will then have to ack and lock on the jobs it will send to the API client
-func (node *ZenNode) ActivateJob(ctx context.Context, jobType string) ([]*proto.InternalJob, error) {
-	state := node.store.ClusterState()
-	var errJoin error
-	wg := sync.WaitGroup{}
-	activateCtx, activateCancel := context.WithCancel(ctx)
-	errChan := make(chan error, len(state.Partitions))
-	jobsChan := make(chan *proto.InternalJob, len(state.Partitions))
-	defer func() {
-		activateCancel()
-	}()
-	for _, partition := range state.Partitions {
-		pLeader := state.Nodes[partition.LeaderId]
-		client, err := node.client.For(pLeader.Addr)
-		if err != nil {
-			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
-		}
-		stream, err := client.ActivateJob(activateCtx, &proto.ActivateJobRequest{
-			JobType: jobType,
-		})
-		if err != nil {
-			errJoin = errors.Join(errJoin, fmt.Errorf("client call to create activate job stream failed: %w", err))
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			var errJoin error
-			resp, err := stream.Recv()
-			defer func() {
-				activateCancel()
-				wg.Done()
-			}()
-			if err != nil || resp.Error != nil {
-				if err == io.EOF {
-					errChan <- nil
-					return
-				}
-				e := fmt.Errorf("client call to activate job failed")
-				if err != nil {
-					errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
-				} else if resp.Error != nil {
-					errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage())))
-				}
-			}
-			if errJoin == nil {
-				variables := map[string]any{}
-				err = json.Unmarshal(resp.Job.GetVariables(), &variables)
-				if err != nil {
-					errJoin = errors.Join(errJoin, fmt.Errorf("failed to deserialize job variables: %w", err))
-				}
-				jobsChan <- resp.Job
-			}
-			errChan <- errJoin
-		}()
-	}
-	wg.Wait()
-	close(errChan)
-	close(jobsChan)
-	for err := range errChan {
-		if err != nil {
-			errJoin = errors.Join(errJoin, err)
-		}
-	}
-	jobs := make([]*proto.InternalJob, 0, len(state.Partitions))
-	for job := range jobsChan {
-		jobs = append(jobs, job)
-	}
-	if errJoin != nil {
-		return nil, errJoin
-	}
-	return jobs, nil
 }
 
 func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
@@ -499,6 +447,45 @@ func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey in
 		}
 	}
 	return resp.Process, nil
+}
+
+// GetJobs will contact follower nodes and return jobs in partitions they are following
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState) ([]*proto.PartitionedJobs, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
+
+	for partitionID := range state.Partitions {
+		// TODO: we can smack these into goroutines
+		follower, err := state.GetPartitionFollower(partitionID)
+		if err != nil {
+			return result, fmt.Errorf("failed to read follower node to get jobs: %w", err)
+		}
+		client, err := node.client.For(follower.Addr)
+		if err != nil {
+			return result, fmt.Errorf("failed to get client to get jobs: %w", err)
+		}
+		var reqState *int64
+		if jobState != nil {
+			reqState = ptr.To(int64(*jobState))
+		}
+		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
+			Page:       page,
+			Size:       size,
+			Partitions: []uint32{partitionID},
+			JobType:    jobType,
+			State:      reqState,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		result = append(result, resp.Partitions...)
+	}
+	return result, nil
 }
 
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
@@ -657,11 +644,15 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		return nil, fmt.Errorf("no partitions where node is a leader were found")
 	}
 	jobsAcc := make([]sql.Job, 0)
+	// hack to not send NULL into sqlite
+	if len(idsToSkip) == 0 {
+		idsToSkip = []int64{0}
+	}
 	for _, db := range databases {
 		jobs, err := db.queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
-			Size:    count,
+			Limit:   count,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.partition, err)

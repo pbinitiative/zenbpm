@@ -10,8 +10,8 @@ service ZenBpm {
 message JobStreamRequest{
   oneof request{
     StreamSubscriptionRequest subscription = 1;
-    StreamCompleteRequest complete = 2;
-    StreamFailRequest fail = 3;
+    JobCompleteRequest complete = 2;
+    JobFailRequest fail = 3;
   }
 }
 
@@ -27,7 +27,7 @@ message StreamSubscriptionRequest{
   // int32 max_active_jobs = 4; // maximum active jobs of provided job_type for current stream and client_id, uniqueness across streams is not guaranteed as new streams can reach different node in the cluster.
 }
 
-message StreamCompleteRequest{
+message JobCompleteRequest{
   int64 key = 1; // job key
   bytes variables = 2; // json variables 
 }

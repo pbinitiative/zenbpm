@@ -210,7 +210,18 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 	}
 	instance = &inst
 
-	engine.handleIncident(ctx, job.Token, newEngineErrorf(""), failJobSpan)
+	engine.handleIncident(ctx, job.Token, newEngineErrorf("failing job with message: %s, error code: %s", message, errorCode), failJobSpan)
+
+	// TODO: variable mapping needs to be implemented
+	job.State = runtime.ActivityStateFailed
+	batch := engine.persistence.NewBatch()
+	batch.SaveJob(ctx, job)
+	batch.SaveProcessInstance(ctx, *instance)
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fail job %+v: %w", job, err)
+	}
 
 	if errorCode != nil {
 		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow

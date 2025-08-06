@@ -16,7 +16,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (state runtime.ActivityState, retErr error) {
 	jobVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if err := evaluateLocalVariables(&jobVarHolder, element.GetInputMapping()); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
@@ -46,9 +46,13 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 	// TODO: pull this out into function that will be called by API as well
 	if job.State != runtime.ActivityStateCompleting {
 		job.State = runtime.ActivityStateActive
+		var failReason string = ""
 		activatedJob := &activatedJob{
-			processInstanceInfo:      instance,
-			failHandler:              func(reason string) { job.State = runtime.ActivityStateFailed },
+			processInstanceInfo: instance,
+			failHandler: func(reason string) {
+				job.State = runtime.ActivityStateFailing
+				failReason = reason
+			},
 			completeHandler:          func() { job.State = runtime.ActivityStateCompleting },
 			key:                      engine.generateKey(),
 			processInstanceKey:       instance.Key,
@@ -59,12 +63,27 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			createdAt:                job.CreatedAt,
 			variableHolder:           jobVarHolder,
 		}
+		ctx, internalCompleteSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", activatedJob.key))
+		defer func() {
+			if retErr != nil {
+				internalCompleteSpan.RecordError(retErr)
+				internalCompleteSpan.SetStatus(codes.Error, retErr.Error())
+			}
+			internalCompleteSpan.End()
+		}()
 		handler(activatedJob)
-		if job.State == runtime.ActivityStateCompleting {
+		switch job.State {
+		case runtime.ActivityStateFailing:
+			engine.handleIncident(ctx, job.Token, newEngineErrorf("failing internal job with message: %s", failReason), internalCompleteSpan)
+			job.State = runtime.ActivityStateFailed
+			instance.State = runtime.ActivityStateFailed
+
+		case runtime.ActivityStateCompleting:
 			err = propagateProcessInstanceVariables(&jobVarHolder, element.GetOutputMapping())
 			if err != nil {
-				instance.State = runtime.ActivityStateFailed
+				engine.handleIncident(ctx, job.Token, newEngineErrorf("failing internal job with message: %s", err), internalCompleteSpan)
 				job.State = runtime.ActivityStateFailed
+				instance.State = runtime.ActivityStateFailed
 			} else {
 				job.State = runtime.ActivityStateCompleted
 			}
@@ -211,6 +230,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 
 	// TODO: variable mapping needs to be implemented
 	job.State = runtime.ActivityStateFailed
+	instance.State = runtime.ActivityStateFailed
 	batch := engine.persistence.NewBatch()
 	batch.SaveJob(ctx, job)
 	batch.SaveProcessInstance(ctx, *instance)

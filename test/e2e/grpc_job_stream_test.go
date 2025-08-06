@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,21 +45,23 @@ func TestGrpcJobStream(t *testing.T) {
 
 	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
+	defer conn.Close()
+
 	zenClient := client.NewGrpc(conn)
 
 	count := 0
 	completed := 0
 	start := time.Now()
-	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, error) {
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
 		assert.Equal(t, randomID, job.Type)
 		count++
 		return map[string]any{
 			"testVar": 456,
-		}, fmt.Errorf("Testing failed job")
+		}, nil
 	}, randomID)
 	assert.NoError(t, err)
 
-	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, error) {
+	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
 		assert.Equal(t, completeType, job.Type)
 		completed++
 		return map[string]any{
@@ -83,6 +86,96 @@ func TestGrpcJobStream(t *testing.T) {
 		fmt.Println(time.Since(start).String())
 		return true
 	}, 10*time.Second, 10*time.Millisecond, "Process instance should have all jobs completed")
+}
+
+func TestGrpcJobStreamFailjob(t *testing.T) {
+	var instance public.ProcessInstance
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, map[string]string{
+		"TestType": randomID,
+	})
+	assert.NoError(t, err)
+	instance, err = createProcessInstance(t, definition.ProcessDefinitionKey, map[string]any{
+		"testVar": 123,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, instance.Key)
+
+	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	assert.NoError(t, err)
+	defer conn.Close()
+	zenClient := client.NewGrpc(conn)
+
+	fmt.Println("registering worker")
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+		assert.Equal(t, randomID, job.Type)
+		return nil, &client.WorkerError{
+			Err:       fmt.Errorf("job fail test"),
+			ErrorCode: "fail-test",
+			Variables: nil,
+		}
+	}, randomID)
+	assert.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		jobs, err := getProcessInstanceJobs(t, instance.Key)
+
+		if err != nil {
+			return false
+		}
+
+		if len(jobs) != 1 {
+			return false
+		} else {
+			return jobs[0].State == public.JobStateFailed
+		}
+	}, 10*time.Second, 1*time.Second, "job should have failed")
+
+	// now setup for resolve
+	conn.Close()
+
+	conn, err = grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	assert.NoError(t, err)
+
+	defer conn.Close()
+	zenClient = client.NewGrpc(conn)
+
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+		assert.Equal(t, randomID, job.Type)
+		return map[string]any{
+			"testVar": 456,
+		}, nil
+	}, randomID)
+	assert.NoError(t, err)
+
+	// Now testing that we can resolve
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	assert.NoError(t, err)
+	assert.Len(t, incidents, 1)
+
+	key, err := strconv.ParseInt(incidents[0].Key, 10, 64)
+	assert.NoError(t, err)
+
+	resolveIncident(t, key)
+
+	assert.Eventually(t, func() bool {
+		jobs, err := getProcessInstanceJobs(t, instance.Key)
+
+		if err != nil {
+			return false
+		}
+
+		if len(jobs) != 1 {
+			return false
+		} else {
+			return jobs[0].State == public.JobStateCompleted
+		}
+	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
+
+	instance, err = getProcessInstance(t, instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, instance.State, public.ProcessInstanceStateCompleted)
+
 }
 
 func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition200JSONResponse, error) {

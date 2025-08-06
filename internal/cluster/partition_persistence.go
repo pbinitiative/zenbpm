@@ -882,7 +882,7 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
 	dbJobs, err := rq.queries.FindProcessInstanceJobsInState(ctx, sql.FindProcessInstanceJobsInStateParams{
 		ProcessInstanceKey: processInstanceKey,
-		States:             []int64{int64(bpmnruntime.ActivityStateCompleting), int64(bpmnruntime.ActivityStateActive)},
+		States:             []int64{int64(bpmnruntime.ActivityStateCompleting), int64(bpmnruntime.ActivityStateActive), int64(bpmnruntime.ActivityStateFailed)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find pending process instance jobs for process instance key %d: %w", processInstanceKey, err)

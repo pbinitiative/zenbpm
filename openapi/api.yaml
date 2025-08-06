@@ -371,7 +371,7 @@ paths:
           in: query
           required: false
           schema:
-            $ref: '#/components/schemas/JobState'
+            $ref: "#/components/schemas/JobState"
         - name: page
           in: query
           schema:
@@ -667,7 +667,7 @@ components:
         processInstanceKey:
           type: string
         state:
-          $ref: '#/components/schemas/JobState'
+          $ref: "#/components/schemas/JobState"
         createdAt:
           type: string
           format: date-time
@@ -679,6 +679,7 @@ components:
         - active
         - completed
         - terminated
+        - failed
     ActivityPage:
       type: object
       allOf:

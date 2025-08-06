@@ -29,7 +29,7 @@ func jobCompleteHandler(job ActivatedJob) {
 	job.Complete()
 }
 
-func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
+func Test_a_job_can_fail_and_moves_process_to_failed_state(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
@@ -38,7 +38,11 @@ func Test_a_job_can_fail_and_keeps_the_instance_in_active_state(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(incidents))
+
+	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 }
 
 // Test_simple_count_loop requires correct Task-Output-Mapping in the BPMN file
@@ -337,7 +341,7 @@ func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.Nil(t, instance.GetVariable("aVariable"))
 }
 
@@ -456,4 +460,39 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	assert.Equal(t, 1234.0, pi.GetVariable("orderId"))
 	assert.Equal(t, "order1", pi.GetVariable("orderName"))
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
+}
+
+func TestJobFailIsHandledCorrectly(t *testing.T) {
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
+
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Nil(t, err)
+
+	foundServiceJob := runtime.Job{}
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+			foundServiceJob = job
+			break
+		}
+	}
+	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
+
+	err = bpmnEngine.JobFailByKey(t.Context(), foundServiceJob.Key, "testing fail job", nil, nil)
+	assert.NoError(t, err)
+
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+			foundServiceJob = job
+			break
+		}
+	}
+
+	assert.Equal(t, foundServiceJob.State, runtime.ActivityStateFailed)
+
+	var incidents []runtime.Incident
+	incidents, err = engineStorage.FindIncidentsByProcessInstanceKey(t.Context(), pi.Key)
+	assert.NoError(t, err)
+	assert.Len(t, incidents, 1)
+	assert.Contains(t, incidents[0].Message, "testing fail job")
+
 }

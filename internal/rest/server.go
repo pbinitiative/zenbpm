@@ -338,7 +338,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		CreatedAt:            time.UnixMilli(instance.CreatedAt),
 		Key:                  fmt.Sprintf("%d", instance.Key),
 		ProcessDefinitionKey: fmt.Sprintf("%d", instance.DefinitionKey),
-		State:                public.ProcessInstanceState(runtime.ActivityState(instance.State).String()),
+		State:                getRestProcessInstanceState(runtime.ActivityState(instance.State)),
 		Variables:            vars,
 	}, nil
 }
@@ -510,6 +510,25 @@ func getRestJobState(state runtime.ActivityState) public.JobState {
 		return public.JobStateCompleted
 	case runtime.ActivityStateTerminated:
 		return public.JobStateTerminated
+	case runtime.ActivityStateFailed:
+		return public.JobStateFailed
+	default:
+		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+	}
+}
+
+func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInstanceState {
+	switch state {
+	case runtime.ActivityStateReady:
+		return public.ProcessInstanceStateActive
+	case runtime.ActivityStateActive:
+		return public.ProcessInstanceStateActive
+	case runtime.ActivityStateCompleted:
+		return public.ProcessInstanceStateCompleted
+	case runtime.ActivityStateFailed:
+		return public.ProcessInstanceStateActive
+	case runtime.ActivityStateTerminated:
+		return public.ProcessInstanceStateTerminated
 	default:
 		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
 	}

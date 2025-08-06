@@ -32,7 +32,7 @@ message JobCompleteRequest{
   bytes variables = 2; // json variables 
 }
 
-message StreamFailRequest{
+message JobFailRequest{
   int64 key = 1;
   string message = 2;
   optional string error_code = 3;

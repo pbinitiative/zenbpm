@@ -116,7 +116,7 @@ func (w *Worker) performWork() {
 
 			err = w.stream.Send(&proto.JobStreamRequest{
 				Request: &proto.JobStreamRequest_Fail{
-					Fail: &proto.StreamFailRequest{
+					Fail: &proto.JobFailRequest{
 						Key:       jobToComplete.Job.Key,
 						Message:   fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error()),
 						ErrorCode: &workerErr.ErrorCode,

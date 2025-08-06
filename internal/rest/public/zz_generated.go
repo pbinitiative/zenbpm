@@ -37,6 +37,13 @@ const (
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
 )
 
+// Defines values for EvaluateDecisionJSONBodyBindingType.
+const (
+	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
+	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
+	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
 // Activity defines model for Activity.
 type Activity struct {
 	BpmnElementType      *string    `json:"bpmnElementType,omitempty"`
@@ -56,10 +63,74 @@ type ActivityPage struct {
 	PageMetadata `yaml:",inline"`
 }
 
+// DecisionDefinitionDetail defines model for DecisionDefinitionDetail.
+type DecisionDefinitionDetail struct {
+	// Embedded struct due to allOf(#/components/schemas/DecisionDefinitionSimple)
+	DecisionDefinitionSimple `yaml:",inline"`
+	// Embedded fields due to inline allOf schema
+	DmnData *string `json:"dmnData,omitempty"`
+}
+
+// DecisionDefinitionSimple defines model for DecisionDefinitionSimple.
+type DecisionDefinitionSimple struct {
+	DecisionDefinitionId string `json:"decisionDefinitionId"`
+	Key                  string `json:"key"`
+	Version              int    `json:"version"`
+}
+
+// DecisionDefinitionsPage defines model for DecisionDefinitionsPage.
+type DecisionDefinitionsPage struct {
+	// Embedded fields due to inline allOf schema
+	Items []DecisionDefinitionSimple `json:"items"`
+	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
+	PageMetadata `yaml:",inline"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// EvaluatedDRDResult defines model for EvaluatedDRDResult.
+type EvaluatedDRDResult struct {
+	DecisionOutput     map[string]interface{}    `json:"decisionOutput"`
+	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
+}
+
+// EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
+type EvaluatedDecisionInput struct {
+	InputExpression string                 `json:"inputExpression"`
+	InputId         string                 `json:"inputId"`
+	InputName       string                 `json:"inputName"`
+	InputValue      map[string]interface{} `json:"inputValue"`
+}
+
+// EvaluatedDecisionOutput defines model for EvaluatedDecisionOutput.
+type EvaluatedDecisionOutput struct {
+	OutputId    string                 `json:"outputId"`
+	OutputName  string                 `json:"outputName"`
+	OutputValue map[string]interface{} `json:"outputValue"`
+}
+
+// EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
+type EvaluatedDecisionResult struct {
+	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
+	DecisionDefinitionKey     string                   `json:"decisionDefinitionKey"`
+	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
+	DecisionId                string                   `json:"decisionId"`
+	DecisionName              string                   `json:"decisionName"`
+	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
+	DecisionType              string                   `json:"decisionType"`
+	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
+	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
+}
+
+// EvaluatedDecisionRule defines model for EvaluatedDecisionRule.
+type EvaluatedDecisionRule struct {
+	EvaluatedOutputs []EvaluatedDecisionOutput `json:"evaluatedOutputs"`
+	RuleId           string                    `json:"ruleId"`
+	RuleIndex        int                       `json:"ruleIndex"`
 }
 
 // FlowElementHistory defines model for FlowElementHistory.
@@ -198,6 +269,22 @@ type ProcessInstancePage struct {
 	PartitionedPageMetadata `yaml:",inline"`
 }
 
+// EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
+type EvaluateDecisionJSONBody struct {
+	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
+
+	// DecisionDefinitionKey Can be used in combination with bindingType latest
+	DecisionDefinitionKey *string                `json:"decisionDefinitionKey,omitempty"`
+	DecisionId            string                 `json:"decisionId"`
+	Variables             map[string]interface{} `json:"variables"`
+
+	// VersionTag Is used in combination with bindingType versionTag
+	VersionTag string `json:"versionTag"`
+}
+
+// EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
+type EvaluateDecisionJSONBodyBindingType string
+
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
 	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
@@ -232,6 +319,9 @@ type CreateProcessInstanceJSONBody struct {
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
 
+// EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
+type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
+
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
 
@@ -243,6 +333,18 @@ type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get list of decision definitions
+	// (GET /decision-definitions)
+	GetDecisionDefinitions(w http.ResponseWriter, r *http.Request)
+	// Deploy a new decision definition
+	// (POST /decision-definitions)
+	CreateDecisionDefinition(w http.ResponseWriter, r *http.Request)
+	// Get decision definition
+	// (GET /decision-definitions/{decisionDefinitionKey})
+	GetDecisionDefinition(w http.ResponseWriter, r *http.Request, decisionDefinitionKey string)
+	// Evaluate latest version of decision directly in engine
+	// (POST /decision/evaluation)
+	EvaluateDecision(w http.ResponseWriter, r *http.Request)
 	// Resolve an incident
 	// (POST /incident/{incidentKey}/resolve)
 	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string)
@@ -290,6 +392,30 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Get list of decision definitions
+// (GET /decision-definitions)
+func (_ Unimplemented) GetDecisionDefinitions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Deploy a new decision definition
+// (POST /decision-definitions)
+func (_ Unimplemented) CreateDecisionDefinition(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get decision definition
+// (GET /decision-definitions/{decisionDefinitionKey})
+func (_ Unimplemented) GetDecisionDefinition(w http.ResponseWriter, r *http.Request, decisionDefinitionKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Evaluate latest version of decision directly in engine
+// (POST /decision/evaluation)
+func (_ Unimplemented) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Resolve an incident
 // (POST /incident/{incidentKey}/resolve)
@@ -383,6 +509,73 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetDecisionDefinitions operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionDefinitions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionDefinitions(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDecisionDefinition operation middleware
+func (siw *ServerInterfaceWrapper) CreateDecisionDefinition(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDecisionDefinition(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDecisionDefinition operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionDefinition(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "decisionDefinitionKey" -------------
+	var decisionDefinitionKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "decisionDefinitionKey", chi.URLParam(r, "decisionDefinitionKey"), &decisionDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decisionDefinitionKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionDefinition(w, r, decisionDefinitionKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EvaluateDecision operation middleware
+func (siw *ServerInterfaceWrapper) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EvaluateDecision(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ResolveIncident operation middleware
 func (siw *ServerInterfaceWrapper) ResolveIncident(w http.ResponseWriter, r *http.Request) {
@@ -844,6 +1037,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-definitions", wrapper.GetDecisionDefinitions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/decision-definitions", wrapper.CreateDecisionDefinition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-definitions/{decisionDefinitionKey}", wrapper.GetDecisionDefinition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/decision/evaluation", wrapper.EvaluateDecision)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/incident/{incidentKey}/resolve", wrapper.ResolveIncident)
 	})
 	r.Group(func(r chi.Router) {
@@ -887,6 +1092,120 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type GetDecisionDefinitionsRequestObject struct {
+}
+
+type GetDecisionDefinitionsResponseObject interface {
+	VisitGetDecisionDefinitionsResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionDefinitions200JSONResponse DecisionDefinitionsPage
+
+func (response GetDecisionDefinitions200JSONResponse) VisitGetDecisionDefinitionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDecisionDefinitionRequestObject struct {
+	Body io.Reader
+}
+
+type CreateDecisionDefinitionResponseObject interface {
+	VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error
+}
+
+type CreateDecisionDefinition200JSONResponse struct {
+	DecisionDefinitionKey string `json:"decisionDefinitionKey"`
+}
+
+func (response CreateDecisionDefinition200JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDecisionDefinition502JSONResponse Error
+
+func (response CreateDecisionDefinition502JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionDefinitionRequestObject struct {
+	DecisionDefinitionKey string `json:"decisionDefinitionKey"`
+}
+
+type GetDecisionDefinitionResponseObject interface {
+	VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionDefinition200JSONResponse DecisionDefinitionDetail
+
+func (response GetDecisionDefinition200JSONResponse) VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionDefinition400JSONResponse Error
+
+func (response GetDecisionDefinition400JSONResponse) VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionDefinition500JSONResponse Error
+
+func (response GetDecisionDefinition500JSONResponse) VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EvaluateDecisionRequestObject struct {
+	Body *EvaluateDecisionJSONRequestBody
+}
+
+type EvaluateDecisionResponseObject interface {
+	VisitEvaluateDecisionResponse(w http.ResponseWriter) error
+}
+
+type EvaluateDecision200JSONResponse EvaluatedDRDResult
+
+func (response EvaluateDecision200JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EvaluateDecision400JSONResponse Error
+
+func (response EvaluateDecision400JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EvaluateDecision500JSONResponse Error
+
+func (response EvaluateDecision500JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type ResolveIncidentRequestObject struct {
@@ -1406,6 +1725,18 @@ func (response GetProcessInstanceJobs502JSONResponse) VisitGetProcessInstanceJob
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Get list of decision definitions
+	// (GET /decision-definitions)
+	GetDecisionDefinitions(ctx context.Context, request GetDecisionDefinitionsRequestObject) (GetDecisionDefinitionsResponseObject, error)
+	// Deploy a new decision definition
+	// (POST /decision-definitions)
+	CreateDecisionDefinition(ctx context.Context, request CreateDecisionDefinitionRequestObject) (CreateDecisionDefinitionResponseObject, error)
+	// Get decision definition
+	// (GET /decision-definitions/{decisionDefinitionKey})
+	GetDecisionDefinition(ctx context.Context, request GetDecisionDefinitionRequestObject) (GetDecisionDefinitionResponseObject, error)
+	// Evaluate latest version of decision directly in engine
+	// (POST /decision/evaluation)
+	EvaluateDecision(ctx context.Context, request EvaluateDecisionRequestObject) (EvaluateDecisionResponseObject, error)
 	// Resolve an incident
 	// (POST /incident/{incidentKey}/resolve)
 	ResolveIncident(ctx context.Context, request ResolveIncidentRequestObject) (ResolveIncidentResponseObject, error)
@@ -1477,6 +1808,113 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetDecisionDefinitions operation middleware
+func (sh *strictHandler) GetDecisionDefinitions(w http.ResponseWriter, r *http.Request) {
+	var request GetDecisionDefinitionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionDefinitions(ctx, request.(GetDecisionDefinitionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionDefinitions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionDefinitionsResponseObject); ok {
+		if err := validResponse.VisitGetDecisionDefinitionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDecisionDefinition operation middleware
+func (sh *strictHandler) CreateDecisionDefinition(w http.ResponseWriter, r *http.Request) {
+	var request CreateDecisionDefinitionRequestObject
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDecisionDefinition(ctx, request.(CreateDecisionDefinitionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDecisionDefinition")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDecisionDefinitionResponseObject); ok {
+		if err := validResponse.VisitCreateDecisionDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDecisionDefinition operation middleware
+func (sh *strictHandler) GetDecisionDefinition(w http.ResponseWriter, r *http.Request, decisionDefinitionKey string) {
+	var request GetDecisionDefinitionRequestObject
+
+	request.DecisionDefinitionKey = decisionDefinitionKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionDefinition(ctx, request.(GetDecisionDefinitionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionDefinition")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionDefinitionResponseObject); ok {
+		if err := validResponse.VisitGetDecisionDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EvaluateDecision operation middleware
+func (sh *strictHandler) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
+	var request EvaluateDecisionRequestObject
+
+	var body EvaluateDecisionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EvaluateDecision(ctx, request.(EvaluateDecisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EvaluateDecision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EvaluateDecisionResponseObject); ok {
+		if err := validResponse.VisitEvaluateDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ResolveIncident operation middleware
@@ -1859,35 +2297,43 @@ func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.R
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+xaW2/bOBb+KwR3H93IaXeBwm/ppu0mnU6NJk9T5IGWjhOmEqmStFtP4P8+4EWiLpQs",
-	"N3bqzPgpgUWR5/J95yY+4JhnOWfAlMSTByzjO8iI+fcsVnRJ1Ur/nwueg1AUzJNZnrG3KWTA1PUqB/2T",
-	"Mn+xVIKyW7we4VgAUZCcKf10zkVGFJ7ghCh4oWgGeNR+BeyWF0lww6+wCv6eCx6DlOcwp4wqytmH/oUX",
-	"TCrCYuhaJhVRIZXWpcR8dg+x0msLE03JrXmFpOmnOZ58aRqMKsjq//xbwBxP8L8ib/7I2T4qDe+PJEKQ",
-	"VVCG/q20YB9BkYQogtc3ARXeCsFF28UxT8J+zUBKp23bQAK+LaiABE++2B38+tDZ71L+3eHo/1QqLgJY",
-	"e2oc9cNjPUiL3cIhYKWnAMYFi2kCTD2BS4qnG5gJPyBeaIZf86/AtnJuN2oHxwUBkqfLbdRuEELLFtS1",
-	"ap6gOF7+alxtGaTPi7uFZImNEBCrOtvdbnaPzks+O/RYUUklfbpe8tmVWVfaMrDTkghKZqlVs2GMXpgl",
-	"hdIdwLIi1mHlD+uw/G7BpF35K3E0JUKZwmGTWnmxcLhu5d6XfCY3alk54CdUde9CMkjrqwKbwBaZPpzo",
-	"qsNAgWd5CgoMdEBklGlkVCTysKydFKghFjZ9uPcoU3ALQr/I53MJHc8k/RNCTxrGclu49SN3WkjbuhMm",
-	"e0DryLtugOR+7agb2F7qaZ23j9agsd8Ta9OAZzdoEpCxoLmVArNFNgOB+ByZM5AAtRAMEh/TKwjK66l+",
-	"e2zlNtduRlaz9zgHRWhaDyIDfOE3uKKafIbt7Z7r3FlsY1E6SFZ3VLC7KzCyXVpcgpDDQGOTVLF+1Dhz",
-	"kPhyt1mo2xO/KDM1abqLaufRPbTcRdbYupgJilevWYo6pr92adh0nwm/FbUPJPnrYymb83aI/fz26hqd",
-	"TS/QnAv0B7A304/al1TpIIHtD+hTDuxselEh7wSPT05Pxiar58BITvEEvzoZn4y154i6MzaLqGsZoofi",
-	"vw+wWkeuqzLW5tJAWXuAaJl09MGf7YKy4zDJiWSgQEjjMqpF0OfgEWYks1GnPAFXjazEAkZuxBWKozem",
-	"y8s5k9b/L8enbTMVkqCiIdSa/2c8tsmLKdcykzxPaWz0iO6lDYr+5D5n2omMcVT95DckQVoZkAbM/x2/",
-	"3P+Z7whNIUGKIwEJFRCrQgT7m7EWnaWAGE/AgFousoyIlfcdIgxR7z9FbqWJnO4niW/0a9G9q85uIQCD",
-	"96BM9RZ2/7cFiJX3/z2fXduep9vXo/CrRRwZZjbfu3XtV1QS5XYJzMkiVXhyOvJBmzL16mWglOmU0hYm",
-	"oV3HQ7ZtA3138G11VAFU/Ual0rWcdjniDFVi3y8j0xOcecEUCEZSJEEsQSBwC6uceQ8Kpd3m8fQxdLnR",
-	"yTsYN//n8rHuV2wMBKne8GS1lZr1fHjPZ12FwRY53e0STk31YL0eEpAv+Qz56uMYjDuCcQEIRDSu2kDS",
-	"IdiNGWV3Op4uZimVdx/LeeRukOUO/t2Et58fuG2Bwr4xqxFjZ/h0tkLSDUyP8AzB0wELEeRn3QVCS1ha",
-	"lDrXvUh8L9hXN7Q7R7zH9NfRp/YkQacOqqrTnRNCq72lQqbpyRGmgWpJPJjVP7K0bpiy8tBP2t9DBvBn",
-	"/IggMrCLDQeC+lth8tf9N215AiWQp3xls9DhU+7cSIsIYvA9gKuNsOrgYvQQMul6K4oOavM6xgKP6ff2",
-	"GAfcaHAQkI5VMKjHIpJW5+UbgOenNIP6y0cD79gshr9FbEqVYsEYZbclNGh1uvZPI8yTp5iYp6nOMAlR",
-	"BM0Fz1oJpq9w6fZdm9X+2cDipZyS76ohGTwR377lGFJp7LZM2uprYHd+KryC3OD9SLoD7fSNexp1HfUM",
-	"6WNbMIOWFV2lW15vkVa3qebqDflB1XJ9HDFjYB3mSNviR5ocQm4KpCbZ7TQkQe8HCZqtUAOa9lLVTkgU",
-	"EXvXl/aXqWd+1TOnUu3GdE+lV7HLkT4HSp+05Svz6ZjsL+dEd/6aeBdXijvSz5woHbfKj5T5W1BmSSXV",
-	"yWWe8u/I3dXdP3v8F/ce/lyUi545g2pX33t4461ynLp5hJZW2TsqN937aFTfPddAng00izv0G65GHOP4",
-	"ocdxc0Pj5wii9zSaWwAvRIon+E6pfBJFKY9Jeselmrwevx5Hy1N7k89u99AAeG0Gvh61HleGpDfrvwIA",
-	"AP//SFsbQ/A5AAA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

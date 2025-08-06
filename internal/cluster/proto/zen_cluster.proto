@@ -65,7 +65,6 @@ service ZenService {
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
-  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
 }

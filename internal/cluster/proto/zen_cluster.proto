@@ -57,11 +57,17 @@ service ZenService {
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
+  // Subscribes client to receive jobs of type
+  rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  // Used by client to let server know that the job needs to be reassigned to another node
+  rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -257,6 +263,7 @@ message DeployProcessDefinitionResponse {
 message CompleteJobRequest {
   int64 key = 1;
   bytes variables = 2; // []byte of json variables 
+  string client_id = 3;
 }
 
 message CompleteJobResponse {
@@ -358,11 +365,55 @@ message GetIncidentsResponse {
   repeated Incident incidents = 2;
 }
 
+message GetJobsRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  optional string jobType = 4;
+  optional int64 state = 5;
+}
+
+message PartitionedJobs {
+  uint32 partition_id = 1;
+  repeated Job jobs = 2;
+}
+
+message GetJobsResponse {
+  optional ErrorResult error = 1;
+  repeated PartitionedJobs partitions = 2;
+}
+
 message ResolveIncidentRequest {
   int64 incident_key = 1;
 }
 
 message ResolveIncidentResponse {
+  optional ErrorResult error = 1;
+}
+
+message SubscribeJobRequest {
+  string job_type = 1;
+  enum Type {
+    TYPE_UNKNOWN = 0;
+    TYPE_SUBSCRIBE = 1; // subscribe client to provided job_type
+    TYPE_UNSUBSCRIBE = 2; // unsubscribe client from provided job_type
+    TYPE_UNSUBSCRIBE_ALL = 3; // client is no longer available and we should clean up
+  }
+  Type type = 2;
+  string client_id = 3;
+}
+
+message SubscribeJobResponse {
+  string job_type = 1;
+  string client_id = 2;
+  InternalJob job = 3;
+}
+
+message ReassignJobRequest {
+  int64 key = 1;
+}
+
+message ReassignJobResponse {
   optional ErrorResult error = 1;
 }
 // INTERNAL ENGINE API END

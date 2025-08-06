@@ -2,12 +2,13 @@ package storage
 
 import (
 	"context"
+	"time"
+
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-	"time"
 )
 
-// PersistentStorageNew interface for reading and writing process data into a (persistent) state.
+// Storage interface for reading and writing process data into a (persistent) state.
 // Interface is used by bpmn & dmn engines to interact with state.
 //
 // Methods that are expected to return exactly one match MUST return ErrNotFound when the result does not exist
@@ -42,6 +43,7 @@ type DecisionStorage interface {
 	GenerateId() int64
 }
 
+// Batch holds an array of operations that need to be run when Flush is called.
 type Batch interface {
 	ProcessDefinitionStorageWriter
 	ProcessInstanceStorageWriter
@@ -54,6 +56,8 @@ type Batch interface {
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
+	// AddFlushSuccessAction registers a function f that will be called after a successful flush has been performed
+	AddFlushSuccessAction(ctx context.Context, f func())
 }
 
 type DecisionStorageReader interface {

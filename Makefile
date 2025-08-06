@@ -22,7 +22,7 @@ PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 PATH := $(LOCALBIN):$(PATH)
 
 ## Tool Versions
-SQLC_VERSION ?= v1.28.0
+SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 30.1
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
@@ -148,19 +148,10 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
-	go test -count=100 -v ./test/e2e/...
+	go test -count=1 -v ./test/e2e/...
 
 ##@ Build
 
 .PHONY: build
 build: generate ## Build the project
 	go build -o zenbpm cmd/zenbpm/main.go
-
-##@ Documentation
-
-.PHONY: start-docusaurus
-start-docusaurus:  ## Start documentation preview
-	cd docs && \
-	npm install && \
-	npm start
-

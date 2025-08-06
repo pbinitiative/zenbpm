@@ -23,7 +23,7 @@ func TestServer(t *testing.T) {
 	}
 	cLn := network.NewZenBpmClusterListener(mux)
 	tStore := &testStore{}
-	srv := New(cLn, tStore, nil)
+	srv := New(cLn, tStore, nil, nil)
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)
@@ -75,7 +75,7 @@ func TestServerTCPHeaderMux(t *testing.T) {
 	}
 	cLn := network.NewZenBpmClusterListener(mux)
 	tStore := &testStore{}
-	srv := New(cLn, tStore, nil)
+	srv := New(cLn, tStore, nil,nil)
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)

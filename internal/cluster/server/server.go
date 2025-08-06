@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	ssql "database/sql"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -10,11 +11,13 @@ import (
 	"time"
 
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
@@ -31,6 +34,7 @@ type Server struct {
 	addr       net.Addr     // Address on which this service is listening
 	store      StoreService
 	controller ControllerService
+	jobManager *jobmanager.JobManager
 }
 
 type StoreService interface {
@@ -47,12 +51,13 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
 		controller: controller,
+		jobManager: jobManager,
 	}
 }
 
@@ -181,61 +186,7 @@ func (s *Server) ShutdownPartitionNode(context.Context, *proto.ShutdownPartition
 	panic("unimplemented")
 }
 
-func (s *Server) ActivateJob(req *proto.ActivateJobRequest, stream grpc.ServerStreamingServer[proto.ActivateJobResponse]) error {
-	// TODO: we might want to redo this so that we will remember the request and periodically check engines for jobs of that type
-	runningEngines := s.controller.Engines(stream.Context())
-	for _, engine := range runningEngines {
-		jobs, err := engine.ActivateJobs(stream.Context(), req.JobType)
-		if err != nil {
-			stream.Send(&proto.ActivateJobResponse{
-				Error: &proto.ErrorResult{
-					Code:    0,
-					Message: err.Error(),
-				},
-			})
-		}
-		for _, job := range jobs {
-			vh := job.Variables()
-			vars, err := json.Marshal(vh.Variables())
-			if err != nil {
-				stream.Send(&proto.ActivateJobResponse{
-					Error: &proto.ErrorResult{
-						Code:    0,
-						Message: err.Error(),
-					},
-				})
-			}
-			err = stream.Send(&proto.ActivateJobResponse{
-				Job: &proto.InternalJob{
-					Key:         job.Key(),
-					InstanceKey: job.ProcessInstanceKey(),
-					Variables:   vars,
-					Type:        req.JobType,
-					State:       int64(runtime.ActivityStateActive),
-					ElementId:   job.ElementId(),
-					CreatedAt:   job.CreatedAt().UnixMilli(),
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to send activate job message: %w", err)
-			}
-		}
-	}
-	return nil
-}
-
 func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.Key)
-	engine := s.controller.PartitionEngine(ctx, partitionId)
-	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", partitionId)
-		return &proto.CompleteJobResponse{
-			Error: &proto.ErrorResult{
-				Code:    0,
-				Message: err.Error(),
-			},
-		}, err
-	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
@@ -247,7 +198,7 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 			},
 		}, err
 	}
-	err = engine.JobCompleteByKey(ctx, req.Key, vars)
+	err = s.jobManager.CompleteJob(ctx, jobmanager.ClientID(req.ClientId), req.Key, vars)
 	if err != nil {
 		err := fmt.Errorf("failed to complete job %d: %w", req.Key, err)
 		return &proto.CompleteJobResponse{
@@ -476,6 +427,63 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 	}, nil
 }
 
+func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto.GetJobsResponse, error) {
+	resp := make([]*proto.PartitionedJobs, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetJobsResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
+			Offset: int64(req.Size) * int64(req.Page-1),
+			Size:   int64(req.Size),
+			State: ssql.NullInt64{
+				Int64: ptr.Deref(req.State, 0),
+				Valid: req.State != nil,
+			},
+			Type: ssql.NullString{
+				String: ptr.Deref(req.JobType, ""),
+				Valid:  req.JobType != nil,
+			},
+		})
+		if err != nil {
+			err := fmt.Errorf("failed to find jobs with filter %+v", req)
+			return &proto.GetJobsResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+		partitionJobs := make([]*proto.Job, len(jobs))
+		for i, job := range jobs {
+			partitionJobs[i] = &proto.Job{
+				Key:                job.Key,
+				Variables:          []byte(job.Variables),
+				State:              int64(job.State),
+				CreatedAt:          job.CreatedAt,
+				ElementInstanceKey: job.ElementInstanceKey,
+				ElementId:          job.ElementID,
+				ProcessInstanceKey: job.ProcessInstanceKey,
+				Type:               job.Type,
+			}
+		}
+		resp = append(resp, &proto.PartitionedJobs{
+			PartitionId: partitionId,
+			Jobs:        partitionJobs,
+		})
+	}
+	return &proto.GetJobsResponse{
+		Partitions: resp,
+	}, nil
+}
+
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
 	resp := make([]*proto.PartitionedProcessInstances, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
@@ -648,6 +656,10 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 		}, err
 	}
 	return &proto.ResolveIncidentResponse{}, err
+}
+
+func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {
+	return s.jobManager.AddNodeSubscription(stream)
 }
 
 func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {

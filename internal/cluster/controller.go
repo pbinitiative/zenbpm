@@ -442,6 +442,17 @@ func (c *controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
 	return res
 }
 
+func (c *controller) AllPartitionLeaderDBs(ctx context.Context) []*RqLiteDB {
+	leaderQueries := make([]*RqLiteDB, 0)
+	for _, partition := range c.partitions {
+		if !partition.IsLeader(ctx) {
+			continue
+		}
+		leaderQueries = append(leaderQueries, partition.rqliteDB)
+	}
+	return leaderQueries
+}
+
 func (c *controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
 	partitionNode, ok := c.partitions[partitionId]
 	if !ok {

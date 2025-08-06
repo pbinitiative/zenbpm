@@ -4,24 +4,7 @@ INSERT INTO job(key, element_id, element_instance_key, process_instance_key, typ
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-				variables = excluded.variables;
-
--- name: FindJobsWithStates :many
-SELECT
-    *
-FROM
-    job
-WHERE
-    COALESCE(sqlc.narg('key'), "key") = "key"
-    AND COALESCE(sqlc.narg('process_instance_key'), process_instance_key) = process_instance_key
-    AND COALESCE(sqlc.narg('element_id'), "element_id") = "element_id"
-    AND COALESCE(sqlc.narg('type'), "type") = "type"
-    AND (sqlc.narg('states') IS NULL
-        OR "state" IN (
-            SELECT
-                value
-            FROM
-                json_each(?5)));
+        variables = excluded.variables;
 
 -- name: FindJobByKey :one
 SELECT
@@ -38,7 +21,7 @@ FROM
     job
 WHERE
     type = @type
-AND state = 1; -- ActivityStateActive
+    AND state = 1;
 
 -- name: FindJobByElementId :one
 SELECT
@@ -80,3 +63,26 @@ SELECT
 FROM
     job
 LIMIT @size offset @offset;
+
+-- name: FindJobsFilter :many
+SELECT
+    *
+FROM
+    job
+WHERE
+    COALESCE(sqlc.narg('type'), type) = type
+    AND COALESCE(sqlc.narg('state'), state) = state
+LIMIT @size offset @offset;
+
+-- name: FindWaitingJobs :many
+SELECT
+    *
+FROM
+    job
+WHERE
+    state = 1
+    AND key NOT IN (sqlc.slice('key_skip'))
+    AND type IN (sqlc.slice('type'))
+ORDER BY
+    created_at ASC
+LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452

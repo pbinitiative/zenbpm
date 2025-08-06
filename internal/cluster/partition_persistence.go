@@ -6,10 +6,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
-	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"strings"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 
 	ssql "database/sql"
 
@@ -201,6 +202,11 @@ func (rq *RqLiteDB) queryDatabase(query string, parameters ...interface{}) ([]*p
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
 		return nil, resultsErr
 	}
+	if len(results) == 1 && results[0].Error != "" {
+		err := fmt.Errorf("error executing SQL statement %s %+v: %s", query, parameters, results[0].Error)
+		rq.logger.Error(err.Error())
+		return nil, err
+	}
 	return results, nil
 }
 
@@ -296,8 +302,10 @@ var _ storage.Storage = &RqLiteDB{}
 
 func (rq *RqLiteDB) NewBatch() storage.Batch {
 	batch := &RqLiteDBBatch{
-		db:        rq,
-		stmtToRun: make([]*proto.Statement, 0, 10),
+		db:                  rq,
+		stmtToRun:           make([]*proto.Statement, 0, 10),
+		flushSuccessActions: make([]func(), 0, 5),
+		logger:              rq.logger,
 	}
 	queries := sql.New(batch)
 	batch.queries = queries
@@ -1379,9 +1387,11 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 }
 
 type RqLiteDBBatch struct {
-	db        *RqLiteDB
-	stmtToRun []*proto.Statement
-	queries   *sql.Queries
+	db                  *RqLiteDB
+	stmtToRun           []*proto.Statement
+	queries             *sql.Queries
+	flushSuccessActions []func()
+	logger              hclog.Logger
 }
 
 func (rq *RqLiteDBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
@@ -1404,6 +1414,10 @@ func (rq *RqLiteDBBatch) QueryRowContext(ctx context.Context, query string, args
 
 var _ storage.Batch = &RqLiteDBBatch{}
 
+func (b *RqLiteDBBatch) AddFlushSuccessAction(ctx context.Context, f func()) {
+	b.flushSuccessActions = append(b.flushSuccessActions, f)
+}
+
 func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
 	ctx, execSpan := b.db.tracer.Start(ctx, "rqlite-batch", trace.WithAttributes(
 		attribute.String(otelPkg.AttributeExec, fmt.Sprintf("%v", b.stmtToRun)),
@@ -1413,8 +1427,13 @@ func (b *RqLiteDBBatch) Flush(ctx context.Context) error {
 	}()
 	_, err := b.db.executeStatements(ctx, b.stmtToRun)
 	if err != nil {
+		b.logger.Error(fmt.Sprintf("failed to flush statements: %s", err))
+		return err
 	}
-	return err
+	for _, action := range b.flushSuccessActions {
+		action()
+	}
+	return nil
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &RqLiteDBBatch{}

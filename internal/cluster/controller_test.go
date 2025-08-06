@@ -42,7 +42,7 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 		leader: true,
 	}
 	srvLn := network.NewZenBpmClusterListener(mux)
-	srv := server.New(srvLn, tStore, nil)
+	srv := server.New(srvLn, tStore, nil, nil)
 	err = srv.Open()
 	assert.NoError(t, err)
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 8
+sidebar_position: 110
 ---
 # OpenTelemetry
 [OpenTelemetry](https://opentelemetry.io/) is a collection of APIs, SDKs, and tools to instrument, generate, collect, and export telemetry data (metrics, logs, and traces) that help us analyze application performance and behavior.
@@ -12,7 +12,7 @@ You can specify the custom headers that you want to transfer through the applica
 :::
 
 #### Example trace of the start of process instance
-![create_process_instance](./assets/otel/create_instance_trace.png)
+![create_process_instance](assets/otel/create_instance_trace.png)
 
 ## Metrics
 Metrics provide an insight into the platform over time.

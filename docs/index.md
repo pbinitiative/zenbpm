@@ -75,5 +75,5 @@ ZenBPM is built with a modular architecture:
 
 ZenBPM provides both REST and gRPC APIs:
 
-- **REST API**: Documented in OpenAPI format: [documentation](./openapi.mdx), [specification](../openapi/redocusaurus/api.yaml)
+- **REST API**: Documented in OpenAPI format: [documentation](openapi.mdx), [specification](../openapi/redocusaurus/api.yaml)
 - **gRPC API**: Defined in Protocol Buffers format: [specification](../proto/zenbpm.proto)

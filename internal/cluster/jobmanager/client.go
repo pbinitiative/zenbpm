@@ -253,7 +253,7 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	return nil
 }
 
-func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	partitionId := zenflake.GetPartitionId(jobKey)
 	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
 	if err != nil {

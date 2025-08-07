@@ -425,7 +425,7 @@ func (c *testCompleter) JobCompleteByKey(ctx context.Context, jobKey int64, vari
 	return nil
 }
 
-func (c *testCompleter) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]any) error {
+func (c *testCompleter) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
 	c.loader.mu.Lock()
 	defer c.loader.mu.Unlock()
 	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {

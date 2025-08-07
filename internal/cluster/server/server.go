@@ -224,7 +224,7 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 		}, err
 	}
 
-	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.ClientId), req.Key, req.Message, req.ErrorCode, &vars)
+	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.ClientId), req.Key, req.Message, req.ErrorCode, vars)
 	if err != nil {
 		err := fmt.Errorf("failed to fail job %d: %w", req.Key, err)
 		return &proto.FailJobResponse{

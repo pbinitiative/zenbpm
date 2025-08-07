@@ -30,7 +30,7 @@ type JobLoader interface {
 
 type JobCompleter interface {
 	JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]any) error
-	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]any) error
+	JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error
 }
 
 type distributedJob struct {
@@ -341,7 +341,7 @@ func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	return nil
 }
 
-func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	err := s.completer.JobFailByKey(ctx, jobKey, message, errorCode, variables)
 	if err != nil {
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)

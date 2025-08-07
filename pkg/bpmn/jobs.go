@@ -178,7 +178,7 @@ func (engine *Engine) completeJob(
 	return instance, tokens, nil
 }
 
-func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) error {
+func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	instance, tokens, err := engine.failJob(ctx, jobKey, message, errorCode, variables)
 	if err != nil {
 		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
@@ -194,7 +194,7 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 	return nil
 }
 
-func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string, errorCode *string, variables *map[string]interface{}) (
+func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (
 	instance *runtime.ProcessInstance,
 	tokens []runtime.ExecutionToken,
 	retErr error,

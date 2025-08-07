@@ -143,7 +143,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				})
 				continue
 			}
-			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.Key, req.Fail.Message, req.Fail.ErrorCode, &vars)
+			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.Key, req.Fail.Message, req.Fail.ErrorCode, vars)
 			if err != nil {
 				stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{

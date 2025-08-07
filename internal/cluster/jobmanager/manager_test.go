@@ -409,6 +409,7 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 
 type testCompleter struct {
 	completedJobs []int64
+	failedJobs    []int64
 	loader        *testLoader
 }
 
@@ -421,6 +422,18 @@ func (c *testCompleter) JobCompleteByKey(ctx context.Context, jobKey int64, vari
 		}
 	}
 	c.completedJobs = append(c.completedJobs, jobKey)
+	return nil
+}
+
+func (c *testCompleter) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+	c.loader.mu.Lock()
+	defer c.loader.mu.Unlock()
+	for i := len(c.loader.jobsToSend) - 1; i >= 0; i-- {
+		if c.loader.jobsToSend[i].Key == jobKey {
+			c.loader.jobsToSend = append(c.loader.jobsToSend[:i], c.loader.jobsToSend[i+1:]...)
+		}
+	}
+	c.failedJobs = append(c.failedJobs, jobKey)
 	return nil
 }
 

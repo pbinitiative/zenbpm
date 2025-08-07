@@ -64,6 +64,7 @@ service ZenService {
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
   rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
+  rpc FailJob(FailJobRequest) returns (FailJobResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
 }
@@ -203,7 +204,19 @@ message CompleteJobRequest {
   string client_id = 3; 
 }
 
+
 message CompleteJobResponse {
+  optional ErrorResult error = 1;
+}
+message FailJobRequest {
+  int64 key = 1;
+  string message = 2;
+  string client_id = 3; 
+  optional string error_code = 4;
+  optional bytes variables = 5;
+}
+
+message FailJobResponse {
   optional ErrorResult error = 1;
 }
 

@@ -47,6 +47,7 @@ const (
 	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
 	ZenService_SubscribeJob_FullMethodName              = "/cluster.ZenService/SubscribeJob"
 	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
+	ZenService_FailJob_FullMethodName                   = "/cluster.ZenService/FailJob"
 	ZenService_ReassignJob_FullMethodName               = "/cluster.ZenService/ReassignJob"
 )
 
@@ -95,6 +96,7 @@ type ZenServiceClient interface {
 	// Subscribes client to receive jobs of type
 	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
 	CompleteJob(ctx context.Context, in *CompleteJobRequest, opts ...grpc.CallOption) (*CompleteJobResponse, error)
+	FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 }
@@ -380,6 +382,16 @@ func (c *zenServiceClient) CompleteJob(ctx context.Context, in *CompleteJobReque
 	return out, nil
 }
 
+func (c *zenServiceClient) FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FailJobResponse)
+	err := c.cc.Invoke(ctx, ZenService_FailJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReassignJobResponse)
@@ -435,6 +447,7 @@ type ZenServiceServer interface {
 	// Subscribes client to receive jobs of type
 	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
 	CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error)
+	FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
@@ -527,6 +540,9 @@ func (UnimplementedZenServiceServer) SubscribeJob(grpc.BidiStreamingServer[Subsc
 }
 func (UnimplementedZenServiceServer) CompleteJob(context.Context, *CompleteJobRequest) (*CompleteJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CompleteJob not implemented")
+}
+func (UnimplementedZenServiceServer) FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FailJob not implemented")
 }
 func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReassignJob not implemented")
@@ -1027,6 +1043,24 @@ func _ZenService_CompleteJob_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_FailJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FailJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).FailJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_FailJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).FailJob(ctx, req.(*FailJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_ReassignJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReassignJobRequest)
 	if err := dec(in); err != nil {
@@ -1155,6 +1189,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CompleteJob",
 			Handler:    _ZenService_CompleteJob_Handler,
+		},
+		{
+			MethodName: "FailJob",
+			Handler:    _ZenService_FailJob_Handler,
 		},
 		{
 			MethodName: "ReassignJob",

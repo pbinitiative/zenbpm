@@ -108,3 +108,19 @@ func getProcessInstanceJobs(t testing.TB, key string) ([]public.Job, error) {
 	}
 	return jobPage.Items, nil
 }
+
+func getProcessInstanceIncidents(t testing.TB, key string) ([]public.Incident, error) {
+	resp, err := app.NewRequest(t).
+		WithPath(fmt.Sprintf("/v1/process-instances/%s/incidents", key)).
+		DoOk()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read process instance incidents: %w", err)
+	}
+	incidentPage := public.IncidentPage{}
+
+	err = json.Unmarshal(resp, &incidentPage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)
+	}
+	return incidentPage.Items, nil
+}

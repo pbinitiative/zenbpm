@@ -253,6 +253,28 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 	return nil
 }
 
+func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
+	partitionId := zenflake.GetPartitionId(jobKey)
+	lClient, err := c.nodeClientManager.PartitionLeader(partitionId)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve client for partition %d leader: %w", partitionId, err)
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for job failure: %w", err)
+	}
+	_, err = lClient.FailJob(ctx, &proto.FailJobRequest{
+		Key:       jobKey,
+		Message:   message,
+		ErrorCode: errorCode,
+		Variables: vars,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to fail job %d from client: %w", jobKey, err)
+	}
+	return nil
+}
+
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
 		JobType:  string(jobType),

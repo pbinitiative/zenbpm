@@ -128,6 +128,34 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				})
 				continue
 			}
+		case *proto.JobStreamRequest_Fail:
+			vars := map[string]any{}
+			err := json.Unmarshal(req.Fail.Variables, &vars)
+			if err != nil {
+				stream.Send(&proto.JobStreamResponse{
+					Error: &proto.ErrorResult{
+						Code:    0,
+						Message: fmt.Sprintf("Failed to unmarshal variables: %s", err),
+					},
+					Job: &proto.WaitingJob{
+						Key: req.Fail.Key,
+					},
+				})
+				continue
+			}
+			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.Key, req.Fail.Message, req.Fail.ErrorCode, vars)
+			if err != nil {
+				stream.Send(&proto.JobStreamResponse{
+					Error: &proto.ErrorResult{
+						Code:    0,
+						Message: fmt.Sprintf("Failed to fail job: %s", err),
+					},
+					Job: &proto.WaitingJob{
+						Key: req.Fail.Key,
+					},
+				})
+				continue
+			}
 		case *proto.JobStreamRequest_Subscription:
 			switch req.Subscription.Type {
 			case proto.StreamSubscriptionRequest_TYPE_UNDEFINED:

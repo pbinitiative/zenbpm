@@ -16,7 +16,22 @@ const (
 	MetadataClientID string = "client_id"
 )
 
-type WorkerFunc func(ctx context.Context, job *proto.WaitingJob) (map[string]any, error)
+type WorkerFunc func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError)
+
+type WorkerError struct {
+	Err       error
+	ErrorCode string
+	Variables map[string]any
+}
+
+func (e *WorkerError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("error with code:%s, variables:%v", e.ErrorCode, e.Variables)
+	}
+	return fmt.Sprintf("error :%v, with code:%s, variables:%v", e.Err, e.ErrorCode, e.Variables)
+}
+
+func (e *WorkerError) Unwrap() error { return e.Err }
 
 type Worker struct {
 	jobTypes []string
@@ -87,10 +102,27 @@ func (w *Worker) performWork() {
 			// TODO try reconnecting
 			return
 		}
-		vars, err := w.f(w.stream.Context(), jobToComplete.Job)
-		if err != nil {
+		if jobToComplete.Error != nil {
+			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.Message))
+			continue
+		}
+		vars, workerErr := w.f(w.stream.Context(), jobToComplete.Job)
+		if workerErr != nil {
+			errVars, err := json.Marshal(workerErr.Variables)
+			if err != nil {
+				w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
+				continue
+			}
+
 			err = w.stream.Send(&proto.JobStreamRequest{
-				// Request: nil, // TODO: add fail message
+				Request: &proto.JobStreamRequest_Fail{
+					Fail: &proto.JobFailRequest{
+						Key:       jobToComplete.Job.Key,
+						Message:   fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error()),
+						ErrorCode: &workerErr.ErrorCode,
+						Variables: errVars,
+					},
+				},
 			})
 			if err != nil {
 				w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))

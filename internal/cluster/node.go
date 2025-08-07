@@ -674,3 +674,16 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 	}
 	return nil
 }
+
+func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {
+	partitionId := zenflake.GetPartitionId(jobKey)
+	engine := node.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		return fmt.Errorf("Engine to fail job was not found on the node")
+	}
+	err := engine.JobFailByKey(ctx, jobKey, message, errorCode, variables)
+	if err != nil {
+		return err
+	}
+	return nil
+}

@@ -5,6 +5,7 @@ import (
 	ssql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"math/rand"
 	"net"
 	"slices"
@@ -329,7 +330,10 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 					OutputName:  evaluatedOutput.OutputName,
 					OutputValue: nil,
 				}
-				resultEvaluatedOutput.OutputValue, err = json.Marshal(evaluatedOutput.OutputValue)
+
+				outputValue := make(map[string]interface{})
+				outputValue[evaluatedOutput.OutputJsonName] = evaluatedOutput.OutputValue
+				resultEvaluatedOutput.OutputValue, err = json.Marshal(outputValue)
 				if err != nil {
 					return nil, fmt.Errorf("failed to marshal evaluatedOutput.OutputValue: %w", err)
 				}
@@ -358,7 +362,10 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 				InputExpression: evaluatedInput.InputExpression,
 				InputValue:      nil,
 			}
-			resultEvaluatedInput.InputValue, err = json.Marshal(evaluatedInput.InputValue)
+
+			inputValue := make(map[string]interface{})
+			inputValue[evaluatedInput.InputExpression] = evaluatedInput.InputValue
+			resultEvaluatedInput.InputValue, err = json.Marshal(inputValue)
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal evaluatedInput.InputValue: %w", err)
 			}
@@ -390,7 +397,7 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 
 	bpmnEngines := s.controller.Engines(ctx)
 
-	if len(bpmnEngines) == 0 {
+	if bpmnEngines == nil || len(bpmnEngines) == 0 {
 		err = fmt.Errorf("no engines available: %w", err)
 		return &proto.DeployDecisionDefinitionResponse{
 			Error: &proto.ErrorResult{
@@ -399,12 +406,15 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 			},
 		}, err
 	}
-	definition, err := bpmnEngines[0].GetDmnEngine().ParseDmnFromBytes("", req.Data)
-	if err != nil {
-		return nil, err
-	}
 
+	var definition *dmn.TDefinitions
 	for _, bpmnEngine := range bpmnEngines {
+		if definition == nil {
+			definition, err = bpmnEngine.GetDmnEngine().ParseDmnFromBytes("", req.Data)
+			if err != nil {
+				return nil, err
+			}
+		}
 		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", *definition, req.GetData(), req.Key)
 		if err != nil {
 			err = fmt.Errorf("failed to deploy decision definition: %w", err)

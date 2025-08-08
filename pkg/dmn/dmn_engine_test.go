@@ -53,7 +53,7 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	assert.Equal(t, int64(1), decisions[0].Version)
 	assert.Equal(t, "example_canAutoLiquidate", decisions[0].DecisionDefinitionId)
 	assert.Equal(t, metadata.Key, decisions[0].DecisionDefinitionKey)
-	assert.Equal(t, "", decisions[0].VersionTag)
+	assert.Equal(t, "versionTagTest", decisions[0].VersionTag)
 }
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefinitionKey(t *testing.T) {
@@ -186,7 +186,7 @@ func Test_BulkEvaluateDRD(t *testing.T) {
 					return
 				}
 
-				if !reflect.DeepEqual(result.DecisionOutput, test.ExpectedOutput) {
+				if !reflect.DeepEqual(test.ExpectedOutput, result.DecisionOutput) {
 					t.Errorf("\n"+
 						"Test:      %v\n"+
 						"Decision:  %v\n"+

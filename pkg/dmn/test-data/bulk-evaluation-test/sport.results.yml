@@ -4,38 +4,45 @@ tests:
   - decision: "location"
     input:
       weather: "good"
-    expectedOutput: "outdoor"
+    expectedOutput:
+      location: "outdoor"
   - decision: "location"
     input:
       weather: "bad"
-    expectedOutput: "indoor"
+    expectedOutput:
+      location: "indoor"
   - decision: "sport"
     input:
       equipment: "racket"
       weather: "bad"
-    expectedOutput: "squash"
+    expectedOutput:
+      sport: "squash"
 
 # Sport Tests
   - decision: "sport"
     input:
       equipment: "racket"
       weather: "bad"
-    expectedOutput: "squash"
+    expectedOutput:
+      sport: "squash"
   - decision: "sport"
     input:
       equipment: "racket"
       weather: "good"
-    expectedOutput: "tennis"
+    expectedOutput:
+      sport: "tennis"
   - decision: "sport"
     input:
       equipment: "club"
       weather: "bad"
-    expectedOutput: "minigolf"
+    expectedOutput:
+      sport: "minigolf"
   - decision: "sport"
     input:
       equipment: "club"
       weather: "good"
-    expectedOutput: "golf"
+    expectedOutput:
+      sport: "golf"
 
 # Clothes Tests
   - decision: "clothes"

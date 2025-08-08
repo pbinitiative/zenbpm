@@ -165,7 +165,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			}
 			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s:%d : %w",
+				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 					decision.DecisionDefinitionId,
 					decision.DecisionDefinitionKey,
 					decision.Id,
@@ -181,7 +181,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			}
 			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s:%d : %w",
+				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 					decision.DecisionDefinitionId,
 					decision.DecisionDefinitionKey,
 					decision.Id,
@@ -201,7 +201,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		}
 		decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s:%d : %w",
+			return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 				decision.DecisionDefinitionId,
 				decision.DecisionDefinitionKey,
 				decision.Id,
@@ -228,7 +228,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 func (engine *ZenDmnEngine) evaluateDRD(ctx context.Context, decisionDefinition *runtime.DecisionDefinition, decision *runtime.Decision, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
 	result, dependencies, err := engine.evaluateDecision(ctx, decisionDefinition, decision.Id, inputVariableContext)
 	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate Decision %s:%d in DecisionDefinition %s:%d: %w",
+		return nil, fmt.Errorf("failed to evaluate Decision %s in DecisionDefinition %s:%d: %w",
 			decision.Id,
 			decisionDefinition.Id,
 			decisionDefinition.Key,
@@ -269,7 +269,9 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 			return result, dependencies, err
 		}
 
-		localVariableContext[result.DecisionId] = result.DecisionOutput
+		for key, outputVariable := range result.DecisionOutput {
+			localVariableContext[key] = outputVariable
+		}
 		evaluatedDependencies = append(evaluatedDependencies, result)
 		evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 	}

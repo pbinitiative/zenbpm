@@ -11,6 +11,7 @@ message JobStreamRequest{
   oneof request{
     StreamSubscriptionRequest subscription = 1;
     JobCompleteRequest complete = 2;
+    JobFailRequest fail = 3;
   }
 }
 
@@ -29,6 +30,13 @@ message StreamSubscriptionRequest{
 message JobCompleteRequest{
   int64 key = 1; // job key
   bytes variables = 2; // json variables 
+}
+
+message JobFailRequest{
+  int64 key = 1;
+  string message = 2;
+  optional string error_code = 3;
+  optional bytes variables = 4;
 }
 
 message JobStreamResponse {

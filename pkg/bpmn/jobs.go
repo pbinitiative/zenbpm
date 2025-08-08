@@ -8,6 +8,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -15,7 +16,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (state runtime.ActivityState, retErr error) {
 	jobVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if err := evaluateLocalVariables(&jobVarHolder, element.GetInputMapping()); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
@@ -45,9 +46,13 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 	// TODO: pull this out into function that will be called by API as well
 	if job.State != runtime.ActivityStateCompleting {
 		job.State = runtime.ActivityStateActive
+		var failReason string = ""
 		activatedJob := &activatedJob{
-			processInstanceInfo:      instance,
-			failHandler:              func(reason string) { job.State = runtime.ActivityStateFailed },
+			processInstanceInfo: instance,
+			failHandler: func(reason string) {
+				job.State = runtime.ActivityStateFailing
+				failReason = reason
+			},
 			completeHandler:          func() { job.State = runtime.ActivityStateCompleting },
 			key:                      engine.generateKey(),
 			processInstanceKey:       instance.Key,
@@ -58,12 +63,27 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			createdAt:                job.CreatedAt,
 			variableHolder:           jobVarHolder,
 		}
+		ctx, internalCompleteSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", activatedJob.key))
+		defer func() {
+			if retErr != nil {
+				internalCompleteSpan.RecordError(retErr)
+				internalCompleteSpan.SetStatus(codes.Error, retErr.Error())
+			}
+			internalCompleteSpan.End()
+		}()
 		handler(activatedJob)
-		if job.State == runtime.ActivityStateCompleting {
+		switch job.State {
+		case runtime.ActivityStateFailing:
+			engine.handleIncident(ctx, job.Token, newEngineErrorf("failing internal job with message: %s", failReason), internalCompleteSpan)
+			job.State = runtime.ActivityStateFailed
+			instance.State = runtime.ActivityStateFailed
+
+		case runtime.ActivityStateCompleting:
 			err = propagateProcessInstanceVariables(&jobVarHolder, element.GetOutputMapping())
 			if err != nil {
-				instance.State = runtime.ActivityStateFailed
+				engine.handleIncident(ctx, job.Token, newEngineErrorf("failing internal job with message: %s", err), internalCompleteSpan)
 				job.State = runtime.ActivityStateFailed
+				instance.State = runtime.ActivityStateFailed
 			} else {
 				job.State = runtime.ActivityStateCompleted
 			}
@@ -156,6 +176,76 @@ func (engine *Engine) completeJob(
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
 	return instance, tokens, nil
+}
+
+func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
+	instance, tokens, err := engine.failJob(ctx, jobKey, message, errorCode, variables)
+	if err != nil {
+		return fmt.Errorf("failed to fail job %d: %w", jobKey, err)
+	}
+
+	if len(tokens) > 0 {
+		err = engine.runProcessInstance(ctx, instance, tokens)
+		if err != nil {
+			return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
+		}
+		return nil
+	}
+	return nil
+}
+
+func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (
+	instance *runtime.ProcessInstance,
+	tokens []runtime.ExecutionToken,
+	retErr error,
+) {
+	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
+	defer func() {
+		if retErr != nil {
+			failJobSpan.RecordError(retErr)
+			failJobSpan.SetStatus(codes.Error, retErr.Error())
+		}
+		failJobSpan.End()
+	}()
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	if job.State == runtime.ActivityStateFailed {
+		return nil, nil, newEngineErrorf("job %d is already failed", jobKey)
+	}
+	failJobSpan.SetAttributes(
+		attribute.Int64(otelPkg.AttributeJobKey, job.Key),
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, job.ProcessInstanceKey),
+		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
+	)
+
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+	}
+	instance = &inst
+
+	engine.handleIncident(ctx, job.Token, newEngineErrorf("failing job with message: %s, error code: %s", message, ptr.Deref(errorCode, "n/a")), failJobSpan)
+
+	// TODO: variable mapping needs to be implemented
+	job.State = runtime.ActivityStateFailed
+	instance.State = runtime.ActivityStateFailed
+	batch := engine.persistence.NewBatch()
+	batch.SaveJob(ctx, job)
+	batch.SaveProcessInstance(ctx, *instance)
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fail job %+v: %w", job, err)
+	}
+
+	if errorCode != nil {
+		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow
+		return instance, []runtime.ExecutionToken{}, nil
+	} else {
+		return instance, []runtime.ExecutionToken{}, nil
+	}
 }
 
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {

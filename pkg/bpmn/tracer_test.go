@@ -44,5 +44,5 @@ func TestTracer(t *testing.T) {
 		}
 		assert.Equal(t, parent.SpanContext().TraceID(), span.Parent.TraceID())
 	}
-	assert.Len(t, spans, 13)
+	assert.Len(t, spans, 14)
 }

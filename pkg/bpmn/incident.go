@@ -27,7 +27,7 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 }
 
 func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error) {
-	incident, instance, err := handleIncident(ctx, engine, key, err)
+	incident, instance, err := handleResolveIncident(ctx, engine, key, err)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 	return nil
 }
 
-func handleIncident(ctx context.Context, engine *Engine, key int64, err error) (runtime.Incident, runtime.ProcessInstance, error) {
+func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err error) (runtime.Incident, runtime.ProcessInstance, error) {
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
 		if err != nil {
@@ -66,15 +66,36 @@ func handleIncident(ctx context.Context, engine *Engine, key int64, err error) (
 		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
 	}
 
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
+	if err != nil {
+		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
+	}
+
 	batch := engine.persistence.NewBatch()
 	incident.ResolvedAt = ptr.To(time.Now())
 	batch.SaveIncident(ctx, incident)
 
+	// Checking for linked jobs as these need to be resolved as well
+	var job *runtime.Job
+	for _, j := range jobs {
+		if j.Token.Key == incident.Token.Key {
+			job = &j
+			break
+		}
+	}
+
+	// TODO: the same thing has to happen for other waiting subscriptions
+	if job != nil {
+		incident.Token.State = runtime.TokenStateWaiting
+		job.State = runtime.ActivityStateActive
+		batch.SaveJob(ctx, *job)
+	} else {
+		incident.Token.State = runtime.TokenStateRunning
+	}
+	batch.SaveToken(ctx, incident.Token)
+
 	instance.State = runtime.ActivityStateActive
 	batch.SaveProcessInstance(ctx, instance)
-
-	incident.Token.State = runtime.TokenStateRunning
-	batch.SaveToken(ctx, incident.Token)
 
 	err = batch.Flush(ctx)
 	if err != nil {

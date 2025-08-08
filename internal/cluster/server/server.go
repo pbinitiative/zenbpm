@@ -212,6 +212,32 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 	return &proto.CompleteJobResponse{}, nil
 }
 
+func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto.FailJobResponse, error) {
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal job input variables: %w", err)
+		return &proto.FailJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.ClientId), req.Key, req.Message, req.ErrorCode, vars)
+	if err != nil {
+		err := fmt.Errorf("failed to fail job %d: %w", req.Key, err)
+		return &proto.FailJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	return &proto.FailJobResponse{}, nil
+}
+
 func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRequest) (*proto.CreateInstanceResponse, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {

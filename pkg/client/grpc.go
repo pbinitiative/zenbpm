@@ -106,46 +106,44 @@ func (w *Worker) performWork() {
 			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.Message))
 			continue
 		}
-		vars, workerErr := w.f(w.stream.Context(), jobToComplete.Job)
-		if workerErr != nil {
-			errVars, err := json.Marshal(workerErr.Variables)
+		go func() {
+			vars, workerErr := w.f(w.stream.Context(), jobToComplete.Job)
+			if workerErr != nil {
+				errVars, err := json.Marshal(workerErr.Variables)
+				if err != nil {
+					w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
+				}
+
+				err = w.stream.Send(&proto.JobStreamRequest{
+					Request: &proto.JobStreamRequest_Fail{
+						Fail: &proto.JobFailRequest{
+							Key:       jobToComplete.Job.Key,
+							Message:   fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error()),
+							ErrorCode: &workerErr.ErrorCode,
+							Variables: errVars,
+						},
+					},
+				})
+				if err != nil {
+					w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
+				}
+			}
+			varsMarshaled, err := json.Marshal(vars)
 			if err != nil {
 				w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
-				continue
 			}
-
 			err = w.stream.Send(&proto.JobStreamRequest{
-				Request: &proto.JobStreamRequest_Fail{
-					Fail: &proto.JobFailRequest{
+				Request: &proto.JobStreamRequest_Complete{
+					Complete: &proto.JobCompleteRequest{
 						Key:       jobToComplete.Job.Key,
-						Message:   fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error()),
-						ErrorCode: &workerErr.ErrorCode,
-						Variables: errVars,
+						Variables: varsMarshaled,
 					},
 				},
 			})
 			if err != nil {
-				w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
+				w.logger.Error(fmt.Sprintf("failed to complete job %d: %s", jobToComplete.Job.Key, err))
 			}
-			continue
-		}
-		varsMarshaled, err := json.Marshal(vars)
-		if err != nil {
-			w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
-			continue
-		}
-		err = w.stream.Send(&proto.JobStreamRequest{
-			Request: &proto.JobStreamRequest_Complete{
-				Complete: &proto.JobCompleteRequest{
-					Key:       jobToComplete.Job.Key,
-					Variables: varsMarshaled,
-				},
-			},
-		})
-		if err != nil {
-			w.logger.Error(fmt.Sprintf("failed to complete job %d: %s", jobToComplete.Job.Key, err))
-			continue
-		}
+		}()
 	}
 }
 

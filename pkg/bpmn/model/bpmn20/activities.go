@@ -80,7 +80,7 @@ type TBusinessRuleTask struct {
 func (businessRuleTask *TBusinessRuleTask) GetType() ElementType { return ElementBusinessRuleTask }
 
 func (businessRuleTask *TBusinessRuleTask) GetTaskType() string {
-	return businessRuleTask.Implementation.(TBusinessRuleTaskExternal).TaskDefinition.TypeName
+	return businessRuleTask.Implementation.(*TBusinessRuleTaskExternal).TaskDefinition.TypeName
 }
 
 // TODO: implement data quality checks

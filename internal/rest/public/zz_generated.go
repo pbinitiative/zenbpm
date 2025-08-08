@@ -273,13 +273,13 @@ type ProcessInstancePage struct {
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
 
-	// DecisionDefinitionKey Can be used in combination with bindingType latest
-	DecisionDefinitionKey *string                `json:"decisionDefinitionKey,omitempty"`
-	DecisionId            string                 `json:"decisionId"`
-	Variables             map[string]interface{} `json:"variables"`
+	// DecisionDefinitionId Can be used in combination with bindingType latest
+	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
+	DecisionId           string                  `json:"decisionId"`
+	Variables            *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
-	VersionTag string `json:"versionTag"`
+	VersionTag *string `json:"versionTag,omitempty"`
 }
 
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
@@ -2320,20 +2320,20 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

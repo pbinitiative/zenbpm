@@ -120,7 +120,7 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	}
 	for _, p := range definitions {
 		processDefinitionSimple := public.DecisionDefinitionSimple{
-			Key:                  fmt.Sprintf("%x", p.Key),
+			Key:                  fmt.Sprintf("%d", p.Key),
 			Version:              int(p.Version),
 			DecisionDefinitionId: p.DecisionDefinitionId,
 		}
@@ -150,7 +150,7 @@ func (s *Server) GetDecisionDefinition(ctx context.Context, request public.GetDe
 	return public.GetDecisionDefinition200JSONResponse{
 		DecisionDefinitionSimple: public.DecisionDefinitionSimple{
 			DecisionDefinitionId: definition.DecisionDefinitionId,
-			Key:                  fmt.Sprintf("%x", definition.Key),
+			Key:                  fmt.Sprintf("%d", definition.Key),
 			Version:              int(definition.Version),
 		},
 		DmnData: ptr.To(string(definition.Definition)),
@@ -176,12 +176,17 @@ func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.Cr
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
+	var decision = request.Body.DecisionId
+	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.Latest {
+		decision = *request.Body.DecisionDefinitionId + "." + request.Body.DecisionId
+	}
+
 	result, err := s.node.EvaluateDecision(
 		ctx,
 		string(request.Body.BindingType),
-		request.Body.DecisionId,
-		request.Body.VersionTag,
-		request.Body.Variables,
+		decision,
+		ptr.Deref(request.Body.VersionTag, ""),
+		ptr.Deref(request.Body.Variables, make(map[string]interface{})),
 	)
 	if err != nil {
 		return public.EvaluateDecision500JSONResponse{
@@ -189,8 +194,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			Message: err.Error(),
 		}, nil
 	}
-	
-	//TODO: split into mapper methods
+
 	decisionOutput := make(map[string]any)
 	err = json.Unmarshal(result.DecisionOutput, &decisionOutput)
 	if err != nil {
@@ -200,13 +204,13 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		}, nil
 	}
 
-	evaluatedDecisions := make([]public.EvaluatedDecisionResult, 0)
+	evaluatedDecisions := make([]public.EvaluatedDecisionResult, 0, len(result.EvaluatedDecisions))
 	for _, evaluatedDecision := range result.EvaluatedDecisions {
 
-		matchedRules := make([]public.EvaluatedDecisionRule, 0)
+		matchedRules := make([]public.EvaluatedDecisionRule, 0, len(evaluatedDecision.MatchedRules))
 		for _, matchedRule := range evaluatedDecision.MatchedRules {
 
-			evaluatedOutputs := make([]public.EvaluatedDecisionOutput, 0)
+			evaluatedOutputs := make([]public.EvaluatedDecisionOutput, 0, len(matchedRule.EvaluatedOutputs))
 			for _, evaluatedOutput := range matchedRule.EvaluatedOutputs {
 				resultEvaluatedOutput := public.EvaluatedDecisionOutput{
 					OutputId:    evaluatedOutput.OutputId,
@@ -240,7 +244,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			}, nil
 		}
 
-		evaluatedInputs := make([]public.EvaluatedDecisionInput, 0)
+		evaluatedInputs := make([]public.EvaluatedDecisionInput, 0, len(evaluatedDecision.EvaluatedInputs))
 		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
 			resultEvaluatedInput := public.EvaluatedDecisionInput{
 				InputId:         evaluatedInput.InputId,

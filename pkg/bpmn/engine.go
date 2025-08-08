@@ -555,7 +555,7 @@ func (engine *Engine) createBusinessRuleTask(
 	var err error
 
 	switch element.Implementation.(type) {
-	case bpmn20.TBusinessRuleTaskLocal:
+	case *bpmn20.TBusinessRuleTaskLocal:
 		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal))
 	case *bpmn20.TBusinessRuleTaskExternal:
 		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
@@ -597,6 +597,9 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 
 	if len(element.GetOutputMapping()) > 0 {
+		for key, value := range result.DecisionOutput {
+			variableHolder.SetVariable(key, value)
+		}
 		if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
@@ -604,11 +607,19 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+	if len(result.DecisionOutput) == 1 {
+		var propagateValue any
+		for _, value := range result.DecisionOutput {
+			propagateValue = value
+		}
+		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, propagateValue)
+	} else {
+		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+	}
 	return runtime.ActivityStateCompleted, nil
 }
 
-// TODO: implement TaskDefinition as worker filter and Headers as worker parameters
+// TODO: Implement Headers as worker parameters and Retries
 func (engine *Engine) createExternalBusinessRuleTask(
 	ctx context.Context,
 	batch storage.Batch,

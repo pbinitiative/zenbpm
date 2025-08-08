@@ -50,6 +50,7 @@ service ZenService {
 
   // engine endpoints
   // Deploys definition into partitions that receiving node is leader of
+  rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
   rpc DeployDecisionDefinition(DeployDecisionDefinitionRequest) returns (DeployDecisionDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
@@ -144,9 +145,17 @@ message ResumePartitionNodeResponse {
 
 // INTERNAL ENGINE API START
 
+message EvaluateDecisionRequest {
+  string bindingType = 1;
+  string decisionId = 2;
+  string versionTag = 3;
+  bytes variables = 4;
+}
+
 message EvaluatedDRDResult {
-  repeated EvaluatedDecisionResult evaluatedDecisions = 1;
-  bytes DecisionOutput = 2;
+  optional ErrorResult error = 1;
+  repeated EvaluatedDecisionResult evaluatedDecisions = 2;
+  bytes DecisionOutput = 3;
 }
 
 message EvaluatedDecisionResult {

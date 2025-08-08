@@ -13,7 +13,7 @@ type Querier interface {
 	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
-	FindDecisionByKey(ctx context.Context, key int64) (Decision, error)
+	FindDecisionByIdAndDecisionDefinitionKey(ctx context.Context, arg FindDecisionByIdAndDecisionDefinitionKeyParams) (Decision, error)
 	FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error)
 	FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error)
 	FindDecisionsById(ctx context.Context, decisionID string) ([]Decision, error)

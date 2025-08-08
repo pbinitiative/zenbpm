@@ -114,7 +114,6 @@ CREATE TABLE IF NOT EXISTS decision_definition(
 
 -- table that holds information about all the decision
 CREATE TABLE IF NOT EXISTS decision(
-    key INTEGER PRIMARY KEY, -- int64 id of the decision
     version INTEGER NOT NULL, -- int64 version of the decision
     decision_id TEXT NOT NULL, -- id of the decision from xml
     version_tag TEXT NOT NULL, -- string version tag of the decision (user defined)

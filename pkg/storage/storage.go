@@ -69,7 +69,7 @@ type DecisionStorageReader interface {
 
 	GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error)
 
-	GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error)
+	GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error)
 }
 
 type DecisionStorageWriter interface {

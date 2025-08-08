@@ -1,15 +1,15 @@
-
 -- name: SaveDecision :exec
-INSERT INTO decision(key, version, decision_id, version_tag, decision_definition_id, decision_definition_key)
-    VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO decision(version, decision_id, version_tag, decision_definition_id, decision_definition_key)
+    VALUES (?, ?, ?, ?, ?);
 
--- name: FindDecisionByKey :one
+-- name: FindDecisionByIdAndDecisionDefinitionKey :one
 SELECT
     *
 FROM
     decision
 WHERE
-    key = @key;
+    decision_definition_key = @decision_definition_key
+    and decision_id = @decision_id;
 
 -- name: FindLatestDecisionById :one
 SELECT

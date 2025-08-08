@@ -43,7 +43,7 @@ func TestRestApiDecisionDefinition(t *testing.T) {
 				break
 			}
 		}
-		assert.Equal(t, deployedDefinition.DecisionDefinitionId, "service-task-input-output")
+		assert.Equal(t, "example_canAutoLiquidate", deployedDefinition.DecisionDefinitionId)
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestRestApiDecisionDefinition(t *testing.T) {
 
 		detail, err := getDecisionDefinitionDetail(t, list[0].Key)
 		assert.NoError(t, err)
-		assert.Equal(t, detail.DecisionDefinitionId, "service-task-input-output")
+		assert.Equal(t, "example_canAutoLiquidate", detail.DecisionDefinitionId)
 		assert.NotNil(t, detail.DmnData)
 	})
 }
@@ -79,7 +79,7 @@ func deployDecisionDefinition(t testing.TB, filename string) error {
 		return err
 	}
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
-	loc := filepath.Join(wd, "pkg", "bpmn", "test-cases", "bulk-evaluation-test", filename)
+	loc := filepath.Join(wd, "pkg", "dmn", "test-data", "bulk-evaluation-test", filename)
 	file, err := os.ReadFile(loc)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)

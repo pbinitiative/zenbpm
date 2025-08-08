@@ -322,7 +322,6 @@ func (rq *RqLiteDB) GetLatestDecisionById(ctx context.Context, decisionId string
 	}
 
 	res = dmnruntime.Decision{
-		Key:                   dbDecision.Key,
 		Version:               dbDecision.Version,
 		Id:                    dbDecision.DecisionID,
 		VersionTag:            dbDecision.VersionTag,
@@ -342,7 +341,6 @@ func (rq *RqLiteDB) GetDecisionsById(ctx context.Context, decisionId string) ([]
 	res := make([]dmnruntime.Decision, len(dbDecisions))
 	for i, dec := range dbDecisions {
 		res[i] = dmnruntime.Decision{
-			Key:                   dec.Key,
 			Version:               dec.Version,
 			Id:                    dec.DecisionID,
 			VersionTag:            dec.VersionTag,
@@ -366,7 +364,6 @@ func (rq *RqLiteDB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, deci
 	}
 
 	res = dmnruntime.Decision{
-		Key:                   dbDecision.Key,
 		Version:               dbDecision.Version,
 		Id:                    dbDecision.DecisionID,
 		VersionTag:            dbDecision.VersionTag,
@@ -390,7 +387,6 @@ func (rq *RqLiteDB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Con
 	}
 
 	res = dmnruntime.Decision{
-		Key:                   dbDecision.Key,
 		Version:               dbDecision.Version,
 		Id:                    dbDecision.DecisionID,
 		VersionTag:            dbDecision.VersionTag,
@@ -401,15 +397,19 @@ func (rq *RqLiteDB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Con
 	return res, nil
 }
 
-func (rq *RqLiteDB) GetDecisionByKey(ctx context.Context, decisionKey int64) (dmnruntime.Decision, error) {
+func (rq *RqLiteDB) GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error) {
 	var res dmnruntime.Decision
-	dbDecision, err := rq.queries.FindDecisionByKey(ctx, decisionKey)
+	dbDecision, err := rq.queries.FindDecisionByIdAndDecisionDefinitionKey(
+		ctx,
+		sql.FindDecisionByIdAndDecisionDefinitionKeyParams{
+			DecisionDefinitionKey: decisionDefinitionKey,
+			DecisionID:            decisionId,
+		})
 	if err != nil {
 		return res, fmt.Errorf("failed to find decision by key: %w", err)
 	}
 
 	res = dmnruntime.Decision{
-		Key:                   dbDecision.Key,
 		Version:               dbDecision.Version,
 		Id:                    dbDecision.DecisionID,
 		VersionTag:            dbDecision.VersionTag,
@@ -428,7 +428,6 @@ func (rq *RqLiteDB) SaveDecision(ctx context.Context, decision dmnruntime.Decisi
 
 func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.Decision) error {
 	err := db.SaveDecision(ctx, sql.SaveDecisionParams{
-		Key:                   decision.Key,
 		Version:               decision.Version,
 		DecisionID:            decision.Id,
 		VersionTag:            decision.VersionTag,

@@ -98,8 +98,6 @@ paths:
               required:
                 - decisionId
                 - bindingType
-                - versionTag
-                - variables
               properties:
                 decisionId:
                   type: string
@@ -109,7 +107,7 @@ paths:
                     - latest
                     - deployment #TODO: unsupported
                     - versionTag
-                decisionDefinitionKey:
+                decisionDefinitionId:
                   description: Can be used in combination with bindingType latest
                   type: string
                 versionTag:

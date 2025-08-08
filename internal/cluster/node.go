@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"time"
 
@@ -311,90 +310,29 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 }
 
 func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {
-	randomInt := rand.Intn(len(node.controller.partitions))
-	result, err := node.controller.partitions[uint32(randomInt)].engine.GetDmnEngine().FindAndEvaluateDRD(
-		ctx,
-		bindingType,
-		decisionId,
-		versionTag,
-		variables,
-	)
+	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node to evaluate decision: %w", err)
+	}
+	client, err := node.client.For(candidateNode.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to evaluate decision: %w", err)
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal variables to evaluate decision: %w", err)
+	}
+	resp, err := client.EvaluateDecision(ctx, &proto.EvaluateDecisionRequest{
+		BindingType: bindingType,
+		DecisionId:  decisionId,
+		VersionTag:  versionTag,
+		Variables:   vars,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", fmt.Errorf("failed to find and evaluate decision %s", decisionId), err)
 	}
 
-	//TODO: split into mapper methods
-	decisionOutput, err := json.Marshal(result.DecisionOutput)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal evaluated decision output: %w", err)
-	}
-
-	evaluatedDecisions := make([]*proto.EvaluatedDecisionResult, 0)
-	for _, evaluatedDecision := range result.EvaluatedDecisions {
-
-		matchedRules := make([]*proto.EvaluatedRule, 0)
-		for _, matchedRule := range evaluatedDecision.MatchedRules {
-
-			evaluatedOutputs := make([]*proto.EvaluatedOutput, 0)
-			for _, evaluatedOutput := range matchedRule.EvaluatedOutputs {
-				resultEvaluatedOutput := proto.EvaluatedOutput{
-					OutputId:    evaluatedOutput.OutputId,
-					OutputName:  evaluatedOutput.OutputName,
-					OutputValue: nil,
-				}
-				resultEvaluatedOutput.OutputValue, err = json.Marshal(evaluatedOutput.OutputValue)
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal evaluatedOutput.OutputValue: %w", err)
-				}
-				evaluatedOutputs = append(evaluatedOutputs, &resultEvaluatedOutput)
-			}
-
-			resultMatchedRule := proto.EvaluatedRule{
-				RuleId:           matchedRule.RuleId,
-				RuleIndex:        int32(matchedRule.RuleIndex),
-				EvaluatedOutputs: evaluatedOutputs,
-			}
-
-			matchedRules = append(matchedRules, &resultMatchedRule)
-		}
-
-		resultDecisionOutput, err := json.Marshal(result.DecisionOutput)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal decision output: %w", err)
-		}
-
-		evaluatedInputs := make([]*proto.EvaluatedInput, 0)
-		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
-			resultEvaluatedInput := proto.EvaluatedInput{
-				InputId:         evaluatedInput.InputId,
-				InputName:       evaluatedInput.InputName,
-				InputExpression: evaluatedInput.InputExpression,
-				InputValue:      nil,
-			}
-			resultEvaluatedInput.InputValue, err = json.Marshal(evaluatedInput.InputValue)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal evaluatedInput.InputValue: %w", err)
-			}
-			evaluatedInputs = append(evaluatedInputs, &resultEvaluatedInput)
-		}
-
-		evaluatedDecisions = append(evaluatedDecisions, &proto.EvaluatedDecisionResult{
-			DecisionId:                evaluatedDecision.DecisionId,
-			DecisionName:              evaluatedDecision.DecisionName,
-			DecisionType:              evaluatedDecision.DecisionType,
-			DecisionDefinitionVersion: evaluatedDecision.DecisionDefinitionVersion,
-			DecisionDefinitionKey:     evaluatedDecision.DecisionDefinitionKey,
-			DecisionDefinitionId:      evaluatedDecision.DecisionDefinitionId,
-			MatchedRules:              matchedRules,
-			DecisionOutput:            resultDecisionOutput,
-			EvaluatedInputs:           evaluatedInputs,
-		})
-	}
-
-	return &proto.EvaluatedDRDResult{
-		EvaluatedDecisions: evaluatedDecisions,
-		DecisionOutput:     decisionOutput,
-	}, nil
+	return resp, nil
 }
 
 func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {

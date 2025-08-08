@@ -1,6 +1,7 @@
 package dmn
 
 import (
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
@@ -35,54 +36,111 @@ func TestMain(m *testing.M) {
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
-	metadata, decisions, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	metadata, decisions, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
 
 	assert.Equal(t, int64(1), metadata.Version)
-	assert.Greater(t, metadata.Key, int64(1))
+	assert.Less(t, int64(1), metadata.Key)
 	assert.Equal(t, "example_canAutoLiquidate", metadata.Id)
+	assert.Equal(t, xmldata, metadata.DmnData)
+	assert.Equal(t, md5.Sum(xmldata), metadata.DmnChecksum)
+
+	assert.Equal(t, 1, len(decisions))
+	assert.Equal(t, "example_canAutoLiquidateRule", decisions[0].Id)
+	assert.Equal(t, int64(1), decisions[0].Version)
+	assert.Equal(t, "example_canAutoLiquidate", decisions[0].DecisionDefinitionId)
+	assert.Equal(t, metadata.Key, decisions[0].DecisionDefinitionKey)
+	assert.Equal(t, "", decisions[0].VersionTag)
 }
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefinitionKey(t *testing.T) {
-	// setup and test
-	metadata, decisions, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+
+	//run
+	metadata, decisions, err := dmnEngine.SaveDecisionDefinition(
+		t.Context(),
+		"",
+		*definition,
+		xmldata,
+		dmnEngine.generateKey(),
+	)
+	assert.NoError(t, err)
 	keyOne := metadata.Key
 	assert.Equal(t, int64(1), metadata.Version)
+	assert.Equal(t, 1, len(decisions))
+	assert.Equal(t, int64(1), decisions[0].Version)
 
-	metadata, decisions, _ = dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	//run 2
+	metadata, decisions, err = dmnEngine.SaveDecisionDefinition(
+		t.Context(),
+		"",
+		*definition,
+		xmldata,
+		dmnEngine.generateKey(),
+	)
+	assert.NoError(t, err)
 	keyTwo := metadata.Key
 	assert.Equal(t, int64(1), metadata.Version)
+	assert.Equal(t, 0, len(decisions))
 	assert.Equal(t, keyTwo, keyOne)
 }
 
 func TestLoadingTheSameDecisionDefinitionWithModificationWillCreateNewVersion(t *testing.T) {
 	// setup
-	decisionDefinition1, decisions, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
-	decisionDefinition2, decisions, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule-modified.dmn")
-	decisionDefinition3, decisions, _ := dmnEngine.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	definition2, xmldata2, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified.dmn"))
+	assert.NoError(t, err)
+
+	decisionDefinition1, decisions1, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	decisionDefinition2, decisions2, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition2, xmldata2, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	decisionDefinition3, decisions3, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
 
 	assert.Equal(t, decisionDefinition1.Id, decisionDefinition2.Id, "both prepared files should have equal IDs")
 	assert.Equal(t, int64(1), decisionDefinition1.Version)
 	assert.Equal(t, int64(2), decisionDefinition2.Version)
 	assert.Equal(t, int64(3), decisionDefinition3.Version)
 
+	assert.Equal(t, 1, len(decisions1))
+	assert.Equal(t, int64(1), decisions1[0].Version)
+	assert.Equal(t, 1, len(decisions2))
+	assert.Equal(t, int64(2), decisions2[0].Version)
+	assert.Equal(t, 1, len(decisions3))
+	assert.Equal(t, int64(3), decisions3[0].Version)
+
 	assert.NotEqual(t, decisionDefinition2.Key, decisionDefinition1.Key)
 }
 
 func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
 	store := inmemory.NewStorage()
 	dmnEngine1 := NewEngine(EngineWithStorage(store))
 	store2 := inmemory.NewStorage()
 	dmnEngine2 := NewEngine(EngineWithStorage(store2))
 
 	// when
-	decisionDefinition1, decisions, err := dmnEngine1.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	assert.NoError(t, err)
-	decisionDefinition2, decisions, err := dmnEngine2.LoadFromFile(t.Context(), "./test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn")
+	decisionDefinition1, decisions1, err := dmnEngine1.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	decisionDefinition2, decisions2, err := dmnEngine2.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
 	assert.NoError(t, err)
 
 	// then
 	assert.NotEqual(t, decisionDefinition2.Key, decisionDefinition1.Key)
+	assert.Equal(t, 1, len(decisions1))
+	assert.Equal(t, 1, len(decisions2))
 }
 
 type testCase struct {
@@ -100,23 +158,28 @@ const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
 
 func Test_BulkEvaluateDRD(t *testing.T) {
 	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
 	bulkTestConfigs, err := loadBulkTestConfigs()
 
 	if err != nil {
-		t.Fatalf("Failed to load bulk evaluation test: %v", err)
+		t.Fatalf("Failed to saveDecisionDefinition bulk evaluation test: %v", err)
 	}
 
 	for _, configuration := range bulkTestConfigs {
-		dmnDefinition, decisions, loadErr := dmnEngine.LoadFromFile(t.Context(), BulkEvaluationTestPath+"/"+configuration.DMN)
+		definition, xmldata, loadErr := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", configuration.DMN))
+		if loadErr != nil {
+			t.Fatalf("Failed to saveDecisionDefinition DMN file - %v", loadErr.Error())
+		}
+		dmnDefinition, _, loadErr := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
 
 		if loadErr != nil {
-			t.Fatalf("Failed to load DMN file - %v", loadErr.Error())
+			t.Fatalf("Failed to saveDecisionDefinition DMN file - %v", loadErr.Error())
 		}
 
 		for i, test := range configuration.Tests {
 			testName := fmt.Sprintf("decision: '%s', input: %v", test.Decision, test.Input)
 			t.Run(testName, func(t *testing.T) {
-				result, err := dmnEngine.EvaluateDRD(t.Context(), dmnDefinition, test.Decision, test.Input)
+				result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "latest", dmnDefinition.Id+"."+test.Decision, "", test.Input)
 
 				if err != nil {
 					t.Fatalf("Failed: %v", err)
@@ -145,7 +208,7 @@ func Test_BulkEvaluateDRD(t *testing.T) {
 }
 
 func loadBulkTestConfigs() ([]configuration, error) {
-	files, err := os.ReadDir(BulkEvaluationTestPath)
+	files, err := os.ReadDir(filepath.Join(".", "test-data", "bulk-evaluation-test"))
 	if err != nil {
 		return nil, err
 	}
@@ -157,14 +220,14 @@ func loadBulkTestConfigs() ([]configuration, error) {
 			dmnFile := file.Name()
 			testFile := strings.TrimSuffix(dmnFile, ".dmn") + ".results.yml"
 
-			configFilePath := filepath.Join(BulkEvaluationTestPath, testFile)
+			configFilePath := filepath.Join(".", "test-data", "bulk-evaluation-test", testFile)
 			_, err := os.Stat(configFilePath)
 
 			if os.IsNotExist(err) {
 				return nil, errors.New("Found DMN file without corresponding test file: [" + dmnFile + "]. Create test file: [" + testFile + "] to fix this issue")
 			}
 
-			data, err := os.ReadFile(filepath.Join(BulkEvaluationTestPath, testFile))
+			data, err := os.ReadFile(filepath.Join(".", "test-data", "bulk-evaluation-test", testFile))
 			if err != nil {
 				return nil, err
 			}

@@ -9,7 +9,6 @@ import (
 )
 
 type Decision struct {
-	Key                   int64  `json:"key"`
 	Version               int64  `json:"version"`
 	DecisionID            string `json:"decision_id"`
 	VersionTag            string `json:"version_tag"`

@@ -104,6 +104,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 
 	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
+	node.controller.SetJobManager(node.JobManager)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
 	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
@@ -121,6 +122,13 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 	if len(nodes) > 0 {
 		node.logger.Info("Preexisting configuration detected. Skipping bootstrap.")
+
+		err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+		if err != nil {
+			node.logger.Error("Failed to apply log until timeout was reached: %s", err)
+		}
+
+		node.JobManager.Start()
 		return node, nil
 	}
 

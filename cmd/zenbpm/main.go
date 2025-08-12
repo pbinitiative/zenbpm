@@ -11,12 +11,14 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/grpc"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/otel"
-	"github.com/pbinitiative/zenbpm/internal/profile"
+
+	// "github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/rest"
 )
 
 func main() {
-	profile.InitProfile()
+
+	// profile.InitProfile()
 	log.Init()
 
 	appContext, ctxCancel := context.WithCancel(context.Background())

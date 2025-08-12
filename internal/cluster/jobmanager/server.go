@@ -135,7 +135,7 @@ func (s *jobServer) distributeJobs() {
 			if s.emptyDistributionCounter >= emptyDistributionCounterSleep {
 				time.Sleep(1 * time.Second)
 			} else {
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(time.Duration(s.emptyDistributionCounter) * time.Millisecond)
 			}
 			continue
 		}

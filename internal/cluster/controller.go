@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -34,6 +35,7 @@ type controller struct {
 	mux                  *tcp.Mux
 	logger               hclog.Logger
 	handleClusterChanges bool
+	jobManager           *jobmanager.JobManager
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
@@ -87,6 +89,14 @@ func (c *controller) ClusterStateChangeNotification(ctx context.Context) {
 		c.performLeaderOperations(ctx)
 	}
 	c.performMemberOperations(ctx)
+	if c.jobManager == nil {
+		return
+	}
+	c.jobManager.OnPartitionRoleChange(ctx)
+}
+
+func (c *controller) SetJobManager(jm *jobmanager.JobManager) {
+	c.jobManager = jm
 }
 
 func (c *controller) performLeaderOperations(ctx context.Context) {

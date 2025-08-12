@@ -2,38 +2,37 @@ package dmn
 
 type EvaluatedDRDResult struct {
 	EvaluatedDecisions []EvaluatedDecisionResult
-	DecisionOutput     interface{}
+	DecisionOutput     map[string]interface{}
 }
 
 type EvaluatedDecisionResult struct {
-	tenantId                  string
-	decisionId                string
-	decisionName              string
-	decisionType              string
-	decisionDefinitionVersion int64
-	decisionDefinitionKey     int64
-	decisionDefinitionId      string
-	matchedRules              []EvaluatedRule
-	decisionOutput            interface{}
-	evaluatedInputs           []EvaluatedInput
+	DecisionId                string
+	DecisionName              string
+	DecisionType              string
+	DecisionDefinitionVersion int64
+	DecisionDefinitionKey     int64
+	DecisionDefinitionId      string
+	MatchedRules              []EvaluatedRule
+	DecisionOutput            map[string]interface{}
+	EvaluatedInputs           []EvaluatedInput
 }
 
 type EvaluatedRule struct {
-	ruleId           string
-	ruleIndex        int
-	evaluatedOutputs []EvaluatedOutput
+	RuleId           string
+	RuleIndex        int
+	EvaluatedOutputs []EvaluatedOutput
 }
 
 type EvaluatedOutput struct {
-	outputId       string
-	outputName     string
-	outputJsonName string
-	outputValue    interface{}
+	OutputId       string
+	OutputName     string
+	OutputJsonName string
+	OutputValue    interface{}
 }
 
 type EvaluatedInput struct {
-	inputId         string
-	inputName       string
-	inputExpression string
-	inputValue      interface{}
+	InputId         string
+	InputName       string
+	InputExpression string
+	InputValue      interface{}
 }

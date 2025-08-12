@@ -7,6 +7,7 @@ import "testing"
 func Test_all_interfaces_implemented(t *testing.T) {
 	var _ InternalTask = &TServiceTask{}
 	var _ InternalTask = &TUserTask{}
+	var _ InternalTask = &TBusinessRuleTask{}
 
 	var _ BaseElement = &TStartEvent{}
 	var _ BaseElement = &TEndEvent{}
@@ -19,4 +20,5 @@ func Test_all_interfaces_implemented(t *testing.T) {
 	var _ BaseElement = &TEventBasedGateway{}
 	var _ BaseElement = &TInclusiveGateway{}
 	var _ BaseElement = &TCallActivity{}
+	var _ BaseElement = &TBusinessRuleTask{}
 }

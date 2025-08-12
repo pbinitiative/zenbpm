@@ -3,7 +3,6 @@ package sql
 import (
 	"embed"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -30,7 +29,7 @@ func GetMigrations() (Migrations, error) {
 		if f.IsDir() {
 			continue
 		}
-		content, err := migrations.ReadFile(filepath.Join("migrations", f.Name()))
+		content, err := migrations.ReadFile("migrations/" + f.Name())
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s: %w", f.Name(), err)
 		}

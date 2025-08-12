@@ -112,5 +112,15 @@ CREATE TABLE IF NOT EXISTS decision_definition(
     dmn_resource_name text NOT NULL -- resource name from deployment
 );
 
+-- table that holds information about all the decision
+CREATE TABLE IF NOT EXISTS decision(
+    version INTEGER NOT NULL, -- int64 version of the decision
+    decision_id TEXT NOT NULL, -- id of the decision from xml
+    version_tag TEXT NOT NULL, -- string version tag of the decision (user defined)
+    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml definition
+    decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
+    FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key) -- reference to decision definition
+);
+
 -- TODO: create a table for dumb activities like gateway/...
 -- TODO: create a table for flow

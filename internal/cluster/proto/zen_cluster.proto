@@ -49,9 +49,11 @@ service ZenService {
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 
   // engine endpoints
-  
   // Deploys definition into partitions that receiving node is leader of
-  rpc DeployDefinition(DeployDefinitionRequest) returns (DeployDefinitionResponse);
+  rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
+  rpc DeployDecisionDefinition(DeployDecisionDefinitionRequest) returns (DeployDecisionDefinitionResponse);
+  rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
+  rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
@@ -144,6 +146,66 @@ message ResumePartitionNodeResponse {
 
 // INTERNAL ENGINE API START
 
+message EvaluateDecisionRequest {
+  string bindingType = 1;
+  string decisionId = 2;
+  string versionTag = 3;
+  bytes variables = 4;
+}
+
+message EvaluatedDRDResult {
+  optional ErrorResult error = 1;
+  repeated EvaluatedDecisionResult evaluatedDecisions = 2;
+  bytes DecisionOutput = 3;
+}
+
+message EvaluatedDecisionResult {
+  string decisionId = 1;
+  string decisionName = 2;
+  string decisionType = 3;
+  int64 decisionDefinitionVersion = 4;
+  int64 decisionDefinitionKey = 5;
+  string decisionDefinitionId = 6;
+  repeated EvaluatedRule matchedRules = 7 ;
+  bytes decisionOutput = 8 ;
+  repeated EvaluatedInput evaluatedInputs = 9;
+}
+
+message EvaluatedRule {
+  string ruleId = 1;
+  int32  ruleIndex = 2;
+  repeated EvaluatedOutput  evaluatedOutputs = 3;
+}
+
+message EvaluatedOutput {
+  string outputId = 1;
+  string outputName = 2;
+  bytes outputValue = 3;
+}
+
+message EvaluatedInput {
+  string inputId = 1;
+  string inputName = 2;
+  string inputExpression = 3;
+  bytes inputValue = 4;
+}
+
+message DecisionDefinition {
+  int64 key = 1;
+  int32 version = 2;
+  string decision_definition_id = 3;
+  bytes definition = 4;
+}
+
+message Decision {
+  int64 key = 1;
+  int32 version = 2;
+  string decision_id = 3;
+  string version_tag = 4;
+  string decision_definition_id = 5;
+  string decision_definition_key = 6;
+}
+
 message ProcessDefinition {
   int64 key = 1;
   int32 version = 2;
@@ -189,19 +251,28 @@ message Incident {
   int64 execution_token = 8;
 }
 
-message DeployDefinitionRequest {
+message DeployDecisionDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
 }
 
-message DeployDefinitionResponse {
+message DeployDecisionDefinitionResponse {
+  optional ErrorResult error = 1;
+}
+
+message DeployProcessDefinitionRequest {
+  int64 key = 1;
+  bytes data = 2;
+}
+
+message DeployProcessDefinitionResponse {
   optional ErrorResult error = 1;
 }
 
 message CompleteJobRequest {
   int64 key = 1;
   bytes variables = 2; // []byte of json variables 
-  string client_id = 3; 
+  string client_id = 3;
 }
 
 
@@ -211,7 +282,7 @@ message CompleteJobResponse {
 message FailJobRequest {
   int64 key = 1;
   string message = 2;
-  string client_id = 3; 
+  string client_id = 3;
   optional string error_code = 4;
   optional bytes variables = 5;
 }

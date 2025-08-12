@@ -5,6 +5,7 @@ import (
 	ssql "database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"math/rand"
 	"net"
 	"slices"
@@ -297,14 +298,153 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	}, nil
 }
 
-func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefinitionRequest) (*proto.DeployDefinitionResponse, error) {
-	engines := s.controller.Engines(ctx)
-	var err error
-	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.Key)
+func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.EvaluatedDRDResult{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal decision variables: %w", err)
+		return &proto.EvaluatedDRDResult{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	result, err := engine.GetDmnEngine().FindAndEvaluateDRD(
+		ctx,
+		req.BindingType,
+		req.DecisionId,
+		req.VersionTag,
+		vars,
+	)
+	if err != nil {
+		err := fmt.Errorf("failed to create process instance: %w", err)
+		return &proto.EvaluatedDRDResult{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	decisionOutput, err := json.Marshal(result.DecisionOutput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal evaluated decision output: %w", err)
+	}
+
+	evaluatedDecisions := make([]*proto.EvaluatedDecisionResult, 0, len(result.EvaluatedDecisions))
+	for _, evaluatedDecision := range result.EvaluatedDecisions {
+
+		matchedRules := make([]*proto.EvaluatedRule, 0, len(evaluatedDecision.MatchedRules))
+		for _, matchedRule := range evaluatedDecision.MatchedRules {
+
+			evaluatedOutputs := make([]*proto.EvaluatedOutput, 0, len(matchedRule.EvaluatedOutputs))
+			for _, evaluatedOutput := range matchedRule.EvaluatedOutputs {
+				resultEvaluatedOutput := proto.EvaluatedOutput{
+					OutputId:    evaluatedOutput.OutputId,
+					OutputName:  evaluatedOutput.OutputName,
+					OutputValue: nil,
+				}
+
+				outputValue := make(map[string]interface{})
+				outputValue[evaluatedOutput.OutputJsonName] = evaluatedOutput.OutputValue
+				resultEvaluatedOutput.OutputValue, err = json.Marshal(outputValue)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal evaluatedOutput.OutputValue: %w", err)
+				}
+				evaluatedOutputs = append(evaluatedOutputs, &resultEvaluatedOutput)
+			}
+
+			resultMatchedRule := proto.EvaluatedRule{
+				RuleId:           matchedRule.RuleId,
+				RuleIndex:        int32(matchedRule.RuleIndex),
+				EvaluatedOutputs: evaluatedOutputs,
+			}
+
+			matchedRules = append(matchedRules, &resultMatchedRule)
+		}
+
+		resultDecisionOutput, err := json.Marshal(result.DecisionOutput)
 		if err != nil {
-			err = fmt.Errorf("failed to deploy process definition: %w", err)
-			return &proto.DeployDefinitionResponse{
+			return nil, fmt.Errorf("failed to marshal decision output: %w", err)
+		}
+
+		evaluatedInputs := make([]*proto.EvaluatedInput, 0, len(evaluatedDecision.EvaluatedInputs))
+		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
+			resultEvaluatedInput := proto.EvaluatedInput{
+				InputId:         evaluatedInput.InputId,
+				InputName:       evaluatedInput.InputName,
+				InputExpression: evaluatedInput.InputExpression,
+				InputValue:      nil,
+			}
+
+			inputValue := make(map[string]interface{})
+			inputValue[evaluatedInput.InputExpression] = evaluatedInput.InputValue
+			resultEvaluatedInput.InputValue, err = json.Marshal(inputValue)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal evaluatedInput.InputValue: %w", err)
+			}
+			evaluatedInputs = append(evaluatedInputs, &resultEvaluatedInput)
+		}
+
+		evaluatedDecisions = append(evaluatedDecisions, &proto.EvaluatedDecisionResult{
+			DecisionId:                evaluatedDecision.DecisionId,
+			DecisionName:              evaluatedDecision.DecisionName,
+			DecisionType:              evaluatedDecision.DecisionType,
+			DecisionDefinitionVersion: evaluatedDecision.DecisionDefinitionVersion,
+			DecisionDefinitionKey:     evaluatedDecision.DecisionDefinitionKey,
+			DecisionDefinitionId:      evaluatedDecision.DecisionDefinitionId,
+			MatchedRules:              matchedRules,
+			DecisionOutput:            resultDecisionOutput,
+			EvaluatedInputs:           evaluatedInputs,
+		})
+	}
+
+	return &proto.EvaluatedDRDResult{
+		Error:              nil,
+		EvaluatedDecisions: evaluatedDecisions,
+		DecisionOutput:     decisionOutput,
+	}, nil
+}
+
+func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.DeployDecisionDefinitionRequest) (*proto.DeployDecisionDefinitionResponse, error) {
+	var err error
+
+	bpmnEngines := s.controller.Engines(ctx)
+
+	if bpmnEngines == nil || len(bpmnEngines) == 0 {
+		err = fmt.Errorf("no engines available: %w", err)
+		return &proto.DeployDecisionDefinitionResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	var definition *dmn.TDefinitions
+	for _, bpmnEngine := range bpmnEngines {
+		if definition == nil {
+			definition, err = bpmnEngine.GetDmnEngine().ParseDmnFromBytes("", req.Data)
+			if err != nil {
+				return nil, err
+			}
+		}
+		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", *definition, req.GetData(), req.Key)
+		if err != nil {
+			err = fmt.Errorf("failed to deploy decision definition: %w", err)
+			return &proto.DeployDecisionDefinitionResponse{
 				Error: &proto.ErrorResult{
 					Code:    0,
 					Message: err.Error(),
@@ -312,7 +452,25 @@ func (s *Server) DeployDefinition(ctx context.Context, req *proto.DeployDefiniti
 			}, err
 		}
 	}
-	return &proto.DeployDefinitionResponse{}, nil
+	return &proto.DeployDecisionDefinitionResponse{}, nil
+}
+
+func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
+	engines := s.controller.Engines(ctx)
+	var err error
+	for _, engine := range engines {
+		_, err = engine.LoadFromBytes(req.GetData(), req.Key)
+		if err != nil {
+			err = fmt.Errorf("failed to deploy process definition: %w", err)
+			return &proto.DeployProcessDefinitionResponse{
+				Error: &proto.ErrorResult{
+					Code:    0,
+					Message: err.Error(),
+				},
+			}, err
+		}
+	}
+	return &proto.DeployProcessDefinitionResponse{}, nil
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {

@@ -1,7 +1,9 @@
 package bpmn
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -292,4 +294,33 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 
 	// then
 	assert.Equal(t, "task-for-message", cp.CallPath)
+}
+
+// Also tests Binding Type - VersionTag and Latest
+// TODO: Fix this test after implementing support for nested variables
+func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
+	//setup
+	process, _ := bpmnEngine.LoadFromFile(filepath.Join(".", "test-cases", "simple-business-rule-task-local.bpmn"))
+
+	definition, xmldata, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
+		t.Context(),
+		"",
+		*definition,
+		xmldata,
+		bpmnEngine.generateKey(),
+	)
+	assert.NoError(t, err)
+
+	//run
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+
+	assert.NotEmpty(t, instance.VariableHolder.Variables())
+	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable"])
+	assert.Equal(t, false, instance.VariableHolder.Variables()["OutputTestResultVariable"])
+	assert.Nil(t, instance.VariableHolder.Variables()["testResultVariable2"])
+	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable3"])
+
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }

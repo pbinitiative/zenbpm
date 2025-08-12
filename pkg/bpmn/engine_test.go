@@ -297,6 +297,7 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 }
 
 // Also tests Binding Type - VersionTag and Latest
+// TODO: Fix this test after implementing support for nested variables
 func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	//setup
 	process, _ := bpmnEngine.LoadFromFile(filepath.Join(".", "test-cases", "simple-business-rule-task-local.bpmn"))

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,7 +82,7 @@ func deployDefinition(t testing.TB, filename string) error {
 		return err
 	}
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
-	loc := path.Join(wd, "pkg", "bpmn", "test-cases", filename)
+	loc := filepath.Join(wd, "pkg", "bpmn", "test-cases", filename)
 	file, err := os.ReadFile(loc)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)

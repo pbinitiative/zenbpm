@@ -247,7 +247,103 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*RqLiteDB, error) {
 	return nil, fmt.Errorf("no partition available to get read only database")
 }
 
-func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+// GetDecisionDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+func (node *ZenNode) GetDecisionDefinitions(ctx context.Context) ([]proto.DecisionDefinition, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decision definitions: %w", err)
+	}
+	definitions, err := db.queries.FindAllDecisionDefinitions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read decision definitions from database: %w", err)
+	}
+	resp := make([]proto.DecisionDefinition, 0, len(definitions))
+	for _, def := range definitions {
+		resp = append(resp, proto.DecisionDefinition{
+			Key:                  def.Key,
+			Version:              int32(def.Version),
+			DecisionDefinitionId: def.DmnID,
+			Definition:           []byte(def.DmnData),
+		})
+	}
+	return resp, nil
+}
+
+// GetDecisionDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (proto.DecisionDefinition, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return proto.DecisionDefinition{}, fmt.Errorf("failed to get decision definition: %w", err)
+	}
+	def, err := db.queries.FindDecisionDefinitionByKey(ctx, key)
+	if err != nil {
+		return proto.DecisionDefinition{}, fmt.Errorf("failed to read process decision from database: %w", err)
+	}
+	return proto.DecisionDefinition{
+		Key:                  def.Key,
+		Version:              int32(def.Version),
+		DecisionDefinitionId: def.DmnID,
+		Definition:           []byte(def.DmnData),
+	}, nil
+}
+
+func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	gen, _ := snowflake.NewNode(0)
+	definitionKey := gen.Generate()
+	state := node.store.ClusterState()
+	var errJoin error
+	for _, partition := range state.Partitions {
+		pLeader := state.Nodes[partition.LeaderId]
+		client, err := node.client.For(pLeader.Addr)
+		if err != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
+		}
+		resp, err := client.DeployDecisionDefinition(ctx, &proto.DeployDecisionDefinitionRequest{
+			Key:  definitionKey.Int64(),
+			Data: data,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("client call to deploy decision definition failed")
+			if err != nil {
+				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
+			} else if resp.Error != nil {
+				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage())))
+			}
+		}
+	}
+	if errJoin != nil {
+		return definitionKey.Int64(), errJoin
+	}
+	return definitionKey.Int64(), nil
+}
+
+func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {
+	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node to evaluate decision: %w", err)
+	}
+	client, err := node.client.For(candidateNode.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to evaluate decision: %w", err)
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal variables to evaluate decision: %w", err)
+	}
+	resp, err := client.EvaluateDecision(ctx, &proto.EvaluateDecisionRequest{
+		BindingType: bindingType,
+		DecisionId:  decisionId,
+		VersionTag:  versionTag,
+		Variables:   vars,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", fmt.Errorf("failed to find and evaluate decision %s", decisionId), err)
+	}
+
+	return resp, nil
+}
+
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
@@ -265,12 +361,12 @@ func (node *ZenNode) DeployDefinitionToAllPartitions(ctx context.Context, data [
 		if err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
-		resp, err := client.DeployDefinition(ctx, &proto.DeployDefinitionRequest{
+		resp, err := client.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
 			Key:  definitionKey.Int64(),
 			Data: data,
 		})
 		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("client call to deploy definition failed")
+			e := fmt.Errorf("client call to deploy process definition failed")
 			if err != nil {
 				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
 			} else if resp.Error != nil {
@@ -634,7 +730,6 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
-
 	return resp.Incidents, nil
 }
 

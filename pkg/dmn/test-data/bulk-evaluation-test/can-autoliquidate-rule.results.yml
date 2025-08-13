@@ -4,4 +4,5 @@ tests:
       claim:
         amountOfDamage: 1000
         insuranceType: "MAJ"
-    expectedOutput: true
+    expectedOutput:
+      canAutoLiquidate: true

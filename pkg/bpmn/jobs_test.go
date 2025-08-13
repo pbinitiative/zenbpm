@@ -496,3 +496,36 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	assert.Contains(t, incidents[0].Message, "testing fail job")
 
 }
+
+func TestBusinessRuleTaskExternalActivated(t *testing.T) {
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-business-rule-task-external.bpmn")
+
+	h := bpmnEngine.NewTaskHandler().Type("test-business-rule-task-job").Handler(func(aj ActivatedJob) {
+		assert.NotEmpty(t, aj.ElementId())
+		assert.NotNil(t, aj.CreatedAt())
+		assert.NotEqual(t, int64(0), aj.Key())
+		assert.NotEmpty(t, aj.BpmnProcessId())
+		assert.NotEqual(t, int64(0), aj.ProcessDefinitionKey())
+		assert.NotEqual(t, int32(0), aj.ProcessDefinitionVersion())
+		assert.NotEqual(t, int64(0), aj.ProcessInstanceKey())
+	})
+	defer bpmnEngine.RemoveHandler(h)
+
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+
+	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+}
+
+func TestBusinessRuleTaskExternalComplete(t *testing.T) {
+	cp := CallPath{}
+
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-business-rule-task-external.bpmn")
+
+	st1 := bpmnEngine.NewTaskHandler().Id("BusinessRuleTask1").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(st1)
+
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+
+	assert.Equal(t, "BusinessRuleTask1", cp.CallPath)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+}

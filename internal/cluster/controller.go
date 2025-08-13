@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -257,7 +257,7 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	}
 	partitionConf := c.persistenceConfig
 	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.RqLite.DataPath = path.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
+	partitionConf.RqLite.DataPath = filepath.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
 	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, partitionId, PartitionChangesCallbacks{
 		addNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)

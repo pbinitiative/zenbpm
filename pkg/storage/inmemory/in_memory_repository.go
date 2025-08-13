@@ -15,6 +15,7 @@ import (
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
+	Decision             map[string]map[int64]dmnruntime.Decision
 	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
 	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
 	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
@@ -32,6 +33,7 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
+		Decision:             make(map[string]map[int64]dmnruntime.Decision),
 		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
 		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
 		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
@@ -54,12 +56,87 @@ func (mem *Storage) NewBatch() storage.Batch {
 	}
 }
 
+var _ storage.DecisionStorageReader = &Storage{}
+
+func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
+	res := make([]dmnruntime.Decision, 0)
+	for _, dec := range mem.Decision[decisionId] {
+		res = append(res, dec)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
+}
+
+func (mem *Storage) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
+	res := make([]dmnruntime.Decision, 0)
+	for _, dec := range mem.Decision[decisionId] {
+		res = append(res, dec)
+	}
+	return res, nil
+}
+
+func (mem *Storage) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
+	res := make([]dmnruntime.Decision, 0)
+	for _, dec := range mem.Decision[decisionId] {
+		if dec.VersionTag != versionTag {
+			continue
+		}
+		res = append(res, dec)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
+}
+
+func (mem *Storage) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
+	res := make([]dmnruntime.Decision, 0)
+	for _, dec := range mem.Decision[decisionId] {
+		if dec.DecisionDefinitionId != decisionDefinitionId {
+			continue
+		}
+		res = append(res, dec)
+	}
+	slices.SortFunc(res, func(a, b dmnruntime.Decision) int {
+		return int(a.Version - b.Version)
+	})
+
+	if len(res) > 0 {
+		return res[0], nil
+	}
+	return dmnruntime.Decision{}, storage.ErrNotFound
+}
+
+func (mem *Storage) GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error) {
+	return mem.Decision[decisionId][decisionDefinitionKey], nil
+}
+
+var _ storage.DecisionStorageWriter = &Storage{}
+
+func (mem *Storage) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
+	mem.Decision[decision.Id] = make(map[int64]dmnruntime.Decision)
+	mem.Decision[decision.Id][decision.DecisionDefinitionKey] = decision
+	return nil
+}
+
 var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
 	mem.DecisionDefinitions[definition.Key] = definition
 	return nil
 }
+
+var _ storage.DecisionStorageWriter = &Storage{}
 
 var _ storage.DecisionDefinitionStorageReader = &Storage{}
 

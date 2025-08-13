@@ -147,6 +147,9 @@ func (engine *Engine) findTaskHandler(element bpmn20.InternalTask) func(job Acti
 	if element.GetType() == bpmn20.ElementTypeServiceTask {
 		searchOrder = append(searchOrder, taskHandlerForType)
 	}
+	if element.GetType() == bpmn20.ElementBusinessRuleTask {
+		searchOrder = append(searchOrder, taskHandlerForType)
+	}
 	if element.GetType() == bpmn20.ElementTypeUserTask {
 		searchOrder = append(searchOrder, taskHandlerForAssignee, taskHandlerForCandidateGroups)
 	}

@@ -16,7 +16,12 @@ type TDecision struct {
 	DecisionTable          TDecisionTable            `xml:"decisionTable"`
 	Variable               TVariable                 `xml:"variable"`
 	LiteralExpression      TLiteralExpression        `xml:"literalExpression"`
+	VersionTag             VersionTag                `xml:"extensionElements>versionTag"`
 	InformationRequirement []TInformationRequirement `xml:"informationRequirement"`
+}
+
+type VersionTag struct {
+	Value string `xml:"value,attr"`
 }
 
 type TDMNDI struct {

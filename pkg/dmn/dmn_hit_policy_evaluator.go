@@ -25,7 +25,7 @@ func EvaluateCellMatch(columnExpression string, cellExpression string, variables
 	return result.(bool), err
 }
 
-func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) interface{} {
+func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) map[string]interface{} {
 	switch hitPolicy {
 	case dmn.HitPolicyCollect:
 		switch hitPolicyAggregation {
@@ -55,43 +55,40 @@ func EvaluateHitPolicyOutput(hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.H
 	}
 }
 
-func evaluateCollectOutput(matchedRules []EvaluatedRule) interface{} {
-	result := make([]interface{}, len(matchedRules))
-	for i, rule := range matchedRules {
-		if len(rule.evaluatedOutputs) > 1 {
-			result[i] = ruleOutputToMap(rule)
-		} else {
-			result[i] = rule.evaluatedOutputs[0].outputValue
+func evaluateCollectOutput(matchedRules []EvaluatedRule) map[string]interface{} {
+	result := make(map[string]interface{})
+	for _, rule := range matchedRules {
+		for _, evaluatedOutput := range rule.EvaluatedOutputs {
+			result[evaluatedOutput.OutputJsonName] = evaluatedOutput.OutputValue
 		}
 	}
-
 	return result
 }
 
-func evaluateCollectSumOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateCollectSumOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	panic("Not implemented")
 }
 
-func evaluateCollectMinOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateCollectMinOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	panic("Not implemented")
 }
 
-func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	panic("Not implemented")
 }
 
-func evaluateCollectCountOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateCollectCountOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	panic("Not implemented")
 }
 
-func evaluateFirstOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateFirstOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	if len(matchedRules) > 0 {
 		rule := matchedRules[0]
-		if len(rule.evaluatedOutputs) > 1 {
-			return ruleOutputToMap(rule)
-		} else {
-			return rule.evaluatedOutputs[0].outputValue
+		result := make(map[string]interface{})
+		for _, evaluatedOutput := range rule.EvaluatedOutputs {
+			result[evaluatedOutput.OutputJsonName] = evaluatedOutput.OutputValue
 		}
+		return result
 	}
 	return nil
 }
@@ -112,18 +109,9 @@ func evaluateOutputOrderOutput(matchedRules []EvaluatedRule) interface{} {
 	panic("Not implemented")
 }
 
-func evaluateUniqueOutput(matchedRules []EvaluatedRule) interface{} {
+func evaluateUniqueOutput(matchedRules []EvaluatedRule) map[string]interface{} {
 	if len(matchedRules) > 1 {
 		return nil
 	}
 	return evaluateFirstOutput(matchedRules)
-}
-
-func ruleOutputToMap(rule EvaluatedRule) map[string]interface{} {
-	outputMap := make(map[string]interface{})
-	for _, evaluatedOutput := range rule.evaluatedOutputs {
-		outputMap[evaluatedOutput.outputJsonName] = evaluatedOutput.outputValue
-	}
-
-	return outputMap
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	ssql "database/sql"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"math/rand"
 	"net"
+	"runtime/pprof"
 	"slices"
 	"time"
 
@@ -36,6 +38,12 @@ type Server struct {
 	store      StoreService
 	controller ControllerService
 	jobManager *jobmanager.JobManager
+	cpuProfile CpuProfile
+}
+
+type CpuProfile struct {
+	Running bool
+	Output  *bytes.Buffer
 }
 
 type StoreService interface {
@@ -842,4 +850,47 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 		i++
 	}
 	return nil
+}
+
+func (s *Server) StartCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStartResult, error) {
+	if s.cpuProfile.Running == true {
+		return &proto.CpuProfilerStartResult{}, nil
+	}
+
+	s.cpuProfile.Output = &bytes.Buffer{}
+
+	err := pprof.StartCPUProfile(s.cpuProfile.Output)
+	if err != nil {
+		err := fmt.Errorf("failed to start cpu profiler: %w", err)
+		return &proto.CpuProfilerStartResult{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	s.cpuProfile.Running = true
+
+	return nil, nil
+}
+
+func (s *Server) StopCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStopResult, error) {
+	if s.cpuProfile.Running == false {
+		err := fmt.Errorf("start cpu profiler not started")
+		return &proto.CpuProfilerStopResult{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+
+	pprof.StopCPUProfile()
+	s.cpuProfile.Running = false
+
+	return &proto.CpuProfilerStopResult{
+		Error: nil,
+		Pprof: s.cpuProfile.Output.Bytes(),
+	}, nil
 }

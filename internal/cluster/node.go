@@ -522,6 +522,54 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}, nil
 }
 
+func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
+	state := node.store.ClusterState()
+	targetNode, err2 := state.GetNode(nodeId)
+	if err2 != nil {
+		return err2
+	}
+	client, err := node.client.For(targetNode.Addr)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.StartCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to start cpu profiler")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return nil
+}
+
+func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte, error) {
+	state := node.store.ClusterState()
+	targetNode, err2 := state.GetNode(nodeId)
+	if err2 != nil {
+		return nil, err2
+	}
+	client, err := node.client.For(targetNode.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.StopCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to stop cpu profiler")
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return resp.Pprof, nil
+}
+
 func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()

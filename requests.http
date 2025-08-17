@@ -1,5 +1,6 @@
-@host=http://localhost:8082
-@definition_key=1ae34500fa400000
+@node=node-1
+@host=http://localhost:8080
+@definition_key=1955877026946613248
 ### GetProcessDefinitions
 GET {{host}}/v1/process-definitions
 Accept: application/json
@@ -42,3 +43,9 @@ GET {{host}}/system/metrics
 
 ### Status
 GET {{host}}/system/status
+
+### StartCpuProfile
+POST {{host}}/v1/test/{{node}}/start-cpu-profile
+
+### StopCpuProfile
+POST {{host}}/v1/test/{{node}}/stop-cpu-profile

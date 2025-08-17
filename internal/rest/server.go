@@ -109,6 +109,32 @@ func getKeyFromString(s string) (int64, error) {
 	return key, nil
 }
 
+// TODO: implement turn off switch in regular usage
+func (s *Server) TestStartCpuProfile(ctx context.Context, request public.TestStartCpuProfileRequestObject) (public.TestStartCpuProfileResponseObject, error) {
+
+	err := s.node.StartCpuProfile(ctx, request.NodeId)
+	if err != nil {
+		return public.TestStartCpuProfile500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.TestStartCpuProfileResponseObject(nil), nil
+}
+
+func (s *Server) TestStopCpuProfile(ctx context.Context, request public.TestStopCpuProfileRequestObject) (public.TestStopCpuProfileResponseObject, error) {
+	pprof, err := s.node.StopCpuProfile(ctx, request.NodeId)
+	if err != nil {
+		return public.TestStopCpuProfile500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.TestStopCpuProfile200JSONResponse{
+		Pprof: &pprof,
+	}, nil
+}
+
 func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetDecisionDefinitionsRequestObject) (public.GetDecisionDefinitionsResponseObject, error) {
 	definitions, err := s.node.GetDecisionDefinitions(ctx)
 	if err != nil {

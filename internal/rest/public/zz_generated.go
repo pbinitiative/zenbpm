@@ -388,6 +388,12 @@ type ServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
+	// start a cpu profiler
+	// (POST /test/{nodeId}/start-cpu-profile)
+	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
+	// stop a cpu profiler
+	// (POST /test/{nodeId}/stop-cpu-profile)
+	TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -499,6 +505,18 @@ func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, proc
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
 func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// start a cpu profiler
+// (POST /test/{nodeId}/start-cpu-profile)
+func (_ Unimplemented) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// stop a cpu profiler
+// (POST /test/{nodeId}/stop-cpu-profile)
+func (_ Unimplemented) TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -924,6 +942,56 @@ func (siw *ServerInterfaceWrapper) GetProcessInstanceJobs(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// TestStartCpuProfile operation middleware
+func (siw *ServerInterfaceWrapper) TestStartCpuProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", chi.URLParam(r, "nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestStartCpuProfile(w, r, nodeId)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestStopCpuProfile operation middleware
+func (siw *ServerInterfaceWrapper) TestStopCpuProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", chi.URLParam(r, "nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestStopCpuProfile(w, r, nodeId)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1090,6 +1158,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetProcessInstanceJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/test/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/test/{nodeId}/stop-cpu-profile", wrapper.TestStopCpuProfile)
 	})
 
 	return r
@@ -1724,6 +1798,77 @@ func (response GetProcessInstanceJobs502JSONResponse) VisitGetProcessInstanceJob
 	return json.NewEncoder(w).Encode(response)
 }
 
+type TestStartCpuProfileRequestObject struct {
+	NodeId string `json:"nodeId"`
+}
+
+type TestStartCpuProfileResponseObject interface {
+	VisitTestStartCpuProfileResponse(w http.ResponseWriter) error
+}
+
+type TestStartCpuProfile200Response struct {
+}
+
+func (response TestStartCpuProfile200Response) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type TestStartCpuProfile500JSONResponse Error
+
+func (response TestStartCpuProfile500JSONResponse) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TestStartCpuProfile502JSONResponse Error
+
+func (response TestStartCpuProfile502JSONResponse) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TestStopCpuProfileRequestObject struct {
+	NodeId string `json:"nodeId"`
+}
+
+type TestStopCpuProfileResponseObject interface {
+	VisitTestStopCpuProfileResponse(w http.ResponseWriter) error
+}
+
+type TestStopCpuProfile200JSONResponse struct {
+	Pprof *[]byte `json:"pprof,omitempty"`
+}
+
+func (response TestStopCpuProfile200JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TestStopCpuProfile500JSONResponse Error
+
+func (response TestStopCpuProfile500JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TestStopCpuProfile502JSONResponse Error
+
+func (response TestStopCpuProfile502JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Get list of decision definitions
@@ -1780,6 +1925,12 @@ type StrictServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(ctx context.Context, request GetProcessInstanceJobsRequestObject) (GetProcessInstanceJobsResponseObject, error)
+	// start a cpu profiler
+	// (POST /test/{nodeId}/start-cpu-profile)
+	TestStartCpuProfile(ctx context.Context, request TestStartCpuProfileRequestObject) (TestStartCpuProfileResponseObject, error)
+	// stop a cpu profiler
+	// (POST /test/{nodeId}/stop-cpu-profile)
+	TestStopCpuProfile(ctx context.Context, request TestStopCpuProfileRequestObject) (TestStopCpuProfileResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -2295,38 +2446,101 @@ func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.R
 	}
 }
 
+// TestStartCpuProfile operation middleware
+func (sh *strictHandler) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
+	var request TestStartCpuProfileRequestObject
+
+	request.NodeId = nodeId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestStartCpuProfile(ctx, request.(TestStartCpuProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestStartCpuProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestStartCpuProfileResponseObject); ok {
+		if err := validResponse.VisitTestStartCpuProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestStopCpuProfile operation middleware
+func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
+	var request TestStopCpuProfileRequestObject
+
+	request.NodeId = nodeId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestStopCpuProfile(ctx, request.(TestStopCpuProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestStopCpuProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestStopCpuProfileResponseObject); ok {
+		if err := validResponse.VisitTestStopCpuProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"kt5s/goAAP//AfegDPk5AAA=",
+	"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",
+	"UgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

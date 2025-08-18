@@ -195,23 +195,29 @@ func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.Cr
 	if err != nil {
 		return nil, err
 	}
-	key, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
+	deployResult, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		return public.CreateDecisionDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
+	if deployResult.IsDuplicate == true {
+		return public.CreateDecisionDefinition409JSONResponse{
+			Code:    "DUPLICATE",
+			Message: fmt.Sprintf("The same decision definition already exists (key: %d)", deployResult.Key),
+		}, nil
+	}
 
-	return public.CreateDecisionDefinition200JSONResponse{
-		DecisionDefinitionKey: fmt.Sprintf("%d", key),
+	return public.CreateDecisionDefinition201JSONResponse{
+		DecisionDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
 	}, nil
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
-	var decision = request.Body.DecisionId
+	var decision = request.DecisionId
 	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.Latest {
-		decision = *request.Body.DecisionDefinitionId + "." + request.Body.DecisionId
+		decision = *request.Body.DecisionDefinitionId + "." + request.DecisionId
 	}
 
 	result, err := s.node.EvaluateDecision(
@@ -319,16 +325,22 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	if err != nil {
 		return nil, err
 	}
-	key, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
+	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		return public.CreateProcessDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
+	if deployResult.IsDuplicate == true {
+		return public.CreateProcessDefinition409JSONResponse{
+			Code:    "DUPLICATE",
+			Message: fmt.Sprintf("The same process definition already exists (key: %d)", deployResult.Key),
+		}, nil
+	}
 
-	return public.CreateProcessDefinition200JSONResponse{
-		ProcessDefinitionKey: fmt.Sprintf("%d", key),
+	return public.CreateProcessDefinition201JSONResponse{
+		ProcessDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
 	}, nil
 }
 
@@ -443,7 +455,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 			Message: err.Error(),
 		}, nil
 	}
-	return public.CreateProcessInstance200JSONResponse{
+	return public.CreateProcessInstance201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.CreatedAt),
 		Key:                  fmt.Sprintf("%d", process.Key),
 		ProcessDefinitionKey: fmt.Sprintf("%d", process.DefinitionKey),
@@ -574,10 +586,10 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 		createdAt := time.UnixMilli(flowNode.CreatedAt)
 		processInstanceKey := fmt.Sprintf("%d", flowNode.ProcessInstanceKey)
 		resp[i] = public.FlowElementHistory{
-			Key:                &key,
-			CreatedAt:          &createdAt,
-			ElementId:          &flowNode.ElementId,
-			ProcessInstanceKey: &processInstanceKey,
+			Key:                key,
+			CreatedAt:          createdAt,
+			ElementId:          flowNode.ElementId,
+			ProcessInstanceKey: processInstanceKey,
 		}
 	}
 	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{

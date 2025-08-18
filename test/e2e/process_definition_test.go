@@ -101,9 +101,12 @@ func deployDefinition(t testing.TB, filename string) error {
 		WithHeader("Content-Type", "application/xml").
 		DoOk()
 	if err != nil {
+		if strings.Contains(err.Error(), "DUPLICATE") {
+			return nil
+		}
 		return fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
 	}
-	definition := public.CreateProcessDefinition200JSONResponse{}
+	definition := public.CreateProcessDefinition201JSONResponse{}
 	err = json.Unmarshal(resp, &definition)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal create definition response: %w", err)

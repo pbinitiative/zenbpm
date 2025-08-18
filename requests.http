@@ -45,7 +45,7 @@ GET {{host}}/system/metrics
 GET {{host}}/system/status
 
 ### StartCpuProfile
-POST {{host}}/v1/test/{{node}}/start-cpu-profile
+POST {{host}}/v1/tests/{{node}}/start-cpu-profile
 
 ### StopCpuProfile
-POST {{host}}/v1/test/{{node}}/stop-cpu-profile
+POST {{host}}/v1/tests/{{node}}/stop-cpu-profile

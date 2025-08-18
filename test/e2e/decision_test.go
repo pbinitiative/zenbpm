@@ -102,12 +102,11 @@ func evaluateDecision(t testing.TB, bindingType public.EvaluateDecisionJSONBodyB
 	req := public.EvaluateDecisionJSONRequestBody{
 		BindingType:          bindingType,
 		DecisionDefinitionId: decisionDefinitionId,
-		DecisionId:           decisionId,
 		Variables:            &variables,
 		VersionTag:           versionTag,
 	}
 	resp, err := app.NewRequest(t).
-		WithPath("/v1/decision/evaluation").
+		WithPath(fmt.Sprintf("/v1/decisions/%s/evaluate", decisionId)).
 		WithMethod("POST").
 		WithBody(req).
 		DoOk()

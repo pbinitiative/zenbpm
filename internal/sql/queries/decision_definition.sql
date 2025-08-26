@@ -29,7 +29,7 @@ FROM
 WHERE
     dmn_id = @dmn_id
 ORDER BY
-    version desc;
+    version ASC;
 
 -- name: FindAllDecisionDefinitions :many
 SELECT
@@ -38,3 +38,13 @@ FROM
     decision_definition
 ORDER BY
     version DESC;
+
+-- name: GetDecisionDefinitionKeyByChecksum :one
+SELECT
+    key
+FROM
+    decision_definition
+WHERE
+    dmn_checksum = @dmn_checksum
+LIMIT 1;
+

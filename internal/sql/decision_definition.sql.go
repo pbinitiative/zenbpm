@@ -79,7 +79,7 @@ FROM
 WHERE
     dmn_id = ?1
 ORDER BY
-    version desc
+    version ASC
 `
 
 func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {
@@ -136,6 +136,23 @@ func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, dmnID st
 		&i.DmnResourceName,
 	)
 	return i, err
+}
+
+const getDecisionDefinitionKeyByChecksum = `-- name: GetDecisionDefinitionKeyByChecksum :one
+SELECT
+    key
+FROM
+    decision_definition
+WHERE
+    dmn_checksum = ?1
+LIMIT 1
+`
+
+func (q *Queries) GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getDecisionDefinitionKeyByChecksum, dmnChecksum)
+	var key int64
+	err := row.Scan(&key)
+	return key, err
 }
 
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec

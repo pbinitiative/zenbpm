@@ -288,6 +288,13 @@ func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (prot
 }
 
 func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	key, err := node.GetDecisionDefinitionKeyByBytes(ctx, data)
+	if err != nil {
+		log.Error("Failed to get definition key by bytes: %s", err)
+	}
+	if key != 0 {
+		return key, err
+	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
 	state := node.store.ClusterState()
@@ -315,6 +322,19 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 		return definitionKey.Int64(), errJoin
 	}
 	return definitionKey.Int64(), nil
+}
+
+func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database for decision definition key lookup: %w", err)
+	}
+	md5sum := md5.Sum(data)
+	key, err := db.queries.GetDecisionDefinitionKeyByChecksum(ctx, md5sum[:])
+	if err != nil && err.Error() != "No result row" {
+		return 0, fmt.Errorf("failed to find decision definition by checksum: %w", err)
+	}
+	return key, nil
 }
 
 func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {

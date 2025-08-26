@@ -197,7 +197,7 @@ func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.Cr
 	}
 
 	return public.CreateDecisionDefinition200JSONResponse{
-		DecisionDefinitionKey: fmt.Sprintf("%x", key),
+		DecisionDefinitionKey: fmt.Sprintf("%d", key),
 	}, nil
 }
 
@@ -293,7 +293,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			DecisionName:              evaluatedDecision.DecisionName,
 			DecisionType:              evaluatedDecision.DecisionType,
 			DecisionDefinitionVersion: int(evaluatedDecision.DecisionDefinitionVersion),
-			DecisionDefinitionKey:     fmt.Sprintf("%x", evaluatedDecision.DecisionDefinitionKey),
+			DecisionDefinitionKey:     fmt.Sprintf("%d", evaluatedDecision.DecisionDefinitionKey),
 			DecisionDefinitionId:      evaluatedDecision.DecisionDefinitionId,
 			MatchedRules:              matchedRules,
 			DecisionOutput:            resultDecisionOutput,

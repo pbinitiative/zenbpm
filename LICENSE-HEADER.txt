@@ -27,15 +27,12 @@
  */
 
 
- /*
+/*
  * Copyright 2022–present ZenBPM Contributors
  * (based on git commit history).
  *
- * This file is part of ZenBPM.
- *
- * ZenBPM is available under two licenses:
- * - GNU Affero General Public License v3.0 or later
- *   See LICENSE-AGPL.md in the project root for details.
- * - Enterprise License
- *   See LICENSE-ENTERPRISE.md in the project root for details.
+ * ZenBPM project is available under two licenses:
+ * - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+ * - Enterprise License (See LICENSE-ENTERPRISE.md)
  */
+

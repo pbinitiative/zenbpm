@@ -148,6 +148,7 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 		return
 	}
 	m.OnPartitionRoleChange(ctx)
+	m.currentPartitionRoles = newPartitionLeaders
 }
 
 // OnPartitionRoleChange is a callback function called when cluster state changes its partition leaders

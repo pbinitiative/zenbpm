@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
@@ -26,16 +25,16 @@ import (
 type controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions           map[uint32]*ZenPartitionNode
-	partitionsMu         sync.RWMutex
-	store                ControlledStore
-	client               *client.ClientManager
-	config               config.Cluster
-	persistenceConfig    config.Persistence
-	mux                  *tcp.Mux
-	logger               hclog.Logger
-	handleClusterChanges bool
-	jobManager           *jobmanager.JobManager
+	partitions              map[uint32]*ZenPartitionNode
+	partitionsMu            sync.RWMutex
+	store                   ControlledStore
+	client                  *client.ClientManager
+	config                  config.Cluster
+	persistenceConfig       config.Persistence
+	mux                     *tcp.Mux
+	logger                  hclog.Logger
+	handleClusterChanges    bool
+	clusterStateChangeHooks []func(context.Context)
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
@@ -89,14 +88,13 @@ func (c *controller) ClusterStateChangeNotification(ctx context.Context) {
 		c.performLeaderOperations(ctx)
 	}
 	c.performMemberOperations(ctx)
-	if c.jobManager == nil {
-		return
+	for _, hook := range c.clusterStateChangeHooks {
+		hook(ctx)
 	}
-	c.jobManager.OnPartitionRoleChange(ctx)
 }
 
-func (c *controller) SetJobManager(jm *jobmanager.JobManager) {
-	c.jobManager = jm
+func (c *controller) AddClusterStateChangeHook(f func(context.Context)) {
+	c.clusterStateChangeHooks = append(c.clusterStateChangeHooks, f)
 }
 
 func (c *controller) performLeaderOperations(ctx context.Context) {

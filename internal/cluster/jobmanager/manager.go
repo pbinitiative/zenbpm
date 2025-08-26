@@ -3,6 +3,7 @@ package jobmanager
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -34,6 +35,8 @@ type JobManager struct {
 	client *jobClient
 	server *jobServer
 	store  Store
+
+	currentPartitionRoles map[uint32]string
 
 	// server needs its own context because we might cancel it on leader changes
 	serverCtx    context.Context
@@ -133,6 +136,18 @@ func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int6
 		return NodeIsNotALeader
 	}
 	return m.server.failJob(ctx, clientID, jobKey, message, errorCode, variables)
+}
+
+func (m *JobManager) OnClusterStateChange(ctx context.Context) {
+	state := m.store.ClusterState()
+	newPartitionLeaders := map[uint32]string{}
+	for id, partition := range state.Partitions {
+		newPartitionLeaders[id] = partition.LeaderId
+	}
+	if maps.Equal(m.currentPartitionRoles, newPartitionLeaders) {
+		return
+	}
+	m.OnPartitionRoleChange(ctx)
 }
 
 // OnPartitionRoleChange is a callback function called when cluster state changes its partition leaders

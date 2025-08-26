@@ -104,7 +104,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 
 	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
-	node.controller.SetJobManager(node.JobManager)
+	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
 	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)

@@ -104,6 +104,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 
 	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
+	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
 	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
@@ -121,6 +122,13 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 	if len(nodes) > 0 {
 		node.logger.Info("Preexisting configuration detected. Skipping bootstrap.")
+
+		err = node.store.WaitForAllApplied(120 * time.Second) // TODO: pull out to config
+		if err != nil {
+			node.logger.Error("Failed to apply log until timeout was reached: %s", err)
+		}
+
+		node.JobManager.Start()
 		return node, nil
 	}
 
@@ -532,6 +540,54 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 		ProcessId:  def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
+}
+
+func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
+	state := node.store.ClusterState()
+	targetNode, err2 := state.GetNode(nodeId)
+	if err2 != nil {
+		return err2
+	}
+	client, err := node.client.For(targetNode.Addr)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.StartCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to start cpu profiler")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return nil
+}
+
+func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte, error) {
+	state := node.store.ClusterState()
+	targetNode, err2 := state.GetNode(nodeId)
+	if err2 != nil {
+		return nil, err2
+	}
+	client, err := node.client.For(targetNode.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.StopCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to stop cpu profiler")
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return resp.Pprof, nil
 }
 
 func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {

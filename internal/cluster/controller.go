@@ -25,15 +25,16 @@ import (
 type controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions           map[uint32]*ZenPartitionNode
-	partitionsMu         sync.RWMutex
-	store                ControlledStore
-	client               *client.ClientManager
-	config               config.Cluster
-	persistenceConfig    config.Persistence
-	mux                  *tcp.Mux
-	logger               hclog.Logger
-	handleClusterChanges bool
+	partitions              map[uint32]*ZenPartitionNode
+	partitionsMu            sync.RWMutex
+	store                   ControlledStore
+	client                  *client.ClientManager
+	config                  config.Cluster
+	persistenceConfig       config.Persistence
+	mux                     *tcp.Mux
+	logger                  hclog.Logger
+	handleClusterChanges    bool
+	clusterStateChangeHooks []func(context.Context)
 }
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
@@ -87,6 +88,13 @@ func (c *controller) ClusterStateChangeNotification(ctx context.Context) {
 		c.performLeaderOperations(ctx)
 	}
 	c.performMemberOperations(ctx)
+	for _, hook := range c.clusterStateChangeHooks {
+		hook(ctx)
+	}
+}
+
+func (c *controller) AddClusterStateChangeHook(f func(context.Context)) {
+	c.clusterStateChangeHooks = append(c.clusterStateChangeHooks, f)
 }
 
 func (c *controller) performLeaderOperations(ctx context.Context) {

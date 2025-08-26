@@ -155,3 +155,13 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 .PHONY: build
 build: generate ## Build the project
 	go build -o zenbpm cmd/zenbpm/main.go
+
+.PHONY: license.add
+license.add: ## Add license headers to non-generated .go files
+	@./scripts/license-headers.sh add
+
+.PHONY: license.check
+license.check: ## Check license headers on non-generated .go files
+	@./scripts/license-headers.sh check
+
+

@@ -147,10 +147,17 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	if err != nil {
 		return nil, err
 	}
-	items := make([]public.DecisionDefinitionSimple, 0)
-	result := public.DecisionDefinitionsPage{
-		Items: items,
+
+	page := 1
+	if request.Params.Page != nil {
+		page = int(*request.Params.Page)
 	}
+	size := 10
+	if request.Params.Size != nil {
+		size = int(*request.Params.Size)
+	}
+
+	items := make([]public.DecisionDefinitionSimple, 0)
 	for _, p := range definitions {
 		processDefinitionSimple := public.DecisionDefinitionSimple{
 			Key:                  fmt.Sprintf("%d", p.Key),
@@ -159,11 +166,39 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 		}
 		items = append(items, processDefinitionSimple)
 	}
-	result.Items = items
-	total := len(items)
-	result.Count = total
-	result.Offset = 0
-	result.Size = len(definitions)
+
+	totalCount := len(items)
+
+	startIndex := int((page - 1) * size)
+	endIndex := int(startIndex + size)
+	if startIndex >= totalCount {
+		result := public.DecisionDefinitionsPage{
+			Items: []public.DecisionDefinitionSimple{},
+			PageMetadata: public.PageMetadata{
+				Page:       int(page),
+				Size:       int(size),
+				Count:      0,
+				TotalCount: totalCount,
+			},
+		}
+		return public.GetDecisionDefinitions200JSONResponse(result), nil
+	}
+
+	if endIndex > totalCount {
+		endIndex = totalCount
+	}
+
+	pagedItems := items[startIndex:endIndex]
+
+	result := public.DecisionDefinitionsPage{
+		Items: pagedItems,
+		PageMetadata: public.PageMetadata{
+			Page:       int(page),
+			Size:       int(size),
+			Count:      len(pagedItems),
+			TotalCount: totalCount,
+		},
+	}
 
 	return public.GetDecisionDefinitions200JSONResponse(result), nil
 }
@@ -381,7 +416,16 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	definitions, err := s.node.GetProcessDefinitions(ctx)
+	page := int32(1)
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	size := int32(100)
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx, page, size)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +433,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	result := public.ProcessDefinitionsPage{
 		Items: items,
 	}
-	for _, p := range definitions {
+	for _, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
 			Key:           fmt.Sprintf("%d", p.Key),
 			Version:       int(p.Version),
@@ -398,10 +442,9 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		items = append(items, processDefinitionSimple)
 	}
 	result.Items = items
-	total := len(items)
-	result.Count = total
-	result.Offset = 0
-	result.Size = len(definitions)
+	result.Count = int(definitionsPage.TotalCount)
+	result.Page = 1
+	result.Size = len(items)
 
 	return public.GetProcessDefinitions200JSONResponse(result), nil
 }
@@ -470,7 +513,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.Page != nil {
 		page = *request.Params.Page
 	}
-	size := int32(10)
+	size := int32(100)
 	if request.Params.Size != nil {
 		size = *request.Params.Size
 	}
@@ -595,9 +638,9 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{
 		Items: &resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}), nil
 }
@@ -641,9 +684,9 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}, nil
 }
@@ -653,7 +696,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	if request.Params.Page != nil {
 		page = *request.Params.Page
 	}
-	size := int32(10)
+	size := int32(100)
 	if request.Params.Size != nil {
 		size = *request.Params.Size
 	}
@@ -789,9 +832,9 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	return public.GetIncidents200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}, nil
 }

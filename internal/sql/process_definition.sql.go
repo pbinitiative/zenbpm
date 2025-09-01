@@ -253,6 +253,66 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	return key, err
 }
 
+const getProcessDefinitionsCount = `-- name: GetProcessDefinitionsCount :one
+SELECT
+    COUNT(1)
+FROM
+    process_definition
+`
+
+func (q *Queries) GetProcessDefinitionsCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getProcessDefinitionsCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getProcessDefinitionsPage = `-- name: GetProcessDefinitionsPage :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+ORDER BY
+    version DESC
+LIMIT ?2
+OFFSET ?1
+`
+
+type GetProcessDefinitionsPageParams struct {
+	Offset int64 `json:"offset"`
+	Limit  int64 `json:"limit"`
+}
+
+func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, getProcessDefinitionsPage, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessDefinition{}
+	for rows.Next() {
+		var i ProcessDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnData,
+			&i.BpmnChecksum,
+			&i.BpmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
 
 INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)

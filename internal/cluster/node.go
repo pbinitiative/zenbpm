@@ -499,25 +499,36 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context) ([]proto.ProcessDefinition, error) {
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process definitions: %w", err)
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
 	}
-	definitions, err := db.Queries.FindAllProcessDefinitions(ctx)
+	definitions, err := db.Queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
+		Offset: int64((page - 1) * size),
+		Limit:  int64(size),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read process definitions from database: %w", err)
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
 	}
-	resp := make([]proto.ProcessDefinition, 0, len(definitions))
+	totalCount, err := db.Queries.GetProcessDefinitionsCount(ctx)
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get count of process definitions from database: %w", err)
+	}
+
+	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
 	for _, def := range definitions {
-		resp = append(resp, proto.ProcessDefinition{
+		resp = append(resp, &proto.ProcessDefinition{
 			Key:        &def.Key,
 			Version:    ptr.To(int32(def.Version)),
 			ProcessId:  &def.BpmnProcessID,
 			Definition: []byte(def.BpmnData),
 		})
 	}
-	return resp, nil
+	return proto.ProcessDefinitionsPage{
+		Items:      resp,
+		TotalCount: ptr.To(int32(totalCount)),
+	}, nil
 }
 
 // GetLatestProcessDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions

@@ -121,15 +121,17 @@ run2: ## Start 2nd node
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
 	go run cmd/zenbpm/*.go
 
-.PHONY: start-jaeger
-start-jaeger: ## Start jaeger. UI listening on port 16686
-	@docker run -d --rm --name jaeger \
-	-p 4318:4318 \
-	-p 16686:16686 \
-	jaegertracing/jaeger:2.6.0
 
-.PHONY: stop-jaeger
-stop-jaeger:
+.PHONY: start-monitoring
+start-monitoring: ## Start monitoring stack
+	@docker run -d --rm --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
+	@docker run -d --rm --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+	@docker run -d --rm --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
+
+.PHONY: stop-monitoring
+stop-monitoring:
+	@docker stop grafana
+	@docker stop prometheus
 	@docker stop jaeger
 
 .PHONY: test

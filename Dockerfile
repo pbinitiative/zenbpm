@@ -27,9 +27,12 @@ WORKDIR /root/
 
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/zenbpm .
+COPY --from=builder /app/conf/zenbpm/conf-dev.yaml .
 
-# Expose port 8080 and 4001 to the outside world
-EXPOSE 8080 4001
+EXPOSE 8080 9090 8090
+
+ENV PROFILE=DEV
+ENV CONFIG_FILE=./conf-dev.yaml
 
 # Command to run the executable
 CMD ["./zenbpm"]

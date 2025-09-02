@@ -2,6 +2,7 @@ package jobmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -10,6 +11,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -19,8 +22,8 @@ const (
 	MetadataClientID string = "client_id"
 	// each job will remain assigned to client until this duration expires
 	jobLockDuration               time.Duration = 30 * time.Second
-	partitionJobLoadCount         int64         = 100
 	emptyDistributionCounterSleep int           = 20 // counter that puts job loader to sleep for 1 second
+	maxActiveJobsPerClient        int64         = 10
 )
 
 type JobLoader interface {
@@ -62,7 +65,7 @@ type jobServer struct {
 	loader    JobLoader
 	completer JobCompleter
 
-	partitionJobLoadCount    int64
+	maxPartitionJobLoadCount int64
 	distributedJobs          []distributedJob
 	distributedJobsMu        *sync.RWMutex
 	emptyDistributionCounter int
@@ -76,24 +79,25 @@ func newJobServer(
 	jobCompleter JobCompleter,
 ) *jobServer {
 	return &jobServer{
-		nodeMu:                &sync.RWMutex{},
-		nodeSubs:              map[NodeId]*nodeSub{},
-		nodeID:                nodeID,
-		distributedJobs:       []distributedJob{},
-		distributedJobsMu:     &sync.RWMutex{},
-		subscriptions:         map[JobType]map[ClientID]*nodeSub{},
-		jobTypes:              map[JobType]jobTypeData{},
-		clientMu:              &sync.RWMutex{},
-		logger:                hclog.Default().Named("job-manager-server"),
-		loader:                jobLoader,
-		partitionJobLoadCount: partitionJobLoadCount,
-		completer:             jobCompleter,
+		nodeMu:                   &sync.RWMutex{},
+		nodeSubs:                 map[NodeId]*nodeSub{},
+		nodeID:                   nodeID,
+		distributedJobs:          []distributedJob{},
+		distributedJobsMu:        &sync.RWMutex{},
+		subscriptions:            map[JobType]map[ClientID]*nodeSub{},
+		jobTypes:                 map[JobType]jobTypeData{},
+		clientMu:                 &sync.RWMutex{},
+		logger:                   hclog.Default().Named("job-manager-server"),
+		loader:                   jobLoader,
+		maxPartitionJobLoadCount: 300,
+		completer:                jobCompleter,
 	}
 }
 
 func (s *jobServer) startServer(ctx context.Context) {
 	s.ctx = ctx
 	go s.distributeJobs()
+	s.logger.Info("Started server")
 }
 
 func (s *jobServer) distributeJobs() {
@@ -104,11 +108,16 @@ func (s *jobServer) distributeJobs() {
 				sub.stream.Send(&proto.SubscribeJobResponse{})
 			}
 			s.nodeSubs = make(map[NodeId]*nodeSub)
+			s.logger.Info("Stopping job distribution", "err", s.ctx.Err())
 			return
 		}
 		jobTypes := make([]string, 0, len(s.jobTypes))
-		for jobType := range s.jobTypes {
+		clients := make(map[ClientID]int64)
+		for jobType, jobTypeData := range s.jobTypes {
 			jobTypes = append(jobTypes, string(jobType))
+			for _, client := range jobTypeData.clients {
+				clients[client] = maxActiveJobsPerClient
+			}
 		}
 		s.distributedJobsMu.RLock()
 		currentKeys := make([]int64, len(s.distributedJobs))
@@ -119,23 +128,39 @@ func (s *jobServer) distributeJobs() {
 				s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
 				continue
 			}
+			clients[job.client]--
 			currentKeys[i] = job.jobKey
 		}
 		s.distributedJobsMu.RUnlock()
-		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, s.partitionJobLoadCount)
+
+		jobsToLoad := int64(0)
+		for _, numberOfSlots := range clients {
+			jobsToLoad += numberOfSlots
+		}
+		if jobsToLoad <= 0 {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		if jobsToLoad > s.maxPartitionJobLoadCount {
+			jobsToLoad = maxActiveJobsPerClient
+		}
+		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, int64(jobsToLoad))
+		// jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, s.partitionJobLoadCount)
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
 			// give it some time not to overwhelm the node we might not be a leader anymore
 			time.Sleep(1 * time.Second)
 			continue
 		}
+		// fmt.Println(s.jobTypes)
+		// fmt.Println(len(jobs))
 		if len(jobs) == 0 {
 			// wait for something to happen
 			s.emptyDistributionCounter++
 			if s.emptyDistributionCounter >= emptyDistributionCounterSleep {
 				time.Sleep(1 * time.Second)
 			} else {
-				time.Sleep(time.Duration(s.emptyDistributionCounter) * time.Millisecond)
+				time.Sleep(time.Duration(s.emptyDistributionCounter) * (5 * time.Millisecond))
 			}
 			continue
 		}
@@ -156,6 +181,23 @@ func (s *jobServer) distributeJobs() {
 			}
 			clientIdx := jobTypeData.index
 			clientID := jobTypeData.clients[clientIdx]
+
+			candidateIndex := clientIdx // contains the first matched client
+		indexLogic:
+			// if client under index is fully saturated check the next one
+			if clients[clientID] <= 0 {
+				jobTypeData.index++
+				// index overflow
+				if jobTypeData.index >= len(jobTypeData.clients)-1 {
+					jobTypeData.index = 0
+				}
+				clientIdx = jobTypeData.index
+				clientID = jobTypeData.clients[clientIdx]
+				if candidateIndex != clientIdx {
+					goto indexLogic
+				}
+			}
+
 			s.jobTypes[jType] = jobTypeData // set the updated index
 
 			nodeStream, ok := s.subscriptions[jType][clientID]
@@ -188,6 +230,10 @@ func (s *jobServer) distributeJobs() {
 					CreatedAt:   job.CreatedAt,
 				},
 			})
+			JobsDistributed.Add(context.Background(), 1, metric.WithAttributes(
+				attribute.String("type", job.Type),
+				attribute.String("client", string(clientID)),
+			))
 			if err != nil {
 				s.logger.Error("Failed to send job to node", "jobType", jType, "key", job.Key, "err", err)
 				continue
@@ -220,9 +266,10 @@ func (s *jobServer) addNodeSubscription(stream grpc.BidiStreamingServer[proto.Su
 func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 	for {
 		req, err := stream.stream.Recv()
-		if err == io.EOF {
+		if err == io.EOF || errors.Is(err, context.Canceled) {
 			// read done.
 			s.removeNode(stream.nodeID)
+			s.logger.Debug("Stream closed", "err", err)
 			return
 		}
 		if err != nil {

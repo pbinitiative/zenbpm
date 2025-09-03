@@ -124,9 +124,9 @@ run2: ## Start 2nd node
 
 .PHONY: start-monitoring
 start-monitoring: ## Start monitoring stack
-	@docker run -d --rm --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
-	@docker run -d --rm --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
-	@docker run -d --rm --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
 
 .PHONY: stop-monitoring
 stop-monitoring:

@@ -1,4 +1,4 @@
-Copyright (c) 2021-2024 Martin W. Kirst
+Copyright (c) 2021-2024 Martin W. Kirst  
 Copyright (c) 2024-present ZenBPM Contributors
 
 # ZenBPM License Information

@@ -12,6 +12,8 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
@@ -40,8 +42,10 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 
 	handler := engine.findTaskHandler(element)
 	if handler == nil {
+		engine.metrics.JobsCreated.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", false)))
 		return job.State, nil
 	}
+	engine.metrics.JobsCreated.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
 	// if we have the handler handle the task directly
 	// TODO: pull this out into function that will be called by API as well
 	if job.State != runtime.ActivityStateCompleting {
@@ -63,7 +67,9 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			createdAt:                job.CreatedAt,
 			variableHolder:           jobVarHolder,
 		}
-		ctx, internalCompleteSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", activatedJob.key))
+		ctx, internalCompleteSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", activatedJob.ElementId()), trace.WithAttributes(
+			attribute.Int64("key", activatedJob.key),
+		))
 		defer func() {
 			if retErr != nil {
 				internalCompleteSpan.RecordError(retErr)
@@ -93,6 +99,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		if err != nil {
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to add save job into batch: %w", err)
 		}
+		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", element.GetTaskType()), attribute.Bool("internal", true)))
 	}
 	return job.State, nil
 }
@@ -119,7 +126,13 @@ func (engine *Engine) completeJob(
 	tokens []runtime.ExecutionToken,
 	retErr error,
 ) {
-	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
+		attribute.Int64("key", job.Key),
+	))
 	defer func() {
 		if retErr != nil {
 			completeJobSpan.RecordError(retErr)
@@ -127,10 +140,6 @@ func (engine *Engine) completeJob(
 		}
 		completeJobSpan.End()
 	}()
-	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
-	}
 	if job.State == runtime.ActivityStateCompleted {
 		return nil, nil, newEngineErrorf("job %d is already completed", jobKey)
 	}
@@ -175,9 +184,11 @@ func (engine *Engine) completeJob(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
+	engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 	return instance, tokens, nil
 }
 
+// JobFailByKey is used to mark external jobs as failed
 func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) error {
 	instance, tokens, err := engine.failJob(ctx, jobKey, message, errorCode, variables)
 	if err != nil {
@@ -199,7 +210,13 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 	tokens []runtime.ExecutionToken,
 	retErr error,
 ) {
-	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%d", jobKey))
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
+		attribute.Int64("key", job.Key),
+	))
 	defer func() {
 		if retErr != nil {
 			failJobSpan.RecordError(retErr)
@@ -207,10 +224,6 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 		}
 		failJobSpan.End()
 	}()
-	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
-	}
 	if job.State == runtime.ActivityStateFailed {
 		return nil, nil, newEngineErrorf("job %d is already failed", jobKey)
 	}
@@ -239,6 +252,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fail job %+v: %w", job, err)
 	}
+	engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 
 	if errorCode != nil {
 		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"sync"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
@@ -25,18 +27,25 @@ type JobType string
 
 type NodeId string
 
+type partitionRoleState struct {
+	nodeId string
+	state  store.NodePartitionState
+}
+
 // JobManager handles job distribution in the system.
 // When external application makes a call to the public API, the API registers
 // the clientId and jobType.
 // JobManager serves as a client subscribing to the partition leader nodes for required jobTypes
 // and at the same time as a server distributing created jobs by the engine among subscribers.
 type JobManager struct {
-	ctx    context.Context
-	client *jobClient
-	server *jobServer
-	store  Store
+	ctx          context.Context
+	client       *jobClient
+	server       *jobServer
+	store        Store
+	logger       hclog.Logger
+	roleChangeMu *sync.Mutex
 
-	currentPartitionRoles map[uint32]string
+	currentPartitionRoles map[uint32]partitionRoleState
 
 	// server needs its own context because we might cancel it on leader changes
 	serverCtx    context.Context
@@ -64,28 +73,24 @@ func New(
 	completer JobCompleter,
 ) *JobManager {
 	return &JobManager{
-		ctx:       ctx,
-		client:    newJobClient(ctx, NodeId(store.NodeID()), store, clientManager),
-		store:     store,
-		loader:    loader,
-		completer: completer,
+		ctx:          ctx,
+		client:       newJobClient(ctx, NodeId(store.NodeID()), store, clientManager),
+		store:        store,
+		loader:       loader,
+		completer:    completer,
+		roleChangeMu: &sync.Mutex{},
+		logger:       hclog.Default().Named("job-manger"),
 	}
 }
 
 func (m *JobManager) Start() {
-	state := m.store.ClusterState()
-	isLeader := false
-	for _, partition := range state.Partitions {
-		if partition.LeaderId == m.store.NodeID() {
-			isLeader = true
-			break
-		}
+	err := registerMetrics()
+	if err != nil {
+		hclog.Default().Error("Failed to register metrics", "err", err)
 	}
-	if isLeader {
-		m.serverCtx, m.serverCancel = context.WithCancel(m.ctx)
-		m.server = newJobServer(NodeId(m.store.NodeID()), m.loader, m.completer)
-		m.server.startServer(m.serverCtx)
-	}
+	m.serverCtx, m.serverCancel = context.WithCancel(m.ctx)
+	m.server = newJobServer(NodeId(m.store.NodeID()), m.loader, m.completer)
+	m.server.startServer(m.serverCtx)
 	m.client.startClient()
 }
 
@@ -140,27 +145,42 @@ func (m *JobManager) FailJob(ctx context.Context, clientID ClientID, jobKey int6
 
 func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 	state := m.store.ClusterState()
-	newPartitionLeaders := map[uint32]string{}
+	newPartitionLeaders := map[uint32]partitionRoleState{}
 	for id, partition := range state.Partitions {
-		newPartitionLeaders[id] = partition.LeaderId
+		leaderNode := state.Nodes[partition.LeaderId]
+		partitionLeaderState := leaderNode.Partitions[partition.Id]
+		newPartitionLeaders[id] = partitionRoleState{
+			nodeId: partition.LeaderId,
+			state:  partitionLeaderState.State,
+		}
 	}
 	if maps.Equal(m.currentPartitionRoles, newPartitionLeaders) {
 		return
 	}
-	m.OnPartitionRoleChange(ctx)
+	// TODO: multiple nodes
+	// m.OnPartitionRoleChange(ctx)
 	m.currentPartitionRoles = newPartitionLeaders
 }
 
 // OnPartitionRoleChange is a callback function called when cluster state changes its partition leaders
 func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
+	m.roleChangeMu.Lock()
+	defer m.roleChangeMu.Unlock()
 	state := m.store.ClusterState()
 	isLeader := false
-	leaders := []string{}
 	for _, partition := range state.Partitions {
+		partitionLeader := partition.LeaderId
+		partitionNode, ok := state.Nodes[partitionLeader]
+		if !ok {
+			continue
+		}
+		// if partition is not initialized yet skip it for now
+		if partitionNode.Partitions[partition.Id].State != store.NodePartitionStateInitialized {
+			continue
+		}
 		if partition.LeaderId == m.store.NodeID() {
 			isLeader = true
 		}
-		leaders = append(leaders, partition.LeaderId)
 	}
 	// if we have to start the server
 	if isLeader && m.serverCtx == nil {
@@ -170,11 +190,12 @@ func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
 	}
 	// if we have to stop the server
 	if !isLeader && m.serverCtx != nil {
+		m.logger.Info("Stopping server...lost leader status")
 		m.serverCancel()
 		m.serverCtx = nil
 		m.server = nil
 	}
-	m.client.updateNodeSubs(ctx, leaders)
+	m.client.updateNodeSubs(ctx)
 }
 
 // OnJobRejected is a server callback function called when client rejects job

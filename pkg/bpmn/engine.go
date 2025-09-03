@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/dmn"
 	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/dmn"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -173,9 +174,9 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	if err != nil {
 		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
-	engine.metrics.ProcessesStartedTotal.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
+	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
-	)))
+	))
 	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
 	if err != nil {
 		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
@@ -346,9 +347,9 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	if instance.State == runtime.ActivityStateCompleted || instance.State == runtime.ActivityStateFailed {
 		// TODO need to send failed State
 		engine.exportEndProcessEvent(*process, *instance)
-		engine.metrics.ProcessesEndedTotal.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
+		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
-		)))
+		))
 	}
 	// if we encounter any error we switch the instance to failed state
 	if runErr != nil {

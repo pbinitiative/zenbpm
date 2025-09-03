@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -24,9 +26,9 @@ type clientSub struct {
 }
 
 type clientNodeStream struct {
-	stream     grpc.BidiStreamingClient[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
-	nodeID     string
-	partitions []uint32
+	stream    grpc.BidiStreamingClient[proto.SubscribeJobRequest, proto.SubscribeJobResponse]
+	nodeID    string
+	partition uint32
 }
 
 type jobClient struct {
@@ -46,18 +48,53 @@ type jobClient struct {
 	ctx    context.Context
 }
 
-func (c *jobClient) updateNodeSubs(ctx context.Context, leaders []string) {
-	c.nodeMu.Lock()
+func (c *jobClient) updateNodeSubs(ctx context.Context) {
+	leaders := map[uint32]string{}
+	state := c.store.ClusterState()
 	partitionsToSubscribe := []uint32{}
+	for _, partition := range state.Partitions {
+		partitionLeader := partition.LeaderId
+		partitionNode, ok := state.Nodes[partitionLeader]
+		if !ok {
+			continue
+		}
+		// if partition is not initialized yet skip it for now
+		if partitionNode.Partitions[partition.Id].State != store.NodePartitionStateInitialized {
+			continue
+		}
+		leaders[partition.Id] = partition.LeaderId
+	}
+	c.nodeMu.Lock()
+	leaderIds := slices.Collect(maps.Values(leaders))
 	for i := len(c.nodeStreams) - 1; i >= 0; i-- {
 		stream := c.nodeStreams[i]
-		if !slices.Contains(leaders, stream.nodeID) {
+		streamErr := stream.stream.Context().Err()
+		if !slices.Contains(leaderIds, stream.nodeID) || streamErr != nil {
+			// stream node is not among leaders
 			err := stream.stream.CloseSend()
 			if err != nil {
 				c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
 			}
 			c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
-			partitionsToSubscribe = append(partitionsToSubscribe, stream.partitions...)
+		} else {
+			streamNode := stream.nodeID
+			streamPartition := stream.partition
+			assignedLeader, ok := leaders[streamPartition]
+			if !ok {
+				c.logger.Error("Partition not found among leaders")
+				continue
+			}
+			if assignedLeader != streamNode {
+				err := stream.stream.CloseSend()
+				if err != nil {
+					c.logger.Error("Failed to close stream", "nodeID", stream.nodeID, "err", err)
+				}
+				c.nodeStreams = append(c.nodeStreams[:i], c.nodeStreams[i+1:]...)
+				continue
+			}
+			partitionsToSubscribe = slices.DeleteFunc(partitionsToSubscribe, func(a uint32) bool {
+				return a == streamPartition
+			})
 		}
 	}
 	c.nodeMu.Unlock()
@@ -117,8 +154,10 @@ func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint
 func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 	for {
 		resp, err := stream.stream.Recv()
-		if err == io.EOF {
+		if err == io.EOF || errors.Is(err, context.Canceled) {
 			// read done.
+			c.logger.Debug("Stream closed", "err", err)
+			// TODO: reconnect when stream is closed
 			return
 		}
 		if err != nil {
@@ -174,6 +213,7 @@ func (c *jobClient) sendJobToClient(job Job) {
 func (c *jobClient) startClient() {
 	c.subscribeNode(c.ctx)
 	go c.distributeToClients()
+	c.logger.Info("Started client")
 }
 
 func (c *jobClient) broadcastToNodes(req *proto.SubscribeJobRequest) error {

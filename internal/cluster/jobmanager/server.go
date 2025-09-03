@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
@@ -67,7 +68,7 @@ type jobServer struct {
 
 	maxPartitionJobLoadCount int64
 	distributedJobs          []distributedJob
-	distributedJobsMu        *sync.RWMutex
+	distributedJobsMu        *sync.Mutex
 	emptyDistributionCounter int
 
 	logger hclog.Logger
@@ -83,7 +84,7 @@ func newJobServer(
 		nodeSubs:                 map[NodeId]*nodeSub{},
 		nodeID:                   nodeID,
 		distributedJobs:          []distributedJob{},
-		distributedJobsMu:        &sync.RWMutex{},
+		distributedJobsMu:        &sync.Mutex{},
 		subscriptions:            map[JobType]map[ClientID]*nodeSub{},
 		jobTypes:                 map[JobType]jobTypeData{},
 		clientMu:                 &sync.RWMutex{},
@@ -119,7 +120,7 @@ func (s *jobServer) distributeJobs() {
 				clients[client] = maxActiveJobsPerClient
 			}
 		}
-		s.distributedJobsMu.RLock()
+		s.distributedJobsMu.Lock()
 		currentKeys := make([]int64, len(s.distributedJobs))
 		now := time.Now()
 		for i := len(s.distributedJobs) - 1; i >= 0; i-- {
@@ -131,7 +132,7 @@ func (s *jobServer) distributeJobs() {
 			clients[job.client]--
 			currentKeys[i] = job.jobKey
 		}
-		s.distributedJobsMu.RUnlock()
+		s.distributedJobsMu.Unlock()
 
 		jobsToLoad := int64(0)
 		for _, numberOfSlots := range clients {
@@ -152,8 +153,6 @@ func (s *jobServer) distributeJobs() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		// fmt.Println(s.jobTypes)
-		// fmt.Println(len(jobs))
 		if len(jobs) == 0 {
 			// wait for something to happen
 			s.emptyDistributionCounter++
@@ -368,7 +367,15 @@ func (s *jobServer) removeClient(clientID ClientID) {
 			jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
 			s.jobTypes[jType] = jobTypeData
 		}
+		if len(s.jobTypes[jType].clients) == 0 {
+			delete(s.jobTypes, jType)
+		}
 	}
+	s.distributedJobsMu.Lock()
+	s.distributedJobs = slices.DeleteFunc(s.distributedJobs, func(job distributedJob) bool {
+		return job.client == clientID
+	})
+	s.distributedJobsMu.Unlock()
 }
 
 func (s *jobServer) completeJob(ctx context.Context, clientID ClientID, jobKey int64, variables map[string]any) error {

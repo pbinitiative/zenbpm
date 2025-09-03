@@ -200,7 +200,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 				},
 			})
 			if err != nil {
-				s.logger.Error("Failed to send message to stream: %w", err)
+				s.logger.Error("Failed to send message to stream: %w", "err", err)
 				continue
 			}
 		}

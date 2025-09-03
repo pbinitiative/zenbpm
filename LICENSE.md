@@ -1,5 +1,5 @@
 Copyright (c) 2021-2024 Martin W. Kirst
-Copyright (c) 2024-present Process Builders Initiative
+Copyright (c) 2024-present ZenBPM Contributors
 
 # ZenBPM License Information
 
@@ -17,6 +17,6 @@ ZenBPM is dual-licensed under:
 ## Contributor License Agreement (CLA)
 
 All contributors must sign the Contributor License Agreement (CLA).  
-This grants the ZenBPM maintainers the right to distribute contributions under both the AGPL and the Enterprise license.
+This grants the ZenBPM maintainers (Process Builders Initiative non-profit oganization) the right to distribute contributions under both the AGPL and the Enterprise license.
 
 See `CONTRIBUTING.md` for instructions.

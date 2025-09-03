@@ -15,6 +15,7 @@ PATH="$BIN_DIR:$PATH"
 
 # ----- Config -----
 HEADER_FILE="${HEADER_FILE:-LICENSE-HEADER.txt}"
+EXTENSIONS="${EXTENSIONS:-go sql}"      # Space-separated list of file extensions
 EXTRA_EXCLUDES="${EXTRA_EXCLUDES:-}"   # e.g. "**/*_generated.go **/gen/**"
 
 # ----- Ensure header exists -----
@@ -34,19 +35,22 @@ if ! command -v addlicense >/dev/null 2>&1; then
   GOBIN="$BIN_DIR" go install github.com/google/addlicense@latest
 fi
 
-# ----- Collect candidate .go files -----
-mapfile -d '' ALL_GO < <(
-  cd "$REPO_ROOT"
-  find . -type f -name '*.go' \
-    ! -path './vendor/*' \
-    ! -path './third_party/*' \
-    -print0
-)
+# ----- Collect candidate files -----
+ALL_FILES=()
+for ext in $EXTENSIONS; do
+  mapfile -d '' -O "${#ALL_FILES[@]}" ALL_FILES < <(
+    cd "$REPO_ROOT"
+    find . -type f -name "*.$ext" \
+      ! -path './vendor/*' \
+      ! -path './third_party/*' \
+      -print0
+  )
+done
 
 # ----- Apply EXTRA_EXCLUDES (bash glob matching) -----
-FILTERED_GO=()
+FILTERED_FILES=()
 if [[ -n "$EXTRA_EXCLUDES" ]]; then
-  for f in "${ALL_GO[@]}"; do
+  for f in "${ALL_FILES[@]}"; do
     keep=true
     for glob in $EXTRA_EXCLUDES; do
       if [[ "${f#./}" == $glob ]]; then
@@ -54,34 +58,36 @@ if [[ -n "$EXTRA_EXCLUDES" ]]; then
         break
       fi
     done
-    $keep && FILTERED_GO+=("$f")
+    $keep && FILTERED_FILES+=("$f")
   done
 else
-  FILTERED_GO=("${ALL_GO[@]}")
+  FILTERED_FILES=("${ALL_FILES[@]}")
 fi
 
 # ----- Exclude generated files (if "Code generated" in first 5 lines) -----
-GO_FILES=()
-for f in "${FILTERED_GO[@]}"; do
-  if head -n 5 "$REPO_ROOT/$f" | grep -qE '^[[:space:]]*//[[:space:]]*Code generated'; then
+FINAL_FILES=()
+for f in "${FILTERED_FILES[@]}"; do
+  # Check for Go-style generated file markers (// Code generated)
+  # and SQL-style generated file markers (-- Code generated)
+  if head -n 5 "$REPO_ROOT/$f" | grep -qE '^[[:space:]]*(//|--)[[:space:]]*Code generated'; then
     continue
   fi
-  GO_FILES+=("$REPO_ROOT/$f")
+  FINAL_FILES+=("$REPO_ROOT/$f")
 done
 
 # ----- Nothing to do? -----
-if [[ ${#GO_FILES[@]} -eq 0 ]]; then
+if [[ ${#FINAL_FILES[@]} -eq 0 ]]; then
   if [[ "$MODE" == "add" ]]; then
-    echo "No non-generated .go files found to license."
+    echo "No non-generated files found to license (extensions: $EXTENSIONS)."
   else
-    echo "No non-generated .go files found to check."
+    echo "No non-generated files found to check (extensions: $EXTENSIONS)."
   fi
   exit 0
 fi
 
 # ----- Run addlicense -----
 if [[ "$MODE" == "check" ]]; then
-  addlicense -check -f "$HEADER_FILE" "${GO_FILES[@]}"
+  addlicense -check -f "$HEADER_FILE" "${FINAL_FILES[@]}"
 else
-  addlicense -f "$HEADER_FILE" "${GO_FILES[@]}"
+  addlicense -f "$HEADER_FILE" "${FINAL_FILES[@]}"
 fi

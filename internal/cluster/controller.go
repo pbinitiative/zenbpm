@@ -39,11 +39,12 @@ type controller struct {
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
 	c := controller{
-		config:       conf,
-		mux:          mux,
-		partitions:   make(map[uint32]*ZenPartitionNode),
-		logger:       hclog.Default().Named("zen-controller"),
-		partitionsMu: sync.RWMutex{},
+		config:                  conf,
+		mux:                     mux,
+		partitions:              make(map[uint32]*ZenPartitionNode),
+		logger:                  hclog.Default().Named("zen-controller"),
+		partitionsMu:            sync.RWMutex{},
+		clusterStateChangeHooks: []func(context.Context){},
 	}
 	return &c, nil
 }
@@ -286,7 +287,19 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 func (c *controller) handlePartitionStateInitializing(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
 	partitionNode, ok := c.partitions[partitionId]
 	if !ok {
-		// partition is still running joining operation
+		// TODO: add timestamps or something into the state so that this is not necessary
+		// if we dont receive another state change in time rerun the joining procedure
+		go func(context.Context) {
+			time.Sleep(5 * time.Second)
+			if ctx.Err() != nil {
+				return
+			}
+			c.partitionsMu.Lock()
+			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
+			c.partitionsMu.Unlock()
+		}(ctx)
+
+		// partition might still be running joining operation
 		return
 	}
 	_, err := partitionNode.WaitForLeader(1 * time.Minute)
@@ -302,13 +315,13 @@ func (c *controller) handlePartitionStateInitializing(ctx context.Context, parti
 	if partitionNode.engine == nil && partitionNode.IsLeader(ctx) {
 		engine, err := c.createEngine(ctx, c.partitions[partitionId].rqliteDB)
 		if err != nil {
-			c.logger.Error("failed to create engine for partition %d: %s", partitionId, err.Error())
+			c.logger.Error(fmt.Sprintf("failed to create engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails
 		}
 		partitionNode.engine = engine
 		err = partitionNode.engine.Start()
 		if err != nil {
-			c.logger.Error("failed to start engine for partition %d: %s", partitionId, err.Error())
+			c.logger.Error(fmt.Sprintf("failed to start engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails
 		}
 		c.logger.Info(fmt.Sprintf("Started engine for partition %d", partitionId))
@@ -345,7 +358,7 @@ func (c *controller) createEngine(ctx context.Context, db *RqLiteDB) (*bpmn.Engi
 	// TODO: add check for migrations and apply only missing
 	migrations, err := sql.GetMigrations()
 	if err != nil {
-		c.logger.Error("Failed to read migrations: %w", err)
+		c.logger.Error("Failed to read migrations", "err", err)
 		return nil, fmt.Errorf("failed to read migrations: %w", err)
 	}
 	statements := make([]*rqproto.Statement, len(migrations))
@@ -356,10 +369,11 @@ func (c *controller) createEngine(ctx context.Context, db *RqLiteDB) (*bpmn.Engi
 	}
 	_, err = db.executeStatements(ctx, statements)
 	if err != nil {
-		c.logger.Error("Failed to execute migrations: %w", err)
+		c.logger.Error("Failed to execute migrations", "err", err)
 		return nil, fmt.Errorf("failed to execute migrations: %w", err)
 	}
 	engine := bpmn.NewEngine(bpmn.EngineWithStorage(db))
+	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.partition))
 	return &engine, nil
 }
 

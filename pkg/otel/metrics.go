@@ -7,22 +7,37 @@ import (
 )
 
 type EngineMetrics struct {
-	ProcessesStartedTotal metric.Int64Counter
-	ProcessesEndedTotal   metric.Int64Counter
+	ProcessesStarted metric.Int64Counter
+	ProcessesEnded   metric.Int64Counter
+	JobsCreated      metric.Int64Counter
+	JobsCompleted    metric.Int64Counter
+	JobsFailed       metric.Int64Counter
 }
 
 func NewMetrics(meter metric.Meter) (*EngineMetrics, error) {
 	var errJoin error
 
-	processesStartedTotal, err := meter.Int64Counter("processes_started_total", metric.WithDescription("Total number of processes started"))
+	processesStartedTotal, err := meter.Int64Counter("processes_started", metric.WithDescription("Number of processes started"))
 	errJoin = errors.Join(errJoin, err)
 
-	processesCompletedTotal, err := meter.Int64Counter("processes_completed_total", metric.WithDescription("Total number of processes completed"))
+	processesCompletedTotal, err := meter.Int64Counter("processes_completed", metric.WithDescription("Number of processes completed"))
+	errJoin = errors.Join(errJoin, err)
+
+	jobsCreated, err := meter.Int64Counter("jobs_created", metric.WithDescription("Number of jobs created"))
+	errJoin = errors.Join(errJoin, err)
+
+	jobsCompleted, err := meter.Int64Counter("jobs_completed", metric.WithDescription("Number of jobs completed"))
+	errJoin = errors.Join(errJoin, err)
+
+	jobsFailed, err := meter.Int64Counter("jobs_failed", metric.WithDescription("Number of jobs failed"))
 	errJoin = errors.Join(errJoin, err)
 
 	metrics := EngineMetrics{
-		ProcessesStartedTotal: processesStartedTotal,
-		ProcessesEndedTotal:   processesCompletedTotal,
+		ProcessesStarted: processesStartedTotal,
+		ProcessesEnded:   processesCompletedTotal,
+		JobsCreated:      jobsCreated,
+		JobsCompleted:    jobsCompleted,
+		JobsFailed:       jobsFailed,
 	}
 	return &metrics, errJoin
 }

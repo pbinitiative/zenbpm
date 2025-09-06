@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -93,6 +94,11 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		clientReq, err := stream.Recv()
 		if err == io.EOF {
 			// read done.
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			// stream closed
+			s.logger.Debug("Stream context cancelled", "err", err)
 			return
 		}
 		if err != nil {
@@ -194,7 +200,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 				},
 			})
 			if err != nil {
-				s.logger.Error("Failed to send message to stream: %w", err)
+				s.logger.Error("Failed to send message to stream: %w", "err", err)
 				continue
 			}
 		}

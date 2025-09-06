@@ -254,6 +254,7 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 }
 
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
+
 INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
     VALUES (?, ?, ?, ?, ?, ?)
 `
@@ -267,6 +268,12 @@ type SaveProcessDefinitionParams struct {
 	BpmnResourceName string `json:"bpmn_resource_name"`
 }
 
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error {
 	_, err := q.db.ExecContext(ctx, saveProcessDefinition,
 		arg.Key,

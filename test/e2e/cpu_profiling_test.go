@@ -1,11 +1,19 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package e2e
 
 import (
 	"encoding/json"
 	"fmt"
+	"testing"
+
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestCpuProfiling(t *testing.T) {

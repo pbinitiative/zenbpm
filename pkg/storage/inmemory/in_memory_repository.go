@@ -1,12 +1,20 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package inmemory
 
 import (
 	"context"
 	"errors"
-	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"math/rand"
 	"slices"
 	"time"
+
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"

@@ -89,7 +89,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
+generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc license.add## Run all the generators in the project
 	@PATH=$(LOCALBIN):$(PATH) go generate ./...
 	@$(SQLC) generate
 	@cp internal/sql/db.go.template internal/sql/db.go

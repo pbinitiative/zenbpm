@@ -112,7 +112,7 @@ Internal communication between nodes.
 - NodeCommand - updates from nodes propagated to raft log (recipient is leader)
 
 ## Public gRPC 
-Public gRPC endpoint provides compatibility with [Camunda gRPC API](https://github.com/camunda/camunda/blob/8.5.15/zeebe/gateway-protocol/src/main/proto/gateway.proto) and extends it with additional Zen capabilities.
+Public gRPC endpoint that exposes jobs handling endpoints for better performance compared to REST API.
 
 ## Public REST API
 Public REST API provides similar capabilities to Public gRPC API only through the REST API.

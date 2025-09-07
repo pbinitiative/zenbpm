@@ -9,11 +9,12 @@ import (
 
 	stdruntime "runtime"
 
+	"slices"
+
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
-	"slices"
 )
 
 type StorageTestFunc func(s storage.Storage, t *testing.T) func(t *testing.T)
@@ -173,6 +174,7 @@ func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job 
 		State:              bpmnruntime.ActivityStateActive,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 		Token:              token,
+		Variables:          map[string]any{"foo": "bar"},
 	}
 }
 

@@ -129,6 +129,7 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
+
 INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token)
     VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
@@ -146,6 +147,14 @@ type SaveProcessInstanceParams struct {
 	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
 }
 
+// /*
+//   - Copyright 2021-present ZenBPM Contributors
+//   - (based on git commit history).
+//     *
+//   - ZenBPM project is available under two licenses:
+//   - - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//   - - Enterprise License (See LICENSE-ENTERPRISE.md)
+//     */
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
 	_, err := q.db.ExecContext(ctx, saveProcessInstance,
 		arg.Key,

@@ -53,16 +53,84 @@ type Querier interface {
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveDecision(ctx context.Context, arg SaveDecisionParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveJob(ctx context.Context, arg SaveJobParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMigration(ctx context.Context, arg SaveMigrationParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error
+	// /*
+	//  * Copyright 2021-present ZenBPM Contributors
+	//  * (based on git commit history).
+	//  *
+	//  * ZenBPM project is available under two licenses:
+	//  * - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  * - Enterprise License (See LICENSE-ENTERPRISE.md)
+	//  */
 	SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveTimer(ctx context.Context, arg SaveTimerParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 }
 

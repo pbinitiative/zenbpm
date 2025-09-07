@@ -1,7 +1,15 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package bpmn20
 
 import (
 	"encoding/xml"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
@@ -41,7 +49,7 @@ type TActivity struct {
 	IsForCompensation  bool `xml:"isForCompensation,attr"`
 	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
 
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
@@ -131,7 +139,7 @@ func (sendTask TSendTask) GetType() ElementType { return ElementTypeServiceTask 
 
 type TUserTask struct {
 	TTask
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
@@ -148,6 +156,6 @@ func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 
 type TCallActivity struct {
 	TActivity
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }

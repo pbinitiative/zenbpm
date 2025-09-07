@@ -210,6 +210,7 @@ func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams
 }
 
 const saveTimer = `-- name: SaveTimer :exec
+
 INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
@@ -229,6 +230,12 @@ type SaveTimerParams struct {
 	ExecutionToken       int64  `json:"execution_token"`
 }
 
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {
 	_, err := q.db.ExecContext(ctx, saveTimer,
 		arg.Key,

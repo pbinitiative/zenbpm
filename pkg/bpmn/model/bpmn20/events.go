@@ -1,3 +1,10 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package bpmn20
 
 import (
@@ -43,7 +50,7 @@ type TIntermediateCatchEvent struct {
 	TEvent
 	EventDefinition  EventDefinition
 	ParallelMultiple bool `xml:"parallelMultiple"`
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
@@ -85,7 +92,7 @@ func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
 type TIntermediateThrowEvent struct {
 	TEvent
 	EventDefinition EventDefinition
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 	Input          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
 	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`

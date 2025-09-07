@@ -1,3 +1,10 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package storagetest
 
 import (
@@ -9,11 +16,12 @@ import (
 
 	stdruntime "runtime"
 
+	"slices"
+
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
-	"slices"
 )
 
 type StorageTestFunc func(s storage.Storage, t *testing.T) func(t *testing.T)

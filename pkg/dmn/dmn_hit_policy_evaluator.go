@@ -1,9 +1,17 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package dmn
 
 import (
+	"strings"
+
 	"github.com/pbinitiative/feel"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
-	"strings"
 )
 
 func EvaluateCellMatch(columnExpression string, cellExpression string, variables map[string]interface{}) (bool, error) {

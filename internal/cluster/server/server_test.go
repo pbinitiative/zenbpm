@@ -1,3 +1,10 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package server
 
 import (
@@ -75,7 +82,7 @@ func TestServerTCPHeaderMux(t *testing.T) {
 	}
 	cLn := network.NewZenBpmClusterListener(mux)
 	tStore := &testStore{}
-	srv := New(cLn, tStore, nil,nil)
+	srv := New(cLn, tStore, nil, nil)
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)

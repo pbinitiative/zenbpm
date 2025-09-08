@@ -8,12 +8,19 @@ import (
 
 type RunningInstance struct {
 	instance *runtime.ProcessInstance
-	mu       *sync.RWMutex
+	mu       *sync.Mutex
 }
 
 type RunningInstancesCache struct {
 	processInstances map[int64]*RunningInstance
-	mu               *sync.RWMutex
+	mu               *sync.Mutex
+}
+
+func newRunningInstanceCache() *RunningInstancesCache {
+	return &RunningInstancesCache{
+		processInstances: map[int64]*RunningInstance{},
+		mu:               &sync.Mutex{},
+	}
 }
 
 func (c *RunningInstancesCache) lockInstance(instance *runtime.ProcessInstance) {
@@ -23,7 +30,7 @@ func (c *RunningInstancesCache) lockInstance(instance *runtime.ProcessInstance) 
 	} else {
 		c.processInstances[instance.Key] = &RunningInstance{
 			instance: instance,
-			mu:       &sync.RWMutex{},
+			mu:       &sync.Mutex{},
 		}
 		c.processInstances[instance.Key].mu.Lock()
 	}

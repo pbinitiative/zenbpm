@@ -15,9 +15,9 @@ cluster:
     joinAddresses: 
       - localhost:8090
   nodeId: node-1
-# tracing:
-#   enabled: true
-#   endpoint: localhost:4318
-#   name: ZenBPM
+tracing:
+  enabled: true
+  endpoint: localhost:4318
+  name: ZenBPM
 #   transferHeaders:
 #     - x-my-custom-header

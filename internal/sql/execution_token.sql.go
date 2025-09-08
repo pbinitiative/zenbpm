@@ -64,17 +64,11 @@ SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at
 FROM
     execution_token
-WHERE (key & 4190208) >> 12 = ?1
-    AND process_instance_key = ?2
+WHERE process_instance_key = ?1
 `
 
-type GetTokensForProcessInstanceParams struct {
-	Partition          int64 `json:"partition"`
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-}
-
-func (q *Queries) GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error) {
-	rows, err := q.db.QueryContext(ctx, getTokensForProcessInstance, arg.Partition, arg.ProcessInstanceKey)
+func (q *Queries) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getTokensForProcessInstance, processInstanceKey)
 	if err != nil {
 		return nil, err
 	}
@@ -103,22 +97,16 @@ func (q *Queries) GetTokensForProcessInstance(ctx context.Context, arg GetTokens
 	return items, nil
 }
 
-const getTokensInStateForPartition = `-- name: GetTokensInStateForPartition :many
+const getTokensInState = `-- name: GetTokensInState :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at
 FROM
     execution_token
-WHERE (key & 4190208) >> 12 = ?1
-    AND state = ?2
+WHERE state = ?1
 `
 
-type GetTokensInStateForPartitionParams struct {
-	Partition int64 `json:"partition"`
-	State     int64 `json:"state"`
-}
-
-func (q *Queries) GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error) {
-	rows, err := q.db.QueryContext(ctx, getTokensInStateForPartition, arg.Partition, arg.State)
+func (q *Queries) GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getTokensInState, state)
 	if err != nil {
 		return nil, err
 	}

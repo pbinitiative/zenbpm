@@ -995,6 +995,12 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 		return res, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
 	}
 	token := tokens[0]
+
+	var variables map[string]interface{}
+	err = json.Unmarshal([]byte(job.Variables), &variables)
+	if err != nil {
+		return res, fmt.Errorf("failed to unmarshal job variables: %w", err)
+	}
 	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -1010,6 +1016,7 @@ func (rq *RqLiteDB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 			ProcessInstanceKey: token.ProcessInstanceKey,
 			State:              bpmnruntime.TokenState(token.State),
 		},
+		Variables: variables,
 	}
 	return res, nil
 }
@@ -1025,6 +1032,11 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 	res := make([]bpmnruntime.Job, len(dbJobs))
 	tokensToLoad := make([]int64, len(dbJobs))
 	for i, job := range dbJobs {
+		var variables map[string]interface{}
+		err = json.Unmarshal([]byte(job.Variables), &variables)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
@@ -1036,6 +1048,7 @@ func (rq *RqLiteDB) FindPendingProcessInstanceJobs(ctx context.Context, processI
 			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
+			Variables: variables,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1067,7 +1080,11 @@ func (rq *RqLiteDB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 }
 
 func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
-	err := db.SaveJob(ctx, sql.SaveJobParams{
+	variableBytes, err := json.Marshal(job.Variables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for job %d: %w", job.GetKey(), err)
+	}
+	err = db.SaveJob(ctx, sql.SaveJobParams{
 		Key:                job.GetKey(),
 		ElementID:          job.ElementId,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -1075,7 +1092,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		Type:               job.Type,
 		State:              int64(job.GetState()),
 		CreatedAt:          job.CreatedAt.UnixMilli(),
-		Variables:          "{}", // TODO: add variables to job
+		Variables:          string(variableBytes),
 		ExecutionToken:     job.Token.Key,
 	})
 	if err != nil {

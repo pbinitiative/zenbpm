@@ -73,10 +73,10 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	}
 
 	// unblock token of the parent
-	ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
-	if err != nil {
-		return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
-	}
+	//ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	//if err != nil {
+	//	return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	//}
 
 	element = ppi.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
 

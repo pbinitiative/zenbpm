@@ -2,6 +2,7 @@ package bpmn20
 
 import (
 	"encoding/xml"
+	"fmt"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
@@ -38,9 +39,10 @@ type UserTaskElement interface {
 
 type TActivity struct {
 	TFlowNode
-	CompletionQuantity int  `xml:"completionQuantity,attr"`
-	IsForCompensation  bool `xml:"isForCompensation,attr"`
-	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
+	CompletionQuantity               int                               `xml:"completionQuantity,attr"`
+	IsForCompensation                bool                              `xml:"isForCompensation,attr"`
+	StartQuantity                    int                               `xml:"startQuantity,attr" default:"1"`
+	MultiInstanceLoopCharacteristics TMultiInstanceLoopCharacteristics `xml:"multiInstanceLoopCharacteristics"`
 
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
@@ -151,4 +153,15 @@ type TCallActivity struct {
 	TActivity
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
+}
+type TMultiInstanceLoopCharacteristics struct {
+	IsSequential        bool                            `xml:"isSequential,attr"`
+	LoopCharacteristics extensions.TLoopCharacteristics `xml:"extensionElements>loopCharacteristics"`
+}
+
+func (mi TMultiInstanceLoopCharacteristics) GetOutCollectionName(element TBaseElement) string {
+	if mi.LoopCharacteristics.OutputCollection != "" {
+		return mi.LoopCharacteristics.OutputCollection
+	}
+	return fmt.Sprintf("__outputCollection_%s", element.Id)
 }

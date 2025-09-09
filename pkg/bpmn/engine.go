@@ -631,20 +631,19 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	var activityResult runtime.ActivityState
 	var err error
 
-	switch element := activity.Element().(type) {
-	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
-	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
-	default:
-		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	activityElement := engine.castToTActivity(element)
+
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
+	// multi instance
+	if isMultiInstance {
+		err = engine.initMultiInstances(ctx, instance, activityElement, &currentToken, batch, activity)
+		if err != nil {
+			return []runtime.ExecutionToken{currentToken}, err
+		}
+		return []runtime.ExecutionToken{currentToken}, nil
+	} else {
+		activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
 	}
 
 	if err != nil {
@@ -692,6 +691,38 @@ func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch
 	}
 
 	return nil
+}
+
+func (engine *Engine) activityElementExecutor(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	currentToken runtime.ExecutionToken,
+	activity runtime.Activity,
+) (runtime.ActivityState, error) {
+	var activityResult runtime.ActivityState
+	var err error
+	switch element := activity.Element().(type) {
+	case *bpmn20.TServiceTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TSendTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TUserTask:
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TCallActivity:
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+		// we created process instance and its running in separate goroutine
+		// TODO: check why should be present and implement in another way
+		//if activityResult == runtime.ActivityStateActive {
+		//	currentToken.State = runtime.TokenStateWaiting
+		//	return []runtime.ExecutionToken{currentToken}, nil
+		//}
+	case *bpmn20.TBusinessRuleTask:
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+	default:
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	}
+	return activityResult, err
 }
 
 func (engine *Engine) createBusinessRuleTask(
@@ -905,6 +936,15 @@ func (engine *Engine) handleSimpleTransition(
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
+
+	finished, err := engine.handleMultiInstanceCompletion(ctx, batch, instance, element)
+	if err != nil {
+		return resTokens, fmt.Errorf("failed to handle multi instance transition: %w", err)
+	}
+	if !finished {
+		return resTokens, nil
+	}
+
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions

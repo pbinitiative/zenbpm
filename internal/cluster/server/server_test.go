@@ -17,6 +17,7 @@ import (
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -50,25 +51,25 @@ func TestServer(t *testing.T) {
 	zsc := proto.NewZenServiceClient(grpcClient)
 
 	_, err = zsc.Notify(ctx, &proto.NotifyRequest{
-		Id:      "123",
-		Address: "local-1.cluster",
+		Id:      ptr.To("123"),
+		Address: ptr.To("local-1.cluster"),
 	})
 	if err != nil {
 		t.Fatalf("failed to notify server: %s", err)
 	}
-	if tStore.notify == nil || tStore.notify.Id != "123" {
+	if tStore.notify == nil || tStore.notify.GetId() != "123" {
 		t.Fatalf("unexpected notify result")
 	}
 
 	_, err = zsc.Join(ctx, &proto.JoinRequest{
-		Id:      "123",
-		Address: "local-1.cluster",
-		Voter:   true,
+		Id:      ptr.To("123"),
+		Address: ptr.To("local-1.cluster"),
+		Voter:   ptr.To(true),
 	})
 	if err != nil {
 		t.Fatalf("failed to notify server: %s", err)
 	}
-	if tStore.join == nil || tStore.join.Id != "123" || tStore.join.Address != "local-1.cluster" {
+	if tStore.join == nil || tStore.join.GetId() != "123" || tStore.join.GetAddress() != "local-1.cluster" {
 		t.Fatalf("unexpected join result")
 	}
 }

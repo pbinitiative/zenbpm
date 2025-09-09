@@ -15,6 +15,7 @@ import (
 	"log/slog"
 
 	"github.com/pbinitiative/zenbpm/pkg/client/proto"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -110,7 +111,7 @@ func (w *Worker) performWork() {
 			return
 		}
 		if jobToComplete.Error != nil {
-			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.Message))
+			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.GetMessage()))
 			continue
 		}
 		go func() {
@@ -125,7 +126,7 @@ func (w *Worker) performWork() {
 					Request: &proto.JobStreamRequest_Fail{
 						Fail: &proto.JobFailRequest{
 							Key:       jobToComplete.Job.Key,
-							Message:   fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error()),
+							Message:   ptr.To(fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error())),
 							ErrorCode: &workerErr.ErrorCode,
 							Variables: errVars,
 						},
@@ -159,8 +160,8 @@ func (w *Worker) AddJobSubscription(jobType string) error {
 	err := w.stream.Send(&proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Subscription{
 			Subscription: &proto.StreamSubscriptionRequest{
-				JobType: jobType,
-				Type:    proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE,
+				JobType: ptr.To(jobType),
+				Type:    ptr.To(proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE),
 			},
 		},
 	})
@@ -174,8 +175,8 @@ func (w *Worker) RemoveJobSubscription(jobType string) error {
 	err := w.stream.Send(&proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Subscription{
 			Subscription: &proto.StreamSubscriptionRequest{
-				JobType: jobType,
-				Type:    proto.StreamSubscriptionRequest_TYPE_UNSUBSCRIBE,
+				JobType: ptr.To(jobType),
+				Type:    ptr.To(proto.StreamSubscriptionRequest_TYPE_UNSUBSCRIBE),
 			},
 		},
 	})

@@ -151,8 +151,8 @@ func (b *Bootstrapper) Status() cluster.BootStatus {
 
 func (b *Bootstrapper) notify(targets []string, id, raftAddr string) error {
 	nr := &proto.NotifyRequest{
-		Address: raftAddr,
-		Id:      id,
+		Address: &raftAddr,
+		Id:      &id,
 	}
 	for _, t := range targets {
 		client, err := b.clientMgr.For(t)

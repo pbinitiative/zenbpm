@@ -118,19 +118,19 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 
 func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) ClusterState {
 	state := store.ClusterState()
-	node, ok := state.Nodes[nodeChangeCommand.NodeId]
+	node, ok := state.Nodes[nodeChangeCommand.GetNodeId()]
 	// node is not yet present in the store
 	role := RoleFollower
 	leaderId, _ := store.LeaderID()
-	if leaderId == nodeChangeCommand.NodeId {
+	if leaderId == nodeChangeCommand.GetNodeId() {
 		role = RoleLeader
 	}
 	if !ok {
 		// TODO: check state of the node it should be starting
 		node = Node{
-			Id:         nodeChangeCommand.NodeId,
-			Addr:       nodeChangeCommand.Addr,
-			State:      NodeState(nodeChangeCommand.State),
+			Id:         nodeChangeCommand.GetNodeId(),
+			Addr:       nodeChangeCommand.GetAddr(),
+			State:      NodeState(nodeChangeCommand.GetState()),
 			Partitions: map[uint32]NodePartition{},
 		}
 	}
@@ -142,50 +142,50 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) Clu
 		}
 	}
 	node.Role = role
-	if nodeChangeCommand.Addr != "" {
-		node.Addr = nodeChangeCommand.Addr
+	if nodeChangeCommand.GetAddr() != "" {
+		node.Addr = nodeChangeCommand.GetAddr()
 	}
-	if nodeChangeCommand.Suffrage != proto.RaftSuffrage_RAFT_SUFFRAGE_UNKNOWN {
-		switch nodeChangeCommand.Suffrage {
+	if nodeChangeCommand.GetSuffrage() != proto.RaftSuffrage_RAFT_SUFFRAGE_UNKNOWN {
+		switch nodeChangeCommand.GetSuffrage() {
 		case proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER:
 			node.Suffrage = raft.Voter
 		case proto.RaftSuffrage_RAFT_SUFFRAGE_NONVOTER:
 			node.Suffrage = raft.Nonvoter
 		}
 	}
-	if nodeChangeCommand.State != proto.NodeState_NODE_STATE_UNKNOWN {
-		node.State = NodeState(nodeChangeCommand.State)
+	if nodeChangeCommand.GetState() != proto.NodeState_NODE_STATE_UNKNOWN {
+		node.State = NodeState(nodeChangeCommand.GetState())
 	}
-	state.Nodes[nodeChangeCommand.NodeId] = node
+	state.Nodes[nodeChangeCommand.GetNodeId()] = node
 	return state
 }
 
 func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange) ClusterState {
 	state := store.ClusterState()
-	node, ok := state.Nodes[partitionChangeCommand.NodeId]
+	node, ok := state.Nodes[partitionChangeCommand.GetNodeId()]
 	// node is not yet present in the store
 	if !ok {
 		node = Node{
-			Id:         partitionChangeCommand.NodeId,
+			Id:         partitionChangeCommand.GetNodeId(),
 			Partitions: make(map[uint32]NodePartition),
 		}
 	}
-	if partitionChangeCommand.State == proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING {
-		delete(node.Partitions, partitionChangeCommand.PartitionId)
-		state.Nodes[partitionChangeCommand.NodeId] = node
+	if partitionChangeCommand.GetState() == proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING {
+		delete(node.Partitions, partitionChangeCommand.GetPartitionId())
+		state.Nodes[partitionChangeCommand.GetNodeId()] = node
 		return state
 	}
-	node.Partitions[partitionChangeCommand.PartitionId] = NodePartition{
-		Id:    partitionChangeCommand.PartitionId,
-		State: NodePartitionState(partitionChangeCommand.State),
-		Role:  Role(partitionChangeCommand.Role),
+	node.Partitions[partitionChangeCommand.GetPartitionId()] = NodePartition{
+		Id:    partitionChangeCommand.GetPartitionId(),
+		State: NodePartitionState(partitionChangeCommand.GetState()),
+		Role:  Role(partitionChangeCommand.GetRole()),
 	}
-	if partitionChangeCommand.Role == proto.Role_ROLE_TYPE_LEADER {
-		state.Partitions[partitionChangeCommand.PartitionId] = Partition{
-			Id:       partitionChangeCommand.PartitionId,
-			LeaderId: partitionChangeCommand.NodeId,
+	if partitionChangeCommand.GetRole() == proto.Role_ROLE_TYPE_LEADER {
+		state.Partitions[partitionChangeCommand.GetPartitionId()] = Partition{
+			Id:       partitionChangeCommand.GetPartitionId(),
+			LeaderId: partitionChangeCommand.GetNodeId(),
 		}
 	}
-	state.Nodes[partitionChangeCommand.NodeId] = node
+	state.Nodes[partitionChangeCommand.GetNodeId()] = node
 	return state
 }

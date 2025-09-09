@@ -22,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -72,13 +73,13 @@ func TestFkdUpClient(t *testing.T) {
 		now = time.Now()
 		fmt.Println(now)
 		_, err = c.NodeCommand(ctx, &proto.Command{
-			Type: proto.Command_TYPE_NODE_PARTITION_CHANGE,
+			Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
 			Request: &proto.Command_NodePartitionChange{
 				NodePartitionChange: &proto.NodePartitionChange{
-					NodeId:      "123",
-					PartitionId: 1,
-					State:       1,
-					Role:        1,
+					NodeId:      ptr.To("123"),
+					PartitionId: ptr.To(uint32(1)),
+					State:       proto.NodePartitionState_NODE_PARTITION_STATE_ERROR.Enum(),
+					Role:        proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 				},
 			},
 		})

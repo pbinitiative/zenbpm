@@ -21,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -176,14 +177,14 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			return
 		}
 		c.jobsChan <- Job{
-			Key:         resp.Job.Key,
-			InstanceKey: resp.Job.InstanceKey,
-			Variables:   resp.Job.Variables,
-			Type:        JobType(resp.Job.Type),
-			State:       resp.Job.State,
-			ElementID:   resp.Job.ElementId,
-			CreatedAt:   resp.Job.CreatedAt,
-			ClientID:    ClientID(resp.ClientId),
+			Key:         resp.Job.GetKey(),
+			InstanceKey: resp.Job.GetInstanceKey(),
+			Variables:   resp.Job.GetVariables(),
+			Type:        JobType(resp.Job.GetType()),
+			State:       resp.Job.GetState(),
+			ElementID:   resp.Job.GetElementId(),
+			CreatedAt:   resp.Job.GetCreatedAt(),
+			ClientID:    ClientID(resp.GetClientId()),
 		}
 	}
 }
@@ -256,8 +257,8 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 	sub, subFound := c.clientSubs[clientID]
 	if subFound {
 		err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL,
-			ClientId: string(clientID),
+			Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL.Enum(),
+			ClientId: ptr.To(string(clientID)),
 		})
 		if err != nil {
 			c.logger.Error("failed to remove client from nodes", "clientID", clientID, "err", err)
@@ -269,9 +270,9 @@ func (c *jobClient) removeClient(ctx context.Context, clientID ClientID) {
 
 func (c *jobClient) addJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  string(jobType),
-		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE,
-		ClientId: string(clientID),
+		JobType:  ptr.To(string(jobType)),
+		Type:     proto.SubscribeJobRequest_TYPE_SUBSCRIBE.Enum(),
+		ClientId: ptr.To(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to subscribe client %s to jobType %s: %w", clientID, jobType, err)
@@ -290,9 +291,9 @@ func (c *jobClient) completeJob(ctx context.Context, clientID ClientID, jobKey i
 		return fmt.Errorf("failed to marshal variables for job completion: %w", err)
 	}
 	_, err = lClient.CompleteJob(ctx, &proto.CompleteJobRequest{
-		Key:       jobKey,
+		Key:       ptr.To(jobKey),
 		Variables: vars,
-		ClientId:  string(clientID),
+		ClientId:  ptr.To(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d from client: %w", jobKey, err)
@@ -311,8 +312,8 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 		return fmt.Errorf("failed to marshal variables for job failure: %w", err)
 	}
 	_, err = lClient.FailJob(ctx, &proto.FailJobRequest{
-		Key:       jobKey,
-		Message:   message,
+		Key:       &jobKey,
+		Message:   &message,
 		ErrorCode: errorCode,
 		Variables: vars,
 	})
@@ -324,9 +325,9 @@ func (c *jobClient) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (c *jobClient) removeJobSub(ctx context.Context, clientID ClientID, jobType JobType) error {
 	err := c.broadcastToNodes(&proto.SubscribeJobRequest{
-		JobType:  string(jobType),
-		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE,
-		ClientId: string(clientID),
+		JobType:  ptr.To(string(jobType)),
+		Type:     proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE.Enum(),
+		ClientId: ptr.To(string(clientID)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to unsubscribe client %s from jobType %s: %w", clientID, jobType, err)

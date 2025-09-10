@@ -155,6 +155,15 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	}, randomID)
 	assert.NoError(t, err)
 
+	completeType := fmt.Sprintf("%s-complete", randomID)
+	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+		assert.Equal(t, completeType, job.Type)
+		return map[string]any{
+			"testVar": 456,
+		}, nil
+	}, completeType)
+	assert.NoError(t, err)
+
 	// Now testing that we can resolve
 	incidents, err := getProcessInstanceIncidents(t, instance.Key)
 	assert.NoError(t, err)
@@ -179,9 +188,14 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 		}
 	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
 
-	instance, err = getProcessInstance(t, instance.Key)
-	assert.NoError(t, err)
-	assert.Equal(t, instance.State, public.ProcessInstanceStateCompleted)
+	assert.Eventually(t, func() bool {
+		instance, err = getProcessInstance(t, instance.Key)
+
+		if err != nil {
+			return false
+		}
+		return instance.State == public.ProcessInstanceStateCompleted
+	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
 
 }
 

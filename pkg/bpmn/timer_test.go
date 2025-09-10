@@ -17,6 +17,8 @@ import (
 )
 
 func TestEventBasedGatewaySelectsPathWhereTimerOccurs(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	engineStorage.Timers = make(map[int64]runtime.Timer)
 	cp := CallPath{}
 
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
@@ -29,6 +31,9 @@ func TestEventBasedGatewaySelectsPathWhereTimerOccurs(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	assert.Equal(t, "task-for-timer", cp.CallPath)
+	for _, timer := range engineStorage.Timers {
+		assert.Equal(t, timer.TimerState, runtime.TimerStateTriggered)
+	}
 }
 
 func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
@@ -46,6 +51,7 @@ func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
 }
 
 func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
+	cleanUpMessageSubscriptions()
 	cp := CallPath{}
 
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
@@ -53,9 +59,16 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	err := bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "message", nil)
+	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
+		t.Context(),
+		"message",
+		"message",
+	)
+	assert.NoError(t, err)
+	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
+	assert.NoError(t, err)
 	time.Sleep((2 * time.Second) + (1 * time.Millisecond))
 	assert.Nil(t, err)
 
@@ -63,11 +76,23 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	assert.NotContains(t, cp.CallPath, ",")
 
 	cp.CallPath = ""
-	instance, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	time.Sleep((2 * time.Second) + (1 * time.Millisecond))
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "message", nil)
-	assert.Nil(t, err)
+	assert.Eventually(t, func() bool {
+		if strings.HasPrefix(cp.CallPath, "task-for-timer") {
+			return true
+		}
+		return false
+	}, (5*time.Second)+(1*time.Millisecond), 500*time.Millisecond)
+
+	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
+		t.Context(),
+		"message",
+		"message",
+	)
+	assert.NoError(t, err)
+	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
+	assert.Error(t, err)
 
 	assert.True(t, strings.HasPrefix(cp.CallPath, "task-for-timer"))
 	assert.NotContains(t, cp.CallPath, ",")

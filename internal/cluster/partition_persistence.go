@@ -13,6 +13,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/profile"
@@ -41,14 +44,16 @@ import (
 )
 
 type RqLiteDB struct {
-	store     *store.Store
-	queries   *sql.Queries
-	logger    hclog.Logger
-	node      *snowflake.Node
-	partition uint32
-	tracer    trace.Tracer
-	pdCache   *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
-	ddCache   *expirable.LRU[int64, dmnruntime.DecisionDefinition]
+	store           *store.Store
+	queries         *sql.Queries
+	logger          hclog.Logger
+	node            *snowflake.Node
+	partition       uint32
+	tracer          trace.Tracer
+	pdCache         *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
+	ddCache         *expirable.LRU[int64, dmnruntime.DecisionDefinition]
+	client          *client.ClientManager
+	controlledStore ControlledStore
 }
 
 // GenerateId implements storage.Storage.
@@ -56,19 +61,21 @@ func (rq *RqLiteDB) GenerateId() int64 {
 	return rq.node.Generate().Int64()
 }
 
-func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence) (*RqLiteDB, error) {
+func NewRqLiteDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence, client *client.ClientManager, controlledStore ControlledStore) (*RqLiteDB, error) {
 	node, err := snowflake.NewNode(int64(partition))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
 	}
 	db := &RqLiteDB{
-		store:     store,
-		logger:    logger,
-		node:      node,
-		tracer:    otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
-		partition: partition,
-		pdCache:   expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
-		ddCache:   expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, cfg.DecDefCacheTTL),
+		store:           store,
+		logger:          logger,
+		node:            node,
+		tracer:          otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
+		partition:       partition,
+		pdCache:         expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
+		ddCache:         expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, cfg.DecDefCacheTTL),
+		client:          client,
+		controlledStore: controlledStore,
 	}
 	queries := sql.New(db)
 	db.queries = queries
@@ -742,7 +749,7 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	}
 
 	res = bpmnruntime.ProcessInstance{
-		Definition:                  &definition, //TODO: load from cache
+		Definition:                  &definition,
 		Key:                         dbInstance.Key,
 		VariableHolder:              bpmnruntime.NewVariableHolder(nil, variables),
 		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
@@ -1101,9 +1108,150 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 	return nil
 }
 
+var _ storage.MessageSubscriptionPointerStorageWriter = &RqLiteDB{}
+
+func (rq *RqLiteDB) SaveMessageSubscriptionPointer(ctx context.Context, subscription bpmnruntime.MessageSubscriptionPointer) error {
+	partitionId := rq.controlledStore.ClusterState().GetPartitionIdFromString(subscription.CorrelationKey)
+	if rq.partition == partitionId && rq.store.IsLeader() {
+		if subscription.Key == 0 {
+			subscription.Key = rq.GenerateId()
+		}
+		err := rq.queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
+			Key:                    subscription.Key,
+			State:                  int64(subscription.State),
+			CreatedAt:              subscription.CreatedAt.UnixMilli(),
+			Name:                   subscription.Name,
+			CorrelationKey:         subscription.CorrelationKey,
+			MessageSubscriptionKey: subscription.MessageSubscriptionKey,
+			ExecutionTokenKey:      subscription.ExecutionTokenKey,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to save message subscription pointer for message subscription %d: %w", subscription.Key, err)
+		}
+		return nil
+	}
+
+	leader, err := rq.client.PartitionLeader(partitionId)
+	if err != nil {
+		return err
+	}
+	if subscription.Key == 0 {
+		resp, err := leader.CreateMessageSubscriptionPointer(ctx, &zenproto.MessageSubscriptionPointerRequest{
+			Key:                    subscription.Key,
+			State:                  int64(subscription.State),
+			CreatedAt:              subscription.CreatedAt.UnixMilli(),
+			Name:                   subscription.Name,
+			CorrelationKey:         subscription.CorrelationKey,
+			MessageSubscriptionKey: subscription.MessageSubscriptionKey,
+			ExecutionTokenKey:      subscription.ExecutionTokenKey,
+			PartitionId:            partitionId,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to save message subscription pointer for message subscription %d: %w", subscription.Key, err)
+			if err != nil {
+				return fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		return nil
+	} else {
+		resp, err := leader.UpdateMessageSubscriptionPointer(ctx, &zenproto.MessageSubscriptionPointerRequest{
+			Key:                    subscription.Key,
+			State:                  int64(subscription.State),
+			CreatedAt:              subscription.CreatedAt.UnixMilli(),
+			Name:                   subscription.Name,
+			CorrelationKey:         subscription.CorrelationKey,
+			MessageSubscriptionKey: subscription.MessageSubscriptionKey,
+			ExecutionTokenKey:      subscription.ExecutionTokenKey,
+			PartitionId:            partitionId,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to save message subscription pointer for message subscription %d: %w", subscription.Key, err)
+			if err != nil {
+				return fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		return nil
+	}
+}
+
+func (rq *RqLiteDB) TerminateMessageSubscriptionPointers(ctx context.Context, executionTokenKey int64) error {
+	err := rq.queries.SetStateForMessageSubscriptionPointers(ctx, sql.SetStateForMessageSubscriptionPointersParams{
+		State:             int64(bpmnruntime.MessageSubscriptionComplete),
+		ExecutionTokenKey: executionTokenKey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to terminate message subscription pointers for execution %d: %w", executionTokenKey, err)
+	}
+	return nil
+}
+
+func (rq *RqLiteDB) TerminateMessageSubscriptionPointersForExecution(ctx context.Context, messageSubscriptions []bpmnruntime.MessageSubscription, executionTokenKey int64) {
+	partitionIds := make(map[uint32]bool)
+	for _, sub := range messageSubscriptions {
+		partitionIds[rq.controlledStore.ClusterState().GetPartitionIdFromString(sub.CorrelationKey)] = true
+	}
+
+	for partitionId := range partitionIds {
+		if rq.partition == partitionId && rq.store.IsLeader() {
+			err := rq.TerminateMessageSubscriptionPointers(ctx, executionTokenKey)
+			if err != nil {
+				log.Infof(ctx, "failed to terminate message subscription pointers for execution %d on partition %d: %s", executionTokenKey, partitionId, err)
+			}
+		} else {
+			leader, err := rq.client.PartitionLeader(partitionId)
+			if err != nil {
+				log.Infof(ctx, "Finding Partition Leader failed: %s", err)
+			}
+			resp, err := leader.TerminateMessageSubscriptionPointers(ctx, &zenproto.TerminateMessageSubscriptionPointersRequest{
+				ExecutionTokenKey: executionTokenKey,
+				PartitionId:       partitionId,
+			})
+			if err != nil || resp.Error != nil {
+				e := fmt.Errorf("failed to terminate message subscription pointers for execution %d on partition %d: %s", executionTokenKey, partitionId, err)
+				if err != nil {
+					log.Infof(ctx, "%s: %s", e, err)
+				} else if resp.Error != nil {
+					log.Infof(ctx, "%s: %s", e, errors.New(resp.Error.GetMessage()))
+				}
+			}
+		}
+	}
+}
+
+var _ storage.MessageSubscriptionPointerStorageReader = &RqLiteDB{}
+
+func (rq *RqLiteDB) FindActiveMessageSubscriptionPointer(ctx context.Context, name string, correlationKey string) (bpmnruntime.MessageSubscriptionPointer, error) {
+	var res bpmnruntime.MessageSubscriptionPointer
+	dbMessageSub, err := rq.queries.FindMessageSubscriptionPointer(ctx, sql.FindMessageSubscriptionPointerParams{
+		CorrelationKey: correlationKey,
+		Name:           name,
+		FilterState:    int64(bpmnruntime.MessageSubscriptionActive),
+	})
+	if err != nil {
+		return res, fmt.Errorf("failed to find ready message subscription pointer for name %s correlationKey %s: %w", name, correlationKey, err)
+	}
+
+	res = bpmnruntime.MessageSubscriptionPointer{
+		Key:                    dbMessageSub.Key,
+		State:                  bpmnruntime.MessageSubscriptionState(dbMessageSub.State),
+		CreatedAt:              time.UnixMilli(dbMessageSub.CreatedAt),
+		Name:                   dbMessageSub.Name,
+		CorrelationKey:         dbMessageSub.CorrelationKey,
+		MessageSubscriptionKey: dbMessageSub.MessageSubscriptionKey,
+		ExecutionTokenKey:      dbMessageSub.ExecutionTokenKey,
+	}
+
+	return res, nil
+}
+
 var _ storage.MessageStorageReader = &RqLiteDB{}
 
 func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+
 	dbMessages, err := rq.queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
 		ExecutionToken: tokenKey,
 		State:          int64(state),
@@ -1112,39 +1260,68 @@ func (rq *RqLiteDB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 		return nil, fmt.Errorf("failed to find token message subscriptions for token %d: %w", tokenKey, err)
 	}
 	res := make([]bpmnruntime.MessageSubscription, len(dbMessages))
-	tokensToLoad := make([]int64, len(dbMessages))
+
+	loadedTokens, err := rq.queries.GetTokens(ctx, []int64{tokenKey})
+	if err != nil || len(loadedTokens) != 1 {
+		return res, fmt.Errorf("failed to load message subscription token: %w", err)
+	}
+
+	token := bpmnruntime.ExecutionToken{
+		Key:                loadedTokens[0].Key,
+		ElementInstanceKey: loadedTokens[0].ElementInstanceKey,
+		ElementId:          loadedTokens[0].ElementID,
+		ProcessInstanceKey: loadedTokens[0].ProcessInstanceKey,
+		State:              bpmnruntime.TokenState(loadedTokens[0].State),
+	}
+
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
 			ElementId:            mes.ElementID,
-			ElementInstanceKey:   mes.ElementInstanceKey,
+			Key:                  mes.Key,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
 			MessageState:         bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key: mes.ExecutionToken,
-			},
+			Token:                token,
 		}
-		tokensToLoad[i] = mes.ExecutionToken
 	}
-	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	return res, nil
+}
+
+func (rq *RqLiteDB) FindMessageSubscriptionById(ctx context.Context, messageSubscriptionKey int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	var res bpmnruntime.MessageSubscription
+	dbMessage, err := rq.queries.GetMessageSubscriptionById(ctx, sql.GetMessageSubscriptionByIdParams{
+		Key:   messageSubscriptionKey,
+		State: int64(state),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+		return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, err)
 	}
-	for _, token := range loadedTokens {
-		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-			}
-		}
+	res = bpmnruntime.MessageSubscription{
+		ElementId:            dbMessage.ElementID,
+		Key:                  dbMessage.Key,
+		ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
+		ProcessInstanceKey:   dbMessage.ProcessInstanceKey,
+		Name:                 dbMessage.Name,
+		MessageState:         bpmnruntime.ActivityState(dbMessage.State),
+		CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
+		Token: bpmnruntime.ExecutionToken{
+			Key: dbMessage.ExecutionToken,
+		},
+	}
+
+	loadedTokens, err := rq.queries.GetTokens(ctx, []int64{dbMessage.ExecutionToken})
+	if err != nil || len(loadedTokens) != 1 {
+		return res, fmt.Errorf("failed to load message subscription token: %w", err)
+	}
+
+	res.Token = bpmnruntime.ExecutionToken{
+		Key:                loadedTokens[0].Key,
+		ElementInstanceKey: loadedTokens[0].ElementInstanceKey,
+		ElementId:          loadedTokens[0].ElementID,
+		ProcessInstanceKey: loadedTokens[0].ProcessInstanceKey,
+		State:              bpmnruntime.TokenState(loadedTokens[0].State),
 	}
 
 	return res, nil
@@ -1163,7 +1340,7 @@ func (rq *RqLiteDB) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
 			ElementId:            mes.ElementID,
-			ElementInstanceKey:   mes.ElementInstanceKey,
+			Key:                  mes.Key,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
@@ -1205,7 +1382,6 @@ func (rq *RqLiteDB) SaveMessageSubscription(ctx context.Context, subscription bp
 func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription bpmnruntime.MessageSubscription) error {
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.GetKey(),
-		ElementInstanceKey:   subscription.ElementInstanceKey,
 		ElementID:            subscription.ElementId,
 		ProcessDefinitionKey: subscription.ProcessDefinitionKey,
 		ProcessInstanceKey:   subscription.ProcessInstanceKey,

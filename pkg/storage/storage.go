@@ -36,6 +36,8 @@ type Storage interface {
 	FlowElementHistoryWriter
 	IncidentStorageReader
 	IncidentStorageWriter
+	MessageSubscriptionPointerStorageWriter
+	MessageSubscriptionPointerStorageReader
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -155,8 +157,22 @@ type JobStorageWriter interface {
 	SaveJob(ctx context.Context, job bpmnruntime.Job) error
 }
 
+type MessageSubscriptionPointerStorageWriter interface {
+	SaveMessageSubscriptionPointer(ctx context.Context, subscription bpmnruntime.MessageSubscriptionPointer) error
+
+	TerminateMessageSubscriptionPointers(ctx context.Context, executionTokenKey int64) error
+
+	TerminateMessageSubscriptionPointersForExecution(ctx context.Context, messageSubscriptions []bpmnruntime.MessageSubscription, executionTokenKey int64)
+}
+
+type MessageSubscriptionPointerStorageReader interface {
+	FindActiveMessageSubscriptionPointer(ctx context.Context, name string, correlationKey string) (bpmnruntime.MessageSubscriptionPointer, error)
+}
+
 type MessageStorageReader interface {
-	// FindProcessInstanceMessageSubscription return message subscriptions for process instance that are in Active or Ready state
+	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+
+	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 
 	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)

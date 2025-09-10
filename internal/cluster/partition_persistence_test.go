@@ -10,6 +10,9 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/cluster/server"
+	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"testing"
 	"time"
 
@@ -40,7 +43,32 @@ func TestRqLiteStorage(t *testing.T) {
 		ProcDefCacheTTL:  24 * time.Hour,
 		ProcDefCacheSize: 200,
 	}
-	partition, err := StartZenPartitionNode(ctx, mux, conf, 1, PartitionChangesCallbacks{})
+
+	partitions := make(map[uint32]store.Partition)
+	partitions[1] = store.Partition{
+		Id:       1,
+		LeaderId: "test-rq-lite",
+	}
+	tStore := &controllerTestStore{
+		id:   "test-rq-lite",
+		addr: fmt.Sprintf("127.0.0.1:%s", "1234"),
+		clusterState: store.ClusterState{
+			Config: store.ClusterConfig{
+				DesiredPartitions: 1,
+			},
+			Partitions: partitions,
+			Nodes:      map[string]store.Node{},
+		},
+		leader: true,
+	}
+	srvLn := network.NewZenBpmClusterListener(mux)
+	srv := server.New(srvLn, tStore, nil, nil)
+	err = srv.Open()
+	assert.NoError(t, err)
+
+	clientMgr := client.NewClientManager(tStore)
+
+	partition, err := StartZenPartitionNode(ctx, mux, conf, clientMgr, tStore, 1, PartitionChangesCallbacks{})
 	if err != nil {
 		t.Fatalf("failed to create partition node: %s", err)
 	}
@@ -71,7 +99,7 @@ func TestRqLiteStorage(t *testing.T) {
 		t.Fatalf("failed to run migrations: %s", err)
 	}
 
-	db, err := NewRqLiteDB(partition.rqliteDB.store, partition.partitionId, hclog.Default().Named("test-rq-lite-db"), conf)
+	db, err := NewRqLiteDB(partition.rqliteDB.store, partition.partitionId, hclog.Default().Named("test-rq-lite-db"), conf, clientMgr, tStore)
 	assert.NoError(t, err)
 
 	tester := storagetest.StorageTester{}

@@ -101,8 +101,13 @@ func (d *TDefinitions) GetMessageByRef(ref string) (TMessage, error) {
 }
 
 type TMessage struct {
-	Id   string `xml:"id,attr"`
-	Name string `xml:"name,attr"`
+	Id        string        `xml:"id,attr"`
+	Name      string        `xml:"name,attr"`
+	Extension TSubscription `xml:"extensionElements>subscription"`
+}
+
+type TSubscription struct {
+	CorrelationKey string `xml:"correlationKey,attr"`
 }
 
 type TCallableElement struct {

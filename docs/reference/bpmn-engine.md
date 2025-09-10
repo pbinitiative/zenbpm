@@ -107,7 +107,31 @@ Exclusive gateway is fully supported.
 ### Event based gateway
 Event based gateway currently supports message and timer events.
 ### Message catch event
-Message catch event is fully supported.
+A Message Catch Event is used to model the recipient of a message from an external participant or process.
+It indicates that the execution flow will pause until the specified message is received.
+
+(https://excalidraw.com/#json=zgmHZ0Iho7sQajpVMW7Ym,LOD3WwEEJPFMcVJC4xpMPw make a nicer picture here)
+
+**Uniqueness**
+Message Catch Event is identified by a **Correlation Key** and **Correlation Name**.
+Combination of the two parameters is unique for each message catch event.
+Running into Message Catch Event with an already existing combination results in Incident(link).
+
+**MessageSubscription**
+Message Subscription is what we refer to when zen engine stores data about the Message Catch Event.
+(link to table ?)
+
+**Message Subscription Pointer**
+Message Subscription Pointers are used to correlate messages in Zen's architecture of a distributed system.(point to architecture)
+Pointers are used to efficiently determine location of a stored subscription, without requiring any internal identifiers.
+Pointer's storage partition is calculated from user defined **Correlation Key**.
+From which we can determine partition assigned to **Message Subscription** and its **Process Instance** to then correlate the message.
+
+Usage
+Messages can be published through API - **POST /messages**(TODO:Link the API) and by triggering Intermediate throw event(TODO:Link).
+
+TODO: mention "Message start events" "Message boundary events"
+
 ### Link intermediate throw event
 Link intermediate throw event is fully supported.
 ### Link intermediate catch event

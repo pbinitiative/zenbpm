@@ -10,6 +10,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"net"
 	"strings"
 	"sync"
@@ -74,7 +75,7 @@ type PartitionChangesCallbacks struct {
 	resumeNode func(id string) error
 }
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, controlledStore ControlledStore, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
 
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
@@ -105,7 +106,10 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	zpn.rqliteDB, err = NewRqLiteDB(
 		zpn.store,
 		zpn.partitionId,
-		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)), persistenceConfig,
+		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
+		persistenceConfig,
+		client,
+		controlledStore,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)

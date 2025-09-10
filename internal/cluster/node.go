@@ -465,20 +465,41 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	return nil
 }
 
-func (node *ZenNode) PublishMessage(ctx context.Context, name string, instanceKey int64, variables map[string]any) error {
-	partition := zenflake.GetPartitionId(instanceKey)
-	client, err := node.client.PartitionLeader(partition)
-	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
+	partitionId := node.store.ClusterState().GetPartitionIdFromString(correlationKey)
+	partitionNode := node.controller.partitions[partitionId]
+	if partitionNode == nil {
+		return fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey)
 	}
+	msPointer, err := partitionNode.rqliteDB.FindActiveMessageSubscriptionPointer(
+		ctx,
+		name,
+		correlationKey,
+	)
+	if err != nil {
+		return err
+	}
+
+	partitionId = zenflake.GetPartitionId(msPointer.MessageSubscriptionKey)
+	client, err := node.client.PartitionLeader(partitionId)
+	if err != nil {
+		return fmt.Errorf("failed to get partition leader: %w", err)
+	}
+
 	vars, err := json.Marshal(variables)
 	if err != nil {
 		return fmt.Errorf("failed marshal variables: %w", err)
 	}
+
 	resp, err := client.PublishMessage(ctx, &proto.PublishMessageRequest{
-		Name:        name,
-		InstanceKey: instanceKey,
-		Variables:   vars,
+		Key:                    msPointer.Key,
+		State:                  int64(msPointer.State),
+		CreatedAt:              msPointer.CreatedAt.UnixMilli(),
+		Name:                   msPointer.Name,
+		CorrelationKey:         msPointer.CorrelationKey,
+		MessageSubscriptionKey: msPointer.MessageSubscriptionKey,
+		ExecutionTokenKey:      msPointer.ExecutionTokenKey,
+		Variables:              vars,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("client call to publish message failed")
@@ -488,6 +509,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, instanceKe
 			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
+
 	return nil
 }
 

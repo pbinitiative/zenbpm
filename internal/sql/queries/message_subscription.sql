@@ -6,9 +6,9 @@
 --  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
 -- name: SaveMessageSubscription :exec
-INSERT INTO message_subscription(key, element_instance_key, element_id, process_definition_key, process_instance_key, name, state,
+INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
     created_at, correlation_key, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state;
@@ -45,4 +45,13 @@ FROM
     message_subscription
 WHERE
     process_instance_key = @process_instance_key
+    AND state = @state;
+
+-- name: GetMessageSubscriptionById :one
+SELECT
+    *
+FROM
+    message_subscription
+WHERE
+    key = @key
     AND state = @state;

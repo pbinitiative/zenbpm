@@ -66,7 +66,6 @@ type Job struct {
 
 type MessageSubscription struct {
 	Key                  int64  `json:"key"`
-	ElementInstanceKey   int64  `json:"element_instance_key"`
 	ElementID            string `json:"element_id"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
@@ -75,6 +74,16 @@ type MessageSubscription struct {
 	CreatedAt            int64  `json:"created_at"`
 	CorrelationKey       string `json:"correlation_key"`
 	ExecutionToken       int64  `json:"execution_token"`
+}
+
+type MessageSubscriptionPointer struct {
+	Key                    int64  `json:"key"`
+	State                  int64  `json:"state"`
+	CreatedAt              int64  `json:"created_at"`
+	Name                   string `json:"name"`
+	CorrelationKey         string `json:"correlation_key"`
+	MessageSubscriptionKey int64  `json:"message_subscription_key"`
+	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }
 
 type Migration struct {

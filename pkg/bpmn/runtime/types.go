@@ -126,11 +126,12 @@ const (
 )
 
 type MessageSubscription struct {
+	Key                  int64
 	ElementId            string
-	ElementInstanceKey   int64
 	ProcessDefinitionKey int64
 	ProcessInstanceKey   int64
 	Name                 string
+	CorrelationKey       string
 	MessageState         ActivityState
 	CreatedAt            time.Time
 	Token                ExecutionToken
@@ -138,7 +139,7 @@ type MessageSubscription struct {
 
 func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
 	if m.ElementId == m2.ElementId &&
-		m.ElementInstanceKey == m2.ElementInstanceKey &&
+		m.Key == m2.Key &&
 		m.ProcessDefinitionKey == m2.ProcessDefinitionKey &&
 		m.ProcessInstanceKey == m2.ProcessInstanceKey &&
 		m.Name == m2.Name &&
@@ -154,7 +155,7 @@ func (m MessageSubscription) GetId() string {
 }
 func (m MessageSubscription) GatewayEvent() {}
 func (m MessageSubscription) GetKey() int64 {
-	return m.ElementInstanceKey
+	return m.Key
 }
 
 func (m MessageSubscription) GetState() ActivityState {
@@ -291,3 +292,21 @@ type Incident struct {
 	ResolvedAt         *time.Time
 	Token              ExecutionToken
 }
+
+type MessageSubscriptionPointer struct {
+	Key                    int64
+	State                  MessageSubscriptionState
+	CreatedAt              time.Time
+	Name                   string
+	CorrelationKey         string
+	MessageSubscriptionKey int64
+	ExecutionTokenKey      int64
+}
+
+type MessageSubscriptionState int
+
+const (
+	_ MessageSubscriptionState = iota
+	MessageSubscriptionActive
+	MessageSubscriptionComplete
+)

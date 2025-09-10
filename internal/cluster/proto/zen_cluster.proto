@@ -57,6 +57,9 @@ service ZenService {
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  rpc UpdateMessageSubscriptionPointer(MessageSubscriptionPointerRequest) returns (MessageSubscriptionPointerResponse);
+  rpc CreateMessageSubscriptionPointer(MessageSubscriptionPointerRequest) returns (MessageSubscriptionPointerResponse);
+  rpc TerminateMessageSubscriptionPointers(TerminateMessageSubscriptionPointersRequest) returns (TerminateMessageSubscriptionPointersResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
@@ -312,10 +315,39 @@ message InternalJob {
   int64 created_at = 7;
 }
 
+message TerminateMessageSubscriptionPointersResponse {
+  optional ErrorResult error = 1;
+}
+
+message TerminateMessageSubscriptionPointersRequest {
+  int64 executionTokenKey = 1;
+  uint32 partitionId = 2;
+}
+
+message MessageSubscriptionPointerRequest {
+  int64 key = 1;
+  int64 state = 2;
+  int64 createdAt = 3;
+  string name = 4;
+  string correlationKey = 5;
+  int64 messageSubscriptionKey = 6;
+  int64 executionTokenKey = 7;
+  uint32 partitionId = 8;
+}
+
+message MessageSubscriptionPointerResponse {
+  optional ErrorResult error = 1;
+}
+
 message PublishMessageRequest {
-  string name = 1;
-  int64 instance_key = 2;
-  bytes variables = 3;
+  int64 key = 1;
+  int64 state = 2;
+  int64 createdAt = 3;
+  string name = 4;
+  string correlationKey = 5;
+  int64 messageSubscriptionKey = 6;
+  int64 executionTokenKey = 7;
+  bytes variables = 8;
 }
 
 message PublishMessageResponse {

@@ -1,4 +1,4 @@
-syntax = "proto3";
+edition = "2023";
 package zencommand;
 
 option go_package = "github.com/pbinitiative/zenbpm/internal/cluster/command/proto";

@@ -295,7 +295,7 @@ func (Command_Type) EnumDescriptor() ([]byte, []int) {
 
 type Command struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Type  Command_Type           `protobuf:"varint,1,opt,name=type,proto3,enum=zencommand.Command_Type" json:"type,omitempty"`
+	Type  *Command_Type          `protobuf:"varint,1,opt,name=type,enum=zencommand.Command_Type" json:"type,omitempty"`
 	// Types that are valid to be assigned to Request:
 	//
 	//	*Command_NodeChange
@@ -336,8 +336,8 @@ func (*Command) Descriptor() ([]byte, []int) {
 }
 
 func (x *Command) GetType() Command_Type {
-	if x != nil {
-		return x.Type
+	if x != nil && x.Type != nil {
+		return *x.Type
 	}
 	return Command_TYPE_UNKNOWN
 }
@@ -372,11 +372,11 @@ type isCommand_Request interface {
 }
 
 type Command_NodeChange struct {
-	NodeChange *NodeChange `protobuf:"bytes,2,opt,name=node_change,json=nodeChange,proto3,oneof"`
+	NodeChange *NodeChange `protobuf:"bytes,2,opt,name=node_change,json=nodeChange,oneof"`
 }
 
 type Command_NodePartitionChange struct {
-	NodePartitionChange *NodePartitionChange `protobuf:"bytes,3,opt,name=node_partition_change,json=nodePartitionChange,proto3,oneof"`
+	NodePartitionChange *NodePartitionChange `protobuf:"bytes,3,opt,name=node_partition_change,json=nodePartitionChange,oneof"`
 }
 
 func (*Command_NodeChange) isCommand_Request() {}
@@ -385,11 +385,11 @@ func (*Command_NodePartitionChange) isCommand_Request() {}
 
 type NodeChange struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // node which changed
-	Addr          string                 `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
-	Suffrage      RaftSuffrage           `protobuf:"varint,3,opt,name=suffrage,proto3,enum=zencommand.RaftSuffrage" json:"suffrage,omitempty"`
-	State         NodeState              `protobuf:"varint,4,opt,name=state,proto3,enum=zencommand.NodeState" json:"state,omitempty"`
-	Role          Role                   `protobuf:"varint,5,opt,name=role,proto3,enum=zencommand.Role" json:"role,omitempty"`
+	NodeId        *string                `protobuf:"bytes,1,opt,name=node_id,json=nodeId" json:"node_id,omitempty"` // node which changed
+	Addr          *string                `protobuf:"bytes,2,opt,name=addr" json:"addr,omitempty"`
+	Suffrage      *RaftSuffrage          `protobuf:"varint,3,opt,name=suffrage,enum=zencommand.RaftSuffrage" json:"suffrage,omitempty"`
+	State         *NodeState             `protobuf:"varint,4,opt,name=state,enum=zencommand.NodeState" json:"state,omitempty"`
+	Role          *Role                  `protobuf:"varint,5,opt,name=role,enum=zencommand.Role" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -425,46 +425,46 @@ func (*NodeChange) Descriptor() ([]byte, []int) {
 }
 
 func (x *NodeChange) GetNodeId() string {
-	if x != nil {
-		return x.NodeId
+	if x != nil && x.NodeId != nil {
+		return *x.NodeId
 	}
 	return ""
 }
 
 func (x *NodeChange) GetAddr() string {
-	if x != nil {
-		return x.Addr
+	if x != nil && x.Addr != nil {
+		return *x.Addr
 	}
 	return ""
 }
 
 func (x *NodeChange) GetSuffrage() RaftSuffrage {
-	if x != nil {
-		return x.Suffrage
+	if x != nil && x.Suffrage != nil {
+		return *x.Suffrage
 	}
 	return RaftSuffrage_RAFT_SUFFRAGE_UNKNOWN
 }
 
 func (x *NodeChange) GetState() NodeState {
-	if x != nil {
-		return x.State
+	if x != nil && x.State != nil {
+		return *x.State
 	}
 	return NodeState_NODE_STATE_UNKNOWN
 }
 
 func (x *NodeChange) GetRole() Role {
-	if x != nil {
-		return x.Role
+	if x != nil && x.Role != nil {
+		return *x.Role
 	}
 	return Role_ROLE_TYPE_UNKNOWN
 }
 
 type NodePartitionChange struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                 // node which changed
-	PartitionId   uint32                 `protobuf:"varint,2,opt,name=partition_id,json=partitionId,proto3" json:"partition_id,omitempty"` // partition id which changed on node
-	State         NodePartitionState     `protobuf:"varint,3,opt,name=state,proto3,enum=zencommand.NodePartitionState" json:"state,omitempty"`
-	Role          Role                   `protobuf:"varint,4,opt,name=role,proto3,enum=zencommand.Role" json:"role,omitempty"`
+	NodeId        *string                `protobuf:"bytes,1,opt,name=node_id,json=nodeId" json:"node_id,omitempty"`                 // node which changed
+	PartitionId   *uint32                `protobuf:"varint,2,opt,name=partition_id,json=partitionId" json:"partition_id,omitempty"` // partition id which changed on node
+	State         *NodePartitionState    `protobuf:"varint,3,opt,name=state,enum=zencommand.NodePartitionState" json:"state,omitempty"`
+	Role          *Role                  `protobuf:"varint,4,opt,name=role,enum=zencommand.Role" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -500,29 +500,29 @@ func (*NodePartitionChange) Descriptor() ([]byte, []int) {
 }
 
 func (x *NodePartitionChange) GetNodeId() string {
-	if x != nil {
-		return x.NodeId
+	if x != nil && x.NodeId != nil {
+		return *x.NodeId
 	}
 	return ""
 }
 
 func (x *NodePartitionChange) GetPartitionId() uint32 {
-	if x != nil {
-		return x.PartitionId
+	if x != nil && x.PartitionId != nil {
+		return *x.PartitionId
 	}
 	return 0
 }
 
 func (x *NodePartitionChange) GetState() NodePartitionState {
-	if x != nil {
-		return x.State
+	if x != nil && x.State != nil {
+		return *x.State
 	}
 	return NodePartitionState_NODE_PARTITION_STATE_UNKNOWN
 }
 
 func (x *NodePartitionChange) GetRole() Role {
-	if x != nil {
-		return x.Role
+	if x != nil && x.Role != nil {
+		return *x.Role
 	}
 	return Role_ROLE_TYPE_UNKNOWN
 }
@@ -610,8 +610,8 @@ var file_zencommand_proto_rawDesc = string([]byte{
 	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x70, 0x62, 0x69, 0x6e, 0x69,
 	0x74, 0x69, 0x61, 0x74, 0x69, 0x76, 0x65, 0x2f, 0x7a, 0x65, 0x6e, 0x62, 0x70, 0x6d, 0x2f, 0x69,
 	0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2f, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2f,
-	0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x08, 0x65,
+	0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x70, 0xe8, 0x07,
 })
 
 var (

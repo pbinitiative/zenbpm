@@ -20,6 +20,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/pkg/client/proto"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -119,8 +120,8 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			if err != nil {
 				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    0,
-						Message: fmt.Sprintf("Failed to unmarshal variables: %s", err),
+						Code:    nil,
+						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -128,12 +129,12 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				})
 				continue
 			}
-			err = s.node.JobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.Key, vars)
+			err = s.node.JobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
 				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    0,
-						Message: fmt.Sprintf("Failed to complete job: %s", err),
+						Code:    nil,
+						Message: ptr.To(fmt.Sprintf("Failed to complete job: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Complete.Key,
@@ -147,8 +148,8 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			if err != nil {
 				stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    0,
-						Message: fmt.Sprintf("Failed to unmarshal variables: %s", err),
+						Code:    nil,
+						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -156,12 +157,12 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				})
 				continue
 			}
-			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.Key, req.Fail.Message, req.Fail.ErrorCode, vars)
+			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
 				stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
-						Code:    0,
-						Message: fmt.Sprintf("Failed to fail job: %s", err),
+						Code:    nil,
+						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
 					},
 					Job: &proto.WaitingJob{
 						Key: req.Fail.Key,
@@ -170,13 +171,13 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 		case *proto.JobStreamRequest_Subscription:
-			switch req.Subscription.Type {
+			switch req.Subscription.GetType() {
 			case proto.StreamSubscriptionRequest_TYPE_UNDEFINED:
 			case proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE:
-				jobType := jobmanager.JobType(req.Subscription.JobType)
+				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				s.node.JobManager.AddClientJobSub(stream.Context(), clientID, jobType)
 			case proto.StreamSubscriptionRequest_TYPE_UNSUBSCRIBE:
-				jobType := jobmanager.JobType(req.Subscription.JobType)
+				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				s.node.JobManager.RemoveClientJobSub(stream.Context(), clientID, jobType)
 			default:
 				panic(fmt.Sprintf("unexpected proto.StreamSubscriptionRequest_Type: %#v", req.Subscription.Type))
@@ -198,12 +199,12 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 		case job := <-clientCh:
 			err := stream.Send(&proto.JobStreamResponse{
 				Job: &proto.WaitingJob{
-					Key:         job.Key,
-					InstanceKey: job.InstanceKey,
+					Key:         &job.Key,
+					InstanceKey: &job.InstanceKey,
 					Variables:   job.Variables,
-					Type:        string(job.Type),
-					ElementId:   job.ElementID,
-					CreatedAt:   job.CreatedAt,
+					Type:        ptr.To(string(job.Type)),
+					ElementId:   &job.ElementID,
+					CreatedAt:   &job.CreatedAt,
 				},
 			})
 			if err != nil {

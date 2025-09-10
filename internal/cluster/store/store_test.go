@@ -138,10 +138,9 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 	testNodeId := "test-node-id"
 
 	err = s.WriteNodeChange(&proto.NodeChange{
-		NodeId: testNodeId,
-		Addr:   "",
-		State:  proto.NodeState_NODE_STATE_ERROR,
-		Role:   proto.Role_ROLE_TYPE_UNKNOWN,
+		NodeId: &testNodeId,
+		State:  proto.NodeState_NODE_STATE_ERROR.Enum(),
+		Role:   proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
 	})
 	if err != nil {
 		t.Fatalf("failed to write node change: %s", err)
@@ -205,10 +204,9 @@ func Test_SingleNodeSnapshot(t *testing.T) {
 	testNodeId := "test-node"
 
 	s.WriteNodeChange(&proto.NodeChange{
-		NodeId: testNodeId,
-		Addr:   "",
-		State:  proto.NodeState_NODE_STATE_ERROR,
-		Role:   proto.Role_ROLE_TYPE_UNKNOWN,
+		NodeId: &testNodeId,
+		State:  proto.NodeState_NODE_STATE_ERROR.Enum(),
+		Role:   proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
 	})
 
 	// Snap the node and write to disk.

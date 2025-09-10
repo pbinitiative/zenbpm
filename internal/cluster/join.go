@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v8/cluster"
 )
 
@@ -91,9 +92,9 @@ func (j *Joiner) Do(ctx context.Context, targetAddrs []string, id, addr string, 
 
 func (j *Joiner) join(targetAddr, id, addr string, suf cluster.Suffrage) (string, error) {
 	req := &proto.JoinRequest{
-		Id:      id,
-		Address: addr,
-		Voter:   suf.IsVoter(),
+		Id:      &id,
+		Address: &addr,
+		Voter:   ptr.To(suf.IsVoter()),
 	}
 
 	// Attempt to join.

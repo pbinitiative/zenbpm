@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
@@ -224,16 +225,16 @@ func (s *jobServer) distributeJobs() {
 			// to have something that will allow us to send jobs to clients on
 			// non blocked stream or use a pool of GRPC connections to handle jobs
 			err := nodeStream.stream.Send(&proto.SubscribeJobResponse{
-				JobType:  job.Type,
-				ClientId: string(clientID),
+				JobType:  &job.Type,
+				ClientId: ptr.To(string(clientID)),
 				Job: &proto.InternalJob{
-					Key:         job.Key,
-					InstanceKey: job.ProcessInstanceKey,
+					Key:         &job.Key,
+					InstanceKey: &job.ProcessInstanceKey,
 					Variables:   []byte(job.Variables),
-					Type:        job.Type,
-					State:       job.State,
-					ElementId:   job.ElementID,
-					CreatedAt:   job.CreatedAt,
+					Type:        &job.Type,
+					State:       &job.State,
+					ElementId:   &job.ElementID,
+					CreatedAt:   &job.CreatedAt,
 				},
 			})
 			JobsDistributed.Add(context.Background(), 1, metric.WithAttributes(
@@ -282,13 +283,13 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 			s.logger.Error("Failed to receive a job subscription request", "err", err, "streamNodeId", stream.nodeID)
 			return
 		}
-		switch req.Type {
+		switch req.GetType() {
 		case proto.SubscribeJobRequest_TYPE_SUBSCRIBE:
-			s.subscribeClient(stream.nodeID, ClientID(req.ClientId), JobType(req.JobType))
+			s.subscribeClient(stream.nodeID, ClientID(req.GetClientId()), JobType(req.GetJobType()))
 		case proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE:
-			s.unsubscribeClient(ClientID(req.ClientId), JobType(req.JobType))
+			s.unsubscribeClient(ClientID(req.GetClientId()), JobType(req.GetJobType()))
 		case proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL:
-			s.removeClient(ClientID(req.ClientId))
+			s.removeClient(ClientID(req.GetClientId()))
 		default:
 			panic(fmt.Sprintf("unexpected proto.SubscribeJobRequest_Type: %#v", req.Type))
 		}

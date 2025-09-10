@@ -25,6 +25,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v8/random"
 	"github.com/rqlite/rqlite/v8/rsync"
 	"github.com/rqlite/rqlite/v8/tcp"
@@ -296,9 +297,9 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 		return ErrNotLeader
 	}
 
-	id := jr.Id
-	addr := jr.Address
-	voter := jr.Voter
+	id := jr.GetId()
+	addr := jr.GetAddress()
+	voter := jr.GetVoter()
 
 	// Confirm that this node can resolve the remote address. This can happen due
 	// to incomplete DNS records across the underlying infrastructure. If it can't
@@ -399,7 +400,7 @@ func (s *Store) Notify(nr *zproto.NotifyRequest) error {
 		return nil
 	}
 
-	if _, ok := s.notifyingNodes[nr.Id]; ok {
+	if _, ok := s.notifyingNodes[nr.GetId()]; ok {
 		return nil
 	}
 
@@ -407,14 +408,14 @@ func (s *Store) Notify(nr *zproto.NotifyRequest) error {
 	// to incomplete DNS records across the underlying infrastructure. If it can't
 	// then don't consider this Notify attempt successful -- so the notifying node
 	// will presumably try again.
-	if addr, err := resolvableAddress(nr.Address); err != nil {
+	if addr, err := resolvableAddress(nr.GetAddress()); err != nil {
 		return fmt.Errorf("failed to resolve %s: %w", addr, err)
 	}
 
-	s.notifyingNodes[nr.Id] = raft.Server{
+	s.notifyingNodes[nr.GetId()] = raft.Server{
 		Suffrage: raft.Voter,
-		ID:       raft.ServerID(nr.Id),
-		Address:  raft.ServerAddress(nr.Address),
+		ID:       raft.ServerID(nr.GetId()),
+		Address:  raft.ServerAddress(nr.GetAddress()),
 	}
 	if len(s.notifyingNodes) < s.bootstrapExpect {
 		return nil
@@ -654,7 +655,7 @@ func (s *Store) NodeID() string {
 
 func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 	command := &proto.Command{
-		Type: proto.Command_TYPE_NODE_CHANGE,
+		Type: proto.Command_TYPE_NODE_CHANGE.Enum(),
 		Request: &proto.Command_NodeChange{
 			NodeChange: change,
 		},
@@ -672,7 +673,7 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 
 func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 	command := &proto.Command{
-		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE,
+		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
 		Request: &proto.Command_NodePartitionChange{
 			NodePartitionChange: change,
 		},
@@ -817,16 +818,16 @@ func (s *Store) addNewNode(node raft.Server) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: string(node.ID),
-		Addr:   string(node.Address),
-		State:  proto.NodeState_NODE_STATE_STARTED,
-		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+		NodeId: ptr.To(string(node.ID)),
+		Addr:   ptr.To(string(node.Address)),
+		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
 	switch node.Suffrage {
 	case raft.Voter:
-		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER
+		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum()
 	case raft.Nonvoter:
-		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_NONVOTER
+		nodeChange.Suffrage = proto.RaftSuffrage_RAFT_SUFFRAGE_NONVOTER.Enum()
 	}
 	err := s.WriteNodeChange(nodeChange)
 	if err != nil {
@@ -841,9 +842,9 @@ func (s *Store) shutdownNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: string(nodeId),
-		State:  proto.NodeState_NODE_STATE_SHUTDOWN,
-		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+		NodeId: ptr.To(string(nodeId)),
+		State:  proto.NodeState_NODE_STATE_SHUTDOWN.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
 	err := s.WriteNodeChange(nodeChange)
 	if err != nil {
@@ -859,9 +860,9 @@ func (s *Store) resumeNode(nodeId raft.ServerID) error {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{
-		NodeId: string(nodeId),
-		State:  proto.NodeState_NODE_STATE_STARTED,
-		Role:   proto.Role_ROLE_TYPE_FOLLOWER,
+		NodeId: ptr.To(string(nodeId)),
+		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}
 	err := s.WriteNodeChange(nodeChange)
 	if err != nil {
@@ -896,11 +897,11 @@ func (s *Store) selfLeaderChange(leader bool) error {
 
 	s.logger.Info("this node is now leader")
 	err := s.WriteNodeChange(&proto.NodeChange{
-		NodeId:   s.raftID,
-		Addr:     s.Addr(),
-		State:    proto.NodeState_NODE_STATE_STARTED,
-		Role:     proto.Role_ROLE_TYPE_LEADER,
-		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER,
+		NodeId:   ptr.To(s.raftID),
+		Addr:     ptr.To(s.Addr()),
+		State:    proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:     proto.Role_ROLE_TYPE_LEADER.Enum(),
+		Suffrage: proto.RaftSuffrage_RAFT_SUFFRAGE_VOTER.Enum(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to send NodeChange - leadership change message: %w", err)

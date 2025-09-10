@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1yacw8n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.14.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1yacw8n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
   <bpmn:process id="message-multiple-intermediate-catch-events" name="message-multiple-intermediate-catch-events" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>flow-to-event-1</bpmn:outgoing>
@@ -59,17 +59,17 @@
   </bpmn:process>
   <bpmn:message id="Message_3se1efk" name="msg-event-2">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=key" />
+      <zeebe:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_1ik2fld" name="msg-event-1">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=key" />
+      <zeebe:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_2kia6p5" name="msg-event-3">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=key" />
+      <zeebe:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

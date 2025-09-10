@@ -23,16 +23,17 @@ import (
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
-	Decision             map[string]map[int64]dmnruntime.Decision
-	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
-	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
-	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
-	MessageSubscriptions map[int64]bpmnruntime.MessageSubscription
-	Timers               map[int64]bpmnruntime.Timer
-	Jobs                 map[int64]bpmnruntime.Job
-	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
-	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
-	Incidents            map[int64]bpmnruntime.Incident
+	Decision                    map[string]map[int64]dmnruntime.Decision
+	DecisionDefinitions         map[int64]dmnruntime.DecisionDefinition
+	ProcessDefinitions          map[int64]bpmnruntime.ProcessDefinition
+	ProcessInstances            map[int64]bpmnruntime.ProcessInstance
+	MessageSubscriptionPointers map[int64]bpmnruntime.MessageSubscriptionPointer
+	MessageSubscriptions        map[int64]bpmnruntime.MessageSubscription
+	Timers                      map[int64]bpmnruntime.Timer
+	Jobs                        map[int64]bpmnruntime.Job
+	ExecutionTokens             map[int64]bpmnruntime.ExecutionToken
+	FlowElementHistory          map[int64]bpmnruntime.FlowElementHistoryItem
+	Incidents                   map[int64]bpmnruntime.Incident
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -41,16 +42,17 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
-		Decision:             make(map[string]map[int64]dmnruntime.Decision),
-		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
-		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
-		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
-		MessageSubscriptions: make(map[int64]bpmnruntime.MessageSubscription),
-		Timers:               make(map[int64]bpmnruntime.Timer),
-		Jobs:                 make(map[int64]bpmnruntime.Job),
-		ExecutionTokens:      make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementHistory:   make(map[int64]bpmnruntime.FlowElementHistoryItem),
-		Incidents:            make(map[int64]bpmnruntime.Incident),
+		Decision:                    make(map[string]map[int64]dmnruntime.Decision),
+		DecisionDefinitions:         make(map[int64]dmnruntime.DecisionDefinition),
+		ProcessDefinitions:          make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:            make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptionPointers: make(map[int64]bpmnruntime.MessageSubscriptionPointer),
+		MessageSubscriptions:        make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:                      make(map[int64]bpmnruntime.Timer),
+		Jobs:                        make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:             make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementHistory:          make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		Incidents:                   make(map[int64]bpmnruntime.Incident),
 	}
 }
 
@@ -62,6 +64,58 @@ func (mem *Storage) NewBatch() storage.Batch {
 		stmtToRun:           make([]func() error, 0, 10),
 		flushSuccessActions: make([]func(), 0, 5),
 	}
+}
+
+var _ storage.MessageSubscriptionPointerStorageWriter = &Storage{}
+
+func (mem *Storage) SaveMessageSubscriptionPointer(ctx context.Context, subscription bpmnruntime.MessageSubscriptionPointer) error {
+	_, ok := mem.MessageSubscriptionPointers[subscription.Key]
+	if ok {
+		mem.MessageSubscriptionPointers[subscription.Key] = subscription
+		return nil
+	}
+
+	for _, sub := range mem.MessageSubscriptionPointers {
+		if subscription.CorrelationKey == sub.CorrelationKey &&
+			subscription.Name == sub.Name &&
+			sub.State == bpmnruntime.MessageSubscriptionActive {
+			return storage.ErrUniqueConstraint
+		}
+	}
+	if subscription.Key == 0 {
+		subscription.Key = mem.GenerateId()
+	}
+	mem.MessageSubscriptionPointers[subscription.Key] = subscription
+
+	return nil
+}
+
+var _ storage.MessageSubscriptionPointerStorageReader = &Storage{}
+
+func (mem *Storage) TerminateMessageSubscriptionPointers(ctx context.Context, executionTokenKey int64) error {
+	for key, subscription := range mem.MessageSubscriptionPointers {
+		if subscription.ExecutionTokenKey == executionTokenKey && subscription.State == bpmnruntime.MessageSubscriptionActive {
+			subscription = mem.MessageSubscriptionPointers[key]
+			subscription.State = bpmnruntime.MessageSubscriptionComplete
+		}
+	}
+	return nil
+}
+
+func (mem *Storage) TerminateMessageSubscriptionPointersForExecution(ctx context.Context, messageSubscriptions []bpmnruntime.MessageSubscription, executionTokenKey int64) {
+	for _, subscription := range messageSubscriptions {
+		sub := mem.MessageSubscriptionPointers[subscription.Key]
+		sub.State = bpmnruntime.MessageSubscriptionComplete
+	}
+}
+
+func (mem *Storage) FindActiveMessageSubscriptionPointer(ctx context.Context, name string, correlationKey string) (bpmnruntime.MessageSubscriptionPointer, error) {
+	for _, subscription := range mem.MessageSubscriptionPointers {
+		if subscription.Name == name && subscription.CorrelationKey == correlationKey && subscription.State == bpmnruntime.MessageSubscriptionActive {
+			return subscription, nil
+		}
+	}
+	return bpmnruntime.MessageSubscriptionPointer{}, storage.ErrNotFound
 }
 
 var _ storage.DecisionStorageReader = &Storage{}
@@ -353,6 +407,18 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 }
 
 var _ storage.MessageStorageReader = &Storage{}
+
+func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	var res bpmnruntime.MessageSubscription
+	res, ok := mem.MessageSubscriptions[key]
+	if !ok {
+		return res, storage.ErrNotFound
+	}
+	if res.MessageState == state {
+		return res, nil
+	}
+	return res, storage.ErrNotFound
+}
 
 // FindTokenMessageSubscriptions implements storage.Storage.
 func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {

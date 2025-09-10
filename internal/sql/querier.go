@@ -30,6 +30,7 @@ type Querier interface {
 	FindLatestDecisionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionByIdAndVersionTagParams) (Decision, error)
 	FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
+	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)
@@ -48,6 +49,7 @@ type Querier interface {
 	GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
 	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
+	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
@@ -95,6 +97,7 @@ type Querier interface {
 	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
+	SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error
 	// Copyright 2021-present ZenBPM Contributors
 	// (based on git commit history).
 	//
@@ -132,6 +135,7 @@ type Querier interface {
 	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
+	SetStateForMessageSubscriptionPointers(ctx context.Context, arg SetStateForMessageSubscriptionPointersParams) error
 }
 
 var _ Querier = (*Queries)(nil)

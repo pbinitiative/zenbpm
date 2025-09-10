@@ -69,6 +69,7 @@ func Test_simple_count_loop(t *testing.T) {
 }
 
 func Test_simple_count_loop_with_message(t *testing.T) {
+	cleanUpMessageSubscriptions()
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
 
@@ -90,10 +91,23 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
 	assert.NoError(t, err)
 
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
+		t.Context(),
+		"msg",
+		"key",
+	)
+	assert.NoError(t, err)
+	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
 	assert.NoError(t, err)
 
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
+		t.Context(),
+		"msg",
+		"key",
+	)
+	assert.NoError(t, err)
+	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
+	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)

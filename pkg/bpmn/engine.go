@@ -315,6 +315,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		updatedTokens, err := engine.processFlowNode(ctx, batch, instance, activity, currentToken)
 		if err != nil {
+			/*TODO: ked failne token tak sa potom resubscribne message ? asi nie ?*/
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
 

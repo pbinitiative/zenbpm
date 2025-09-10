@@ -294,10 +294,16 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	// when
-	err := bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "message", nil)
+	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
+		t.Context(),
+		"message",
+		"message",
+	)
+	assert.NoError(t, err)
+	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
 	assert.NoError(t, err)
 
 	// then

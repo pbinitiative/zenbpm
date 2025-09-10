@@ -127,6 +127,15 @@ func (c ClusterState) PrintDebug() {
 	fmt.Println(string(bytes))
 }
 
+// GetPartitionIdFromString Simple hash function to assign partition id to any str string
+func (c ClusterState) GetPartitionIdFromString(str string) uint32 {
+	var bitSum uint32 = 0
+	for _, character := range str {
+		bitSum = bitSum + uint32(character)
+	}
+	return bitSum%uint32(len(c.Partitions)) + 1
+}
+
 // +k8s:deepcopy-gen=true
 type ClusterConfig struct {
 	DesiredPartitions uint32 `json:"desiredPartitions"`

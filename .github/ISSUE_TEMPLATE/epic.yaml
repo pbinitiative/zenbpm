@@ -1,0 +1,28 @@
+name: "📦 Epic"
+description: "Create an Epic (group of related tasks)"
+title: "Epic: <short name>"
+labels: ["type: epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📦 Epic
+        Use this template to describe a deliverable that groups related tasks and stories.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What’s the outcome this Epic should achieve?
+      placeholder: |
+        - State the problem or opportunity
+        - Explain the desired outcome
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: When is this Epic considered complete?
+      placeholder: |
+        - Criteria 1
+        - Criteria 2

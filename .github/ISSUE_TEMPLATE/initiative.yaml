@@ -1,0 +1,46 @@
+name: "🚀 Initiative"
+description: "Create a high-level Initiative (above Epics)"
+title: "Initiative: <short name>"
+labels: ["type: initiative"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🚀 Initiative
+        Use this template to describe a high-level Initiative that spans multiple Epics.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What is the purpose of this initiative? What problem are we solving?
+      placeholder: |
+        - Provide clear objective
+        - State why this initiative matters
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included and what is out of scope?
+      placeholder: |
+        **In scope:**
+        - ...
+        **Out of scope:**
+        - ...
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success Metrics / KPIs
+      description: How will we know this initiative is successful?
+      placeholder: |
+        - Metric 1 (target value)
+        - Metric 2 (target value)
+
+  - type: textarea
+    id: timeline
+    attributes:
+      label: Timeline / Target Quarter
+      description: When should this initiative be delivered?
+      placeholder: e.g., Q4 2025

@@ -9,6 +9,7 @@ package bpmn20
 
 import (
 	"encoding/xml"
+	"fmt"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
@@ -157,5 +158,17 @@ func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 type TCallActivity struct {
 	TActivity
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
-	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
+	CalledElement                    extensions.TCalledElement         `xml:"extensionElements>calledElement"`
+	MultiInstanceLoopCharacteristics TMultiInstanceLoopCharacteristics `xml:"multiInstanceLoopCharacteristics"`
+}
+type TMultiInstanceLoopCharacteristics struct {
+	IsSequential        bool                            `xml:"isSequential,attr"`
+	LoopCharacteristics extensions.TLoopCharacteristics `xml:"extensionElements>loopCharacteristics"`
+}
+
+func (mi TMultiInstanceLoopCharacteristics) GetOutCollectionName(element TBaseElement) string {
+	if mi.LoopCharacteristics.OutputCollection != "" {
+		return mi.LoopCharacteristics.OutputCollection
+	}
+	return fmt.Sprintf("__outputCollection_%s", element.Id)
 }

@@ -6,13 +6,13 @@ GET {{host}}/v1/process-definitions
 Accept: application/json
 
 ### DeployProcessDefinition
-POST {{host}}/v1/process-definitions
+POST {{host}}/v1/process-definitions`
 Content-Type: application/xml
 
 < pkg/bpmn/test-cases/service-task-input-output.bpmn
 
 ### StartProcessInstance
-POST {{host}}/v1/process-instances
+POST {{host}}/v1/process-instances`
 Content-Type: application/json
 
 {
@@ -23,11 +23,11 @@ Content-Type: application/json
 }
 
 ### GetProcessInstances
-GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
+GET {{host}}/v1/process-instances`?processDefinitionKey={{definition_key}}&page=1
 
 ### ActivateJob
 @job_type=input-task-1
-POST {{host}}/v1/jobs/{{job_type}}/activate
+POST {{host}}/v1/jobs`/{{job_type}}/activate
 
 ### CompleteJob
 POST {{host}}/v1/jobs
@@ -45,7 +45,7 @@ GET {{host}}/system/metrics
 GET {{host}}/system/status
 
 ### StartCpuProfile
-POST {{host}}/v1/test/{{node}}/start-cpu-profile
+POST {{host}}/v1/tests/{{node}}/start-cpu-profile
 
 ### StopCpuProfile
-POST {{host}}/v1/test/{{node}}/stop-cpu-profile
+POST {{host}}/v1/tests/{{node}}/stop-cpu-profile

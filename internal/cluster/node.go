@@ -75,6 +75,11 @@ type ZenNode struct {
 	// TODO: add tracing to all the methods on ZenNode where it makes sense
 }
 
+type DeployResult struct {
+	Key         int64
+	IsDuplicate bool
+}
+
 // StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
 	node := &ZenNode{
@@ -294,13 +299,13 @@ func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (prot
 	}, nil
 }
 
-func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
 	key, err := node.GetDecisionDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
 	}
 	if key != 0 {
-		return key, err
+		return DeployResult{key, true}, err
 	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
@@ -326,9 +331,9 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 		}
 	}
 	if errJoin != nil {
-		return definitionKey.Int64(), errJoin
+		return DeployResult{definitionKey.Int64(), false}, errJoin
 	}
-	return definitionKey.Int64(), nil
+	return DeployResult{definitionKey.Int64(), false}, nil
 }
 
 func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
@@ -370,13 +375,13 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
 	}
 	if key != 0 {
-		return key, err
+		return DeployResult{key, true}, err
 	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
@@ -402,9 +407,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		}
 	}
 	if errJoin != nil {
-		return definitionKey.Int64(), errJoin
+		return DeployResult{definitionKey.Int64(), false}, errJoin
 	}
-	return definitionKey.Int64(), nil
+	return DeployResult{definitionKey.Int64(), false}, nil
 }
 
 func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
@@ -492,25 +497,36 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, instanceKe
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context) ([]proto.ProcessDefinition, error) {
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process definitions: %w", err)
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
 	}
-	definitions, err := db.queries.FindAllProcessDefinitions(ctx)
+	definitions, err := db.queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
+		Offset: int64((page - 1) * size),
+		Limit:  int64(size),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read process definitions from database: %w", err)
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
 	}
-	resp := make([]proto.ProcessDefinition, 0, len(definitions))
+	totalCount, err := db.queries.GetProcessDefinitionsCount(ctx)
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get count of process definitions from database: %w", err)
+	}
+
+	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
 	for _, def := range definitions {
-		resp = append(resp, proto.ProcessDefinition{
+		resp = append(resp, &proto.ProcessDefinition{
 			Key:        def.Key,
 			Version:    int32(def.Version),
 			ProcessId:  def.BpmnProcessID,
 			Definition: []byte(def.BpmnData),
 		})
 	}
-	return resp, nil
+	return proto.ProcessDefinitionsPage{
+		Items:      resp,
+		TotalCount: int32(totalCount),
+	}, nil
 }
 
 // GetLatestProcessDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions

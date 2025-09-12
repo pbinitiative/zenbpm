@@ -147,10 +147,17 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	if err != nil {
 		return nil, err
 	}
-	items := make([]public.DecisionDefinitionSimple, 0)
-	result := public.DecisionDefinitionsPage{
-		Items: items,
+
+	page := 1
+	if request.Params.Page != nil {
+		page = int(*request.Params.Page)
 	}
+	size := 10
+	if request.Params.Size != nil {
+		size = int(*request.Params.Size)
+	}
+
+	items := make([]public.DecisionDefinitionSimple, 0)
 	for _, p := range definitions {
 		processDefinitionSimple := public.DecisionDefinitionSimple{
 			Key:                  fmt.Sprintf("%d", p.Key),
@@ -159,11 +166,39 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 		}
 		items = append(items, processDefinitionSimple)
 	}
-	result.Items = items
-	total := len(items)
-	result.Count = total
-	result.Offset = 0
-	result.Size = len(definitions)
+
+	totalCount := len(items)
+
+	startIndex := int((page - 1) * size)
+	endIndex := int(startIndex + size)
+	if startIndex >= totalCount {
+		result := public.DecisionDefinitionsPage{
+			Items: []public.DecisionDefinitionSimple{},
+			PageMetadata: public.PageMetadata{
+				Page:       int(page),
+				Size:       int(size),
+				Count:      0,
+				TotalCount: totalCount,
+			},
+		}
+		return public.GetDecisionDefinitions200JSONResponse(result), nil
+	}
+
+	if endIndex > totalCount {
+		endIndex = totalCount
+	}
+
+	pagedItems := items[startIndex:endIndex]
+
+	result := public.DecisionDefinitionsPage{
+		Items: pagedItems,
+		PageMetadata: public.PageMetadata{
+			Page:       int(page),
+			Size:       int(size),
+			Count:      len(pagedItems),
+			TotalCount: totalCount,
+		},
+	}
 
 	return public.GetDecisionDefinitions200JSONResponse(result), nil
 }
@@ -195,23 +230,29 @@ func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.Cr
 	if err != nil {
 		return nil, err
 	}
-	key, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
+	deployResult, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		return public.CreateDecisionDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
+	if deployResult.IsDuplicate == true {
+		return public.CreateDecisionDefinition409JSONResponse{
+			Code:    "DUPLICATE",
+			Message: fmt.Sprintf("The same decision definition already exists (key: %d)", deployResult.Key),
+		}, nil
+	}
 
-	return public.CreateDecisionDefinition200JSONResponse{
-		DecisionDefinitionKey: fmt.Sprintf("%d", key),
+	return public.CreateDecisionDefinition201JSONResponse{
+		DecisionDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
 	}, nil
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
-	var decision = request.Body.DecisionId
+	var decision = request.DecisionId
 	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.Latest {
-		decision = *request.Body.DecisionDefinitionId + "." + request.Body.DecisionId
+		decision = *request.Body.DecisionDefinitionId + "." + request.DecisionId
 	}
 
 	result, err := s.node.EvaluateDecision(
@@ -319,16 +360,22 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	if err != nil {
 		return nil, err
 	}
-	key, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
+	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		return public.CreateProcessDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
+	if deployResult.IsDuplicate == true {
+		return public.CreateProcessDefinition409JSONResponse{
+			Code:    "DUPLICATE",
+			Message: fmt.Sprintf("The same process definition already exists (key: %d)", deployResult.Key),
+		}, nil
+	}
 
-	return public.CreateProcessDefinition200JSONResponse{
-		ProcessDefinitionKey: fmt.Sprintf("%d", key),
+	return public.CreateProcessDefinition201JSONResponse{
+		ProcessDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
 	}, nil
 }
 
@@ -369,7 +416,16 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	definitions, err := s.node.GetProcessDefinitions(ctx)
+	page := int32(1)
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	size := int32(100)
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx, page, size)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +433,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	result := public.ProcessDefinitionsPage{
 		Items: items,
 	}
-	for _, p := range definitions {
+	for _, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
 			Key:           fmt.Sprintf("%d", p.Key),
 			Version:       int(p.Version),
@@ -386,10 +442,9 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		items = append(items, processDefinitionSimple)
 	}
 	result.Items = items
-	total := len(items)
-	result.Count = total
-	result.Offset = 0
-	result.Size = len(definitions)
+	result.Count = int(definitionsPage.TotalCount)
+	result.Page = 1
+	result.Size = len(items)
 
 	return public.GetProcessDefinitions200JSONResponse(result), nil
 }
@@ -443,7 +498,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 			Message: err.Error(),
 		}, nil
 	}
-	return public.CreateProcessInstance200JSONResponse{
+	return public.CreateProcessInstance201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.CreatedAt),
 		Key:                  fmt.Sprintf("%d", process.Key),
 		ProcessDefinitionKey: fmt.Sprintf("%d", process.DefinitionKey),
@@ -458,7 +513,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.Page != nil {
 		page = *request.Params.Page
 	}
-	size := int32(10)
+	size := int32(100)
 	if request.Params.Size != nil {
 		size = *request.Params.Size
 	}
@@ -574,18 +629,18 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 		createdAt := time.UnixMilli(flowNode.CreatedAt)
 		processInstanceKey := fmt.Sprintf("%d", flowNode.ProcessInstanceKey)
 		resp[i] = public.FlowElementHistory{
-			Key:                &key,
-			CreatedAt:          &createdAt,
-			ElementId:          &flowNode.ElementId,
-			ProcessInstanceKey: &processInstanceKey,
+			Key:                key,
+			CreatedAt:          createdAt,
+			ElementId:          flowNode.ElementId,
+			ProcessInstanceKey: processInstanceKey,
 		}
 	}
 	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{
 		Items: &resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}), nil
 }
@@ -629,9 +684,9 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}, nil
 }
@@ -641,7 +696,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	if request.Params.Page != nil {
 		page = *request.Params.Page
 	}
-	size := int32(10)
+	size := int32(100)
 	if request.Params.Size != nil {
 		size = *request.Params.Size
 	}
@@ -777,9 +832,9 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	return public.GetIncidents200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count:  len(resp),
-			Offset: 0,
-			Size:   len(resp),
+			Count: len(resp),
+			Page:  0,
+			Size:  len(resp),
 		},
 	}, nil
 }

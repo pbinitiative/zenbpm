@@ -38,7 +38,7 @@ func startCpuProfiler(t testing.TB, nodeId string) (public.TestStartCpuProfile20
 	result := public.TestStartCpuProfile200Response{}
 
 	_, _, resp, err := app.NewRequest(t).
-		WithPath("/v1/test/" + nodeId + "/start-cpu-profile").
+		WithPath("/v1/tests/" + nodeId + "/start-cpu-profile").
 		WithMethod("POST").
 		Do()
 	if err != nil {
@@ -52,7 +52,7 @@ func stopCpuProfiler(t testing.TB, nodeId string) (public.TestStopCpuProfile200J
 	result := public.TestStopCpuProfile200JSONResponse{}
 
 	resp, err := app.NewRequest(t).
-		WithPath("/v1/test/"+nodeId+"/stop-cpu-profile").
+		WithPath("/v1/tests/"+nodeId+"/stop-cpu-profile").
 		WithMethod("POST").
 		WithHeader("Content-Type", "application/json").
 		DoOk()

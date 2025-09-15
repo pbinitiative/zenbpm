@@ -46,9 +46,10 @@ type UserTaskElement interface {
 
 type TActivity struct {
 	TFlowNode
-	CompletionQuantity int  `xml:"completionQuantity,attr"`
-	IsForCompensation  bool `xml:"isForCompensation,attr"`
-	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
+	CompletionQuantity               int                               `xml:"completionQuantity,attr"`
+	IsForCompensation                bool                              `xml:"isForCompensation,attr"`
+	StartQuantity                    int                               `xml:"startQuantity,attr" default:"1"`
+	MultiInstanceLoopCharacteristics TMultiInstanceLoopCharacteristics `xml:"multiInstanceLoopCharacteristics"`
 
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
@@ -158,8 +159,7 @@ func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 type TCallActivity struct {
 	TActivity
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
-	CalledElement                    extensions.TCalledElement         `xml:"extensionElements>calledElement"`
-	MultiInstanceLoopCharacteristics TMultiInstanceLoopCharacteristics `xml:"multiInstanceLoopCharacteristics"`
+	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }
 type TMultiInstanceLoopCharacteristics struct {
 	IsSequential        bool                            `xml:"isSequential,attr"`

@@ -338,6 +338,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 
 		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
+
 			engine.handleCallActivityParentContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
 		}
 
@@ -512,24 +513,48 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	var activityResult runtime.ActivityState
 	var err error
 
-	switch element := activity.Element().(type) {
+	// todo add multi-instance support
+
+	var activityElement *bpmn20.TActivity
+
+	switch e := element.(type) {
 	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
 	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
 	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
-		if activityResult == runtime.ActivityStateActive {
-			currentToken.State = runtime.TokenStateWaiting
-			return []runtime.ExecutionToken{currentToken}, nil
-		}
+		activityElement = &e.TTask.TActivity
 	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		activityElement = &e.TTask.TActivity
+	case *bpmn20.TCallActivity:
+		activityElement = &e.TActivity
 	default:
-		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+		return nil, fmt.Errorf("element is not an activity: %T", element)
+	}
+
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	// multi instance
+	if mi.LoopCharacteristics.InputCollection != "" {
+		vh, err := engine.prepareParallelMultiInstance(instance, *activityElement, mi)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
+		}
+		if mi.IsSequential {
+			// serial
+		}
+
+		for _, variableHolder := range vh {
+			instance.VariableHolder = variableHolder
+			activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
+			//TODO handle in multi instance
+			if activityResult == runtime.ActivityStateActive {
+				currentToken.State = runtime.TokenStateWaiting
+			}
+		}
+		return []runtime.ExecutionToken{currentToken}, nil
+		// parallel
+	} else {
+		activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
 	}
 
 	if err != nil {
@@ -550,6 +575,26 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	}
 
 	return []runtime.ExecutionToken{}, nil
+}
+
+func (engine *Engine) activityElementExecutor(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, currentToken runtime.ExecutionToken, activity runtime.Activity) (runtime.ActivityState, error) {
+	var activityResult runtime.ActivityState
+	var err error
+	switch element := activity.Element().(type) {
+	case *bpmn20.TServiceTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TSendTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TUserTask:
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TCallActivity:
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TBusinessRuleTask:
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+	default:
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	}
+	return activityResult, err
 }
 
 func (engine *Engine) createBusinessRuleTask(
@@ -642,6 +687,45 @@ func (engine *Engine) createExternalBusinessRuleTask(
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create internal task for business rule %s : %w", element.TTask.Id, err)
 	}
 	return activityState, nil
+}
+
+func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInstance, element bpmn20.TActivity, mi bpmn20.TMultiInstanceLoopCharacteristics) ([]runtime.VariableHolder, error) {
+
+	inColExpr := mi.LoopCharacteristics.InputCollection
+	inputCollection, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+	if err != nil {
+		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("failed to evaluate inputCollection expression: %s", inColExpr), err)
+	}
+	collection, ok := inputCollection.([]interface{})
+	if !ok {
+		instance.State = runtime.ActivityStateFailed
+		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("inputCollection is not a collection"), err)
+	}
+
+	total := len(collection)
+	if total == 0 {
+		// do nothing
+		return []runtime.VariableHolder{}, nil
+	}
+	vh := make([]runtime.VariableHolder, total)
+
+	inputElementName := mi.LoopCharacteristics.InputElement
+	for _, input := range collection {
+		variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+		if inputElementName != "" {
+			variableHolder.SetVariable(inputElementName, input)
+		}
+		vh = append(vh, variableHolder)
+		//status, err := engine.executeCreateCallActivity(ctx, batch, instance, element, currentToken, processDefinition, variableHolder)
+		//if err != nil {
+		//	return vh, err
+		//}
+		//if status == runtime.ActivityStateFailed {
+		//	return vh, nil
+		//}
+	}
+	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(element.TBaseElement), make([]interface{}, 0, total))
+	return vh, nil
 }
 
 func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

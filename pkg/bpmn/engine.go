@@ -342,6 +342,33 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			engine.handleCallActivityParentContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
 		}
 
+		// sem to vubec nevleze když  je completed   :(
+
+		//var activityElement *bpmn20.TActivity
+		//switch e := activity.element.(type) {
+		//case *bpmn20.TServiceTask:
+		//	activityElement = &e.TExternallyProcessedTask.TTask.TActivity
+		//case *bpmn20.TSendTask:
+		//	activityElement = &e.TExternallyProcessedTask.TTask.TActivity
+		//case *bpmn20.TUserTask:
+		//	activityElement = &e.TTask.TActivity
+		//case *bpmn20.TBusinessRuleTask:
+		//	activityElement = &e.TTask.TActivity
+		//case *bpmn20.TCallActivity:
+		//	activityElement = &e.TActivity
+		//}
+		//
+		//if activityElement != nil {
+		//	mi := activityElement.MultiInstanceLoopCharacteristics
+		//	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
+		//
+		//	if instance.State == runtime.ActivityStateCompleted && isMultiInstance {
+		//
+		//		fmt.Println("Handle paralel continue here ?")
+		//
+		//	}
+		//}
+		//
 		err = batch.Flush(ctx)
 		if err != nil {
 			tokenSpan.RecordError(err)
@@ -533,14 +560,15 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	}
 
 	mi := activityElement.MultiInstanceLoopCharacteristics
+	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
 	// multi instance
-	if mi.LoopCharacteristics.InputCollection != "" {
+	if isMultiInstance {
 		vh, err := engine.prepareParallelMultiInstance(instance, *activityElement, mi)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
 		if mi.IsSequential {
-			// serial
+			// TODO: serial
 		}
 
 		for _, variableHolder := range vh {
@@ -551,6 +579,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 				currentToken.State = runtime.TokenStateWaiting
 			}
 		}
+		instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), make([]interface{}, 0, len(vh)))
 		return []runtime.ExecutionToken{currentToken}, nil
 		// parallel
 	} else {
@@ -567,6 +596,10 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
+		//if isMultiInstance {
+		//	// TODO: handle multi instance instant completion
+		//	return []runtime.ExecutionToken{}, nil
+		//}
 		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
@@ -692,17 +725,17 @@ func (engine *Engine) createExternalBusinessRuleTask(
 func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInstance, element bpmn20.TActivity, mi bpmn20.TMultiInstanceLoopCharacteristics) ([]runtime.VariableHolder, error) {
 
 	inColExpr := mi.LoopCharacteristics.InputCollection
-	inputCollection, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+	inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
 	if err != nil {
 		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("failed to evaluate inputCollection expression: %s", inColExpr), err)
 	}
-	collection, ok := inputCollection.([]interface{})
+	inputCollection, ok := inputCollectionObject.([]interface{})
 	if !ok {
 		instance.State = runtime.ActivityStateFailed
 		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("inputCollection is not a collection"), err)
 	}
 
-	total := len(collection)
+	total := len(inputCollection)
 	if total == 0 {
 		// do nothing
 		return []runtime.VariableHolder{}, nil
@@ -710,19 +743,13 @@ func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInst
 	vh := make([]runtime.VariableHolder, total)
 
 	inputElementName := mi.LoopCharacteristics.InputElement
-	for _, input := range collection {
+	for i, input := range inputCollection {
 		variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 		if inputElementName != "" {
 			variableHolder.SetVariable(inputElementName, input)
 		}
-		vh = append(vh, variableHolder)
-		//status, err := engine.executeCreateCallActivity(ctx, batch, instance, element, currentToken, processDefinition, variableHolder)
-		//if err != nil {
-		//	return vh, err
-		//}
-		//if status == runtime.ActivityStateFailed {
-		//	return vh, nil
-		//}
+		//vh = append(vh, variableHolder)
+		vh[i] = variableHolder
 	}
 	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(element.TBaseElement), make([]interface{}, 0, total))
 	return vh, nil
@@ -847,6 +874,74 @@ func (engine *Engine) handleSimpleTransition(
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
+
+	// handle multi instance
+	var activityElement *bpmn20.TActivity
+	switch e := element.(type) {
+	case *bpmn20.TServiceTask:
+		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
+	case *bpmn20.TSendTask:
+		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
+	case *bpmn20.TUserTask:
+		activityElement = &e.TTask.TActivity
+	case *bpmn20.TBusinessRuleTask:
+		activityElement = &e.TTask.TActivity
+	case *bpmn20.TCallActivity:
+		activityElement = &e.TActivity
+	}
+
+	if activityElement != nil {
+		mi := activityElement.MultiInstanceLoopCharacteristics
+		isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
+		if isMultiInstance {
+			outputCollection, ok := instance.GetVariable(mi.GetOutCollectionName(activityElement.TBaseElement)).([]interface{})
+			if !ok {
+				return resTokens, errors.New("outputCollection is not a collection on multi-instance flow")
+			}
+
+			if mi.LoopCharacteristics.OutputElement != "" {
+				outElExpr := mi.LoopCharacteristics.OutputElement
+				outVal, err := evaluateExpression(outElExpr, instance.VariableHolder.Variables())
+				if err != nil {
+					return resTokens, fmt.Errorf("failed to evaluate outputElement expression: %w", err)
+				}
+				outputCollection = append(outputCollection, outVal)
+			} else {
+				outputCollection = append(outputCollection, true)
+			}
+
+			instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), outputCollection)
+
+			inColExpr := mi.LoopCharacteristics.InputCollection
+			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+			if err != nil {
+				return resTokens, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
+			}
+			inputCollection, ok := inputCollectionObject.([]interface{})
+			if !ok {
+				return resTokens, errors.New("inputCollection is not a collection")
+			}
+
+			// persistently store the outputCollection
+			err = batch.SaveProcessInstance(ctx, *instance)
+			if err != nil {
+				return resTokens, fmt.Errorf("failed to save updated parent process instance: %w", err)
+			}
+
+			// TODO: implement completion condition
+			if len(outputCollection) != len(inputCollection) {
+				return resTokens, nil
+			}
+
+			// clear an output collection if it was not defined and a default name was used instead
+			if mi.LoopCharacteristics.OutputCollection == "" {
+				instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
+				batch.SaveProcessInstance(ctx, *instance)
+			}
+			//continue
+		}
+	}
+
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions

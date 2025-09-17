@@ -338,37 +338,9 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 
 		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
-
 			engine.handleCallActivityParentContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
 		}
 
-		// sem to vubec nevleze když  je completed   :(
-
-		//var activityElement *bpmn20.TActivity
-		//switch e := activity.element.(type) {
-		//case *bpmn20.TServiceTask:
-		//	activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-		//case *bpmn20.TSendTask:
-		//	activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-		//case *bpmn20.TUserTask:
-		//	activityElement = &e.TTask.TActivity
-		//case *bpmn20.TBusinessRuleTask:
-		//	activityElement = &e.TTask.TActivity
-		//case *bpmn20.TCallActivity:
-		//	activityElement = &e.TActivity
-		//}
-		//
-		//if activityElement != nil {
-		//	mi := activityElement.MultiInstanceLoopCharacteristics
-		//	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
-		//
-		//	if instance.State == runtime.ActivityStateCompleted && isMultiInstance {
-		//
-		//		fmt.Println("Handle paralel continue here ?")
-		//
-		//	}
-		//}
-		//
 		err = batch.Flush(ctx)
 		if err != nil {
 			tokenSpan.RecordError(err)
@@ -572,8 +544,9 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		}
 
 		for _, variableHolder := range vh {
-			instance.VariableHolder = variableHolder
-			activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
+			instanceCopy := *instance
+			instanceCopy.VariableHolder = variableHolder
+			activityResult, err = engine.activityElementExecutor(ctx, batch, &instanceCopy, currentToken, activity)
 			//TODO handle in multi instance
 			if activityResult == runtime.ActivityStateActive {
 				currentToken.State = runtime.TokenStateWaiting
@@ -596,10 +569,6 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		//if isMultiInstance {
-		//	// TODO: handle multi instance instant completion
-		//	return []runtime.ExecutionToken{}, nil
-		//}
 		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
@@ -894,7 +863,9 @@ func (engine *Engine) handleSimpleTransition(
 		mi := activityElement.MultiInstanceLoopCharacteristics
 		isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
 		if isMultiInstance {
-			outputCollection, ok := instance.GetVariable(mi.GetOutCollectionName(activityElement.TBaseElement)).([]interface{})
+			outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
+			originalInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
+			outputCollection, ok := originalInstance.GetVariable(outColName).([]interface{})
 			if !ok {
 				return resTokens, errors.New("outputCollection is not a collection on multi-instance flow")
 			}
@@ -910,7 +881,7 @@ func (engine *Engine) handleSimpleTransition(
 				outputCollection = append(outputCollection, true)
 			}
 
-			instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), outputCollection)
+			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
 
 			inColExpr := mi.LoopCharacteristics.InputCollection
 			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
@@ -923,7 +894,7 @@ func (engine *Engine) handleSimpleTransition(
 			}
 
 			// persistently store the outputCollection
-			err = batch.SaveProcessInstance(ctx, *instance)
+			err = batch.SaveProcessInstance(ctx, originalInstance)
 			if err != nil {
 				return resTokens, fmt.Errorf("failed to save updated parent process instance: %w", err)
 			}
@@ -936,7 +907,9 @@ func (engine *Engine) handleSimpleTransition(
 			// clear an output collection if it was not defined and a default name was used instead
 			if mi.LoopCharacteristics.OutputCollection == "" {
 				instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
-				batch.SaveProcessInstance(ctx, *instance)
+				if err := batch.SaveProcessInstance(ctx, *instance); err != nil {
+					return resTokens, fmt.Errorf("failed to save process instance after clearing default outputCollection: %w", err)
+				}
 			}
 			//continue
 		}

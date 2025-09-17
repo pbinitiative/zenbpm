@@ -844,75 +844,12 @@ func (engine *Engine) handleSimpleTransition(
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 
-	// handle multi instance
-	var activityElement *bpmn20.TActivity
-	switch e := element.(type) {
-	case *bpmn20.TServiceTask:
-		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-	case *bpmn20.TSendTask:
-		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-	case *bpmn20.TUserTask:
-		activityElement = &e.TTask.TActivity
-	case *bpmn20.TBusinessRuleTask:
-		activityElement = &e.TTask.TActivity
-	case *bpmn20.TCallActivity:
-		activityElement = &e.TActivity
+	finished, err := engine.handleMultiInstanceCompletion(ctx, batch, instance, element)
+	if err != nil {
+		return resTokens, fmt.Errorf("failed to handle multi instance transition: %w", err)
 	}
-
-	if activityElement != nil {
-		mi := activityElement.MultiInstanceLoopCharacteristics
-		isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
-		if isMultiInstance {
-			outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
-			originalInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
-			outputCollection, ok := originalInstance.GetVariable(outColName).([]interface{})
-			if !ok {
-				return resTokens, errors.New("outputCollection is not a collection on multi-instance flow")
-			}
-
-			if mi.LoopCharacteristics.OutputElement != "" {
-				outElExpr := mi.LoopCharacteristics.OutputElement
-				outVal, err := evaluateExpression(outElExpr, instance.VariableHolder.Variables())
-				if err != nil {
-					return resTokens, fmt.Errorf("failed to evaluate outputElement expression: %w", err)
-				}
-				outputCollection = append(outputCollection, outVal)
-			} else {
-				outputCollection = append(outputCollection, true)
-			}
-
-			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
-
-			inColExpr := mi.LoopCharacteristics.InputCollection
-			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
-			if err != nil {
-				return resTokens, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
-			}
-			inputCollection, ok := inputCollectionObject.([]interface{})
-			if !ok {
-				return resTokens, errors.New("inputCollection is not a collection")
-			}
-
-			// persistently store the outputCollection
-			err = batch.SaveProcessInstance(ctx, originalInstance)
-			if err != nil {
-				return resTokens, fmt.Errorf("failed to save updated parent process instance: %w", err)
-			}
-
-			// TODO: implement completion condition
-			if len(outputCollection) != len(inputCollection) {
-				return resTokens, nil
-			}
-
-			// clear an output collection if it was not defined and a default name was used instead
-			if mi.LoopCharacteristics.OutputCollection == "" {
-				instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
-				if err := batch.SaveProcessInstance(ctx, *instance); err != nil {
-					return resTokens, fmt.Errorf("failed to save process instance after clearing default outputCollection: %w", err)
-				}
-			}
-			//continue
-		}
+	if !finished {
+		return resTokens, nil
 	}
 
 	// TODO: handle no outgoing associations

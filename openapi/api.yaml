@@ -78,18 +78,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid DMN XML
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -127,8 +115,8 @@ paths:
                 offset: 0
                 size: 10
                 count: 3
-        500:
-          description: Internal server error
+        502:
+          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
@@ -176,14 +164,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        404:
-          description: Decision definition not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
+        502:
+          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
@@ -275,24 +257,6 @@ paths:
                         inputExpression: "income"
                         inputValue: {"income": 50000}
                 decisionOutput: {"approved": true}
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Decision not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid variables JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -353,18 +317,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid BPMN XML
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -401,12 +353,6 @@ paths:
                 offset: 0
                 size: 10
                 count: 3
-        400:
-          description: Bad request - invalid query parameters
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -452,12 +398,6 @@ paths:
                   </bpmn:definitions>
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process definition not found
           content:
             application/json:
               schema:
@@ -525,18 +465,6 @@ paths:
                   applicationDate: "2025-08-22"
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process definition not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid variables JSON
           content:
             application/json:
               schema:
@@ -635,12 +563,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        404:
-          description: Process definition not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -692,12 +614,6 @@ paths:
                   currentStatus: "Application review"
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
           content:
             application/json:
               schema:
@@ -769,12 +685,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -832,30 +742,6 @@ paths:
                 offset: 0
                 size: 10
                 count: 2
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to collect data from responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
 
   /process-instances/{processInstanceKey}/history:
     get:
@@ -901,18 +787,6 @@ paths:
                 count: 3
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -971,18 +845,6 @@ paths:
                 count: 2
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -1067,14 +929,14 @@ paths:
                 page: 1
                 size: 10
                 count: 2
-        400:
-          description: Bad request
+        500:
+          description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
+        502:
+          description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
@@ -1121,30 +983,6 @@ paths:
           description: Job completed
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        409:
-          description: Conflict - job already completed or in wrong state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid variables JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -1209,24 +1047,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        404:
-          description: Process instance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        422:
-          description: Unprocessable Content - invalid variables JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -1261,24 +1081,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        404:
-          description: Incident not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        409:
-          description: Conflict - incident already resolved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -1305,12 +1107,6 @@ paths:
           description: Cpu profiler starter
         500:
           description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
@@ -1342,12 +1138,6 @@ paths:
                     format: byte
         500:
           description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:

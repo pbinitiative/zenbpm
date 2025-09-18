@@ -343,3 +343,118 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	assert.Nil(t, instance.GetVariable("mappedFoo"))
 	assert.Equal(t, message[0].GetState(), runtime.ActivityStateFailed)
 }
+
+func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
+	// 1) After process start the message subscription bound to the boundary event should be created
+	//    - process should be active
+	//    - message subscription should be active
+	// 2) After process message is thrown
+	//    - the job and
+	//    - any other boundary events subscriptions should be cancelled and
+	//    - flow outgoing from the boundary should be taken
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-interrupting.bpmn")
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subscriptions))
+
+	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	// when
+	variables := map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+
+	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+
+}
+
+func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subscriptions))
+
+	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	// when
+	variables := map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subscriptions))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
+
+	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+}
+
+func Test_BoundaryEventActivityComplete_CancelsSubscriptions(t *testing.T) {
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subscriptions))
+
+	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	// when
+	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].Variables)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+
+}

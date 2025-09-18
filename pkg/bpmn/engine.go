@@ -540,6 +540,11 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	switch activityResult {
 	case runtime.ActivityStateActive:
 		currentToken.State = runtime.TokenStateWaiting
+		// TODO: we are in waiting state so we instantiate boundary event subscriptions
+		err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+		if err != nil {
+			return nil, fmt.Errorf("failed to process boundary events for %s %d: %w", element.GetType(), activity.GetKey(), err)
+		}
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
 		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
@@ -550,6 +555,28 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	}
 
 	return []runtime.ExecutionToken{}, nil
+}
+
+func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch storage.Batch, currentToken runtime.ExecutionToken, instance *runtime.ProcessInstance, element bpmn20.FlowNode) error {
+	bes := bpmn20.FindBoundaryEventsForActivity(&instance.Definition.Definitions, element)
+	for _, be := range bes {
+		switch be.EventDefinition.(type) {
+		case bpmn20.TMessageEventDefinition:
+			_, err := engine.createMessageCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TMessageEventDefinition), element, currentToken)
+			if err != nil {
+				return err
+			}
+		case bpmn20.TTimerEventDefinition:
+			_, err := engine.createTimerCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TTimerEventDefinition), element, currentToken)
+			if err != nil {
+				return err
+			}
+		default:
+			panic(fmt.Sprintf("unsupported BoundaryEvent %+v", be))
+		}
+	}
+
+	return nil
 }
 
 func (engine *Engine) createBusinessRuleTask(
@@ -798,10 +825,10 @@ func (engine *Engine) handleSimpleTransition(
 func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	switch ice.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
-		token, err := engine.createIntermediateMessageCatchEvent(ctx, batch, instance, ice, currentToken)
+		token, err := engine.createMessageCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TMessageEventDefinition), ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TTimerEventDefinition:
-		token, err := engine.createIntermediateTimerCatchEvent(ctx, batch, instance, ice, currentToken)
+		token, err := engine.createTimerCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TTimerEventDefinition), ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
 		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ice, currentToken)

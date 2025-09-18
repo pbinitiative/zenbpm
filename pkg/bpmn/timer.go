@@ -22,8 +22,8 @@ import (
 	"github.com/senseyeio/duration"
 )
 
-func (engine *Engine) createIntermediateTimerCatchEvent(ctx context.Context, timerWriter storage.TimerStorageWriter, instance *runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
-	timer, err := engine.createTimer(ctx, timerWriter, instance, ice, currentToken)
+func (engine *Engine) createTimerCatchEvent(ctx context.Context, timerWriter storage.TimerStorageWriter, instance *runtime.ProcessInstance, timerDef bpmn20.TTimerEventDefinition, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
+	timer, err := engine.createTimer(ctx, timerWriter, instance, timerDef, element, currentToken)
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to create timer %+v: %w", timer, err)
@@ -40,18 +40,18 @@ func (engine *Engine) createTimer(
 	ctx context.Context,
 	timerStorageWriter storage.TimerStorageWriter,
 	instance *runtime.ProcessInstance,
-	ice *bpmn20.TIntermediateCatchEvent,
+	timerDef bpmn20.TTimerEventDefinition,
+	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
 ) (*runtime.Timer, error) {
-	timerDef := ice.EventDefinition.(bpmn20.TTimerEventDefinition)
 	durationVal, err := findDurationValue(timerDef)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
-			"from Activity with ID=%s. Error:%s", ice.Id, err.Error())}
+			"from Activity with ID=%s. Error:%s", element.GetId(), err.Error())}
 	}
 	now := time.Now()
 	t := runtime.Timer{
-		ElementId:            ice.Id,
+		ElementId:            element.GetId(),
 		Key:                  engine.generateKey(),
 		ElementInstanceKey:   token.ElementInstanceKey,
 		ProcessDefinitionKey: instance.Definition.Key,

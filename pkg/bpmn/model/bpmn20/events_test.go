@@ -23,6 +23,8 @@ func Test_BoundaryEvent_Parses(t *testing.T) {
 
 	be := definitions.Process.BoundaryEvent[0]
 	assert.Equal(t, 1, len(be.Output))
+	assert.Equal(t, "service-task-id", be.AttachedToRef)
+	assert.Equal(t, true, be.CancellActivity)
 
 	assert.Equal(t, ElementTypeBoundaryEvent, be.GetType())
 

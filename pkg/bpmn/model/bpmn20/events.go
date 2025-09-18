@@ -141,7 +141,8 @@ func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
 type TBoundaryEvent struct {
 	TEvent
 	EventDefinition EventDefinition
-	CancellActivity bool `xml:"cancelActivity,attr"`
+	AttachedToRef   string `xml:"attachedToRef,attr"`
+	CancellActivity bool   `xml:"cancelActivity,attr"`
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
@@ -149,10 +150,12 @@ type TBoundaryEvent struct {
 func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
+		AttachedToRef          string                  `xml:"attachedToRef,attr"`
+		CancellActivity        bool                    `xml:"cancelActivity,attr"`
 		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
 		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
 		Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
-	}{}
+	}{CancellActivity: true}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
 		return err
@@ -165,6 +168,8 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
 	}
 	definitions.Output = tempStruct.Output
+	definitions.AttachedToRef = tempStruct.AttachedToRef
+	definitions.CancellActivity = tempStruct.CancellActivity
 	return nil
 }
 

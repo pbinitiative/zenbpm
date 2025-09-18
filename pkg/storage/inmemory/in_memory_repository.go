@@ -299,10 +299,9 @@ var _ storage.JobStorageReader = &Storage{}
 func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
-		// TODO: uncomment once we have type
-		// if job.Type != jobType{
-		// 	continue
-		// }
+		if job.Type != jobType || job.State != bpmnruntime.ActivityStateActive {
+			continue
+		}
 		res = append(res, job)
 	}
 	return res, nil

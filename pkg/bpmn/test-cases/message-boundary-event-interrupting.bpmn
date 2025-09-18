@@ -13,7 +13,7 @@
       <bpmn:incoming>Flow_14sh6sh</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_14sh6sh" sourceRef="Event_1n9fcqj" targetRef="Event_02rlbpp" />
-    <bpmn:boundaryEvent id="Event_1n9fcqj" cancelActivity="false" attachedToRef="service-task-id">
+    <bpmn:boundaryEvent id="Event_1n9fcqj" attachedToRef="service-task-id">
       <bpmn:extensionElements>
         <zeebe:ioMapping>
           <zeebe:output source="=payload" target="payload" />

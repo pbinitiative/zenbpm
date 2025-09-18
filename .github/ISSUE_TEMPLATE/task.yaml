@@ -1,0 +1,28 @@
+name: "✅ Task / Story"
+description: "Create a small, actionable work item"
+title: "Task: <short name>"
+labels: ["type: task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✅ Task / Story
+        Use this template for small, actionable pieces of work linked to an Epic.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done? Be concise and clear.
+      placeholder: |
+        - Explain the work to be done
+        - Add relevant technical notes or context
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Define what success looks like for this task.
+      placeholder: |
+        - Criteria 1
+        - Criteria 2

@@ -1,0 +1,47 @@
+name: "🐞 Bug Report"
+description: "Report a defect or unexpected behavior"
+title: "Bug: <short description>"
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🐞 Bug Report
+        Use this template to describe a defect or unexpected behavior.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong? Provide a clear, concise summary.
+      placeholder: |
+        - What you expected to happen
+        - What actually happened
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions so others can reproduce the bug.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error '...'
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Where did this bug occur?
+      placeholder: |
+        - OS: [e.g. macOS, Windows]
+        - Browser/Version: [e.g. Chrome 126]
+        - App version/Commit: [e.g. v1.2.3 or abc1234]
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+      placeholder: |
+        - Describe the correct/expected behavior

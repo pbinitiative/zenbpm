@@ -123,6 +123,15 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask:
+		tokens, err = engine.handleBoundaryTimer(ctx, batch, timer, instance, timer.Token)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
+		}
+
+	case *bpmn20.TCallActivity:
+		return nil, nil, errors.Join(newEngineErrorf("failed to trigger timer %s for listener in instance %d. ", timer.GetId(), instance.Key), errors.New("call activity not implemented yet"))
+
 	default:
 		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)
 		engine.logger.Error(msg)
@@ -142,4 +151,49 @@ func findDurationValue(timerDef bpmn20.TTimerEventDefinition) (duration.Duration
 		return duration.Duration{}, newEngineErrorf("Can't find 'timeDuration' value for INTERMEDIATE_CATCH_EVENT with id=%s", timerDef.Id)
 	}
 	return duration.ParseISO8601(durationStr)
+}
+
+func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Batch, timer runtime.Timer, instance *runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+	var listener *bpmn20.TBoundaryEvent
+
+	for _, be := range instance.Definition.Definitions.Process.BoundaryEvent {
+		if timerDef, ok := be.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
+			if be.EventDefinition.(bpmn20.TTimerEventDefinition).Id == timerDef.Id {
+				listener = &be
+				break
+			}
+		}
+	}
+	if listener == nil {
+		return nil, fmt.Errorf("failed to find boundary event for timer %s", timer.GetId())
+	}
+
+	timer.TimerState = runtime.TimerStateTriggered
+	batch.SaveTimer(ctx, timer)
+
+	if listener.CancellActivity {
+		// cancel job
+		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
+		}
+		job.State = runtime.ActivityStateTerminated
+		err = batch.SaveJob(ctx, job)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+		}
+		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+	} else {
+		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+		// recreate the message subscription
+		_, err := engine.createTimerCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TTimerEventDefinition), element, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
+		}
+	}
+	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, listener, timer.Token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to handle boundary timer transition %+v: %w", timer, err)
+	}
+	return tokens, nil
 }

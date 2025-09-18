@@ -10,6 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
+// TODO: rename
 func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInstance, element bpmn20.TActivity, mi bpmn20.TMultiInstanceLoopCharacteristics) ([]runtime.VariableHolder, error) {
 
 	inColExpr := mi.LoopCharacteristics.InputCollection
@@ -102,6 +103,9 @@ func (engine *Engine) handleMultiInstanceCompletion(
 			}
 
 			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
+
+			// for call activity we need to update outputCollection in the working process instance
+			instance.VariableHolder.SetVariable(outColName, outputCollection)
 
 			inColExpr := mi.LoopCharacteristics.InputCollection
 			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())

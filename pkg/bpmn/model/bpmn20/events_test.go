@@ -10,7 +10,7 @@ import (
 
 func Test_BoundaryEvent_Parses(t *testing.T) {
 	var definitions TDefinitions
-	var xmlData, err = os.ReadFile("../../test-cases/message-boundary-event-noninterrupting.bpmn")
+	var xmlData, err = os.ReadFile("../../test-cases/message-boundary-event-interrupting.bpmn")
 
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)

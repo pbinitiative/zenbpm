@@ -1,3 +1,10 @@
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+
 package bpmn
 
 import (
@@ -10,9 +17,44 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
-// TODO: rename
-func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInstance, element bpmn20.TActivity, mi bpmn20.TMultiInstanceLoopCharacteristics) ([]runtime.VariableHolder, error) {
+func (engine *Engine) initMultiInstances(
+	ctx context.Context,
+	instance *runtime.ProcessInstance,
+	activityElement *bpmn20.TActivity,
+	currentToken *runtime.ExecutionToken,
+	batch storage.Batch,
+	activity runtime.Activity,
+) error {
+	var activityResult runtime.ActivityState
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	vh, err := engine.prepareVariableHoldersForParallelMultiInstance(instance, activityElement)
+	if err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return fmt.Errorf("failed to prepare variable holders fr multi-instance: %w", err)
+	}
+	if mi.IsSequential {
+		// TODO: serial
+	}
 
+	isAnyActivityActive := false
+	for _, variableHolder := range vh {
+		instanceCopy := *instance
+		instanceCopy.VariableHolder = variableHolder
+		activityResult, err = engine.activityElementExecutor(ctx, batch, &instanceCopy, *currentToken, activity)
+		if activityResult == runtime.ActivityStateActive {
+			isAnyActivityActive = true
+		}
+	}
+	if isAnyActivityActive {
+		currentToken.State = runtime.TokenStateWaiting
+	}
+	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), make([]interface{}, 0, len(vh)))
+	return nil
+}
+
+func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *runtime.ProcessInstance, element *bpmn20.TActivity) ([]runtime.VariableHolder, error) {
+
+	mi := element.MultiInstanceLoopCharacteristics
 	inColExpr := mi.LoopCharacteristics.InputCollection
 	inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
 	if err != nil {
@@ -44,7 +86,13 @@ func (engine *Engine) prepareParallelMultiInstance(instance *runtime.ProcessInst
 	return vh, nil
 }
 
-func (engine *Engine) activityElementExecutor(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, currentToken runtime.ExecutionToken, activity runtime.Activity) (runtime.ActivityState, error) {
+func (engine *Engine) activityElementExecutor(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	currentToken runtime.ExecutionToken,
+	activity runtime.Activity,
+) (runtime.ActivityState, error) {
 	var activityResult runtime.ActivityState
 	var err error
 	switch element := activity.Element().(type) {

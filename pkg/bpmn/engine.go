@@ -512,49 +512,17 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	var activityResult runtime.ActivityState
 	var err error
 
-	// todo add multi-instance support
-
-	var activityElement *bpmn20.TActivity
-
-	switch e := element.(type) {
-	case *bpmn20.TServiceTask:
-		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-	case *bpmn20.TSendTask:
-		activityElement = &e.TExternallyProcessedTask.TTask.TActivity
-	case *bpmn20.TUserTask:
-		activityElement = &e.TTask.TActivity
-	case *bpmn20.TBusinessRuleTask:
-		activityElement = &e.TTask.TActivity
-	case *bpmn20.TCallActivity:
-		activityElement = &e.TActivity
-	default:
-		return nil, fmt.Errorf("element is not an activity: %T", element)
-	}
+	activityElement := engine.castToTActivity(element)
 
 	mi := activityElement.MultiInstanceLoopCharacteristics
 	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
 	// multi instance
 	if isMultiInstance {
-		vh, err := engine.prepareParallelMultiInstance(instance, *activityElement, mi)
+		err = engine.initMultiInstances(ctx, instance, activityElement, &currentToken, batch, activity)
 		if err != nil {
-			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
+			return []runtime.ExecutionToken{currentToken}, err
 		}
-		if mi.IsSequential {
-			// TODO: serial
-		}
-
-		for _, variableHolder := range vh {
-			instanceCopy := *instance
-			instanceCopy.VariableHolder = variableHolder
-			activityResult, err = engine.activityElementExecutor(ctx, batch, &instanceCopy, currentToken, activity)
-			//TODO handle in multi instance
-			if activityResult == runtime.ActivityStateActive {
-				currentToken.State = runtime.TokenStateWaiting
-			}
-		}
-		instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), make([]interface{}, 0, len(vh)))
 		return []runtime.ExecutionToken{currentToken}, nil
-		// parallel
 	} else {
 		activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
 	}

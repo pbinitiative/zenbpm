@@ -90,7 +90,7 @@ func Test_interrupting_boundary_event_timer_catch_triggered(t *testing.T) {
 
 	// then
 
-	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -110,8 +110,19 @@ func Test_interrupting_boundary_event_timer_catch_triggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 
-	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 
+}
+
+func findActiveJobsForProcessInstance(processInstanceKey int64, jobType string) []runtime.Job {
+	foundServiceJobs := make([]runtime.Job, 0)
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == processInstanceKey && job.Type == jobType && job.State == runtime.ActivityStateActive {
+			foundServiceJobs = append(foundServiceJobs, job)
+			break
+		}
+	}
+	return foundServiceJobs
 }

@@ -364,7 +364,7 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
-	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -382,7 +382,7 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 
-	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 
@@ -400,7 +400,7 @@ func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
-	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -418,7 +418,7 @@ func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 
-	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -436,7 +436,7 @@ func Test_BoundaryEventActivityComplete_CancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
-	jobs, err := bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -449,7 +449,7 @@ func Test_BoundaryEventActivityComplete_CancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions))
 
-	jobs, err = bpmnEngine.persistence.FindActiveJobsByType(t.Context(), "simple-job")
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 

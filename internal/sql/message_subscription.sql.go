@@ -12,7 +12,7 @@ import (
 
 const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
     message_subscription
 WHERE
@@ -50,7 +50,6 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 		var i MessageSubscription
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementInstanceKey,
 			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
@@ -75,7 +74,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 
 const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
     message_subscription
 WHERE
@@ -99,7 +98,6 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 		var i MessageSubscription
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementInstanceKey,
 			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
@@ -124,7 +122,7 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 
 const findTokenMessageSubscriptions = `-- name: FindTokenMessageSubscriptions :many
 SELECT
-    "key", element_instance_key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
     message_subscription
 WHERE
@@ -148,7 +146,6 @@ func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTok
 		var i MessageSubscription
 		if err := rows.Scan(
 			&i.Key,
-			&i.ElementInstanceKey,
 			&i.ElementID,
 			&i.ProcessDefinitionKey,
 			&i.ProcessInstanceKey,
@@ -171,11 +168,43 @@ func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTok
 	return items, nil
 }
 
+const getMessageSubscriptionById = `-- name: GetMessageSubscriptionById :one
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    key = ?1
+    AND state = ?2
+`
+
+type GetMessageSubscriptionByIdParams struct {
+	Key   int64 `json:"key"`
+	State int64 `json:"state"`
+}
+
+func (q *Queries) GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, getMessageSubscriptionById, arg.Key, arg.State)
+	var i MessageSubscription
+	err := row.Scan(
+		&i.Key,
+		&i.ElementID,
+		&i.ProcessDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.Name,
+		&i.State,
+		&i.CreatedAt,
+		&i.CorrelationKey,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec
 
-INSERT INTO message_subscription(key, element_instance_key, element_id, process_definition_key, process_instance_key, name, state,
+INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
     created_at, correlation_key, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state
@@ -183,7 +212,6 @@ ON CONFLICT
 
 type SaveMessageSubscriptionParams struct {
 	Key                  int64  `json:"key"`
-	ElementInstanceKey   int64  `json:"element_instance_key"`
 	ElementID            string `json:"element_id"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
@@ -203,7 +231,6 @@ type SaveMessageSubscriptionParams struct {
 func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error {
 	_, err := q.db.ExecContext(ctx, saveMessageSubscription,
 		arg.Key,
-		arg.ElementInstanceKey,
 		arg.ElementID,
 		arg.ProcessDefinitionKey,
 		arg.ProcessInstanceKey,

@@ -56,7 +56,10 @@ service ZenService {
   rpc DeployDecisionDefinition(DeployDecisionDefinitionRequest) returns (DeployDecisionDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
+  // PublishMessage requests a message publish on the engine running on a leader node of partition
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  rpc SetMessageSubscriptionPointer(SetMessageSubscriptionPointerRequest) returns (SetMessageSubscriptionPointerResponse);
+  rpc FindActiveMessage(FindActiveMessageRequest) returns (FindActiveMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
@@ -312,10 +315,41 @@ message InternalJob {
   int64 created_at = 7;
 }
 
-message PublishMessageRequest {
+message SetMessageSubscriptionPointerRequest {
+  int64 state = 1;
+  int64 createdAt = 2;
+  string name = 3;
+  string correlationKey = 4;
+  int64 messageSubscriptionKey = 5;
+  int64 executionTokenKey = 6;
+  uint32 partitionId = 7;
+}
+
+message SetMessageSubscriptionPointerResponse {
+  optional ErrorResult error = 1;
+}
+
+message FindActiveMessageRequest {
   string name = 1;
-  int64 instance_key = 2;
-  bytes variables = 3;
+  string correlationKey = 2;
+  int64 executionTokenKey = 3;
+}
+
+message FindActiveMessageResponse {
+  optional ErrorResult error = 1;
+  int64 key = 2;
+  string elementId = 3;
+  int64 processDefinitionKey = 4;
+  int64 processInstanceKey = 5;
+  string name = 6;
+  int64 state = 7;
+  string correlationKey = 8;
+  int64 executionToken = 9;
+}
+
+message PublishMessageRequest {
+  int64 key = 1;
+  bytes variables = 2;
 }
 
 message PublishMessageResponse {

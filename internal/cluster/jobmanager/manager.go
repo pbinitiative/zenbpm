@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"google.golang.org/grpc"
 )
 
@@ -25,7 +25,7 @@ var (
 )
 
 type Store interface {
-	ClusterState() store.ClusterState
+	ClusterState() state.Cluster
 	NodeID() string
 }
 
@@ -36,7 +36,7 @@ type NodeId string
 
 type partitionRoleState struct {
 	nodeId string
-	state  store.NodePartitionState
+	state  state.NodePartitionState
 }
 
 // JobManager handles job distribution in the system.
@@ -173,16 +173,16 @@ func (m *JobManager) OnClusterStateChange(ctx context.Context) {
 func (m *JobManager) OnPartitionRoleChange(ctx context.Context) {
 	m.roleChangeMu.Lock()
 	defer m.roleChangeMu.Unlock()
-	state := m.store.ClusterState()
+	s := m.store.ClusterState()
 	isLeader := false
-	for _, partition := range state.Partitions {
+	for _, partition := range s.Partitions {
 		partitionLeader := partition.LeaderId
-		partitionNode, ok := state.Nodes[partitionLeader]
+		partitionNode, ok := s.Nodes[partitionLeader]
 		if !ok {
 			continue
 		}
 		// if partition is not initialized yet skip it for now
-		if partitionNode.Partitions[partition.Id].State != store.NodePartitionStateInitialized {
+		if partitionNode.Partitions[partition.Id].State != state.NodePartitionStateInitialized {
 			continue
 		}
 		if partition.LeaderId == m.store.NodeID() {

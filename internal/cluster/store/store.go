@@ -24,6 +24,8 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/rqlite/rqlite/v8/random"
 	"github.com/rqlite/rqlite/v8/rsync"
@@ -120,7 +122,7 @@ type Store struct {
 	observerClose chan struct{}
 	observerDone  chan struct{}
 
-	state                      ClusterState
+	state                      state.Cluster
 	clusterStateChangeObserver ClusterStateObserverFunc
 }
 
@@ -180,12 +182,12 @@ func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *
 		notifyingNodes:  map[string]raft.Server{},
 		notifyMu:        sync.Mutex{},
 		bootstrapped:    false,
-		state: ClusterState{
-			Config: ClusterConfig{
+		state: state.Cluster{
+			Config: state.ClusterConfig{
 				DesiredPartitions: 1, // TODO: hardcoded partition number for now
 			},
-			Partitions: map[uint32]Partition{},
-			Nodes:      map[string]Node{},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
 		},
 		raftTn:                     &raft.NetworkTransport{},
 		boltStore:                  &raftboltdb.BoltStore{},
@@ -210,7 +212,7 @@ func (s *Store) Open() (retErr error) {
 	}()
 
 	if s.open.Load() {
-		return ErrAlreadyOpen
+		return zenerr.ErrAlreadyOpen
 	}
 	s.logger.Info(fmt.Sprintf("opening store with node ID %s, listening on %s", s.raftID, s.layer.Addr().String()))
 
@@ -260,8 +262,8 @@ func (s *Store) Open() (retErr error) {
 	return nil
 }
 
-func (s *Store) ClusterState() ClusterState {
-	return s.state
+func (s *Store) ClusterState() state.Cluster {
+	return *s.state.DeepCopy()
 }
 
 // WaitForAllApplied waits for all Raft log entries to be applied to the
@@ -289,11 +291,11 @@ func (s *Store) WaitForAppliedIndex(idx uint64, timeout time.Duration) error {
 // The node must be ready to respond to Raft communications at that address.
 func (s *Store) Join(jr *zproto.JoinRequest) error {
 	if !s.open.Load() {
-		return ErrNotOpen
+		return zenerr.ErrNotOpen
 	}
 
 	if s.raft.State() != raft.Leader {
-		return ErrNotLeader
+		return zenerr.ErrNotLeader
 	}
 
 	id := jr.Id
@@ -343,7 +345,7 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 	}
 	if e := f.(raft.Future); e.Error() != nil {
 		if errors.Is(e.Error(), raft.ErrNotLeader) {
-			return ErrNotLeader
+			return zenerr.ErrNotLeader
 		}
 		return e.Error()
 	}
@@ -354,9 +356,9 @@ func (s *Store) Join(jr *zproto.JoinRequest) error {
 }
 
 // Bootstrap executes a cluster bootstrap on this node, using the given nodes.
-func (s *Store) Bootstrap(nodes ...*Node) error {
+func (s *Store) Bootstrap(nodes ...*state.Node) error {
 	if !s.open.Load() {
-		return ErrNotOpen
+		return zenerr.ErrNotOpen
 	}
 	raftServers := make([]raft.Server, len(nodes))
 	for i := range nodes {
@@ -383,7 +385,7 @@ func (s *Store) Bootstrap(nodes ...*Node) error {
 // Notifying is idempotent. A node may repeatedly notify the Store without issue.
 func (s *Store) Notify(nr *zproto.NotifyRequest) error {
 	if !s.open.Load() {
-		return ErrNotOpen
+		return zenerr.ErrNotOpen
 	}
 
 	s.notifyMu.Lock()
@@ -442,7 +444,7 @@ func (s *Store) Notify(nr *zproto.NotifyRequest) error {
 // will be returned.
 func (s *Store) Stepdown(wait bool) error {
 	if !s.open.Load() {
-		return ErrNotOpen
+		return zenerr.ErrNotOpen
 	}
 	f := s.raft.LeadershipTransfer()
 	if !wait {
@@ -484,7 +486,7 @@ func (s *Store) WaitForLeader(timeout time.Duration) (string, error) {
 	}
 	err := rsync.NewPollTrue(check, leaderWaitDelay, timeout).Run("leader")
 	if err != nil {
-		return "", ErrWaitForLeaderTimeout
+		return "", zenerr.ErrWaitForLeaderTimeout
 	}
 	return leaderAddr, err
 }
@@ -492,12 +494,12 @@ func (s *Store) WaitForLeader(timeout time.Duration) (string, error) {
 // VerifyLeader checks that the current node is the Raft leader.
 func (s *Store) VerifyLeader() (retErr error) {
 	if !s.open.Load() {
-		return ErrNotOpen
+		return zenerr.ErrNotOpen
 	}
 	future := s.raft.VerifyLeader()
 	if err := future.Error(); err != nil {
 		if err == raft.ErrNotLeader || err == raft.ErrLeadershipLost {
-			return ErrNotLeader
+			return zenerr.ErrNotLeader
 		}
 		return fmt.Errorf("failed to verify leader: %s", err.Error())
 	}
@@ -509,7 +511,7 @@ func (s *Store) VerifyLeader() (retErr error) {
 // false will also be returned.
 func (s *Store) IsVoter() (bool, error) {
 	if !s.open.Load() {
-		return false, ErrNotOpen
+		return false, zenerr.ErrNotOpen
 	}
 	cfg := s.raft.GetConfiguration()
 	if err := cfg.Error(); err != nil {
@@ -578,7 +580,7 @@ func (s *Store) HasLeaderID() bool {
 // CommitIndex returns the Raft commit index.
 func (s *Store) CommitIndex() (uint64, error) {
 	if !s.open.Load() {
-		return 0, ErrNotOpen
+		return 0, zenerr.ErrNotOpen
 	}
 	return s.raft.CommitIndex(), nil
 }
@@ -689,9 +691,9 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 }
 
 // Nodes returns the slice of nodes in the cluster, sorted by ID ascending.
-func (s *Store) Nodes() ([]Node, error) {
+func (s *Store) Nodes() ([]state.Node, error) {
 	if !s.open.Load() {
-		return nil, ErrNotOpen
+		return nil, zenerr.ErrNotOpen
 	}
 
 	f := s.raft.GetConfiguration()
@@ -700,16 +702,16 @@ func (s *Store) Nodes() ([]Node, error) {
 	}
 
 	rs := f.Configuration().Servers
-	nodes := make([]Node, len(rs))
+	nodes := make([]state.Node, len(rs))
 	for i := range rs {
-		nodes[i] = Node{
+		nodes[i] = state.Node{
 			Id:       string(rs[i].ID),
 			Addr:     string(rs[i].Address),
 			Suffrage: rs[i].Suffrage,
 		}
 		node, err := s.state.GetNode(string(rs[i].ID))
 		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, zenerr.ErrNodeNotFound) {
 				// TODO: decide if we need full node info here or just raft.Server
 				continue
 			}
@@ -720,7 +722,7 @@ func (s *Store) Nodes() ([]Node, error) {
 		nodes[i].Role = node.Role
 	}
 
-	sort.Sort(Nodes(nodes))
+	sort.Sort(state.Nodes(nodes))
 	return nodes, nil
 }
 
@@ -745,7 +747,7 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 					if err != nil {
 						s.logger.Error(fmt.Sprintf("failed to get nodes configuration during reap check: %s", err.Error()))
 					}
-					servers := Nodes(nodes)
+					servers := state.Nodes(nodes)
 					id := string(signal.PeerID)
 					dur := time.Since(signal.LastContact)
 
@@ -878,7 +880,7 @@ func (s *Store) remove(id string) error {
 	}
 	f := s.raft.RemoveServer(raft.ServerID(id), 0, 0)
 	if f.Error() != nil && f.Error() == raft.ErrNotLeader {
-		return ErrNotLeader
+		return zenerr.ErrNotLeader
 	}
 	if f.Error() != nil {
 		return fmt.Errorf("failed to remove node %s: %w", id, f.Error())

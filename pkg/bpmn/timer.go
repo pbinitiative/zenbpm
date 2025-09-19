@@ -112,9 +112,14 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	switch nodeT := tokenNode.(type) {
 	case *bpmn20.TEventBasedGateway:
-		tokens, err = engine.publishEventOnEventGateway(ctx, batch, nodeT, timer, instance, nil)
+		t, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, timer, instance, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
+		}
+		tokens = t
+		err = batch.Flush(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
 	case *bpmn20.TIntermediateCatchEvent:
 		timer.TimerState = runtime.TimerStateTriggered
@@ -123,14 +128,14 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
+		err = batch.Flush(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
+		}
 	default:
 		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)
 		engine.logger.Error(msg)
 		return nil, nil, &BpmnEngineError{Msg: msg}
-	}
-	err = batch.Flush(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 	}
 
 	return instance, tokens, nil

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/grpc"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -94,8 +94,8 @@ func TestMain(m *testing.M) {
 		_ = json.Unmarshal(resp, &s)
 		nodePartition := s.Nodes["test-node-1"].Partitions["1"]
 		if len(s.Partitions) > 0 && len(s.Nodes) > 0 &&
-			nodePartition.Role == int64(store.RoleLeader) &&
-			nodePartition.State == int64(store.NodePartitionStateInitialized) {
+			nodePartition.Role == int64(state.RoleLeader) &&
+			nodePartition.State == int64(state.NodePartitionStateInitialized) {
 			break
 		}
 	}

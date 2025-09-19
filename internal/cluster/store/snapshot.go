@@ -11,10 +11,11 @@ import (
 	"encoding/json"
 
 	"github.com/hashicorp/raft"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 )
 
 type fsmSnapshot struct {
-	ClusterState ClusterState `json:"clusterState"`
+	ClusterState state.Cluster `json:"clusterState"`
 }
 
 var _ raft.FSMSnapshot = &fsmSnapshot{}

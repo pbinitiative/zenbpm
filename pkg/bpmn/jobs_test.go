@@ -69,6 +69,7 @@ func Test_simple_count_loop(t *testing.T) {
 }
 
 func Test_simple_count_loop_with_message(t *testing.T) {
+	cleanUpMessageSubscriptions()
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
 
@@ -90,10 +91,19 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
 	assert.NoError(t, err)
 
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg" {
+			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "msg", nil)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg" && message.State == runtime.ActivityStateActive {
+			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -111,8 +121,8 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 
 	}
 	assert.Len(t, messages, 2)
-	assert.Equal(t, runtime.ActivityStateCompleted, messages[0].MessageState)
-	assert.Equal(t, runtime.ActivityStateCompleted, messages[1].MessageState)
+	assert.Equal(t, runtime.ActivityStateCompleted, messages[0].State)
+	assert.Equal(t, runtime.ActivityStateCompleted, messages[1].State)
 }
 
 func Test_activated_job_data(t *testing.T) {

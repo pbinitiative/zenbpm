@@ -33,7 +33,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 		return runtime.ActivityStateFailed, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
 	}
 
-	batch.AddFlushSuccessAction(ctx, func() {
+	batch.AddPostFlushAction(ctx, func() {
 		go func() {
 			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &currentToken)
 			if err != nil {
@@ -100,7 +100,7 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to save updated parent process instance: %w", err)
 	}
-	batch.AddFlushSuccessAction(ctx, func() {
+	batch.AddPostFlushAction(ctx, func() {
 		go func() {
 			err = engine.runProcessInstance(ctx, parentInstance, tokens)
 			if err != nil {

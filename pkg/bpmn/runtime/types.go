@@ -126,23 +126,24 @@ const (
 )
 
 type MessageSubscription struct {
+	Key                  int64
 	ElementId            string
-	ElementInstanceKey   int64
 	ProcessDefinitionKey int64
 	ProcessInstanceKey   int64
 	Name                 string
-	MessageState         ActivityState
+	CorrelationKey       string
+	State                ActivityState
 	CreatedAt            time.Time
 	Token                ExecutionToken
 }
 
 func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
 	if m.ElementId == m2.ElementId &&
-		m.ElementInstanceKey == m2.ElementInstanceKey &&
+		m.Key == m2.Key &&
 		m.ProcessDefinitionKey == m2.ProcessDefinitionKey &&
 		m.ProcessInstanceKey == m2.ProcessInstanceKey &&
 		m.Name == m2.Name &&
-		m.MessageState == m2.MessageState &&
+		m.State == m2.State &&
 		m.CreatedAt.Truncate(time.Millisecond).Equal(m2.CreatedAt.Truncate(time.Millisecond)) {
 		return true
 	}
@@ -154,11 +155,11 @@ func (m MessageSubscription) GetId() string {
 }
 func (m MessageSubscription) GatewayEvent() {}
 func (m MessageSubscription) GetKey() int64 {
-	return m.ElementInstanceKey
+	return m.Key
 }
 
 func (m MessageSubscription) GetState() ActivityState {
-	return m.MessageState
+	return m.State
 }
 
 //go:generate go tool stringer -type=TimerState

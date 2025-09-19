@@ -5,7 +5,7 @@
 //  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 //  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
-package cluster
+package controller
 
 import (
 	"fmt"
@@ -19,6 +19,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -36,15 +37,15 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 	_, port, err := net.SplitHostPort(addr)
 	assert.NoError(t, err)
 
-	tStore := &controllerTestStore{
+	tStore := &ControllerTestStore{
 		id:   "test-node-1",
 		addr: fmt.Sprintf("127.0.0.1:%s", port),
-		clusterState: store.ClusterState{
-			Config: store.ClusterConfig{
+		clusterState: state.Cluster{
+			Config: state.ClusterConfig{
 				DesiredPartitions: 1,
 			},
-			Partitions: map[uint32]store.Partition{},
-			Nodes:      map[string]store.Node{},
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
 		},
 		leader: true,
 	}
@@ -74,25 +75,25 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 	defer controller.Stop()
 
 	// add node to the cluster state
-	tStore.clusterState.Nodes[tStore.id] = store.Node{
+	tStore.clusterState.Nodes[tStore.id] = state.Node{
 		Id:         tStore.id,
 		Addr:       tStore.addr,
 		Suffrage:   raft.Voter,
-		State:      store.NodeStateStarted,
-		Role:       store.RoleLeader,
-		Partitions: map[uint32]store.NodePartition{},
+		State:      state.NodeStateStarted,
+		Role:       state.RoleLeader,
+		Partitions: map[uint32]state.NodePartition{},
 	}
 
 	controller.ClusterStateChangeNotification(t.Context())
 	// verify that controller updated state so that new partition needs to be created by a node
-	state := controller.store.ClusterState()
-	assert.Equal(t, store.NodePartitionStateInitialized, state.Nodes[tStore.id].Partitions[1].State)
+	s := controller.store.ClusterState()
+	assert.Equal(t, state.NodePartitionStateInitialized, s.Nodes[tStore.id].Partitions[1].State)
 
 	// verify that partition was started
 	testPoll(t, func() bool {
 		s := controller.store.ClusterState()
 		if tStore.id == s.Partitions[1].LeaderId &&
-			store.NodePartitionStateInitialized == s.Nodes[tStore.id].Partitions[1].State {
+			state.NodePartitionStateInitialized == s.Nodes[tStore.id].Partitions[1].State {
 			return true
 		}
 		return false
@@ -106,52 +107,52 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 	testPoll(t, func() bool {
 		s := controller.store.ClusterState()
 		if tStore.id == s.Partitions[2].LeaderId &&
-			store.NodePartitionStateInitialized == s.Nodes[tStore.id].Partitions[2].State {
+			state.NodePartitionStateInitialized == s.Nodes[tStore.id].Partitions[2].State {
 			return true
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Second, "Failed to verify that second partition was started. State was: %s", controller.store.ClusterState().Nodes[tStore.id].Partitions[2].State)
 }
 
-type controllerTestStore struct {
+type ControllerTestStore struct {
 	id           string
 	addr         string
-	clusterState store.ClusterState
+	clusterState state.Cluster
 	leader       bool
 }
 
 // Addr implements ControlledStore.
-func (c *controllerTestStore) Addr() string {
+func (c *ControllerTestStore) Addr() string {
 	return c.addr
 }
 
 // ClusterState implements ControlledStore.
-func (c *controllerTestStore) ClusterState() store.ClusterState {
+func (c *ControllerTestStore) ClusterState() state.Cluster {
 	return c.clusterState
 }
 
 // ID implements ControlledStore.
-func (c *controllerTestStore) ID() string {
+func (c *ControllerTestStore) ID() string {
 	return c.id
 }
 
 // IsLeader implements ControlledStore.
-func (c *controllerTestStore) IsLeader() bool {
+func (c *ControllerTestStore) IsLeader() bool {
 	return c.leader
 }
 
 // LeaderWithID implements client.ClientStore.
-func (c *controllerTestStore) LeaderWithID() (string, string) {
+func (c *ControllerTestStore) LeaderWithID() (string, string) {
 	return c.addr, c.id
 }
 
 // PartitionLeaderWithID implements client.ClientStore.
-func (c *controllerTestStore) PartitionLeaderWithID(partition uint32) (string, string) {
+func (c *ControllerTestStore) PartitionLeaderWithID(partition uint32) (string, string) {
 	return c.addr, c.id
 }
 
 // Role implements ControlledStore.
-func (c *controllerTestStore) Role() proto.Role {
+func (c *ControllerTestStore) Role() proto.Role {
 	if c.leader == true {
 		return proto.Role_ROLE_TYPE_LEADER
 	} else {
@@ -160,28 +161,28 @@ func (c *controllerTestStore) Role() proto.Role {
 }
 
 // LeaderID implements store.FsmStore.
-func (c *controllerTestStore) LeaderID() (string, error) {
+func (c *ControllerTestStore) LeaderID() (string, error) {
 	return c.id, nil
 }
 
 // Join implements server.StoreService.
-func (c *controllerTestStore) Join(jr *zenproto.JoinRequest) error {
+func (c *ControllerTestStore) Join(jr *zenproto.JoinRequest) error {
 	panic("unexpected call to Join")
 }
 
 // Notify implements server.StoreService.
-func (c *controllerTestStore) Notify(nr *zenproto.NotifyRequest) error {
+func (c *ControllerTestStore) Notify(nr *zenproto.NotifyRequest) error {
 	panic("unexpected call to Notify")
 }
 
 // WriteNodeChange implements server.StoreService.
-func (c *controllerTestStore) WriteNodeChange(change *proto.NodeChange) error {
+func (c *ControllerTestStore) WriteNodeChange(change *proto.NodeChange) error {
 	c.clusterState = store.FsmApplyNodeChange(c, change)
 	return nil
 }
 
 // WritePartitionChange implements ControlledStore.
-func (c *controllerTestStore) WritePartitionChange(change *proto.NodePartitionChange) error {
+func (c *ControllerTestStore) WritePartitionChange(change *proto.NodePartitionChange) error {
 	c.clusterState = store.FsmApplyPartitionChange(c, change)
 	return nil
 }

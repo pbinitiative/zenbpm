@@ -5,16 +5,18 @@
 //  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 //  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
-package cluster
+package partition
 
 import (
 	"context"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -39,10 +41,10 @@ const (
 
 // ZenPartitionNode is part of the rqlite raft cluster (partition of the main cluster)
 type ZenPartitionNode struct {
-	partitionId     uint32
+	PartitionId     uint32
 	config          *config.RqLite
 	store           *store.Store
-	rqliteDB        *RqLiteDB
+	DB              *DB
 	credentialStore *auth.CredentialsStore
 	clusterClient   *cluster.Client
 	clusterService  *cluster.Service
@@ -50,7 +52,7 @@ type ZenPartitionNode struct {
 	statuses        map[string]httpd.StatusReporter
 	logger          hclog.Logger
 
-	engine *bpmn.Engine
+	Engine *bpmn.Engine
 
 	// Raft changes observer
 	observer      *raft.Observer
@@ -64,24 +66,24 @@ type ZenPartitionNode struct {
 
 type PartitionChangesCallbacks struct {
 	// new node has joined the partition raft cluster
-	addNewNode func(raft.Server) error
+	AddNewNode func(raft.Server) error
 	// node has been removed from partition raft cluster
-	shutdownNode func(raft.ServerID) error
+	ShutdownNode func(raft.ServerID) error
 	// leader changed
-	leaderChange func(raft.ServerID) error
+	LeaderChange func(raft.ServerID) error
 	// node needs to be removed according to reap settings
-	removeNode func(id string) error
+	RemoveNode func(id string) error
 	// partition node has become available
-	resumeNode func(id string) error
+	ResumeNode func(id string) error
 }
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, controlledStore ControlledStore, partition uint32, callbacks PartitionChangesCallbacks) (*ZenPartitionNode, error) {
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
 
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
 		statuses:             map[string]httpd.StatusReporter{},
-		partitionId:          partition,
+		PartitionId:          partition,
 		logger:               hclog.Default().Named(fmt.Sprintf("zen-partition-node-%d", partition)),
 		stateChangeCallbacks: callbacks,
 	}
@@ -103,13 +105,13 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	}
 	zpn.store = str
 
-	zpn.rqliteDB, err = NewRqLiteDB(
+	zpn.DB, err = NewDB(
 		zpn.store,
-		zpn.partitionId,
+		zpn.PartitionId,
 		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
 		persistenceConfig,
 		client,
-		controlledStore,
+		zenState,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)
@@ -243,8 +245,8 @@ func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 
 func (zpn *ZenPartitionNode) Stop() error {
 	// stop the engine if present
-	if zpn.engine != nil {
-		zpn.engine.Stop()
+	if zpn.Engine != nil {
+		zpn.Engine.Stop()
 	}
 	zpn.clusterService.Close()
 	if zpn.config.RaftClusterRemoveOnShutdown {
@@ -363,10 +365,10 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 			case o := <-zpn.observerChan:
 				switch signal := o.Data.(type) {
 				case raft.ResumedHeartbeatObservation:
-					if zpn.stateChangeCallbacks.resumeNode == nil {
+					if zpn.stateChangeCallbacks.ResumeNode == nil {
 						break
 					}
-					if err := zpn.stateChangeCallbacks.resumeNode(string(signal.PeerID)); err == nil {
+					if err := zpn.stateChangeCallbacks.ResumeNode(string(signal.PeerID)); err == nil {
 						zpn.logger.Info(fmt.Sprintf("partition node %s was resumed in the state", signal.PeerID))
 					}
 				case raft.FailedHeartbeatObservation:
@@ -384,43 +386,43 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 						break
 					}
 
-					if zpn.stateChangeCallbacks.shutdownNode != nil && zpn.config.RaftHeartbeatShutdownTimeout > 0 && dur > zpn.config.RaftHeartbeatShutdownTimeout {
-						if err = zpn.stateChangeCallbacks.shutdownNode(signal.PeerID); err == nil {
+					if zpn.stateChangeCallbacks.ShutdownNode != nil && zpn.config.RaftHeartbeatShutdownTimeout > 0 && dur > zpn.config.RaftHeartbeatShutdownTimeout {
+						if err = zpn.stateChangeCallbacks.ShutdownNode(signal.PeerID); err == nil {
 							zpn.logger.Info(fmt.Sprintf("partition node %s was shutdown in the state", signal.PeerID))
 						}
 					}
 
-					if zpn.stateChangeCallbacks.removeNode != nil && ((isReadOnly && zpn.config.RaftReapReadOnlyNodeTimeout > 0 && dur > zpn.config.RaftReapReadOnlyNodeTimeout) ||
+					if zpn.stateChangeCallbacks.RemoveNode != nil && ((isReadOnly && zpn.config.RaftReapReadOnlyNodeTimeout > 0 && dur > zpn.config.RaftReapReadOnlyNodeTimeout) ||
 						(!isReadOnly && zpn.config.RaftReapNodeTimeout > 0 && dur > zpn.config.RaftReapNodeTimeout)) {
 						pn := "voting node"
 						if isReadOnly {
 							pn = "non-voting node"
 						}
-						if err := zpn.stateChangeCallbacks.removeNode(id); err != nil {
+						if err := zpn.stateChangeCallbacks.RemoveNode(id); err != nil {
 							zpn.logger.Error(fmt.Sprintf("failed to reap partition node %s %s: %s", pn, id, err.Error()))
 						} else {
 							zpn.logger.Info(fmt.Sprintf("successfully reaped partition node %s %s", pn, id))
 						}
 					}
 				case raft.LeaderObservation:
-					if zpn.stateChangeCallbacks.leaderChange == nil {
+					if zpn.stateChangeCallbacks.LeaderChange == nil {
 						break
 					}
-					_ = zpn.stateChangeCallbacks.leaderChange(signal.LeaderID)
+					_ = zpn.stateChangeCallbacks.LeaderChange(signal.LeaderID)
 				case raft.PeerObservation:
 					// PeerObservation is invoked only when the raft replication goroutine is started/stoped
 					var err error
-					if signal.Removed && zpn.stateChangeCallbacks.shutdownNode != nil {
-						if err = zpn.stateChangeCallbacks.shutdownNode(signal.Peer.ID); err == nil {
+					if signal.Removed && zpn.stateChangeCallbacks.ShutdownNode != nil {
+						if err = zpn.stateChangeCallbacks.ShutdownNode(signal.Peer.ID); err == nil {
 							zpn.logger.Info(fmt.Sprintf("partition node %s was shutdown in the state", signal.Peer.ID))
 						}
-					} else if !signal.Removed && zpn.stateChangeCallbacks.addNewNode != nil {
-						if err = zpn.stateChangeCallbacks.addNewNode(signal.Peer); err == nil {
+					} else if !signal.Removed && zpn.stateChangeCallbacks.AddNewNode != nil {
+						if err = zpn.stateChangeCallbacks.AddNewNode(signal.Peer); err == nil {
 							zpn.logger.Debug(fmt.Sprintf("partition node %s was updated in the state", signal.Peer.ID))
 						}
 					}
 					if err != nil {
-						zpn.logger.Error(fmt.Sprintf("failed to update peer observation in partition %d: %s", zpn.partitionId, err))
+						zpn.logger.Error(fmt.Sprintf("failed to update peer observation in partition %d: %s", zpn.PartitionId, err))
 					}
 				}
 			case <-closeCh:

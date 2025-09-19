@@ -23,7 +23,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
@@ -46,7 +46,7 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	testStr := getTestStore(ln)
-	testStr.state.Partitions = make(map[uint32]store.Partition)
+	testStr.state.Partitions = make(map[uint32]state.Partition)
 
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
@@ -78,11 +78,11 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	assert.NoError(t, err)
 	jm2.RemoveClient(t.Context(), "client-1")
 
-	testStr.state.Partitions = map[uint32]store.Partition{}
+	testStr.state.Partitions = map[uint32]state.Partition{}
 	jm1.OnPartitionRoleChange(t.Context())
 	assert.Nil(t, jm1.server, "server should not be initialized")
 
-	testStr2.state.Partitions = map[uint32]store.Partition{}
+	testStr2.state.Partitions = map[uint32]state.Partition{}
 	jm2.OnPartitionRoleChange(t.Context())
 	assert.Empty(t, jm2.client.nodeStreams)
 }
@@ -313,23 +313,23 @@ func generateJobs(count int) []sql.Job {
 
 func getTestStore(ln net.Listener) *testStore {
 	return &testStore{
-		state: store.ClusterState{
-			Partitions: map[uint32]store.Partition{
+		state: state.Cluster{
+			Partitions: map[uint32]state.Partition{
 				1: {
 					Id:       1,
 					LeaderId: "node-1",
 				},
 			},
-			Nodes: map[string]store.Node{
+			Nodes: map[string]state.Node{
 				"node-1": {
 					Id:   "node-1",
 					Addr: ln.Addr().String(),
-					Role: store.RoleLeader,
+					Role: state.RoleLeader,
 				},
 				"node-2": {
 					Id:   "node-2",
 					Addr: "",
-					Role: store.RoleFollower,
+					Role: state.RoleFollower,
 				},
 			},
 		},
@@ -479,11 +479,11 @@ func (l *testLoader) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 }
 
 type testStore struct {
-	state  store.ClusterState
+	state  state.Cluster
 	nodeId string
 }
 
-func (s *testStore) ClusterState() store.ClusterState {
+func (s *testStore) ClusterState() state.Cluster {
 	return s.state
 }
 
@@ -493,7 +493,7 @@ func (s *testStore) NodeID() string {
 
 func (s *testStore) LeaderWithID() (string, string) {
 	for _, node := range s.state.Nodes {
-		if node.Role == store.RoleLeader {
+		if node.Role == state.RoleLeader {
 			return node.Addr, node.Id
 		}
 	}
@@ -523,7 +523,7 @@ func TestManagerTroughput(t *testing.T) {
 	assert.NoError(t, err)
 
 	testStr := getTestStore(ln)
-	testStr.state.Partitions = make(map[uint32]store.Partition)
+	testStr.state.Partitions = make(map[uint32]state.Partition)
 
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader

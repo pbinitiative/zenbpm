@@ -112,7 +112,7 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	switch nodeT := tokenNode.(type) {
 	case *bpmn20.TEventBasedGateway:
-		t, msubs, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, timer, instance, nil)
+		t, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, timer, instance, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
 		}
@@ -121,7 +121,6 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
-		engine.persistence.TerminateMessageSubscriptionPointersForExecution(ctx, msubs, timer.Token.Key)
 	case *bpmn20.TIntermediateCatchEvent:
 		timer.TimerState = runtime.TimerStateTriggered
 		batch.SaveTimer(ctx, timer)

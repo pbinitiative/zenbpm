@@ -97,6 +97,12 @@ type Querier interface {
 	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error
 	// Copyright 2021-present ZenBPM Contributors
 	// (based on git commit history).
@@ -135,7 +141,6 @@ type Querier interface {
 	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
-	SetStateForMessageSubscriptionPointers(ctx context.Context, arg SetStateForMessageSubscriptionPointersParams) error
 }
 
 var _ Querier = (*Queries)(nil)

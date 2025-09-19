@@ -5,7 +5,7 @@
 //  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 //  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
-package store
+package state
 
 import (
 	"encoding/json"
@@ -13,14 +13,15 @@ import (
 	"math/rand"
 
 	"github.com/hashicorp/raft"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 )
 
 //go:generate go tool deepcopy-gen . --output-file zz_generated.deepcopy.go
 
-// ClusterState keeps track of the cluster state and holds
+// Cluster keeps track of the cluster state and holds
 // information about currently active partition and Nodes in the cluster.
 // +k8s:deepcopy-gen=true
-type ClusterState struct {
+type Cluster struct {
 	// Config stores desired cluster configuration. At the start of the cluster its picked up from app configuration and later updated by calling GRPC API.
 	Config ClusterConfig `json:"clusterConfig"`
 	// Partitions stores current cluster partition state
@@ -29,17 +30,17 @@ type ClusterState struct {
 	Nodes map[string]Node `json:"nodes"`
 }
 
-func (c ClusterState) GetNode(nodeId string) (Node, error) {
+func (c Cluster) GetNode(nodeId string) (Node, error) {
 	for id, node := range c.Nodes {
 		if id != nodeId {
 			continue
 		}
 		return node, nil
 	}
-	return Node{}, ErrNodeNotFound
+	return Node{}, zenerr.ErrNodeNotFound
 }
 
-func (c ClusterState) GetLeastStressedPartitionLeader() (Node, error) {
+func (c Cluster) GetLeastStressedPartitionLeader() (Node, error) {
 	minNode := Node{}
 node:
 	for _, node := range c.Nodes {
@@ -59,7 +60,7 @@ node:
 	return minNode, nil
 }
 
-func (c ClusterState) GetLeastStressedNode() (Node, error) {
+func (c Cluster) GetLeastStressedNode() (Node, error) {
 	minNode := Node{}
 	for _, node := range c.Nodes {
 		if minNode.Partitions == nil || len(minNode.Partitions) > len(node.Partitions) {
@@ -73,7 +74,7 @@ func (c ClusterState) GetLeastStressedNode() (Node, error) {
 }
 
 // GetPartitionFollower preferably returns partition follower node and if it does not exist it returns the leader
-func (c ClusterState) GetPartitionFollower(partition uint32) (Node, error) {
+func (c Cluster) GetPartitionFollower(partition uint32) (Node, error) {
 	partitionState, ok := c.Partitions[partition]
 	if !ok {
 		return Node{}, fmt.Errorf("partition not found")
@@ -100,7 +101,7 @@ func (c ClusterState) GetPartitionFollower(partition uint32) (Node, error) {
 }
 
 // GetLeastStressedPartitionLeader returns leader of partition that has the least instances running
-func (c ClusterState) LeastStressedPartition() (Partition, error) {
+func (c Cluster) LeastStressedPartition() (Partition, error) {
 	pick := rand.Intn(len(c.Partitions) - 1)
 	i := 0
 	for _, partition := range c.Partitions {
@@ -113,7 +114,7 @@ func (c ClusterState) LeastStressedPartition() (Partition, error) {
 	return Partition{}, fmt.Errorf("failed to find node")
 }
 
-func (c ClusterState) AnyNodeHasPartition(partitionId int) bool {
+func (c Cluster) AnyNodeHasPartition(partitionId int) bool {
 	for _, node := range c.Nodes {
 		if _, ok := node.Partitions[uint32(partitionId)]; ok {
 			return true
@@ -122,13 +123,13 @@ func (c ClusterState) AnyNodeHasPartition(partitionId int) bool {
 	return false
 }
 
-func (c ClusterState) PrintDebug() {
+func (c Cluster) PrintDebug() {
 	bytes, _ := json.MarshalIndent(c, "", " ")
 	fmt.Println(string(bytes))
 }
 
 // GetPartitionIdFromString Simple hash function to assign partition id to any str string
-func (c ClusterState) GetPartitionIdFromString(str string) uint32 {
+func (c Cluster) GetPartitionIdFromString(str string) uint32 {
 	var bitSum uint32 = 0
 	for _, character := range str {
 		bitSum = bitSum + uint32(character)

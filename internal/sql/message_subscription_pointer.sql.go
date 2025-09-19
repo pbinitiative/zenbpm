@@ -11,7 +11,7 @@ import (
 
 const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
 SELECT
-    "key", state, created_at, name, correlation_key, message_subscription_key, execution_token_key
+    name, correlation_key, state, created_at, message_subscription_key, execution_token_key
 FROM
     message_subscription_pointer
 WHERE
@@ -30,11 +30,10 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.CorrelationKey, arg.Name, arg.FilterState)
 	var i MessageSubscriptionPointer
 	err := row.Scan(
-		&i.Key,
-		&i.State,
-		&i.CreatedAt,
 		&i.Name,
 		&i.CorrelationKey,
+		&i.State,
+		&i.CreatedAt,
 		&i.MessageSubscriptionKey,
 		&i.ExecutionTokenKey,
 	)
@@ -42,15 +41,18 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 }
 
 const saveMessageSubscriptionPointer = `-- name: SaveMessageSubscriptionPointer :exec
-INSERT INTO message_subscription_pointer(key, state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(key)
+
+INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name,correlation_key)
         DO UPDATE SET
-            state = excluded.state
+            state = excluded.state,
+						created_at = excluded.created_at,
+						message_subscription_key = excluded.message_subscription_key,
+						execution_token_key = excluded.execution_token_key
 `
 
 type SaveMessageSubscriptionPointerParams struct {
-	Key                    int64  `json:"key"`
 	State                  int64  `json:"state"`
 	CreatedAt              int64  `json:"created_at"`
 	Name                   string `json:"name"`
@@ -59,9 +61,14 @@ type SaveMessageSubscriptionPointerParams struct {
 	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }
 
+// Copyright 2021-present ZenBPM Contributors
+// (based on git commit history).
+//
+// ZenBPM project is available under two licenses:
+//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error {
 	_, err := q.db.ExecContext(ctx, saveMessageSubscriptionPointer,
-		arg.Key,
 		arg.State,
 		arg.CreatedAt,
 		arg.Name,
@@ -69,21 +76,5 @@ func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMe
 		arg.MessageSubscriptionKey,
 		arg.ExecutionTokenKey,
 	)
-	return err
-}
-
-const setStateForMessageSubscriptionPointers = `-- name: SetStateForMessageSubscriptionPointers :exec
-UPDATE message_subscription_pointer
-SET state = ?1
-WHERE execution_token_key = ?2
-`
-
-type SetStateForMessageSubscriptionPointersParams struct {
-	State             int64 `json:"state"`
-	ExecutionTokenKey int64 `json:"execution_token_key"`
-}
-
-func (q *Queries) SetStateForMessageSubscriptionPointers(ctx context.Context, arg SetStateForMessageSubscriptionPointersParams) error {
-	_, err := q.db.ExecContext(ctx, setStateForMessageSubscriptionPointers, arg.State, arg.ExecutionTokenKey)
 	return err
 }

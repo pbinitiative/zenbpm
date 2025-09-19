@@ -10,6 +10,7 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"slices"
 	"time"
@@ -23,17 +24,16 @@ import (
 // Storage keeps process information in memory,
 // please use NewStorage to create a new object of this type.
 type Storage struct {
-	Decision                    map[string]map[int64]dmnruntime.Decision
-	DecisionDefinitions         map[int64]dmnruntime.DecisionDefinition
-	ProcessDefinitions          map[int64]bpmnruntime.ProcessDefinition
-	ProcessInstances            map[int64]bpmnruntime.ProcessInstance
-	MessageSubscriptionPointers map[int64]bpmnruntime.MessageSubscriptionPointer
-	MessageSubscriptions        map[int64]bpmnruntime.MessageSubscription
-	Timers                      map[int64]bpmnruntime.Timer
-	Jobs                        map[int64]bpmnruntime.Job
-	ExecutionTokens             map[int64]bpmnruntime.ExecutionToken
-	FlowElementHistory          map[int64]bpmnruntime.FlowElementHistoryItem
-	Incidents                   map[int64]bpmnruntime.Incident
+	Decision             map[string]map[int64]dmnruntime.Decision
+	DecisionDefinitions  map[int64]dmnruntime.DecisionDefinition
+	ProcessDefinitions   map[int64]bpmnruntime.ProcessDefinition
+	ProcessInstances     map[int64]bpmnruntime.ProcessInstance
+	MessageSubscriptions map[int64]bpmnruntime.MessageSubscription
+	Timers               map[int64]bpmnruntime.Timer
+	Jobs                 map[int64]bpmnruntime.Job
+	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
+	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
+	Incidents            map[int64]bpmnruntime.Incident
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -42,80 +42,59 @@ func (mem *Storage) GenerateId() int64 {
 
 func NewStorage() *Storage {
 	return &Storage{
-		Decision:                    make(map[string]map[int64]dmnruntime.Decision),
-		DecisionDefinitions:         make(map[int64]dmnruntime.DecisionDefinition),
-		ProcessDefinitions:          make(map[int64]bpmnruntime.ProcessDefinition),
-		ProcessInstances:            make(map[int64]bpmnruntime.ProcessInstance),
-		MessageSubscriptionPointers: make(map[int64]bpmnruntime.MessageSubscriptionPointer),
-		MessageSubscriptions:        make(map[int64]bpmnruntime.MessageSubscription),
-		Timers:                      make(map[int64]bpmnruntime.Timer),
-		Jobs:                        make(map[int64]bpmnruntime.Job),
-		ExecutionTokens:             make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementHistory:          make(map[int64]bpmnruntime.FlowElementHistoryItem),
-		Incidents:                   make(map[int64]bpmnruntime.Incident),
+		Decision:             make(map[string]map[int64]dmnruntime.Decision),
+		DecisionDefinitions:  make(map[int64]dmnruntime.DecisionDefinition),
+		ProcessDefinitions:   make(map[int64]bpmnruntime.ProcessDefinition),
+		ProcessInstances:     make(map[int64]bpmnruntime.ProcessInstance),
+		MessageSubscriptions: make(map[int64]bpmnruntime.MessageSubscription),
+		Timers:               make(map[int64]bpmnruntime.Timer),
+		Jobs:                 make(map[int64]bpmnruntime.Job),
+		ExecutionTokens:      make(map[int64]bpmnruntime.ExecutionToken),
+		FlowElementHistory:   make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		Incidents:            make(map[int64]bpmnruntime.Incident),
 	}
+}
+
+func (mem *Storage) Copy() *Storage {
+	c := NewStorage()
+	for k, v := range mem.Decision {
+		c.Decision[k] = v
+	}
+	for k, v := range mem.DecisionDefinitions {
+		c.DecisionDefinitions[k] = v
+	}
+	for k, v := range mem.ProcessInstances {
+		c.ProcessInstances[k] = v
+	}
+	for k, v := range mem.MessageSubscriptions {
+		c.MessageSubscriptions[k] = v
+	}
+	for k, v := range mem.Timers {
+		c.Timers[k] = v
+	}
+	for k, v := range mem.Jobs {
+		c.Jobs[k] = v
+	}
+	for k, v := range mem.ExecutionTokens {
+		c.ExecutionTokens[k] = v
+	}
+	for k, v := range mem.FlowElementHistory {
+		c.FlowElementHistory[k] = v
+	}
+	for k, v := range mem.Incidents {
+		c.Incidents[k] = v
+	}
+	return c
 }
 
 var _ storage.Storage = &Storage{}
 
 func (mem *Storage) NewBatch() storage.Batch {
 	return &StorageBatch{
-		db:                  mem,
-		stmtToRun:           make([]func() error, 0, 10),
-		flushSuccessActions: make([]func(), 0, 5),
+		db:               mem,
+		stmtToRun:        make([]func() error, 0, 10),
+		postFlushActions: make([]func(), 0, 5),
 	}
-}
-
-var _ storage.MessageSubscriptionPointerStorageWriter = &Storage{}
-
-func (mem *Storage) SaveMessageSubscriptionPointer(ctx context.Context, subscription bpmnruntime.MessageSubscriptionPointer) error {
-	_, ok := mem.MessageSubscriptionPointers[subscription.Key]
-	if ok {
-		mem.MessageSubscriptionPointers[subscription.Key] = subscription
-		return nil
-	}
-
-	for _, sub := range mem.MessageSubscriptionPointers {
-		if subscription.CorrelationKey == sub.CorrelationKey &&
-			subscription.Name == sub.Name &&
-			sub.State == bpmnruntime.MessageSubscriptionActive {
-			return storage.ErrUniqueConstraint
-		}
-	}
-	if subscription.Key == 0 {
-		subscription.Key = mem.GenerateId()
-	}
-	mem.MessageSubscriptionPointers[subscription.Key] = subscription
-
-	return nil
-}
-
-var _ storage.MessageSubscriptionPointerStorageReader = &Storage{}
-
-func (mem *Storage) TerminateMessageSubscriptionPointers(ctx context.Context, executionTokenKey int64) error {
-	for key, subscription := range mem.MessageSubscriptionPointers {
-		if subscription.ExecutionTokenKey == executionTokenKey && subscription.State == bpmnruntime.MessageSubscriptionActive {
-			subscription = mem.MessageSubscriptionPointers[key]
-			subscription.State = bpmnruntime.MessageSubscriptionComplete
-		}
-	}
-	return nil
-}
-
-func (mem *Storage) TerminateMessageSubscriptionPointersForExecution(ctx context.Context, messageSubscriptions []bpmnruntime.MessageSubscription, executionTokenKey int64) {
-	for _, subscription := range messageSubscriptions {
-		sub := mem.MessageSubscriptionPointers[subscription.Key]
-		sub.State = bpmnruntime.MessageSubscriptionComplete
-	}
-}
-
-func (mem *Storage) FindActiveMessageSubscriptionPointer(ctx context.Context, name string, correlationKey string) (bpmnruntime.MessageSubscriptionPointer, error) {
-	for _, subscription := range mem.MessageSubscriptionPointers {
-		if subscription.Name == name && subscription.CorrelationKey == correlationKey && subscription.State == bpmnruntime.MessageSubscriptionActive {
-			return subscription, nil
-		}
-	}
-	return bpmnruntime.MessageSubscriptionPointer{}, storage.ErrNotFound
 }
 
 var _ storage.DecisionStorageReader = &Storage{}
@@ -414,7 +393,7 @@ func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, 
 	if !ok {
 		return res, storage.ErrNotFound
 	}
-	if res.MessageState == state {
+	if res.State == state {
 		return res, nil
 	}
 	return res, storage.ErrNotFound
@@ -468,6 +447,14 @@ func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, proce
 var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
+	for _, message := range mem.MessageSubscriptions {
+		if subscription.Key == message.Key {
+			break
+		}
+		if message.State == bpmnruntime.ActivityStateActive && message.Name == subscription.Name && message.CorrelationKey == subscription.CorrelationKey {
+			return fmt.Errorf("active message with the same correlationKey and name already exists")
+		}
+	}
 	mem.MessageSubscriptions[subscription.GetKey()] = subscription
 	return nil
 }
@@ -515,18 +502,24 @@ func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incid
 }
 
 type StorageBatch struct {
-	db                  *Storage
-	stmtToRun           []func() error
-	flushSuccessActions []func()
+	db               *Storage
+	stmtToRun        []func() error
+	postFlushActions []func()
+	preFlushActions  []func() error
 }
 
 var _ storage.Batch = &StorageBatch{}
 
-func (b *StorageBatch) AddFlushSuccessAction(ctx context.Context, f func()) {
-	b.flushSuccessActions = append(b.flushSuccessActions, f)
+func (b *StorageBatch) AddPostFlushAction(ctx context.Context, f func()) {
+	b.postFlushActions = append(b.postFlushActions, f)
+}
+
+func (b *StorageBatch) AddPreFlushAction(ctx context.Context, f func() error) {
+	b.preFlushActions = append(b.preFlushActions, f)
 }
 
 func (b *StorageBatch) Flush(ctx context.Context) error {
+	dbCopy := b.db.Copy()
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
 		err := stmt()
@@ -535,9 +528,10 @@ func (b *StorageBatch) Flush(ctx context.Context) error {
 		}
 	}
 	if joinErr != nil {
+		b.db = dbCopy
 		return joinErr
 	}
-	for _, action := range b.flushSuccessActions {
+	for _, action := range b.postFlushActions {
 		action()
 	}
 	b.stmtToRun = make([]func() error, 0)

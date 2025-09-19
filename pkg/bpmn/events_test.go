@@ -8,13 +8,13 @@
 package bpmn
 
 import (
+	"testing"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func cleanUpMessageSubscriptions() {
-	engineStorage.MessageSubscriptionPointers = make(map[int64]runtime.MessageSubscriptionPointer)
 	engineStorage.MessageSubscriptions = make(map[int64]runtime.MessageSubscription)
 }
 
@@ -39,17 +39,17 @@ func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *test
 	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(t.Context(), "globalMsgRef", "correlation-key-one")
-	assert.NoError(t, err)
-
 	// when
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
-
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi.Key)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "globalMsgRef" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	// then
+	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi.Key)
+	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
@@ -71,7 +71,7 @@ func Test_IntermediateCatchEvent_a_catch_event_produces_an_active_subscription(t
 
 	assert.Equal(t, "globalMsgRef", subscription.Name)
 	assert.Equal(t, "id-1", subscription.ElementId)
-	assert.Equal(t, runtime.ActivityStateActive, subscription.MessageState)
+	assert.Equal(t, runtime.ActivityStateActive, subscription.State)
 }
 
 func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing.T) {
@@ -85,13 +85,14 @@ func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testin
 	pi2, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
 	assert.Error(t, err)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(t.Context(), "globalMsgRef", "correlation-key-one")
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
-
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.Error(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "globalMsgRef" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.Error(t, err)
+		}
+	}
 
 	*pi1, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi1.Key)
 	assert.NoError(t, err)
@@ -109,10 +110,12 @@ func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testin
 	err = bpmnEngine.ResolveIncident(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(t.Context(), "globalMsgRef", "correlation-key-one")
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "globalMsgRef" && message.State == runtime.ActivityStateActive {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*pi2, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi2.Key)
 	assert.NoError(t, err)
@@ -124,10 +127,8 @@ func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testin
 
 func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_state_is_maintained(t *testing.T) {
 	cleanUpMessageSubscriptions()
-	// setup
 	cp := CallPath{}
 
-	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event-and-parallel-tasks.bpmn")
 	t1H := bpmnEngine.NewTaskHandler().Id("task-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(t1H)
@@ -135,27 +136,19 @@ func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_
 	defer bpmnEngine.RemoveHandler(t2H)
 	instance, _ := bpmnEngine.CreateInstance(t.Context(), process, nil)
 
-	// when
 	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)
-
-	// then
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"event-1",
-		"test",
-	)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
-	// when
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
-
-	// then
 	assert.Equal(t, "task-2,task-1", cp.CallPath)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -179,16 +172,12 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-
-	// when
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -206,32 +195,26 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-1",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-3",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-3" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -246,14 +229,12 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	// then
 	assert.Equal(t, instance.GetState(), runtime.ActivityStateActive)
@@ -267,32 +248,29 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.Nil(t, err)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-1",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.State != runtime.ActivityStateActive {
+			continue
+		}
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.State != runtime.ActivityStateActive {
+			continue
+		}
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-3",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.State != runtime.ActivityStateActive {
+			continue
+		}
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -309,14 +287,10 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.NoError(t, err)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 
 	// then
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
@@ -330,32 +304,25 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.NoError(t, err)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-1",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
-
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-3",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-3" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -372,14 +339,12 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.NoError(t, err)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-event-2",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
@@ -396,15 +361,12 @@ func Test_publishing_a_random_message_does_no_harm(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	assert.NoError(t, err)
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"random-message",
-		"random-key",
-	)
-	assert.Error(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.Error(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "random-message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	// then
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
@@ -426,14 +388,12 @@ func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(bH)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg-b",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg-b" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+		}
+	}
 
 	// then
 	assert.Equal(t, "task-b", cp.CallPath)
@@ -451,15 +411,14 @@ func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *
 	instance, _ := bpmnEngine.CreateInstance(t.Context(), process, nil)
 
 	// when
-	vars := map[string]interface{}{"foo": "bar"}
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, vars)
-	assert.NoError(t, err)
+	var err error
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg" {
+			vars := map[string]interface{}{"foo": "bar"}
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, vars)
+			assert.NoError(t, err)
+		}
+	}
 
 	// then
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
@@ -477,14 +436,12 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"msg",
-		"key",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.Error(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "msg" && message.State == runtime.ActivityStateActive {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.Error(t, err)
+		}
+	}
 
 	// then
 	message, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateFailed)

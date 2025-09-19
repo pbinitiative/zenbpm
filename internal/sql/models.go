@@ -77,11 +77,10 @@ type MessageSubscription struct {
 }
 
 type MessageSubscriptionPointer struct {
-	Key                    int64  `json:"key"`
-	State                  int64  `json:"state"`
-	CreatedAt              int64  `json:"created_at"`
 	Name                   string `json:"name"`
 	CorrelationKey         string `json:"correlation_key"`
+	State                  int64  `json:"state"`
+	CreatedAt              int64  `json:"created_at"`
 	MessageSubscriptionKey int64  `json:"message_subscription_key"`
 	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }

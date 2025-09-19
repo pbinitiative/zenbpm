@@ -35,13 +35,13 @@ CREATE TABLE IF NOT EXISTS process_definition(
 
 -- table that holds pointers to message subscriptions between partitions
 CREATE TABLE IF NOT EXISTS message_subscription_pointer(
-    key INTEGER PRIMARY KEY, -- int64 snowflake id of the message subscription where node is partition id which handles the process instance
-    state integer NOT NULL, -- pkg/bpmn/runtime/types.go:MessageSubscriptionState
-    created_at integer NOT NULL, -- unix millis of when the pointer of the message subscription was created
     name text NOT NULL, -- message name from the definition
     correlation_key text NOT NULL, -- correlation key used to correlate message in the engine
+    state integer NOT NULL, -- reflects message_subscription state
+    created_at integer NOT NULL, -- unix millis of when the pointer of the message subscription was created
     message_subscription_key integer NOT NULL, -- key of the message_subscription which this points to
-    execution_token_key integer NOT NULL -- key of the execution_token that created message_subscription
+    execution_token_key integer NOT NULL, -- key of the execution_token that created message_subscription
+    PRIMARY KEY (name,correlation_key)
 );
 CREATE UNIQUE INDEX unique_name_correlation_key_waiting
 ON message_subscription_pointer (name, correlation_key)

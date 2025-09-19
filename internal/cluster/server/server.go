@@ -23,7 +23,9 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -34,9 +36,11 @@ import (
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 )
 
 // Server provides information about the node and cluster.
@@ -60,6 +64,7 @@ type StoreService interface {
 	Notify(nr *proto.NotifyRequest) error
 	Join(jr *proto.JoinRequest) error
 	WriteNodeChange(change *protoc.NodeChange) error
+	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
 }
 
@@ -67,6 +72,7 @@ type ControllerService interface {
 	PartitionEngine(ctx context.Context, partitionId uint32) *bpmn.Engine
 	Engines(ctx context.Context) map[uint32]*bpmn.Engine
 	PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries
+	GetPartition(ctx context.Context, partitionId uint32) *partition.ZenPartitionNode
 }
 
 // New returns a new instance of the zen cluster server
@@ -737,7 +743,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 }
 
 func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRequest) (*proto.PublishMessageResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.MessageSubscriptionKey)
+	partitionId := zenflake.GetPartitionId(req.Key)
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("engine with partition %d was not found", partitionId)
@@ -762,19 +768,11 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 	}
 
 	err = engine.PublishMessage(ctx,
-		runtime.MessageSubscriptionPointer{
-			Key:                    req.Key,
-			State:                  runtime.MessageSubscriptionState(req.State),
-			CreatedAt:              time.UnixMilli(req.CreatedAt),
-			Name:                   req.Name,
-			CorrelationKey:         req.CorrelationKey,
-			MessageSubscriptionKey: req.MessageSubscriptionKey,
-			ExecutionTokenKey:      req.ExecutionTokenKey,
-		},
+		req.Key,
 		vars,
 	)
 	if err != nil {
-		err := fmt.Errorf("failed to publish message event %d: %w", req.MessageSubscriptionKey, err)
+		err := fmt.Errorf("failed to publish message event %d: %w", req.Key, err)
 		return &proto.PublishMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    0,
@@ -786,41 +784,11 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 	return &proto.PublishMessageResponse{}, nil
 }
 
-func (s *Server) CreateMessageSubscriptionPointer(ctx context.Context, req *proto.MessageSubscriptionPointerRequest) (*proto.MessageSubscriptionPointerResponse, error) {
-	pointerAlreadyExists := false
-
-	queries := s.controller.PartitionQueries(ctx, req.PartitionId)
-	msPointer, err := queries.FindMessageSubscriptionPointer(ctx, sql.FindMessageSubscriptionPointerParams{
-		CorrelationKey: req.CorrelationKey,
-		Name:           req.Name,
-		FilterState:    int64(runtime.MessageSubscriptionActive),
-	})
-	if err != nil && !errors.Is(err, ssql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to search for message subscription pointer: %w", err)
-	}
-	if err == nil {
-		pointerAlreadyExists = true
-	}
-
-	if pointerAlreadyExists {
-		partitionId := zenflake.GetPartitionId(msPointer.MessageSubscriptionKey)
-		queries = s.controller.PartitionQueries(ctx, partitionId)
-		_, err = queries.GetMessageSubscriptionById(ctx, sql.GetMessageSubscriptionByIdParams{
-			Key:   msPointer.MessageSubscriptionKey,
-			State: int64(runtime.ActivityStateActive),
-		})
-		if err == nil {
-			return nil, fmt.Errorf("failed to create message subscription pointer, active subscription already exists %d: %w", msPointer.MessageSubscriptionKey, err)
-		}
-		if !errors.Is(err, ssql.ErrNoRows) {
-			return nil, fmt.Errorf("failed to search for message subscription %d: %w", msPointer.MessageSubscriptionKey, err)
-		}
-	}
-
-	engine := s.controller.PartitionEngine(ctx, req.PartitionId)
-	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", req.PartitionId)
-		return &proto.MessageSubscriptionPointerResponse{
+func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.SetMessageSubscriptionPointerRequest) (*proto.SetMessageSubscriptionPointerResponse, error) {
+	partition := s.controller.GetPartition(ctx, req.PartitionId)
+	if partition == nil {
+		err := fmt.Errorf("node for partition %d was not found", req.PartitionId)
+		return &proto.SetMessageSubscriptionPointerResponse{
 			Error: &proto.ErrorResult{
 				Code:    0,
 				Message: err.Error(),
@@ -828,133 +796,85 @@ func (s *Server) CreateMessageSubscriptionPointer(ctx context.Context, req *prot
 		}, err
 	}
 
-	// terminate already existing pointer, its message should be already correlated
-	if pointerAlreadyExists {
-		err = engine.SaveSubscriptionPointer(
-			ctx, runtime.MessageSubscriptionPointer{
-				Key:                    msPointer.Key,
-				State:                  runtime.MessageSubscriptionComplete,
-				CreatedAt:              time.UnixMilli(msPointer.CreatedAt),
-				Name:                   msPointer.Name,
-				CorrelationKey:         msPointer.CorrelationKey,
-				MessageSubscriptionKey: msPointer.MessageSubscriptionKey,
-				ExecutionTokenKey:      msPointer.ExecutionTokenKey,
-			},
-		)
+	partitionId := s.store.ClusterState().GetPartitionIdFromString(req.CorrelationKey)
+	if partition.PartitionId == partitionId && partition.IsLeader(ctx) {
+		err := partition.DB.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
+			State:                  int64(req.State),
+			CreatedAt:              req.CreatedAt,
+			Name:                   req.Name,
+			CorrelationKey:         req.CorrelationKey,
+			MessageSubscriptionKey: req.MessageSubscriptionKey,
+			ExecutionTokenKey:      req.ExecutionTokenKey,
+		})
 		if err != nil {
-			err = fmt.Errorf(
-				"failed to update message subscription pointer for execution %d with correlation key %s and correlatio name: %s: %w",
-				req.ExecutionTokenKey,
-				req.CorrelationKey,
-				req.Name,
-				err,
-			)
-			return &proto.MessageSubscriptionPointerResponse{
+			err := fmt.Errorf("failed to save message subscription pointer for message subscription name:%s correlationId:%s : %w", req.Name, req.CorrelationKey, err)
+			return &proto.SetMessageSubscriptionPointerResponse{
 				Error: &proto.ErrorResult{
 					Code:    0,
 					Message: err.Error(),
 				},
 			}, err
 		}
-	}
-
-	// create new pointer
-	err = engine.SaveSubscriptionPointer(
-		ctx, runtime.MessageSubscriptionPointer{
-			Key:                    req.Key,
-			State:                  runtime.MessageSubscriptionState(req.State),
-			CreatedAt:              time.UnixMilli(req.CreatedAt),
-			Name:                   req.Name,
-			CorrelationKey:         req.CorrelationKey,
-			MessageSubscriptionKey: req.MessageSubscriptionKey,
-			ExecutionTokenKey:      req.ExecutionTokenKey,
-		},
-	)
-	if err != nil {
-		err = fmt.Errorf(
-			"failed to save message subscription pointer for execution %d with correlation key %s and correlatio name: %s: %w",
-			req.ExecutionTokenKey,
-			req.CorrelationKey,
-			req.Name,
-			err,
-		)
-		return &proto.MessageSubscriptionPointerResponse{
+	} else {
+		err := fmt.Errorf("Node is not a leader for partition %d", req.PartitionId)
+		return &proto.SetMessageSubscriptionPointerResponse{
 			Error: &proto.ErrorResult{
 				Code:    0,
 				Message: err.Error(),
 			},
 		}, err
 	}
-
-	return &proto.MessageSubscriptionPointerResponse{}, nil
+	return &proto.SetMessageSubscriptionPointerResponse{}, nil
 }
 
-func (s *Server) UpdateMessageSubscriptionPointer(ctx context.Context, req *proto.MessageSubscriptionPointerRequest) (*proto.MessageSubscriptionPointerResponse, error) {
-	engine := s.controller.PartitionEngine(ctx, req.PartitionId)
-	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", req.PartitionId)
-		return &proto.MessageSubscriptionPointerResponse{
+func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.ExecutionTokenKey)
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("failed to find partition %d", partitionId)
+		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    0,
 				Message: err.Error(),
 			},
 		}, err
 	}
-
-	err := engine.SaveSubscriptionPointer(
-		ctx, runtime.MessageSubscriptionPointer{
-			Key:                    req.Key,
-			State:                  runtime.MessageSubscriptionState(req.State),
-			CreatedAt:              time.UnixMilli(req.CreatedAt),
-			Name:                   req.Name,
-			CorrelationKey:         req.CorrelationKey,
-			MessageSubscriptionKey: req.MessageSubscriptionKey,
-			ExecutionTokenKey:      req.ExecutionTokenKey,
+	subs, err := queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
+		ExecutionToken: req.ExecutionTokenKey,
+		State:          int64(runtime.ActivityStateActive),
+	})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		err := fmt.Errorf("failed to find message subscriptions %d", partitionId)
+		return &proto.FindActiveMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    0,
+				Message: err.Error(),
+			},
+		}, err
+	}
+	// if len(subs) == 0{
+	// }
+	for _, message := range subs {
+		if message.CorrelationKey == req.CorrelationKey && message.Name == req.Name {
+			return &proto.FindActiveMessageResponse{
+				Key:                  message.Key,
+				ElementId:            message.ElementID,
+				ProcessDefinitionKey: message.ProcessDefinitionKey,
+				ProcessInstanceKey:   message.ProcessInstanceKey,
+				Name:                 message.Name,
+				State:                message.State,
+				CorrelationKey:       message.CorrelationKey,
+				ExecutionToken:       message.ExecutionToken,
+			}, nil
+		}
+	}
+	err = fmt.Errorf("message subscription %s %s was not found in partition %d", req.Name, req.CorrelationKey, partitionId)
+	return &proto.FindActiveMessageResponse{
+		Error: &proto.ErrorResult{
+			Code:    0,
+			Message: err.Error(),
 		},
-	)
-	if err != nil {
-		err = fmt.Errorf(
-			"failed to save message subscription pointer for execution %d with correlation key %s and correlatio name: %s: %w",
-			req.ExecutionTokenKey,
-			req.CorrelationKey,
-			req.Name,
-			err,
-		)
-		return &proto.MessageSubscriptionPointerResponse{
-			Error: &proto.ErrorResult{
-				Code:    0,
-				Message: err.Error(),
-			},
-		}, err
-	}
-
-	return &proto.MessageSubscriptionPointerResponse{}, nil
-}
-
-func (s *Server) TerminateMessageSubscriptionPointers(ctx context.Context, req *proto.TerminateMessageSubscriptionPointersRequest) (*proto.TerminateMessageSubscriptionPointersResponse, error) {
-	engine := s.controller.PartitionEngine(ctx, req.PartitionId)
-	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", req.PartitionId)
-		return &proto.TerminateMessageSubscriptionPointersResponse{
-			Error: &proto.ErrorResult{
-				Code:    0,
-				Message: err.Error(),
-			},
-		}, err
-	}
-
-	err := engine.TerminateMessageSubscriptionPointers(ctx, req.ExecutionTokenKey)
-	if err != nil {
-		err = fmt.Errorf("failed to terminate message subscription pointers for execution %d on partition %d: %w", req.ExecutionTokenKey, req.PartitionId, err)
-		return &proto.TerminateMessageSubscriptionPointersResponse{
-			Error: &proto.ErrorResult{
-				Code:    0,
-				Message: err.Error(),
-			},
-		}, err
-	}
-
-	return &proto.TerminateMessageSubscriptionPointersResponse{}, nil
+	}, status.Error(codes.NotFound, err.Error())
 }
 
 func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsRequest) (*proto.GetIncidentsResponse, error) {

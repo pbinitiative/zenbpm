@@ -5,11 +5,12 @@
 //  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 //  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
-package store
+package state
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_GetPartitionIdFromString(t *testing.T) {
@@ -26,7 +27,7 @@ func Test_GetPartitionIdFromString(t *testing.T) {
 		Id:       3,
 		LeaderId: "node-3",
 	}
-	state := ClusterState{
+	state := Cluster{
 		Config:     ClusterConfig{},
 		Partitions: partitions,
 		Nodes:      nil,

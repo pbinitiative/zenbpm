@@ -5,7 +5,7 @@
 //  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 //  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
-package cluster
+package controller
 
 import (
 	"context"
@@ -19,8 +19,9 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -29,10 +30,10 @@ import (
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 
-type controller struct {
+type Controller struct {
 	// partitions contains a map of partition nodes on this zen node
 	// one zen node will be always working with maximum of one partition node per partition
-	partitions              map[uint32]*ZenPartitionNode
+	partitions              map[uint32]*partition.ZenPartitionNode
 	partitionsMu            sync.RWMutex
 	store                   ControlledStore
 	client                  *client.ClientManager
@@ -44,11 +45,11 @@ type controller struct {
 	clusterStateChangeHooks []func(context.Context)
 }
 
-func NewController(mux *tcp.Mux, conf config.Cluster) (*controller, error) {
-	c := controller{
+func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
+	c := Controller{
 		config:                  conf,
 		mux:                     mux,
-		partitions:              make(map[uint32]*ZenPartitionNode),
+		partitions:              make(map[uint32]*partition.ZenPartitionNode),
 		logger:                  hclog.Default().Named("zen-controller"),
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
@@ -61,18 +62,18 @@ type ControlledStore interface {
 	Addr() string
 	IsLeader() bool
 	Role() proto.Role
-	ClusterState() store.ClusterState
+	ClusterState() state.Cluster
 	WritePartitionChange(change *proto.NodePartitionChange) error
 }
 
 // Start will start a controller instance on a given store
-func (c *controller) Start(s ControlledStore, clientMgr *client.ClientManager) error {
+func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) error {
 	c.store = s
 	c.client = clientMgr
 	persistenceConfig := c.config.Persistence
 
 	if c.config.Persistence.RqLite == nil {
-		defaultConfig := GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
+		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
 		persistenceConfig.RqLite = &defaultConfig
 	}
 	err := persistenceConfig.RqLite.Validate()
@@ -87,7 +88,7 @@ func (c *controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 }
 
 // ClusterStateChangeNotification is called in a goroutine from FSM when changes are applied to the state
-func (c *controller) ClusterStateChangeNotification(ctx context.Context) {
+func (c *Controller) ClusterStateChangeNotification(ctx context.Context) {
 	if !c.handleClusterChanges {
 		return
 	}
@@ -101,11 +102,11 @@ func (c *controller) ClusterStateChangeNotification(ctx context.Context) {
 	}
 }
 
-func (c *controller) AddClusterStateChangeHook(f func(context.Context)) {
+func (c *Controller) AddClusterStateChangeHook(f func(context.Context)) {
 	c.clusterStateChangeHooks = append(c.clusterStateChangeHooks, f)
 }
 
-func (c *controller) performLeaderOperations(ctx context.Context) {
+func (c *Controller) performLeaderOperations(ctx context.Context) {
 	if ctx.Err() != nil {
 		c.logger.Debug("Skipping leader operation checks due to expired context")
 		return
@@ -132,7 +133,7 @@ func (c *controller) performLeaderOperations(ctx context.Context) {
 }
 
 // assignPartition will send a message to store that indicates that a node should start the joining process into a partition cluster
-func (c *controller) assignPartition(ctx context.Context, partitionId uint32, nodeId string) {
+func (c *Controller) assignPartition(ctx context.Context, partitionId uint32, nodeId string) {
 	if ctx.Err() != nil {
 		c.logger.Debug("Skipping assigning of a partition due to expired context")
 		return
@@ -153,7 +154,7 @@ func (c *controller) assignPartition(ctx context.Context, partitionId uint32, no
 }
 
 // assignNewPartition will send a message to store that indicates that a node should start the joining process into a partition cluster
-func (c *controller) assignNewPartition(ctx context.Context, newPartitionId int) {
+func (c *Controller) assignNewPartition(ctx context.Context, newPartitionId int) {
 	cs := c.store.ClusterState()
 	c.logger.Debug(fmt.Sprintf("%+v", cs))
 	partitionCandidate, err := cs.GetLeastStressedNode()
@@ -175,7 +176,7 @@ func (c *controller) assignNewPartition(ctx context.Context, newPartitionId int)
 	c.assignPartition(ctx, uint32(newPartitionId), partitionCandidate.Id)
 }
 
-func (c *controller) performMemberOperations(ctx context.Context) {
+func (c *Controller) performMemberOperations(ctx context.Context) {
 	if ctx.Err() != nil {
 		c.logger.Debug("Skipping member operation checks due to expired context")
 		return
@@ -194,23 +195,23 @@ func (c *controller) performMemberOperations(ctx context.Context) {
 	for partitionId, partition := range currentNode.Partitions {
 		c.logger.Debug(fmt.Sprintf("Handling partition %d state %s", partitionId, partition.State))
 		switch partition.State {
-		case store.NodePartitionStateError:
-		case store.NodePartitionStateJoining:
+		case state.NodePartitionStateError:
+		case state.NodePartitionStateJoining:
 			// this node needs to start the joining partition group logic
 			c.partitionsMu.Lock()
 			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
 			c.partitionsMu.Unlock()
-		case store.NodePartitionStateInitializing:
+		case state.NodePartitionStateInitializing:
 			// we are currently in the process of joining partition group
 			c.partitionsMu.RLock()
 			c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
 			c.partitionsMu.RUnlock()
-		case store.NodePartitionStateInitialized:
+		case state.NodePartitionStateInitialized:
 			// we are successfully joined in partition group
 			c.partitionsMu.Lock()
 			c.handlePartitionStateInitialized(ctx, partitionId, leaderClient)
 			c.partitionsMu.Unlock()
-		case store.NodePartitionStateLeaving:
+		case state.NodePartitionStateLeaving:
 			// we need to leave partition group
 			c.partitionsMu.Lock()
 			c.handlePartitionStateLeaving(ctx, partitionId)
@@ -228,7 +229,7 @@ func (c *controller) performMemberOperations(ctx context.Context) {
 	//  - check if it lost its leadership of any partition and needs to stop the engine (this should be preceded by previous error logs from the engine not being able to store changes)
 }
 
-func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
 	if ctx.Err() != nil {
 		c.logger.Debug("Skipping handlePartitionStateJoining due to expired context")
 		return
@@ -238,8 +239,8 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 		if partition, ok := node.Partitions[partitionId]; ok {
 			// if we dont have running partition node we need to initialize it again
 			_, runningOk := c.partitions[partitionId]
-			if runningOk && (partition.State == store.NodePartitionStateInitializing ||
-				partition.State == store.NodePartitionStateInitialized) {
+			if runningOk && (partition.State == state.NodePartitionStateInitializing ||
+				partition.State == state.NodePartitionStateInitialized) {
 				return
 			}
 		}
@@ -264,23 +265,25 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	partitionConf := c.persistenceConfig
 	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
 	partitionConf.RqLite.DataPath = filepath.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
-	partitionNode, err := StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, c.client, c.store, partitionId, PartitionChangesCallbacks{
-		addNewNode: func(s raft.Server) error {
+	partitionNode, err := partition.StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, c.client, partitionId, partition.PartitionChangesCallbacks{
+		AddNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)
 		},
-		shutdownNode: func(s raft.ServerID) error {
+		ShutdownNode: func(s raft.ServerID) error {
 			return c.partitionShutdownNode(s, partitionId)
 		},
-		leaderChange: func(s raft.ServerID) error {
+		LeaderChange: func(s raft.ServerID) error {
 			return c.partitionLeaderChange(s, partitionId)
 		},
-		removeNode: func(id string) error {
+		RemoveNode: func(id string) error {
 			return c.partitionRemoveNode(id, partitionId)
 		},
-		resumeNode: func(id string) error {
+		ResumeNode: func(id string) error {
 			return c.partitionResumeNode(id, partitionId)
 		},
-	})
+	},
+		c.store.ClusterState,
+	)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
 		_ = partitionNode.Stop()
@@ -291,7 +294,7 @@ func (c *controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	c.handlePartitionStateInitializing(ctx, partitionId, leaderClient)
 }
 
-func (c *controller) handlePartitionStateInitializing(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+func (c *Controller) handlePartitionStateInitializing(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
 	partitionNode, ok := c.partitions[partitionId]
 	if !ok {
 		// TODO: add timestamps or something into the state so that this is not necessary
@@ -319,14 +322,14 @@ func (c *controller) handlePartitionStateInitializing(ctx context.Context, parti
 		return
 	}
 
-	if partitionNode.engine == nil && partitionNode.IsLeader(ctx) {
-		engine, err := c.createEngine(ctx, c.partitions[partitionId].rqliteDB)
+	if partitionNode.Engine == nil && partitionNode.IsLeader(ctx) {
+		engine, err := c.createEngine(ctx, c.partitions[partitionId].DB)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("failed to create engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails
 		}
-		partitionNode.engine = engine
-		err = partitionNode.engine.Start()
+		partitionNode.Engine = engine
+		err = partitionNode.Engine.Start()
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("failed to start engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails
@@ -353,7 +356,7 @@ func (c *controller) handlePartitionStateInitializing(ctx context.Context, parti
 	}
 }
 
-func (c *controller) handlePartitionStateInitialized(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
+func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partitionId uint32, leaderClient zenproto.ZenServiceClient) {
 	if _, ok := c.partitions[partitionId]; !ok {
 		// we restarted the node and it needs to re-initialize its partition state
 		c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
@@ -361,7 +364,7 @@ func (c *controller) handlePartitionStateInitialized(ctx context.Context, partit
 	}
 }
 
-func (c *controller) createEngine(ctx context.Context, db *RqLiteDB) (*bpmn.Engine, error) {
+func (c *Controller) createEngine(ctx context.Context, db *partition.DB) (*bpmn.Engine, error) {
 	// TODO: add check for migrations and apply only missing
 	migrations, err := sql.GetMigrations()
 	if err != nil {
@@ -374,17 +377,17 @@ func (c *controller) createEngine(ctx context.Context, db *RqLiteDB) (*bpmn.Engi
 			Sql: migration.SQL,
 		}
 	}
-	_, err = db.executeStatements(ctx, statements)
+	_, err = db.ExecuteStatements(ctx, statements)
 	if err != nil {
 		c.logger.Error("Failed to execute migrations", "err", err)
 		return nil, fmt.Errorf("failed to execute migrations: %w", err)
 	}
 	engine := bpmn.NewEngine(bpmn.EngineWithStorage(db))
-	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.partition))
+	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.Partition))
 	return &engine, nil
 }
 
-func (c *controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {
+func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {
 	toLeave, ok := c.partitions[partitionId]
 	if !ok {
 		c.logger.Warn(fmt.Sprintf("Failed to find partition to leave: %d", partitionId))
@@ -399,44 +402,44 @@ func (c *controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 	// TODO: verify that partition leader removes the node from the state after it gets removed from the cluster
 }
 
-func (c *controller) partitionResumeNode(id string, partitionId uint32) error {
+func (c *Controller) partitionResumeNode(id string, partitionId uint32) error {
 	panic("unimplemented")
 }
 
-func (c *controller) partitionRemoveNode(id string, partitionId uint32) error {
+func (c *Controller) partitionRemoveNode(id string, partitionId uint32) error {
 	panic("unimplemented")
 }
 
-func (c *controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
+func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
 	panic("unimplemented")
 }
 
-func (c *controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
+func (c *Controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
 	panic("unimplemented")
 }
 
-func (c *controller) partitionAddNewNode(s raft.Server, partitionId uint32) error {
+func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) error {
 	panic("unimplemented")
 }
 
-func (c *controller) Stop() error {
+func (c *Controller) Stop() error {
 	var joinErr error
 	for _, partition := range c.partitions {
 		err := partition.Stop()
 		if err != nil {
-			joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop partition %d: %w", partition.partitionId, err))
+			joinErr = errors.Join(joinErr, fmt.Errorf("failed to stop partition %d: %w", partition.PartitionId, err))
 		}
 	}
 	return joinErr
 }
 
 // NotifyShutdown notifies the cluster leader / store that the node is shutting down
-func (c *controller) NotifyShutdown() error {
+func (c *Controller) NotifyShutdown() error {
 	// TODO: call zen cluster api on a leader to notify about node shutdown
 	return nil
 }
 
-func (c *controller) IsPartitionLeader(ctx context.Context, partition uint32) bool {
+func (c *Controller) IsPartitionLeader(ctx context.Context, partition uint32) bool {
 	p, ok := c.partitions[partition]
 	if !ok {
 		return false
@@ -444,7 +447,7 @@ func (c *controller) IsPartitionLeader(ctx context.Context, partition uint32) bo
 	return p.IsLeader(ctx)
 }
 
-func (c *controller) IsAnyPartitionLeader(ctx context.Context) bool {
+func (c *Controller) IsAnyPartitionLeader(ctx context.Context) bool {
 	for partitionId := range c.partitions {
 		if c.IsPartitionLeader(ctx, partitionId) {
 			return true
@@ -453,39 +456,62 @@ func (c *controller) IsAnyPartitionLeader(ctx context.Context) bool {
 	return false
 }
 
-func (c *controller) PartitionEngine(ctx context.Context, partition uint32) *bpmn.Engine {
+func (c *Controller) PartitionEngine(ctx context.Context, partition uint32) *bpmn.Engine {
 	partitionNode, ok := c.partitions[partition]
 	if !ok {
 		return nil
 	}
-	return partitionNode.engine
+	return partitionNode.Engine
 }
 
-func (c *controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
+func (c *Controller) Engines(ctx context.Context) map[uint32]*bpmn.Engine {
 	res := make(map[uint32]*bpmn.Engine, 0)
 	for partition, partitionNode := range c.partitions {
-		if partitionNode.engine != nil {
-			res[partition] = partitionNode.engine
+		if partitionNode.Engine != nil {
+			res[partition] = partitionNode.Engine
 		}
 	}
 	return res
 }
 
-func (c *controller) AllPartitionLeaderDBs(ctx context.Context) []*RqLiteDB {
-	leaderQueries := make([]*RqLiteDB, 0)
+func (c *Controller) AllPartitionLeaderDBs(ctx context.Context) []*partition.DB {
+	leaderQueries := make([]*partition.DB, 0)
 	for _, partition := range c.partitions {
 		if !partition.IsLeader(ctx) {
 			continue
 		}
-		leaderQueries = append(leaderQueries, partition.rqliteDB)
+		leaderQueries = append(leaderQueries, partition.DB)
 	}
 	return leaderQueries
 }
 
-func (c *controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
+func (c *Controller) PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries {
 	partitionNode, ok := c.partitions[partitionId]
 	if !ok {
 		return nil
 	}
-	return partitionNode.rqliteDB.queries
+	return partitionNode.DB.Queries
+}
+
+func (c *Controller) GetPartition(ctx context.Context, partitionId uint32) *partition.ZenPartitionNode {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	partitionNode := c.partitions[partitionId]
+	return partitionNode
+}
+
+// GetReadOnlyDB returns a database object preferably on partition where node is a follower
+// mostly used for resources spread across all partitions
+func (c *Controller) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	for _, node := range c.partitions {
+		if !node.IsLeader(ctx) {
+			return node.DB, nil
+		}
+	}
+	for _, node := range c.partitions {
+		return node.DB, nil
+	}
+	return nil, fmt.Errorf("no partition available to get read only database")
 }

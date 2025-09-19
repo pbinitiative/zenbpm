@@ -36,8 +36,6 @@ type Storage interface {
 	FlowElementHistoryWriter
 	IncidentStorageReader
 	IncidentStorageWriter
-	MessageSubscriptionPointerStorageWriter
-	MessageSubscriptionPointerStorageReader
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -65,8 +63,10 @@ type Batch interface {
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
-	// AddFlushSuccessAction registers a function f that will be called after a successful flush has been performed
-	AddFlushSuccessAction(ctx context.Context, f func())
+	// AddPreFlushAction registers a function f that will be called after a before flush. If error is returned flush is not performed
+	AddPreFlushAction(ctx context.Context, f func() error)
+	// AddPostFlushAction registers a function f that will be called after a successful flush has been performed
+	AddPostFlushAction(ctx context.Context, f func())
 }
 
 type DecisionStorageReader interface {
@@ -157,18 +157,6 @@ type JobStorageWriter interface {
 	SaveJob(ctx context.Context, job bpmnruntime.Job) error
 }
 
-type MessageSubscriptionPointerStorageWriter interface {
-	SaveMessageSubscriptionPointer(ctx context.Context, subscription bpmnruntime.MessageSubscriptionPointer) error
-
-	TerminateMessageSubscriptionPointers(ctx context.Context, executionTokenKey int64) error
-
-	TerminateMessageSubscriptionPointersForExecution(ctx context.Context, messageSubscriptions []bpmnruntime.MessageSubscription, executionTokenKey int64)
-}
-
-type MessageSubscriptionPointerStorageReader interface {
-	FindActiveMessageSubscriptionPointer(ctx context.Context, name string, correlationKey string) (bpmnruntime.MessageSubscriptionPointer, error)
-}
-
 type MessageStorageReader interface {
 	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
@@ -180,7 +168,7 @@ type MessageStorageReader interface {
 
 type MessageStorageWriter interface {
 	// SaveMessageSubscription persists the MessageSubscription
-	// and potentially overwrites prior data stored with given key
+	// returns an error if there is already an active conflicting message present.
 	SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error
 }
 

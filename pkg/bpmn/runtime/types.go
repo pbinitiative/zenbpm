@@ -132,7 +132,7 @@ type MessageSubscription struct {
 	ProcessInstanceKey   int64
 	Name                 string
 	CorrelationKey       string
-	MessageState         ActivityState
+	State                ActivityState
 	CreatedAt            time.Time
 	Token                ExecutionToken
 }
@@ -143,7 +143,7 @@ func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
 		m.ProcessDefinitionKey == m2.ProcessDefinitionKey &&
 		m.ProcessInstanceKey == m2.ProcessInstanceKey &&
 		m.Name == m2.Name &&
-		m.MessageState == m2.MessageState &&
+		m.State == m2.State &&
 		m.CreatedAt.Truncate(time.Millisecond).Equal(m2.CreatedAt.Truncate(time.Millisecond)) {
 		return true
 	}
@@ -159,7 +159,7 @@ func (m MessageSubscription) GetKey() int64 {
 }
 
 func (m MessageSubscription) GetState() ActivityState {
-	return m.MessageState
+	return m.State
 }
 
 //go:generate go tool stringer -type=TimerState
@@ -292,21 +292,3 @@ type Incident struct {
 	ResolvedAt         *time.Time
 	Token              ExecutionToken
 }
-
-type MessageSubscriptionPointer struct {
-	Key                    int64
-	State                  MessageSubscriptionState
-	CreatedAt              time.Time
-	Name                   string
-	CorrelationKey         string
-	MessageSubscriptionKey int64
-	ExecutionTokenKey      int64
-}
-
-type MessageSubscriptionState int
-
-const (
-	_ MessageSubscriptionState = iota
-	MessageSubscriptionActive
-	MessageSubscriptionComplete
-)

@@ -21,10 +21,13 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/cluster/controller"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -66,7 +69,7 @@ import (
 type ZenNode struct {
 	ctx        context.Context
 	store      *store.Store
-	controller *controller
+	controller *controller.Controller
 	server     *server.Server
 	client     *client.ClientManager
 	logger     hclog.Logger
@@ -88,7 +91,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 
 	node.muxLn = muxLn
-	node.controller, err = NewController(mux, conf.Cluster)
+	node.controller, err = controller.NewController(mux, conf.Cluster)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node controller: %w", err)
 	}
@@ -225,33 +228,16 @@ func (node *ZenNode) LeastStressedPartitionLeader(ctx context.Context) (proto.Ze
 
 // GetPartitionStore exposes Storage interface for use in engines
 func (node *ZenNode) GetPartitionStore(ctx context.Context, partition uint32) (storage.Storage, error) {
-	partitionNode, ok := node.controller.partitions[partition]
-	if !ok {
+	partitionNode := node.controller.GetPartition(ctx, partition)
+	if partitionNode == nil {
 		return nil, fmt.Errorf("partition %d storage not available in zen node", partition)
 	}
-	return partitionNode.rqliteDB, nil
-}
-
-// GetPartitionDB exposes DBTX interface for use in internal packages
-func (node *ZenNode) GetPartitionDB(ctx context.Context, partition uint32) (sql.DBTX, error) {
-	partitionNode, ok := node.controller.partitions[partition]
-	if !ok {
-		return nil, fmt.Errorf("partition %d storage not available in zen node", partition)
-	}
-	return partitionNode.rqliteDB, nil
+	return partitionNode.DB, nil
 }
 
 // GetReadOnlyDB returns a database object preferably on partition where node is a follower
-func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*RqLiteDB, error) {
-	for _, node := range node.controller.partitions {
-		if !node.IsLeader(ctx) {
-			return node.rqliteDB, nil
-		}
-	}
-	for _, node := range node.controller.partitions {
-		return node.rqliteDB, nil
-	}
-	return nil, fmt.Errorf("no partition available to get read only database")
+func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
+	return node.controller.GetReadOnlyDB(ctx)
 }
 
 // GetDecisionDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
@@ -260,7 +246,7 @@ func (node *ZenNode) GetDecisionDefinitions(ctx context.Context) ([]proto.Decisi
 	if err != nil {
 		return nil, fmt.Errorf("failed to get decision definitions: %w", err)
 	}
-	definitions, err := db.queries.FindAllDecisionDefinitions(ctx)
+	definitions, err := db.Queries.FindAllDecisionDefinitions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read decision definitions from database: %w", err)
 	}
@@ -282,7 +268,7 @@ func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (prot
 	if err != nil {
 		return proto.DecisionDefinition{}, fmt.Errorf("failed to get decision definition: %w", err)
 	}
-	def, err := db.queries.FindDecisionDefinitionByKey(ctx, key)
+	def, err := db.Queries.FindDecisionDefinitionByKey(ctx, key)
 	if err != nil {
 		return proto.DecisionDefinition{}, fmt.Errorf("failed to read process decision from database: %w", err)
 	}
@@ -337,7 +323,7 @@ func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data [
 		return 0, fmt.Errorf("failed to get database for decision definition key lookup: %w", err)
 	}
 	md5sum := md5.Sum(data)
-	key, err := db.queries.GetDecisionDefinitionKeyByChecksum(ctx, md5sum[:])
+	key, err := db.Queries.GetDecisionDefinitionKeyByChecksum(ctx, md5sum[:])
 	if err != nil && err.Error() != "No result row" {
 		return 0, fmt.Errorf("failed to find decision definition by checksum: %w", err)
 	}
@@ -413,7 +399,7 @@ func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (
 		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
 	}
 	md5sum := md5.Sum(data)
-	key, err := db.queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
+	key, err := db.Queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
 	if err != nil && err.Error() != "No result row" {
 		return 0, fmt.Errorf("failed to find process definition by checksum: %w", err)
 	}
@@ -467,11 +453,11 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 
 func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
 	partitionId := node.store.ClusterState().GetPartitionIdFromString(correlationKey)
-	partitionNode := node.controller.partitions[partitionId]
+	partitionNode := node.controller.GetPartition(ctx, partitionId)
 	if partitionNode == nil {
 		return fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey)
 	}
-	msPointer, err := partitionNode.rqliteDB.FindActiveMessageSubscriptionPointer(
+	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
 		ctx,
 		name,
 		correlationKey,
@@ -492,14 +478,8 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	}
 
 	resp, err := client.PublishMessage(ctx, &proto.PublishMessageRequest{
-		Key:                    msPointer.Key,
-		State:                  int64(msPointer.State),
-		CreatedAt:              msPointer.CreatedAt.UnixMilli(),
-		Name:                   msPointer.Name,
-		CorrelationKey:         msPointer.CorrelationKey,
-		MessageSubscriptionKey: msPointer.MessageSubscriptionKey,
-		ExecutionTokenKey:      msPointer.ExecutionTokenKey,
-		Variables:              vars,
+		Key:       msPointer.MessageSubscriptionKey,
+		Variables: vars,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("client call to publish message failed")
@@ -519,7 +499,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context) ([]proto.Process
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process definitions: %w", err)
 	}
-	definitions, err := db.queries.FindAllProcessDefinitions(ctx)
+	definitions, err := db.Queries.FindAllProcessDefinitions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read process definitions from database: %w", err)
 	}
@@ -541,7 +521,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
 	}
-	def, err := db.queries.FindLatestProcessDefinitionById(ctx, processId)
+	def, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
@@ -559,7 +539,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
 	}
-	def, err := db.queries.FindProcessDefinitionByKey(ctx, key)
+	def, err := db.Queries.FindProcessDefinitionByKey(ctx, key)
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
@@ -830,9 +810,9 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 	return resp.Incidents, nil
 }
 
-func (node *ZenNode) GetStatus() store.ClusterState {
+func (node *ZenNode) GetStatus() state.Cluster {
 	if node.store == nil {
-		return store.ClusterState{}
+		return state.Cluster{}
 	}
 	return node.store.ClusterState()
 }
@@ -849,13 +829,13 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		idsToSkip = []int64{0}
 	}
 	for _, db := range databases {
-		jobs, err := db.queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
+		jobs, err := db.Queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
 			Limit:   count,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.partition, err)
+			return nil, fmt.Errorf("failed to load jobs from partition %d: %w", db.Partition, err)
 		}
 		jobsAcc = append(jobsAcc, jobs...)
 	}

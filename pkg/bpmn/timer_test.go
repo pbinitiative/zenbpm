@@ -61,16 +61,11 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(tH)
 	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	msPointer, err := engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"message",
-		"message",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.NoError(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 	time.Sleep((2 * time.Second) + (1 * time.Millisecond))
-	assert.Nil(t, err)
 
 	assert.True(t, strings.HasPrefix(cp.CallPath, "task-for-message"))
 	assert.NotContains(t, cp.CallPath, ",")
@@ -85,14 +80,13 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 		return false
 	}, (5*time.Second)+(1*time.Millisecond), 500*time.Millisecond)
 
-	msPointer, err = engineStorage.FindActiveMessageSubscriptionPointer(
-		t.Context(),
-		"message",
-		"message",
-	)
-	assert.NoError(t, err)
-	err = bpmnEngine.PublishMessage(t.Context(), msPointer, nil)
-	assert.Error(t, err)
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.State != runtime.ActivityStateActive {
+			continue
+		}
+		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		assert.NoError(t, err)
+	}
 
 	assert.True(t, strings.HasPrefix(cp.CallPath, "task-for-timer"))
 	assert.NotContains(t, cp.CallPath, ",")

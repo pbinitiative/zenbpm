@@ -57,7 +57,6 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestSaveFlowElementHistoryWriter,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
-		st.TestMessagePointerStorageWriter,
 	}
 
 	for _, function := range functions {
@@ -364,7 +363,8 @@ func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionTo
 		ProcessDefinitionKey: pdKey,
 		ProcessInstanceKey:   piKey,
 		Name:                 fmt.Sprintf("message-%d", r),
-		MessageState:         bpmnruntime.ActivityStateActive,
+		CorrelationKey:       fmt.Sprintf("correlation-%d", r),
+		State:                bpmnruntime.ActivityStateActive,
 		CreatedAt:            time.Now().Truncate(time.Millisecond),
 		Token:                token,
 	}
@@ -700,146 +700,5 @@ func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage,
 		assert.Len(t, decisions, 1)
 		assert.Equal(t, decisionDefinitionKey, decisions[0].DecisionDefinitionKey)
 		assert.Equal(t, dec.Id, decisions[0].Id)
-	}
-}
-
-func getMessageSubscriptionPointer(r int64, state bpmnruntime.MessageSubscriptionState, msKey int64) bpmnruntime.MessageSubscriptionPointer {
-	return bpmnruntime.MessageSubscriptionPointer{
-		Key:                    r,
-		State:                  state,
-		CreatedAt:              time.Now().Truncate(time.Millisecond),
-		Name:                   fmt.Sprintf("message-%d", r),
-		CorrelationKey:         fmt.Sprintf("correlationKey-%d", r),
-		MessageSubscriptionKey: msKey,
-		ExecutionTokenKey:      r,
-	}
-}
-
-func (st *StorageTester) TestMessagePointerStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
-	return func(t *testing.T) {
-		r := s.GenerateId()
-		token := bpmnruntime.ExecutionToken{
-			Key:                r,
-			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
-			State:              bpmnruntime.TokenStateWaiting,
-		}
-		err := s.SaveToken(t.Context(), token)
-		assert.NoError(t, err)
-
-		job := getJob(r, st.processInstance.Key, token)
-		err = s.SaveJob(t.Context(), job)
-		assert.NoError(t, err)
-
-		message1 := getMessage(r, st.processDefinition.Key, st.processInstance.Key, bpmnruntime.ExecutionToken{
-			Key:                r,
-			ElementInstanceKey: r,
-			ElementId:          "messageElementId",
-			ProcessInstanceKey: st.processInstance.Key,
-			State:              bpmnruntime.TokenStateWaiting,
-		})
-
-		err = s.SaveMessageSubscription(t.Context(), message1)
-		assert.NoError(t, err)
-
-		messagePointer1 := bpmnruntime.MessageSubscriptionPointer{
-			Key:                    s.GenerateId(),
-			State:                  bpmnruntime.MessageSubscriptionActive,
-			CreatedAt:              time.Now().Truncate(time.Millisecond),
-			Name:                   "message",
-			CorrelationKey:         "correlationKey",
-			MessageSubscriptionKey: message1.Key,
-			ExecutionTokenKey:      r,
-		}
-
-		err = s.SaveMessageSubscriptionPointer(t.Context(), messagePointer1)
-		assert.NoError(t, err)
-
-		_, err = s.FindActiveMessageSubscriptionPointer(t.Context(), "message", "correlationKey")
-		assert.NoError(t, err)
-
-		message2 := getMessage(r, st.processDefinition.Key, st.processInstance.Key, bpmnruntime.ExecutionToken{
-			Key:                r,
-			ElementInstanceKey: r,
-			ElementId:          "messageElementId",
-			ProcessInstanceKey: st.processInstance.Key,
-			State:              bpmnruntime.TokenStateWaiting,
-		})
-
-		message2.Key = s.GenerateId()
-		err = s.SaveMessageSubscription(t.Context(), message2)
-		assert.NoError(t, err)
-
-		messagePointer2 := bpmnruntime.MessageSubscriptionPointer{
-			Key:                    s.GenerateId(),
-			State:                  bpmnruntime.MessageSubscriptionActive,
-			CreatedAt:              time.Now().Truncate(time.Millisecond),
-			Name:                   "message",
-			CorrelationKey:         "correlationKey",
-			MessageSubscriptionKey: message2.Key,
-			ExecutionTokenKey:      r,
-		}
-
-		err = s.SaveMessageSubscriptionPointer(t.Context(), messagePointer2)
-		assert.Error(t, err)
-
-		messagePointer1.State = bpmnruntime.MessageSubscriptionComplete
-		err = s.SaveMessageSubscriptionPointer(t.Context(), messagePointer1)
-		assert.NoError(t, err)
-
-		err = s.SaveMessageSubscriptionPointer(t.Context(), messagePointer2)
-		assert.NoError(t, err)
-	}
-}
-
-func (st *StorageTester) TestMessagePointerStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
-	return func(t *testing.T) {
-		r := s.GenerateId()
-		token := bpmnruntime.ExecutionToken{
-			Key:                r,
-			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
-			State:              bpmnruntime.TokenStateWaiting,
-		}
-		err := s.SaveToken(t.Context(), token)
-		assert.NoError(t, err)
-
-		job := getJob(r, st.processInstance.Key, token)
-		err = s.SaveJob(t.Context(), job)
-		assert.NoError(t, err)
-
-		message1 := getMessage(r, st.processDefinition.Key, st.processInstance.Key, bpmnruntime.ExecutionToken{
-			Key:                r,
-			ElementInstanceKey: r,
-			ElementId:          "messageElementId",
-			ProcessInstanceKey: st.processInstance.Key,
-			State:              bpmnruntime.TokenStateWaiting,
-		})
-
-		err = s.SaveMessageSubscription(t.Context(), message1)
-		assert.NoError(t, err)
-
-		messagePointer1 := bpmnruntime.MessageSubscriptionPointer{
-			Key:                    s.GenerateId(),
-			State:                  bpmnruntime.MessageSubscriptionActive,
-			CreatedAt:              time.Now().Truncate(time.Millisecond),
-			Name:                   "message",
-			CorrelationKey:         "correlationKey",
-			MessageSubscriptionKey: message1.Key,
-			ExecutionTokenKey:      r,
-		}
-
-		err = s.SaveMessageSubscriptionPointer(t.Context(), messagePointer1)
-		assert.NoError(t, err)
-
-		pointer, err := s.FindActiveMessageSubscriptionPointer(t.Context(), "message", "correlationKey")
-		assert.NoError(t, err)
-		assert.NotEqual(t, pointer.Key, 0)
-		assert.Equal(t, pointer.State, messagePointer1.State)
-		assert.Equal(t, pointer.CorrelationKey, messagePointer1.CorrelationKey)
-		assert.Equal(t, pointer.MessageSubscriptionKey, messagePointer1.MessageSubscriptionKey)
-		assert.Equal(t, pointer.ExecutionTokenKey, messagePointer1.ExecutionTokenKey)
-		assert.Equal(t, pointer.Name, messagePointer1.Name)
-		assert.Equal(t, pointer.CreatedAt, messagePointer1.CreatedAt)
 	}
 }

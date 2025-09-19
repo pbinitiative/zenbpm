@@ -51,7 +51,7 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NotEmpty(t, processInstance.Variables["test-var"])
 		assert.Equal(t, "test", processInstance.Variables["test-var"])
 		assert.Equal(t, float64(123), processInstance.Variables["testVar"])
-		
+
 		err = publishMessage(t, "globalMsgRef", "correlation-key-one", &map[string]any{
 			"test-var": "test",
 		})

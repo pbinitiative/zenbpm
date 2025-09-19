@@ -6,16 +6,14 @@
 --  - Enterprise License (See LICENSE-ENTERPRISE.md)
 
 -- name: SaveMessageSubscriptionPointer :exec
-INSERT INTO message_subscription_pointer(key, state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(key)
+INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name,correlation_key)
         DO UPDATE SET
-            state = excluded.state;
-
--- name: SetStateForMessageSubscriptionPointers :exec
-UPDATE message_subscription_pointer
-SET state = @state
-WHERE execution_token_key = @execution_token_key;
+            state = excluded.state,
+						created_at = excluded.created_at,
+						message_subscription_key = excluded.message_subscription_key,
+						execution_token_key = excluded.execution_token_key;
 
 -- name: FindMessageSubscriptionPointer :one
 SELECT

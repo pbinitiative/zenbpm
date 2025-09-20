@@ -284,6 +284,60 @@ func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
 }
 
+func Test_CancelInstance_shouldCancelInstance(t *testing.T) {
+	// setup
+	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
+	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-multiple-boundary.bpmn")
+	assert.NoError(t, err)
+
+	// when
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	err = bpmnEngine.CancelInstanceByKey(t.Context(), instance.GetInstanceKey())
+	assert.NoError(t, err)
+
+	// then
+
+	// All message subscriptions should be canceled
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions), "expected 0 message subscriptions, but found %d", len(subscriptions))
+
+	// All timers should be canceled
+	timers, err := bpmnEngine.persistence.FindProcessInstanceTimers(t.Context(), instance.Key, runtime.TimerStateCreated)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(timers), "expected 0 timers, but found %d", len(timers))
+
+	// All jobs should be canceled
+	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs), "expected 0 jobs, but found %d", len(jobs))
+
+	// All incidents should be resolved
+	// TODO: would need different test
+
+	// All called processes should be terminated
+	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	assert.NoError(t, err)
+
+	for _, token := range tokens {
+		cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), token.Key)
+		assert.NoError(t, err)
+
+		for _, cp := range cps {
+			assert.Equal(t, runtime.ActivityStateTerminated, cp.State, "expected cancelled state for terminated process, but found %s", cp.State)
+		}
+	}
+
+	// Cancel process instance
+	pi, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateTerminated, pi.State, "expected canceled state for process instance, but found %s", pi.State)
+
+}
+
 func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 	// setup
 	cp := CallPath{}

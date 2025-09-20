@@ -10,6 +10,45 @@ import (
 	"database/sql"
 )
 
+const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
+SELECT
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+FROM
+    process_instance
+WHERE
+    parent_process_execution_token = ?1
+`
+
+func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessByParentExecutionToken, parentProcessExecutionToken)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessInstance{}
+	for rows.Next() {
+		var i ProcessInstance
+		if err := rows.Scan(
+			&i.Key,
+			&i.ProcessDefinitionKey,
+			&i.CreatedAt,
+			&i.State,
+			&i.Variables,
+			&i.ParentProcessExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessInstances = `-- name: FindProcessInstances :many
 SELECT
     "key", process_definition_key, created_at, state, variables, parent_process_execution_token

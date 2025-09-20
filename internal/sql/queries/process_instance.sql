@@ -37,6 +37,14 @@ ORDER BY
     created_at DESC
 LIMIT @size OFFSET @offst;
 
+-- name: FindProcessByParentExecutionToken :many
+SELECT
+    *
+FROM
+    process_instance
+WHERE
+    parent_process_execution_token = @parent_process_execution_token;
+
 -- name: GetProcessInstance :one
 SELECT
     *

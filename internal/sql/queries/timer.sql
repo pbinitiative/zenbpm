@@ -45,6 +45,15 @@ WHERE
     execution_token = @execution_token
     AND state = @state;
 
+-- name: FindProcessInstanceTimersInState :many
+SELECT
+    *
+FROM
+    timer
+WHERE
+    process_instance_key = @process_instance_key
+    AND state = @state;
+
 -- name: FindTimersInStateTillDueAt :many
 SELECT
     *

@@ -704,16 +704,20 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 var _ storage.ProcessInstanceStorageReader = &RqLiteDB{}
 
 func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
-	var res bpmnruntime.ProcessInstance
 	dbInstance, err := rq.queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
-		return res, fmt.Errorf("failed to find process instance by key: %w", err)
+		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to find process instance by key: %w", err)
 	}
 
+	return rq.inflateProcessInstance(ctx, rq.queries, dbInstance)
+}
+
+func (rq *RqLiteDB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbInstance sql.ProcessInstance) (bpmnruntime.ProcessInstance, error) {
+	var res bpmnruntime.ProcessInstance
 	variables := map[string]any{}
-	err = json.Unmarshal([]byte(dbInstance.Variables), &variables)
+	err := json.Unmarshal([]byte(dbInstance.Variables), &variables)
 	if err != nil {
-		return res, fmt.Errorf("failed to unmarshal variables: %w", err)
+		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 
 	definition, err := rq.FindProcessDefinitionByKey(ctx, dbInstance.ProcessDefinitionKey)
@@ -750,6 +754,26 @@ func (rq *RqLiteDB) FindProcessInstanceByKey(ctx context.Context, processInstanc
 		ParentProcessExecutionToken: parentToken,
 	}
 
+	return res, nil
+}
+
+func (rq *RqLiteDB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+	var res []bpmnruntime.ProcessInstance
+	dbInstances, err := rq.queries.FindProcessByParentExecutionToken(ctx, ssql.NullInt64{
+		Int64: parentExecutionTokenKey,
+		Valid: true,
+	})
+	if err != nil {
+		return res, fmt.Errorf("failed to find process instance by key: %w", err)
+	}
+
+	for _, dbInstance := range dbInstances {
+		inst, err := rq.inflateProcessInstance(ctx, rq.queries, dbInstance)
+		if err != nil {
+			return res, fmt.Errorf("failed to inflate process instance: %w", err)
+		}
+		res = append(res, inst)
+	}
 	return res, nil
 }
 
@@ -790,6 +814,52 @@ func (rq *RqLiteDB) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find element timers for token %d: %w", tokenKey, err)
+	}
+	res := make([]bpmnruntime.Timer, len(dbTimers))
+	tokensToLoad := make([]int64, len(dbTimers))
+	for i, timer := range dbTimers {
+		res[i] = bpmnruntime.Timer{
+			ElementId:            timer.ElementID,
+			ElementInstanceKey:   timer.ElementInstanceKey,
+			Key:                  timer.Key,
+			ProcessDefinitionKey: timer.ProcessDefinitionKey,
+			ProcessInstanceKey:   timer.ProcessInstanceKey,
+			TimerState:           bpmnruntime.TimerState(timer.State),
+			CreatedAt:            time.UnixMilli(timer.CreatedAt),
+			DueAt:                time.UnixMilli(timer.DueAt),
+			Token:                bpmnruntime.ExecutionToken{Key: timer.ExecutionToken},
+		}
+		tokensToLoad[i] = timer.ExecutionToken
+		res[i].Duration = res[i].DueAt.Sub(res[i].CreatedAt)
+	}
+	loadedTokens, err := rq.queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load timer subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
+				}
+			}
+		}
+	}
+	return res, nil
+}
+
+func (rq *RqLiteDB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
+		ProcessInstanceKey: processInstanceKey,
+		State:              int64(bpmnruntime.TimerStateCreated),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find element timers for process instance %d: %w", processInstanceKey, err)
 	}
 	res := make([]bpmnruntime.Timer, len(dbTimers))
 	tokensToLoad := make([]int64, len(dbTimers))

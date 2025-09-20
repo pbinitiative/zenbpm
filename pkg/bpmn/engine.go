@@ -144,6 +144,120 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
 }
 
+func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
+
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
+	}
+	// Check if process is root
+	if instance.ParentProcessExecutionToken != nil {
+		// Cancel all child process instances
+		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.Key)
+	}
+
+	batch := engine.persistence.NewBatch()
+	err = engine.cancelInstance(ctx, instance, batch)
+
+	if err != nil {
+		return err
+	}
+
+	return batch.Flush(ctx)
+
+}
+
+func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch storage.Batch) error {
+
+	// Cancel all message subscriptions
+	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.GetInstanceKey(), runtime.ActivityStateActive)
+	if err != nil {
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
+	}
+
+	for _, sub := range subscriptions {
+		sub.MessageState = runtime.ActivityStateTerminated
+		err = batch.SaveMessageSubscription(ctx, sub)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+		}
+	}
+
+	// Cancel all timer subscriptions
+	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.Key, runtime.TimerStateCreated)
+	if err != nil {
+		return fmt.Errorf("failed to find timers for instance %d: %w", instance.Key, err)
+	}
+	for _, timer := range timers {
+		timer.TimerState = runtime.TimerStateCancelled
+		err = batch.SaveTimer(ctx, timer)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
+		}
+	}
+
+	// Cancell all jobs
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.Key, err)
+	}
+
+	for _, job := range jobs {
+		job.State = runtime.ActivityStateTerminated
+		err = batch.SaveJob(ctx, job)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+		}
+	}
+
+	// Cancel all incidents
+
+	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find incidents for instance %d: %w", instance.Key, err)
+	}
+
+	for _, incident := range incidents {
+		incident.ResolvedAt = ptr.To(time.Now())
+		err = batch.SaveIncident(ctx, incident)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
+		}
+	}
+
+	// Cancel all called processes
+
+	tokens, err := engine.persistence.GetTokensForProcessInstance(ctx, instance.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find tokens for instance %d: %w", instance.Key, err)
+	}
+
+	for _, token := range tokens {
+		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
+		}
+
+		for _, calledProcess := range calledProcesses {
+			engine.cancelInstance(ctx, calledProcess, batch)
+		}
+		token.State = runtime.TokenStateCanceled
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to token %d: %w", token.Key, err)
+		}
+	}
+
+	// Cancel process instance
+	instance.State = runtime.ActivityStateTerminated
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+	}
+
+	return nil
+}
+
 func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
 		Definition:                  process,
@@ -522,10 +636,6 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
 		// we created process instance and its running in separate goroutine
-		if activityResult == runtime.ActivityStateActive {
-			currentToken.State = runtime.TokenStateWaiting
-			return []runtime.ExecutionToken{currentToken}, nil
-		}
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
 	default:

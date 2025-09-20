@@ -107,3 +107,53 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.State.String())
 	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
 }
+
+func Test_callActivity_cancelsOnInterruptingBoudnaryEvent(t *testing.T) {
+	// setup
+	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
+	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-boundary-simple.bpmn")
+	assert.NoError(t, err)
+
+	variableName := "variable_name"
+	variableContext := make(map[string]interface{}, 1)
+	variableContext[variableName] = "oldVal"
+
+	// when
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	// wait for call activity process to be created
+	time.Sleep(1 * time.Second)
+
+	parentInstanceKey := instance.Key
+	var foundChildInstance *runtime.ProcessInstance
+	for _, pi := range engineStorage.ProcessInstances {
+		if pi.ParentProcessExecutionToken != nil && pi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
+			foundChildInstance = &pi
+			break
+		}
+	}
+
+	// when
+	variables := map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	assert.NoError(t, err)
+
+	// then
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState(), "Parent instance should be completed")
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), foundChildInstance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateTerminated, instance.GetState(), "Child instance should be terminated")
+
+	jobs := findActiveJobsForProcessInstance(instance.Key, "TestType")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+}

@@ -69,11 +69,9 @@ func (engine *Engine) PublishMessageForInstance(ctx context.Context, processInst
 		}
 		batch.Flush(ctx)
 		return engine.runProcessInstance(ctx, &instance, tokens)
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask:
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity:
 		return engine.handleBoundaryMessage(ctx, batch, message, instance, variables)
 
-	case *bpmn20.TCallActivity:
-		return errors.Join(newEngineErrorf("failed to publish message %s to listener in instance %d. ", messageName, processInstanceKey), errors.New("call activity not implemented yet"))
 	default:
 		msg := fmt.Sprintf("failed to publish message %s to instance %d. Unexpected node type %T", messageName, processInstanceKey, nodeT)
 		engine.logger.Error(msg)
@@ -166,15 +164,27 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	if listener.CancellActivity {
 		// cancel job
 		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
-		if err != nil {
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
-		job.State = runtime.ActivityStateTerminated
-		err = batch.SaveJob(ctx, job)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+
+		if !errors.Is(err, storage.ErrNotFound) {
+			job.State = runtime.ActivityStateTerminated
+			err = batch.SaveJob(ctx, job)
+			if err != nil {
+				return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+			}
 		}
 		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+		// cancel all called processes
+		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
+		}
+		for _, calledProcess := range calledProcesses {
+			engine.cancelInstance(ctx, calledProcess, batch)
+		}
+
 	} else {
 		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		// recreate the message subscription

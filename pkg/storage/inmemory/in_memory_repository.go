@@ -250,6 +250,16 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	return res, nil
 }
 
+func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+	res := make([]bpmnruntime.ProcessInstance, 0)
+	for _, processInstance := range mem.ProcessInstances {
+		if processInstance.ParentProcessExecutionToken != nil && processInstance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
+			res = append(res, processInstance)
+		}
+	}
+	return res, nil
+}
+
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
@@ -266,6 +276,20 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 			continue
 		}
 		if timer.Token.Key != tokenKey {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	res := make([]bpmnruntime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.ProcessInstanceKey != processInstanceKey {
+			continue
+		}
+		if timer.TimerState != state {
 			continue
 		}
 		res = append(res, timer)

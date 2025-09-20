@@ -6,6 +6,7 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
@@ -31,6 +32,7 @@ type Querier interface {
 	FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
+	FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)
 	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
@@ -38,6 +40,7 @@ type Querier interface {
 	FindProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]Job, error)
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
+	FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error)
 	FindProcessInstances(ctx context.Context, arg FindProcessInstancesParams) ([]ProcessInstance, error)
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error)
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)

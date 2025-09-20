@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1plhi4y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1plhi4y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
   <bpmn:process id="Simple_CallActivity_Process" isExecutable="true">
     <bpmn:endEvent id="Event_0rrd3fx" name="Ended normally">
       <bpmn:incoming>Flow_1htsftl</bpmn:incoming>
@@ -25,13 +25,15 @@
       <bpmn:messageEventDefinition id="MessageEventDefinition_1s2mz3u" messageRef="simple-boundary-id" />
     </bpmn:boundaryEvent>
     <bpmn:endEvent id="Event_0cjyyen" name="Timer triggerd">
-      <bpmn:incoming>Flow_0qxpeaq</bpmn:incoming>
+      <bpmn:incoming>Flow_0eqikzn</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_0qxpeaq" sourceRef="Event_1y2alzy" targetRef="Event_0cjyyen" />
-    <bpmn:boundaryEvent id="Event_1y2alzy" cancelActivity="false" attachedToRef="callActivity">
-      <bpmn:outgoing>Flow_0qxpeaq</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_1ci9aes" />
+    <bpmn:boundaryEvent id="Event_0wzcues" cancelActivity="false" attachedToRef="callActivity">
+      <bpmn:outgoing>Flow_0eqikzn</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1h0b4vg">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
     </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_0eqikzn" sourceRef="Event_0wzcues" targetRef="Event_0cjyyen" />
   </bpmn:process>
   <bpmn:message id="simple-boundary-id" name="simple-boundary">
     <bpmn:extensionElements>
@@ -68,7 +70,7 @@
       <bpmndi:BPMNShape id="Event_04zgo9z_di" bpmnElement="Event_1oz31mx">
         <dc:Bounds x="332" y="142" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0tbrqwj_di" bpmnElement="Event_1y2alzy">
+      <bpmndi:BPMNShape id="Event_05dvw72_di" bpmnElement="Event_0wzcues">
         <dc:Bounds x="252" y="142" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0y8zi5j_di" bpmnElement="Flow_0y8zi5j">
@@ -84,7 +86,7 @@
         <di:waypoint x="350" y="240" />
         <di:waypoint x="422" y="240" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0qxpeaq_di" bpmnElement="Flow_0qxpeaq">
+      <bpmndi:BPMNEdge id="Flow_0eqikzn_di" bpmnElement="Flow_0eqikzn">
         <di:waypoint x="270" y="178" />
         <di:waypoint x="270" y="320" />
         <di:waypoint x="422" y="320" />

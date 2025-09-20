@@ -22,6 +22,7 @@ type TFlowElementsContainer struct {
 	IntermediateCatchEvent []TIntermediateCatchEvent `xml:"intermediateCatchEvent"`
 	IntermediateThrowEvent []TIntermediateThrowEvent `xml:"intermediateThrowEvent"`
 	CallActivity           []TCallActivity           `xml:"callActivity"`
+	BoundaryEvent          []TBoundaryEvent          `xml:"boundaryEvent"`
 }
 
 type TProcess struct {

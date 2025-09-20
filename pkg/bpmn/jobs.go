@@ -178,6 +178,11 @@ func (engine *Engine) completeJob(
 	batch.SaveJob(ctx, job)
 	batch.SaveProcessInstance(ctx, *instance)
 
+	err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &job.Token)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.Key, err)
+	}
+
 	currentToken := job.Token
 
 	tokens, err = engine.handleSimpleTransition(ctx, batch, instance, task, currentToken)

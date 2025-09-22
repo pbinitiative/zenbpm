@@ -130,6 +130,9 @@ func (c Cluster) PrintDebug() {
 
 // GetPartitionIdFromString Simple hash function to assign partition id to any str string
 func (c Cluster) GetPartitionIdFromString(str string) uint32 {
+	if len(c.Partitions) == 0 {
+		return 0
+	}
 	var bitSum uint32 = 0
 	for _, character := range str {
 		bitSum = bitSum + uint32(character)

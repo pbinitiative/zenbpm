@@ -44,3 +44,11 @@ FROM
     process_instance
 WHERE
     key = @key;
+
+-- name: CountActiveProcessInstances :one
+SELECT
+    count(*)
+FROM
+    process_instance
+WHERE
+    state = 1;

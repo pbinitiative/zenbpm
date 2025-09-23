@@ -93,3 +93,11 @@ WHERE
 ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452
+
+-- name: CountWaitingJobs :one
+SELECT
+    count(*)
+FROM
+    job
+WHERE
+    state = 1;

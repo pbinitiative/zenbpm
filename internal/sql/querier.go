@@ -9,6 +9,9 @@ import (
 )
 
 type Querier interface {
+	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	// https://github.com/sqlc-dev/sqlc/issues/2452
+	CountWaitingJobs(ctx context.Context) (int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
 	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
@@ -53,8 +56,8 @@ type Querier interface {
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
-	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
-	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
+	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
+	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	// Copyright 2021-present ZenBPM Contributors
 	// (based on git commit history).
 	//

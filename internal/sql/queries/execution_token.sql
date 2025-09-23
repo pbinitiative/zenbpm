@@ -14,21 +14,19 @@ ON CONFLICT
         element_instance_key = excluded.element_instance_key,
         element_id = excluded.element_id;
 
--- name: GetTokensInStateForPartition :many
+-- name: GetTokensInState :many
 SELECT
     *
 FROM
     execution_token
-WHERE (key & 4190208) >> 12 = @partition
-    AND state = @state;
+WHERE state = @state;
 
 -- name: GetTokensForProcessInstance :many
 SELECT
     *
 FROM
     execution_token
-WHERE (key & 4190208) >> 12 = @partition
-    AND process_instance_key = @process_instance_key;
+WHERE process_instance_key = @process_instance_key;
 
 -- name: GetTokens :many
 SELECT

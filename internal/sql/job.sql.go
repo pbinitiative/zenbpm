@@ -11,6 +11,24 @@ import (
 	"strings"
 )
 
+const countWaitingJobs = `-- name: CountWaitingJobs :one
+
+SELECT
+    count(*)
+FROM
+    job
+WHERE
+    state = 1
+`
+
+// https://github.com/sqlc-dev/sqlc/issues/2452
+func (q *Queries) CountWaitingJobs(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countWaitingJobs)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token

@@ -1371,14 +1371,11 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 var _ storage.TokenStorageReader = &DB{}
 
 func (rq *DB) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
-	return GetActiveTokensForPartition(ctx, rq.Queries, rq.Partition)
+	return GetActiveTokens(ctx, rq.Queries, rq.Partition)
 }
 
-func GetActiveTokensForPartition(ctx context.Context, db *sql.Queries, partitionId uint32) ([]bpmnruntime.ExecutionToken, error) {
-	tokens, err := db.GetTokensInStateForPartition(ctx, sql.GetTokensInStateForPartitionParams{
-		Partition: int64(partitionId),
-		State:     int64(bpmnruntime.TokenStateRunning),
-	})
+func GetActiveTokens(ctx context.Context, db *sql.Queries, partitionId uint32) ([]bpmnruntime.ExecutionToken, error) {
+	tokens, err := db.GetTokensInState(ctx, int64(bpmnruntime.TokenStateRunning))
 	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
 		res[i] = bpmnruntime.ExecutionToken{
@@ -1397,10 +1394,7 @@ func (rq *DB) GetTokensForProcessInstance(ctx context.Context, processInstanceKe
 }
 
 func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
-	tokens, err := db.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
-		Partition:          int64(partitionId),
-		ProcessInstanceKey: processInstanceKey,
-	})
+	tokens, err := db.GetTokensForProcessInstance(ctx, processInstanceKey)
 	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
 		res[i] = bpmnruntime.ExecutionToken{

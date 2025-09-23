@@ -33,6 +33,9 @@ import (
 	httpd "github.com/rqlite/rqlite/v8/http"
 	"github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -50,6 +53,7 @@ type ZenPartitionNode struct {
 	clusterService  *cluster.Service
 	statusMu        sync.Mutex
 	statuses        map[string]httpd.StatusReporter
+	metrics         partitionMetrics
 	logger          hclog.Logger
 
 	Engine *bpmn.Engine
@@ -62,6 +66,18 @@ type ZenPartitionNode struct {
 
 	// callback functions that notify node about changes in the partition cluster
 	stateChangeCallbacks PartitionChangesCallbacks
+}
+
+func (zpn *ZenPartitionNode) createMetrics() {
+	var err error
+	zpn.metrics.jobsWaiting, err = otel.Meter(partitionMeter).Int64Gauge("jobs_waiting", metric.WithDescription("Number of jobs waiting to be completed"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for jobsWaiting", "err", err)
+	}
+	zpn.metrics.processInstancesActive, err = otel.Meter(partitionMeter).Int64Gauge("process_instances_active", metric.WithDescription("Number of process instances in active state"))
+	if err != nil {
+		zpn.logger.Error("Failed to register meter for jobsWaiting", "err", err)
+	}
 }
 
 type PartitionChangesCallbacks struct {
@@ -77,8 +93,16 @@ type PartitionChangesCallbacks struct {
 	ResumeNode func(id string) error
 }
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
+type partitionMetrics struct {
+	jobsWaiting            metric.Int64Gauge
+	processInstancesActive metric.Int64Gauge
+}
 
+const (
+	partitionMeter string = "partition"
+)
+
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
@@ -88,6 +112,8 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		stateChangeCallbacks: callbacks,
 	}
 	zpn.logger.Info(fmt.Sprintf("Starting partition %d node", partition))
+
+	zpn.createMetrics()
 
 	// Raft internode layer
 	raftLn := network.NewRqLiteRaftListener(partition, mux)
@@ -357,11 +383,14 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 	closeCh = make(chan struct{})
 	doneCh = make(chan struct{})
+	ticker := time.NewTicker(5 * time.Second)
 
 	go func() {
 		defer close(doneCh)
 		for {
 			select {
+			case <-ticker.C:
+				zpn.updatePartitionMetrics()
 			case o := <-zpn.observerChan:
 				switch signal := o.Data.(type) {
 				case raft.ResumedHeartbeatObservation:
@@ -431,6 +460,40 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 		}
 	}()
 	return closeCh, doneCh
+}
+
+func (zpn *ZenPartitionNode) updatePartitionMetrics() {
+	ctx := context.Background()
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	var waitingJobs int64
+	go func() {
+		var err error
+		waitingJobs, err = zpn.DB.Queries.CountWaitingJobs(ctx)
+		if err != nil {
+			zpn.logger.Error("Failed to update metrics for partition", "partition", zpn.PartitionId, "err", err)
+		}
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	var activeInstances int64
+	go func() {
+		var err error
+		activeInstances, err = zpn.DB.Queries.CountActiveProcessInstances(ctx)
+		if err != nil {
+			zpn.logger.Error("Failed to update metrics for partition", "partition", zpn.PartitionId, "err", err)
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	zpn.metrics.jobsWaiting.Record(ctx, waitingJobs, metric.WithAttributes(
+		attribute.Int64("partition", int64(zpn.PartitionId)),
+	))
+	zpn.metrics.processInstancesActive.Record(ctx, activeInstances, metric.WithAttributes(
+		attribute.Int64("partition", int64(zpn.PartitionId)),
+	))
 }
 
 func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.CredentialsStore, error) {

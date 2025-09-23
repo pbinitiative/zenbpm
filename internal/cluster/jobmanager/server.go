@@ -30,7 +30,7 @@ const (
 	MetadataClientID string = "client_id"
 	// each job will remain assigned to client until this duration expires
 	jobLockDuration               time.Duration = 30 * time.Second
-	emptyDistributionCounterSleep int           = 20 // counter that puts job loader to sleep for 1 second
+	emptyDistributionCounterSleep int           = 100 // counter that puts job loader to sleep for 1 second
 	maxActiveJobsPerClient        int64         = 10
 )
 
@@ -150,7 +150,7 @@ func (s *jobServer) distributeJobs() {
 			continue
 		}
 		if jobsToLoad > s.maxPartitionJobLoadCount {
-			jobsToLoad = maxActiveJobsPerClient
+			jobsToLoad = s.maxPartitionJobLoadCount
 		}
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, int64(jobsToLoad))
 		// jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, s.partitionJobLoadCount)
@@ -166,7 +166,7 @@ func (s *jobServer) distributeJobs() {
 			if s.emptyDistributionCounter >= emptyDistributionCounterSleep {
 				time.Sleep(1 * time.Second)
 			} else {
-				time.Sleep(time.Duration(s.emptyDistributionCounter) * (5 * time.Millisecond))
+				time.Sleep(time.Duration(s.emptyDistributionCounter))
 			}
 			continue
 		}

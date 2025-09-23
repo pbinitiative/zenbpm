@@ -29,10 +29,10 @@ func Test_SingleJoinOK(t *testing.T) {
 		if jr == nil {
 			t.Fatal("join request is nil")
 		}
-		if exp, got := "id0", jr.Id; exp != got {
+		if exp, got := "id0", jr.GetId(); exp != got {
 			t.Fatalf("unexpected id, got %s, exp: %s", got, exp)
 		}
-		if exp, got := "1.2.3.4", jr.Address; exp != got {
+		if exp, got := "1.2.3.4", jr.GetAddress(); exp != got {
 			t.Fatalf("unexpected addr, got %s, exp: %s", got, exp)
 		}
 		return &proto.JoinResponse{}, nil

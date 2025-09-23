@@ -1,4 +1,4 @@
-syntax = "proto3";
+edition = "2023";
 package grpc;
 
 option go_package = "github.com/pbinitiative/zenbpm/internal/grpc/proto";
@@ -35,12 +35,12 @@ message JobCompleteRequest{
 message JobFailRequest{
   int64 key = 1;
   string message = 2;
-  optional string error_code = 3;
-  optional bytes variables = 4;
+  string error_code = 3;
+  bytes variables = 4;
 }
 
 message JobStreamResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   WaitingJob job = 2;
 }
 

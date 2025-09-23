@@ -1,4 +1,4 @@
-syntax = "proto3";
+edition = "2023";
 package cluster;
 
 import "zencommand.proto";
@@ -88,7 +88,7 @@ message NotifyRequest {
 }
 
 message NotifyResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message JoinRequest {
@@ -98,7 +98,7 @@ message JoinRequest {
 }
 
 message JoinResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   string leader = 2;
 }
 
@@ -110,7 +110,7 @@ message AddPartitionNodeRequest {
 }
 
 message AddPartitionNodeResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message ShutdownPartitionNodeRequest {
@@ -119,7 +119,7 @@ message ShutdownPartitionNodeRequest {
 }
 
 message ShutdownPartitionNodeResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message PartitionNodeLeaderChangeRequest {
@@ -128,7 +128,7 @@ message PartitionNodeLeaderChangeRequest {
 }
 
 message PartitionNodeLeaderChangeResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message RemovePartitionNodeRequest {
@@ -137,7 +137,7 @@ message RemovePartitionNodeRequest {
 }
 
 message RemovePartitionNodeResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message ResumePartitionNodeRequest {
@@ -146,7 +146,7 @@ message ResumePartitionNodeRequest {
 }
 
 message ResumePartitionNodeResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 // INTERNAL ENGINE API START
@@ -159,7 +159,7 @@ message EvaluateDecisionRequest {
 }
 
 message EvaluatedDRDResult {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated EvaluatedDecisionResult evaluatedDecisions = 2;
   bytes DecisionOutput = 3;
 }
@@ -252,7 +252,7 @@ message Incident {
   int64 process_instance_key = 4;
   string message = 5;
   int64 created_at = 6;
-  optional int64 resolved_at = 7;
+  int64 resolved_at = 7;
   int64 execution_token = 8;
 }
 
@@ -262,7 +262,7 @@ message DeployDecisionDefinitionRequest {
 }
 
 message DeployDecisionDefinitionResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message DeployProcessDefinitionRequest {
@@ -271,7 +271,7 @@ message DeployProcessDefinitionRequest {
 }
 
 message DeployProcessDefinitionResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message CompleteJobRequest {
@@ -282,18 +282,18 @@ message CompleteJobRequest {
 
 
 message CompleteJobResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 message FailJobRequest {
   int64 key = 1;
   string message = 2;
   string client_id = 3;
-  optional string error_code = 4;
-  optional bytes variables = 5;
+  string error_code = 4;
+  bytes variables = 5;
 }
 
 message FailJobResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message ActivateJobRequest {
@@ -301,7 +301,7 @@ message ActivateJobRequest {
 }
 
 message ActivateJobResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   InternalJob job = 2;
 }
 
@@ -326,7 +326,7 @@ message SetMessageSubscriptionPointerRequest {
 }
 
 message SetMessageSubscriptionPointerResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message FindActiveMessageRequest {
@@ -336,7 +336,7 @@ message FindActiveMessageRequest {
 }
 
 message FindActiveMessageResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   int64 key = 2;
   string elementId = 3;
   int64 processDefinitionKey = 4;
@@ -353,7 +353,7 @@ message PublishMessageRequest {
 }
 
 message PublishMessageResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message CreateInstanceRequest {
@@ -365,7 +365,7 @@ message CreateInstanceRequest {
 }
 
 message CreateInstanceResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   ProcessInstance process = 2;
 }
 
@@ -382,7 +382,7 @@ message PartitionedProcessInstances {
 }
 
 message GetProcessInstancesResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated PartitionedProcessInstances partitions = 2;
 }
 
@@ -391,7 +391,7 @@ message GetProcessInstanceRequest {
 }
 
 message GetProcessInstanceResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   ProcessInstance processes = 2;
 }
 
@@ -400,7 +400,7 @@ message GetProcessInstanceJobsRequest {
 }
 
 message GetProcessInstanceJobsResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated Job jobs = 2;
 }
 
@@ -409,7 +409,7 @@ message GetFlowElementHistoryRequest {
 }
 
 message GetFlowElementHistoryResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated FlowElement flow = 2;
 }
 
@@ -418,7 +418,7 @@ message GetIncidentsRequest {
 }
 
 message GetIncidentsResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated Incident incidents = 2;
 }
 
@@ -426,8 +426,8 @@ message GetJobsRequest {
   int32 page = 1;
   int32 size = 2;
   repeated uint32 partitions = 3;
-  optional string jobType = 4;
-  optional int64 state = 5;
+  string jobType = 4;
+  int64 state = 5;
 }
 
 message PartitionedJobs {
@@ -436,7 +436,7 @@ message PartitionedJobs {
 }
 
 message GetJobsResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   repeated PartitionedJobs partitions = 2;
 }
 
@@ -445,7 +445,7 @@ message ResolveIncidentRequest {
 }
 
 message ResolveIncidentResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message SubscribeJobRequest {
@@ -471,17 +471,17 @@ message ReassignJobRequest {
 }
 
 message ReassignJobResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message CpuProfilerRequest {}
 
 message CpuProfilerStartResult {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
 }
 
 message CpuProfilerStopResult {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   bytes pprof = 2;
 }
 
@@ -504,7 +504,7 @@ message ClusterBackupRequest {}
 message ClusterBackupResponse {}
 
 message NodeCommandResponse {
-  optional ErrorResult error = 1;
+  ErrorResult error = 1;
   zencommand.Command.Type type = 2;
   oneof response {
     ClusterNodeChangeResponse node_change = 3;

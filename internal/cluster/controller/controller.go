@@ -25,6 +25,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rqproto "github.com/rqlite/rqlite/v8/command/proto"
 	rstore "github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
@@ -140,10 +141,10 @@ func (c *Controller) assignPartition(ctx context.Context, partitionId uint32, no
 	}
 	c.logger.Info(fmt.Sprintf("Assigning partition %d to %s", partitionId, nodeId))
 	err := c.store.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      nodeId,
-		PartitionId: partitionId,
-		State:       proto.NodePartitionState_NODE_PARTITION_STATE_JOINING,
-		Role:        proto.Role_ROLE_TYPE_UNKNOWN,
+		NodeId:      ptr.To(nodeId),
+		PartitionId: ptr.To(partitionId),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_JOINING.Enum(),
+		Role:        proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
 	})
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("failed to assignPartition: %s", err))
@@ -249,13 +250,13 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE,
+		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
 		Request: &proto.Command_NodePartitionChange{
 			NodePartitionChange: &proto.NodePartitionChange{
-				NodeId:      c.store.ID(),
-				PartitionId: partitionId,
-				State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING,
-				Role:        c.store.Role(),
+				NodeId:      ptr.To(c.store.ID()),
+				PartitionId: ptr.To(partitionId),
+				State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING.Enum(),
+				Role:        c.store.Role().Enum(),
 			},
 		},
 	})
@@ -338,16 +339,16 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	}
 	partitionChangeCmd := &proto.Command_NodePartitionChange{
 		NodePartitionChange: &proto.NodePartitionChange{
-			NodeId:      c.store.ID(),
-			PartitionId: partitionId,
-			State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED,
-			Role:        partitionNode.Role(),
+			NodeId:      ptr.To(c.store.ID()),
+			PartitionId: ptr.To(partitionId),
+			State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+			Role:        partitionNode.Role().Enum(),
 		},
 	}
 	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type:    proto.Command_TYPE_NODE_PARTITION_CHANGE,
+		Type:    proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
 		Request: partitionChangeCmd,
 	})
 	if err != nil {

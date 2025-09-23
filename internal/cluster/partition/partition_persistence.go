@@ -1151,9 +1151,9 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 			return fmt.Errorf("failed to get partition %d leader client: %w", msgPartitionId, err)
 		}
 		foundMessage, err := messageLeader.FindActiveMessage(ctx, &zenproto.FindActiveMessageRequest{
-			Name:              oldPointer.Name,
-			CorrelationKey:    oldPointer.CorrelationKey,
-			ExecutionTokenKey: oldPointer.ExecutionTokenKey,
+			Name:              &oldPointer.Name,
+			CorrelationKey:    &oldPointer.CorrelationKey,
+			ExecutionTokenKey: &oldPointer.ExecutionTokenKey,
 		})
 		if grpccode.NotFound == status.Code(err) {
 			// if message is not active
@@ -1174,13 +1174,13 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 		return fmt.Errorf("failed to get client for partition leader %d: %w", ptrPartitionId, err)
 	}
 	resp, err := leader.SetMessageSubscriptionPointer(ctx, &zenproto.SetMessageSubscriptionPointerRequest{
-		State:                  pointer.State,
-		CreatedAt:              pointer.CreatedAt,
-		Name:                   pointer.Name,
-		CorrelationKey:         pointer.CorrelationKey,
-		MessageSubscriptionKey: pointer.MessageSubscriptionKey,
-		ExecutionTokenKey:      pointer.ExecutionTokenKey,
-		PartitionId:            ptrPartitionId,
+		State:                  &pointer.State,
+		CreatedAt:              &pointer.CreatedAt,
+		Name:                   &pointer.Name,
+		CorrelationKey:         &pointer.CorrelationKey,
+		MessageSubscriptionKey: &pointer.MessageSubscriptionKey,
+		ExecutionTokenKey:      &pointer.ExecutionTokenKey,
+		PartitionId:            &ptrPartitionId,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to save message subscription pointer for message subscription %d: %w", pointer.MessageSubscriptionKey, err)

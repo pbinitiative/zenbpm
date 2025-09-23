@@ -27,6 +27,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/stretchr/testify/assert"
@@ -55,8 +56,8 @@ func TestRqLiteStorage(t *testing.T) {
 		err = fmt.Errorf("message subscription was not found %d", 1)
 		return &zenproto.FindActiveMessageResponse{
 			Error: &zenproto.ErrorResult{
-				Code:    0,
-				Message: err.Error(),
+				Code:    nil,
+				Message: ptr.To(err.Error()),
 			},
 		}, status.Error(codes.NotFound, err.Error())
 	}
@@ -242,14 +243,14 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 		assert.NoError(t, err)
 		ts.FindActiveMessageHandler = func(famr *zenproto.FindActiveMessageRequest) (*zenproto.FindActiveMessageResponse, error) {
 			return &zenproto.FindActiveMessageResponse{
-				Key:                  pointer.MessageSubscriptionKey,
-				ElementId:            "",
-				ProcessDefinitionKey: 1,
-				ProcessInstanceKey:   1,
-				Name:                 pointer.Name,
-				State:                pointer.State,
-				CorrelationKey:       pointer.CorrelationKey,
-				ExecutionToken:       pointer.ExecutionTokenKey,
+				Key:                  &pointer.MessageSubscriptionKey,
+				ElementId:            nil,
+				ProcessDefinitionKey: ptr.To(int64(1)),
+				ProcessInstanceKey:   ptr.To(int64(1)),
+				Name:                 &pointer.Name,
+				State:                &pointer.State,
+				CorrelationKey:       &pointer.CorrelationKey,
+				ExecutionToken:       &pointer.ExecutionTokenKey,
 			}, nil
 		}
 		err = batch.Flush(t.Context())

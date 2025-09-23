@@ -26,6 +26,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -397,19 +398,19 @@ func (s *grpcSrv) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest
 			errMsg := fmt.Errorf("failed to unmarshal variables: %w", err)
 			return &proto.CompleteJobResponse{
 				Error: &proto.ErrorResult{
-					Code:    0,
-					Message: errMsg.Error(),
+					Code:    nil,
+					Message: ptr.To(errMsg.Error()),
 				},
 			}, errMsg
 		}
 	}
-	err := s.jobManager.CompleteJob(ctx, clientID, req.Key, vars)
+	err := s.jobManager.CompleteJob(ctx, clientID, req.GetKey(), vars)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to complete job %d: %w", req.Key, err)
 		return &proto.CompleteJobResponse{
 			Error: &proto.ErrorResult{
-				Code:    0,
-				Message: errMsg.Error(),
+				Code:    nil,
+				Message: ptr.To(errMsg.Error()),
 			},
 		}, errMsg
 	}

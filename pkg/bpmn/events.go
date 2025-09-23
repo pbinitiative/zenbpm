@@ -112,6 +112,9 @@ func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch storage.B
 	var listener *bpmn20.TBoundaryEvent
 
 	for _, be := range instance.Definition.Definitions.Process.BoundaryEvent {
+		if be.AttachedToRef != message.Token.ElementId {
+			continue
+		}
 		if messageDef, ok := be.EventDefinition.(bpmn20.TMessageEventDefinition); ok {
 			m, err := instance.Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
 			if err != nil {

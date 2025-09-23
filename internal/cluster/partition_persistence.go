@@ -822,7 +822,7 @@ func (rq *RqLiteDB) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 func (rq *RqLiteDB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
 		ProcessInstanceKey: processInstanceKey,
-		State:              int64(bpmnruntime.TimerStateCreated),
+		State:              int64(state),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find element timers for process instance %d: %w", processInstanceKey, err)
@@ -857,7 +857,6 @@ func (rq *RqLiteDB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]
 			TimerState:           bpmnruntime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
-			Duration:             time.Millisecond * time.Duration(timer.DueAt-timer.CreatedAt),
 			Token:                bpmnruntime.ExecutionToken{Key: timer.ExecutionToken},
 		}
 		tokensToLoad[i] = timer.ExecutionToken

@@ -17,9 +17,9 @@ import (
 
 func Test_callActivity_startsAndCompletes(t *testing.T) {
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	process, err = bpmnEngine.LoadFromFile("./test-cases/call-activity-simple.bpmn")
+	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-simple.bpmn")
 	assert.NoError(t, err)
 
 	variableName := "variable_name"
@@ -83,12 +83,10 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	}
 
 	var job runtime.Job
-	for _, j := range engineStorage.Jobs {
-		if j.ProcessInstanceKey == foundInstance.Key {
-			job = j
-			break
-		}
-	}
+	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), foundInstance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs), "There should be one job")
+	job = jobs[0]
 
 	assert.NoError(t, err)
 	bpmnEngine.JobCompleteByKey(t.Context(), job.Key, map[string]interface{}{
@@ -96,12 +94,10 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	v := engineStorage.ProcessInstances[instance.Key]
-
 	// wait for parent process instance to continue
 	time.Sleep(1 * time.Second)
 
-	v, err = bpmnEngine.FindProcessInstance(v.Key)
+	v, err := bpmnEngine.FindProcessInstance(foundInstance.Key)
 	assert.NoError(t, err)
 	assert.NotNil(t, v, "Process instance needs to be present")
 	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.State.String())

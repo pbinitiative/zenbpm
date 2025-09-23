@@ -123,14 +123,11 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask:
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity:
 		tokens, err = engine.handleBoundaryTimer(ctx, batch, timer, instance, timer.Token)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
-
-	case *bpmn20.TCallActivity:
-		return nil, nil, errors.Join(newEngineErrorf("failed to trigger timer %s for listener in instance %d. ", timer.GetId(), instance.Key), errors.New("call activity not implemented yet"))
 
 	default:
 		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)
@@ -157,11 +154,12 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 	var listener *bpmn20.TBoundaryEvent
 
 	for _, be := range instance.Definition.Definitions.Process.BoundaryEvent {
-		if timerDef, ok := be.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
-			if be.EventDefinition.(bpmn20.TTimerEventDefinition).Id == timerDef.Id {
-				listener = &be
-				break
-			}
+		if be.AttachedToRef != timer.Token.ElementId {
+			continue
+		}
+		if _, ok := be.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
+			listener = &be
+			break
 		}
 	}
 	if listener == nil {
@@ -183,6 +181,14 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
 		}
 		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+		// cancel all called processes
+		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
+		}
+		for _, calledProcess := range calledProcesses {
+			engine.cancelInstance(ctx, calledProcess, batch)
+		}
 	} else {
 		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		// recreate the message subscription

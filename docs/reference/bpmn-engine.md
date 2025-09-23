@@ -152,7 +152,7 @@ Link intermediate catch event is fully supported.
 
 ### Timer intermediate catch event
 
-Tiemr intermediate catch event is fully supported.
+Timer intermediate catch event is fully supported.
 :::note[Future plans]
 
 ### Message throw event
@@ -163,7 +163,7 @@ Tiemr intermediate catch event is fully supported.
 
 Boundary events of supported event types are supported. The boundary event subscriptions are created at the time of token reaching `waiting state`.
 
-Both **interrupting** and \*_non-interrupting_ boundary events are supported.
+Both **interrupting** and **non-interrupting** boundary events are supported.
 
 Currently supported activity types with boundary events:
 
@@ -179,7 +179,7 @@ Currently supported event types with boundary events:
 - Timer
 
 ![Boudary event usage example](./assets/bpmn/boundary_events.png)
-_Boudary event usage example_
+_Boundary event usage example_
 
 ### Activity multi instance
 

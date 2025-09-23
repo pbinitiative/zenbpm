@@ -15,6 +15,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/rqlite/rqlite/v8/random"
 )
@@ -33,10 +34,10 @@ func Test_MultiNode_VerifyLeader(t *testing.T) {
 		t.Fatalf("failed to open store s1: %s", err.Error())
 	}
 
-	err := s1.Bootstrap(&Node{
+	err := s1.Bootstrap(&state.Node{
 		Id:         s1.raftID,
 		Addr:       s1.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	})
 	if err != nil {
 		t.Fatalf("failed to bootstrap single-node store s1: %s", err.Error())
@@ -109,10 +110,10 @@ func Test_MultiNodeSimple(t *testing.T) {
 		t.Fatalf("failed to open store s1: %s", err.Error())
 	}
 
-	if err := s1.Bootstrap(&Node{
+	if err := s1.Bootstrap(&state.Node{
 		Id:         s1.ID(),
 		Addr:       s1.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	}); err != nil {
 		t.Fatalf("failed to bootstrap single-node store: %s", err.Error())
 	}
@@ -167,7 +168,7 @@ func Test_MultiNodeSimple(t *testing.T) {
 			t.Logf("node %s has invalid leader of partition %d", s.ID(), testPartitionId)
 			t.Fail()
 		}
-		if s.state.Nodes[s2.ID()].Partitions[testPartitionId].State != NodePartitionState(proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED) {
+		if s.state.Nodes[s2.ID()].Partitions[testPartitionId].State != state.NodePartitionState(proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED) {
 			t.Logf("node %s has invalid state of node partition %d", s.ID(), testPartitionId)
 			t.Fail()
 		}
@@ -233,10 +234,10 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 		t.Fatalf("failed to open store s1: %s", err.Error())
 	}
 
-	if err := s1.Bootstrap(&Node{
+	if err := s1.Bootstrap(&state.Node{
 		Id:         s1.ID(),
 		Addr:       s1.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	}); err != nil {
 		t.Fatalf("failed to bootstrap single-node store: %s", err.Error())
 	}
@@ -283,7 +284,7 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 			t.Logf("expected s1 to be present in state of %s", s.ID())
 			t.Fail()
 		}
-		if s1.Role != RoleLeader {
+		if s1.Role != state.RoleLeader {
 			t.Logf("expected s1 to be leader in state of %s", s.ID())
 			t.Fail()
 		}
@@ -292,7 +293,7 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 			t.Logf("expected s2 to be present in state of %s", s.ID())
 			t.Fail()
 		}
-		if s2.Role != RoleFollower {
+		if s2.Role != state.RoleFollower {
 			t.Logf("expected s2 to be follower in state of %s", s.ID())
 			t.Fail()
 		}
@@ -346,19 +347,19 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 			t.Fatalf("failed to retrieve node from the store: %s", err)
 		}
 		s3node, err := s3.state.GetNode(s1.ID())
-		return s2node.State == NodeStateShutdown && s3node.State == NodeStateShutdown
+		return s2node.State == state.NodeStateShutdown && s3node.State == state.NodeStateShutdown
 	}, 50*time.Millisecond, 10*time.Second)
 
 	// verify that the same leader was picked
 	newLeader := ""
 	for _, n := range s2.state.Nodes {
-		if n.Role == RoleLeader {
+		if n.Role == state.RoleLeader {
 			newLeader = n.Id
 			break
 		}
 	}
 	for _, n := range s3.state.Nodes {
-		if n.Role == RoleLeader {
+		if n.Role == state.RoleLeader {
 			if newLeader != n.Id {
 				t.Fatalf("expected s2 and s3 to have the same leader")
 			}
@@ -366,16 +367,16 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 	}
 
 	verifyNodeIsShutdown := func(t *testing.T, node *Store, s *Store) {
-		state, ok := s.state.Nodes[node.ID()]
+		st, ok := s.state.Nodes[node.ID()]
 		if !ok {
 			t.Logf("expected %s to be present in state of %s", node.ID(), s.ID())
 			t.Fail()
 		}
-		if state.Role != RoleFollower {
+		if st.Role != state.RoleFollower {
 			t.Logf("expected %s to be follower in state of %s", node.ID(), s.ID())
 			t.Fail()
 		}
-		if state.State != NodeStateShutdown {
+		if st.State != state.NodeStateShutdown {
 			t.Logf("expected %s to be shutdown in state of %s", node.ID(), s.ID())
 			t.Fail()
 		}

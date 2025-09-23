@@ -315,6 +315,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		updatedTokens, err := engine.processFlowNode(ctx, batch, instance, activity, currentToken)
 		if err != nil {
+			/*TODO: ked failne token tak sa potom resubscribne message ? asi nie ?*/
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
 
@@ -343,24 +344,25 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		err = batch.Flush(ctx)
 		if err != nil {
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+			runErr = errors.Join(runErr, err)
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
-			return errors.Join(newEngineErrorf("failed to close batch for token %d", currentToken.Key), err)
 		}
 		tokenSpan.End()
 	}
 
+	// if we encounter any error we switch the instance to failed state
+	if runErr != nil {
+		instance.State = runtime.ActivityStateFailed
+	}
 	if instance.State == runtime.ActivityStateCompleted || instance.State == runtime.ActivityStateFailed {
 		// TODO need to send failed State
 		engine.exportEndProcessEvent(*process, *instance)
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
 		))
-	}
-	// if we encounter any error we switch the instance to failed state
-	if runErr != nil {
-		instance.State = runtime.ActivityStateFailed
 	}
 	err = engine.persistence.SaveProcessInstance(ctx, *instance)
 	if err != nil {

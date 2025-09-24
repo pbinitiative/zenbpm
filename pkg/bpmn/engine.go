@@ -173,7 +173,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	for _, sub := range subscriptions {
-		sub.MessageState = runtime.ActivityStateTerminated
+		sub.State = runtime.ActivityStateTerminated
 		err = batch.SaveMessageSubscription(ctx, sub)
 		if err != nil {
 			return fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)

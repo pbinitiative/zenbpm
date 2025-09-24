@@ -447,6 +447,22 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
+func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
+	res := make([]bpmnruntime.MessageSubscription, 0)
+	for _, sub := range mem.MessageSubscriptions {
+		if sub.GetState() != bpmnruntime.ActivityStateActive {
+			continue
+		}
+		if sub.Name == name && sub.CorrelationKey == correlationKey {
+			res = append(res, sub)
+		}
+	}
+	if len(res) == 0 {
+		return 0, storage.ErrNotFound
+	}
+	return res[0].Key, nil
+}
+
 func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
 	var res bpmnruntime.Incident
 	res, ok := mem.Incidents[key]

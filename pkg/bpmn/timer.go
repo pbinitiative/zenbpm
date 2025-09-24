@@ -137,6 +137,10 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
+		err = batch.Flush(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
+		}
 
 	default:
 		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)

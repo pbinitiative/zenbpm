@@ -10,6 +10,40 @@ import (
 	"database/sql"
 )
 
+const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    correlation_key = ?1
+    AND name = ?2
+    AND state = ?3
+`
+
+type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
+	CorrelationKey string `json:"correlation_key"`
+	Name           string `json:"name"`
+	State          int64  `json:"state"`
+}
+
+func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, findMessageSubscriptionByNameAndCorrelationKeyAndState, arg.CorrelationKey, arg.Name, arg.State)
+	var i MessageSubscription
+	err := row.Scan(
+		&i.Key,
+		&i.ElementID,
+		&i.ProcessDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.Name,
+		&i.State,
+		&i.CreatedAt,
+		&i.CorrelationKey,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
 const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token

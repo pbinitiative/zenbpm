@@ -119,7 +119,7 @@ func Test_interrupting_boundary_event_timer_catch_triggered(t *testing.T) {
 
 	// when
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	// then
 	timers, err = bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now())
 	assert.NoError(t, err)

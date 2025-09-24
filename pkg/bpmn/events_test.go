@@ -8,6 +8,8 @@
 package bpmn
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -466,8 +468,11 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-interrupting.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	randomCorellationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 	// when
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
 	assert.NoError(t, err)
 
 	// then
@@ -481,7 +486,7 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
 	assert.NoError(t, err)
 
 	// then
@@ -502,8 +507,11 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	randomCorellationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 	// when
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
 	assert.NoError(t, err)
 
 	// then
@@ -517,7 +525,7 @@ func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
 	assert.NoError(t, err)
 
 	// then
@@ -538,8 +546,11 @@ func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 func Test_BoundaryEventActivityComplete_CancelsSubscriptions(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	randomCorellationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 	// when
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
 	assert.NoError(t, err)
 
 	// then

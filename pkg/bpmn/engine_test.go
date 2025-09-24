@@ -8,6 +8,8 @@
 package bpmn
 
 import (
+	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -291,8 +293,12 @@ func Test_CancelInstance_shouldCancelInstance(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-multiple-boundary.bpmn")
 	assert.NoError(t, err)
 
+	variableContext := make(map[string]interface{}, 1)
+	randomCorellationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
 	err = bpmnEngine.CancelInstanceByKey(t.Context(), instance.GetInstanceKey())

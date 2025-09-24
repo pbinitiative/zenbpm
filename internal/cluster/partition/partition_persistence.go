@@ -718,16 +718,15 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 var _ storage.ProcessInstanceStorageReader = &DB{}
 
 func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
-	var res bpmnruntime.ProcessInstance
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to find process instance by key: %w", err)
 	}
 
-	return rq.inflateProcessInstance(ctx, rq.queries, dbInstance)
+	return rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
 }
 
-func (rq *RqLiteDB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbInstance sql.ProcessInstance) (bpmnruntime.ProcessInstance, error) {
+func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbInstance sql.ProcessInstance) (bpmnruntime.ProcessInstance, error) {
 	var res bpmnruntime.ProcessInstance
 	variables := map[string]any{}
 	err := json.Unmarshal([]byte(dbInstance.Variables), &variables)
@@ -774,7 +773,7 @@ func (rq *RqLiteDB) inflateProcessInstance(ctx context.Context, db *sql.Queries,
 
 func (rq *DB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
 	var res []bpmnruntime.ProcessInstance
-	dbInstances, err := rq.queries.FindProcessByParentExecutionToken(ctx, ssql.NullInt64{
+	dbInstances, err := rq.Queries.FindProcessByParentExecutionToken(ctx, ssql.NullInt64{
 		Int64: parentExecutionTokenKey,
 		Valid: true,
 	})
@@ -783,7 +782,7 @@ func (rq *DB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, 
 	}
 
 	for _, dbInstance := range dbInstances {
-		inst, err := rq.inflateProcessInstance(ctx, rq.queries, dbInstance)
+		inst, err := rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
 		if err != nil {
 			return res, fmt.Errorf("failed to inflate process instance: %w", err)
 		}
@@ -835,7 +834,7 @@ func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey in
 }
 
 func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
-	dbTimers, err := rq.queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
+	dbTimers, err := rq.Queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
 		ProcessInstanceKey: processInstanceKey,
 		State:              int64(state),
 	})
@@ -848,7 +847,7 @@ func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey 
 }
 
 func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
-	dbTimers, err := rq.queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
+	dbTimers, err := rq.Queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
 		State: int64(bpmnruntime.TimerStateCreated),
 		DueAt: end.UnixMilli(),
 	})
@@ -1213,6 +1212,18 @@ func (rq *DB) FindActiveMessageSubscriptionPointer(ctx context.Context, name str
 	}
 
 	return dbMessageSub, nil
+}
+
+func (rq *DB) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
+	dbMessageSub, err := rq.Queries.FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx, sql.FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams{
+		Name:           name,
+		CorrelationKey: correlationKey,
+		State:          int64(bpmnruntime.ActivityStateActive),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return dbMessageSub.Key, nil
 }
 
 var _ storage.MessageStorageReader = &DB{}

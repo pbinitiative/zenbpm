@@ -8,6 +8,8 @@
 package bpmn
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -112,8 +114,12 @@ func Test_callActivity_cancelsOnInterruptingBoudnaryEvent(t *testing.T) {
 	assert.NoError(t, err)
 
 	variableName := "variable_name"
-	variableContext := make(map[string]interface{}, 1)
+	variableContext := make(map[string]interface{}, 2)
 	variableContext[variableName] = "oldVal"
+
+	randomCorellationKey := rand.Int63()
+
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
@@ -133,7 +139,7 @@ func Test_callActivity_cancelsOnInterruptingBoudnaryEvent(t *testing.T) {
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageForInstance(t.Context(), instance.GetInstanceKey(), "simple-boundary", variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
 	assert.NoError(t, err)
 
 	// then

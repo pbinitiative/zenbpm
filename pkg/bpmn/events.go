@@ -20,7 +20,16 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-// PublishMessage publishes a message with a given name and also adds variables to the process instance, which fetches this event
+// PublishMessageByName publishes a message by name and correlationKey and also adds variables to the process instance
+func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
+	subscriptionKey, err := engine.persistence.FindActiveMessageSubscriptionKey(ctx, name, correlationKey)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find active message subscription: %s", name), err)
+	}
+	return engine.PublishMessage(ctx, subscriptionKey, variables)
+}
+
+// PublishMessage publishes a message given by subscriptionkey and also adds variables to the process instance, which fetches this event
 func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64, variables map[string]interface{}) error {
 	message, err := engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
@@ -50,7 +59,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 
 		return engine.runProcessInstance(ctx, &instance, tokens)
 	case *bpmn20.TIntermediateCatchEvent:
-		tokens, err := engine.publishMessageOnListener(ctx, batch, nodeT, message, &instance, variables)
+		tokens, err := engine.publishMessageOnListener(ctx, batch, nodeT, &message, &instance, variables)
 		if err != nil {
 			errBatch := engine.persistence.NewBatch()
 			message.State = runtime.ActivityStateFailed
@@ -83,7 +92,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 
 func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TIntermediateCatchEvent, message *runtime.MessageSubscription, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
-	message.MessageState = runtime.ActivityStateCompleted
+	message.State = runtime.ActivityStateCompleted
 	err := batch.SaveMessageSubscription(ctx, *message)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
@@ -99,40 +108,7 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storag
 		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
 	}
 
-	if listener.CancellActivity {
-		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
-		}
-
-		if !errors.Is(err, storage.ErrNotFound) {
-			job.State = runtime.ActivityStateTerminated
-			err = batch.SaveJob(ctx, job)
-			if err != nil {
-				return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
-			}
-		}
-		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
-		// cancel all called processes
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
-		}
-		for _, calledProcess := range calledProcesses {
-			engine.cancelInstance(ctx, calledProcess, batch)
-		}
-
-	} else {
-		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
-		// recreate the message subscription
-		_, err := engine.createMessageCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TMessageEventDefinition), element, token)
-		if err != nil {
-			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
-		}
-	}
-
-	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, listener, message.Token)
+	tokens, err := engine.handleSimpleTransition(ctx, batch, instance, listener, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process MessageSubscription flow transition %s: %w", listener.GetId(), err)
 	}
@@ -164,7 +140,7 @@ func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch storage.B
 	tokens, err := engine.publishMessageOnBoundaryListener(ctx, batch, listener, &message, &instance, variables)
 	if err != nil {
 		errBatch := engine.persistence.NewBatch()
-		message.MessageState = runtime.ActivityStateFailed
+		message.State = runtime.ActivityStateFailed
 		errBatch.SaveMessageSubscription(ctx, message)
 		instance.State = runtime.ActivityStateFailed
 		errBatch.SaveProcessInstance(ctx, instance)
@@ -179,7 +155,7 @@ func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch storage.B
 
 func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TBoundaryEvent, message *runtime.MessageSubscription, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
-	message.MessageState = runtime.ActivityStateCompleted
+	message.State = runtime.ActivityStateCompleted
 	err := batch.SaveMessageSubscription(ctx, *message)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
@@ -242,7 +218,7 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch sto
 		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
 	}
 	for _, sub := range subscriptions {
-		sub.MessageState = runtime.ActivityStateTerminated
+		sub.State = runtime.ActivityStateTerminated
 		err = batch.SaveMessageSubscription(ctx, sub)
 		if err != nil {
 			return fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
@@ -358,38 +334,12 @@ func (engine *Engine) createMessageCatchEvent(
 	token runtime.ExecutionToken,
 ) (runtime.ExecutionToken, error) {
 	// TODO: handle input variables
-	ms, err := engine.createMessageSubscription(instance, messageDef, element)
+	ms, err := engine.createMessageSubscription(instance, messageDef, element, token)
 	if err != nil {
 		token.State = runtime.TokenStateFailed
 		return token, fmt.Errorf("failed to create message subscription: %w", err)
 	}
 
-	correlationKey := message.Extension.CorrelationKey
-	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		correlationKeyResult, err := evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.Variables())
-		if err != nil {
-			token.State = runtime.TokenStateFailed
-			return token, fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
-		}
-		ck, ok := correlationKeyResult.(string)
-		if !ok {
-			token.State = runtime.TokenStateFailed
-			return token, fmt.Errorf("result of correlation key  evaluation is not a string: %w", err)
-		}
-		correlationKey = ck
-	}
-
-	ms := runtime.MessageSubscription{
-		Key:                  engine.generateKey(),
-		ElementId:            ice.Id,
-		ProcessDefinitionKey: instance.Definition.Key,
-		ProcessInstanceKey:   instance.GetInstanceKey(),
-		Name:                 message.Name,
-		CorrelationKey:       correlationKey,
-		State:                runtime.ActivityStateActive,
-		CreatedAt:            time.Now(),
-		Token:                token,
-	}
 	err = messageWriter.SaveMessageSubscription(ctx, ms)
 	if err != nil {
 		token.State = runtime.TokenStateFailed
@@ -400,21 +350,39 @@ func (engine *Engine) createMessageCatchEvent(
 	return token, nil
 }
 
-func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition, element bpmn20.FlowNode) (runtime.MessageSubscription, error) {
+func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition, element bpmn20.FlowNode, token runtime.ExecutionToken) (runtime.MessageSubscription, error) {
 	message, err := instance.Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
 	if err != nil {
 		return runtime.MessageSubscription{}, fmt.Errorf("failed to create message subscription: %w", err)
 	}
 
+	correlationKey := message.Extension.CorrelationKey
+	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
+		correlationKeyResult, err := evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.Variables())
+		if err != nil {
+			token.State = runtime.TokenStateFailed
+			return runtime.MessageSubscription{}, fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
+		}
+		ck, ok := correlationKeyResult.(string)
+		if !ok {
+			token.State = runtime.TokenStateFailed
+			return runtime.MessageSubscription{}, fmt.Errorf("result of correlation key  evaluation is not a string: %w", err)
+		}
+		correlationKey = ck
+	}
+
 	ms := runtime.MessageSubscription{
+		Key:                  engine.generateKey(),
 		ElementId:            element.GetId(),
-		ElementInstanceKey:   engine.generateKey(),
 		ProcessDefinitionKey: instance.Definition.Key,
 		ProcessInstanceKey:   instance.GetInstanceKey(),
 		Name:                 message.Name,
+		CorrelationKey:       correlationKey,
+		State:                runtime.ActivityStateActive,
 		CreatedAt:            time.Now(),
-		MessageState:         runtime.ActivityStateActive,
+		Token:                token,
 	}
+
 	return ms, nil
 }
 

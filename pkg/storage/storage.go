@@ -163,6 +163,8 @@ type JobStorageWriter interface {
 type MessageStorageReader interface {
 	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
+	FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
+
 	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 

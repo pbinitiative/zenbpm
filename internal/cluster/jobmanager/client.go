@@ -20,7 +20,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
@@ -58,16 +58,16 @@ type jobClient struct {
 
 func (c *jobClient) updateNodeSubs(ctx context.Context) {
 	leaders := map[uint32]string{}
-	state := c.store.ClusterState()
+	s := c.store.ClusterState()
 	partitionsToSubscribe := []uint32{}
-	for _, partition := range state.Partitions {
+	for _, partition := range s.Partitions {
 		partitionLeader := partition.LeaderId
-		partitionNode, ok := state.Nodes[partitionLeader]
+		partitionNode, ok := s.Nodes[partitionLeader]
 		if !ok {
 			continue
 		}
 		// if partition is not initialized yet skip it for now
-		if partitionNode.Partitions[partition.Id].State != store.NodePartitionStateInitialized {
+		if partitionNode.Partitions[partition.Id].State != state.NodePartitionStateInitialized {
 			continue
 		}
 		leaders[partition.Id] = partition.LeaderId

@@ -18,10 +18,11 @@ import (
 
 type TestServer struct {
 	proto.UnimplementedZenServiceServer
-	Listener      net.Listener
-	JoinHandler   func(*proto.JoinRequest) (*proto.JoinResponse, error)
-	NotifyHandler func(*proto.NotifyRequest) (*proto.NotifyResponse, error)
-	GlobalHandler func() error
+	Listener                 net.Listener
+	JoinHandler              func(*proto.JoinRequest) (*proto.JoinResponse, error)
+	NotifyHandler            func(*proto.NotifyRequest) (*proto.NotifyResponse, error)
+	FindActiveMessageHandler func(*proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error)
+	GlobalHandler            func() error
 }
 
 // New returns a new instance of a TestServer
@@ -76,4 +77,14 @@ func (s *TestServer) Join(ctx context.Context, req *proto.JoinRequest) (*proto.J
 		return &proto.JoinResponse{}, s.GlobalHandler()
 	}
 	return &proto.JoinResponse{}, nil
+}
+
+func (s *TestServer) FindActiveMessage(ctx context.Context, req *proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error) {
+	if s.FindActiveMessageHandler != nil {
+		return s.FindActiveMessageHandler(req)
+	}
+	if s.GlobalHandler != nil {
+		return &proto.FindActiveMessageResponse{}, s.GlobalHandler()
+	}
+	return &proto.FindActiveMessageResponse{}, nil
 }

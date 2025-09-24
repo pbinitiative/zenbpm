@@ -22,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -322,4 +323,8 @@ func (s *StoreSvc) WriteNodeChange(change *proto.NodeChange) error {
 func (s *StoreSvc) WritePartitionChange(change *proto.NodePartitionChange) error {
 	fmt.Println("WritePartitionChange")
 	return nil
+}
+
+func (s *StoreSvc) ClusterState() state.Cluster {
+	return state.Cluster{}
 }

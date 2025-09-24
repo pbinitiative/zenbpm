@@ -181,6 +181,7 @@ func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job 
 		State:              bpmnruntime.ActivityStateActive,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 		Token:              token,
+		Variables:          map[string]any{"foo": "bar"},
 	}
 }
 
@@ -358,11 +359,12 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.MessageSubscription {
 	return bpmnruntime.MessageSubscription{
 		ElementId:            fmt.Sprintf("message-%d", r),
-		ElementInstanceKey:   r + 400,
+		Key:                  r + 400,
 		ProcessDefinitionKey: pdKey,
 		ProcessInstanceKey:   piKey,
 		Name:                 fmt.Sprintf("message-%d", r),
-		MessageState:         bpmnruntime.ActivityStateActive,
+		CorrelationKey:       fmt.Sprintf("correlation-%d", r),
+		State:                bpmnruntime.ActivityStateActive,
 		CreatedAt:            time.Now().Truncate(time.Millisecond),
 		Token:                token,
 	}

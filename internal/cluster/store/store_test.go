@@ -17,6 +17,8 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/rqlite/rqlite/v8/random"
 	"github.com/rqlite/rqlite/v8/tcp"
@@ -31,7 +33,7 @@ func Test_NonOpenStore(t *testing.T) {
 	defer s.Close(true)
 	defer ln.Close()
 
-	if err := s.Stepdown(false); err != ErrNotOpen {
+	if err := s.Stepdown(false); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 	if s.IsLeader() {
@@ -40,10 +42,10 @@ func Test_NonOpenStore(t *testing.T) {
 	if s.HasLeader() {
 		t.Fatalf("store incorrectly marked as having leader")
 	}
-	if _, err := s.IsVoter(); err != ErrNotOpen {
+	if _, err := s.IsVoter(); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
-	if _, err := s.CommitIndex(); err != ErrNotOpen {
+	if _, err := s.CommitIndex(); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 	if addr, err := s.LeaderAddr(); addr != "" || err != nil {
@@ -58,7 +60,7 @@ func Test_NonOpenStore(t *testing.T) {
 	if s.HasLeaderID() {
 		t.Fatalf("store incorrectly marked as having leader ID")
 	}
-	if _, err := s.Nodes(); err != ErrNotOpen {
+	if _, err := s.Nodes(); err != zenerr.ErrNotOpen {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 }
@@ -78,10 +80,10 @@ func Test_OpenStoreSingleNode(t *testing.T) {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
 
-	if err := s.Bootstrap(&Node{
+	if err := s.Bootstrap(&state.Node{
 		Id:         s.raftID,
 		Addr:       s.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	}); err != nil {
 		t.Fatalf("failed to bootstrap single-node store: %s", err.Error())
 	}
@@ -122,10 +124,10 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
 
-	if err := s.Bootstrap(&Node{
+	if err := s.Bootstrap(&state.Node{
 		Id:         s.raftID,
 		Addr:       s.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	}); err != nil {
 		t.Fatalf("failed to bootstrap single-node store: %s", err)
 	}
@@ -167,7 +169,7 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 		if !ok {
 			t.Error("expected testNode was not found in the store")
 		}
-		if testNode.State != NodeState(proto.NodeState_NODE_STATE_ERROR) {
+		if testNode.State != state.NodeState(proto.NodeState_NODE_STATE_ERROR) {
 			t.Error("testNode is in a wrong state")
 		}
 		return true
@@ -190,10 +192,10 @@ func Test_SingleNodeSnapshot(t *testing.T) {
 		t.Fatalf("failed to open store: %s", err.Error())
 	}
 
-	if err := s.Bootstrap(&Node{
+	if err := s.Bootstrap(&state.Node{
 		Id:         s.raftID,
 		Addr:       s.Addr(),
-		Partitions: map[uint32]NodePartition{},
+		Partitions: map[uint32]state.NodePartition{},
 	}); err != nil {
 		t.Fatalf("failed to bootstrap single-node store: %s", err.Error())
 	}
@@ -234,7 +236,7 @@ func Test_SingleNodeSnapshot(t *testing.T) {
 	}
 
 	// Zero out the state
-	s.state = ClusterState{}
+	s.state = state.Cluster{}
 
 	// Check restoration.
 	snapFile, err = os.Open(filepath.Join(snapDir, "snapshot"))
@@ -254,7 +256,7 @@ func Test_SingleNodeSnapshot(t *testing.T) {
 	if restoredNode.Id != "test-node" {
 		t.Fatalf("expected node Id to be %s was %s", testNodeId, restoredNode.Id)
 	}
-	if restoredNode.State != NodeStateError {
+	if restoredNode.State != state.NodeStateError {
 		t.Fatalf("expected node Id to be %s was %s", testNodeId, restoredNode.Id)
 	}
 }

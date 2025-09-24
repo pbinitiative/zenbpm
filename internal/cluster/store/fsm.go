@@ -15,6 +15,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -97,7 +98,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 
 type FsmStore interface {
 	LeaderID() (string, error)
-	ClusterState() ClusterState
+	ClusterState() state.Cluster
 }
 
 func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
@@ -116,29 +117,29 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 	return nil
 }
 
-func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) ClusterState {
-	state := store.ClusterState()
-	node, ok := state.Nodes[nodeChangeCommand.GetNodeId()]
+func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) state.Cluster {
+	currState := store.ClusterState()
+	node, ok := currState.Nodes[nodeChangeCommand.GetNodeId()]
 	// node is not yet present in the store
-	role := RoleFollower
+	role := state.RoleFollower
 	leaderId, _ := store.LeaderID()
 	if leaderId == nodeChangeCommand.GetNodeId() {
-		role = RoleLeader
+		role = state.RoleLeader
 	}
 	if !ok {
 		// TODO: check state of the node it should be starting
-		node = Node{
+		node = state.Node{
 			Id:         nodeChangeCommand.GetNodeId(),
 			Addr:       nodeChangeCommand.GetAddr(),
-			State:      NodeState(nodeChangeCommand.GetState()),
-			Partitions: map[uint32]NodePartition{},
+			State:      state.NodeState(nodeChangeCommand.GetState()),
+			Partitions: map[uint32]state.NodePartition{},
 		}
 	}
 	// if the leader has changed, change other nodes to be followers
-	if leaderId == node.Id && node.Role < RoleLeader && role == RoleLeader {
-		for k, n := range state.Nodes {
-			n.Role = RoleFollower
-			state.Nodes[k] = n
+	if leaderId == node.Id && node.Role < state.RoleLeader && role == state.RoleLeader {
+		for k, n := range currState.Nodes {
+			n.Role = state.RoleFollower
+			currState.Nodes[k] = n
 		}
 	}
 	node.Role = role
@@ -154,38 +155,38 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) Clu
 		}
 	}
 	if nodeChangeCommand.GetState() != proto.NodeState_NODE_STATE_UNKNOWN {
-		node.State = NodeState(nodeChangeCommand.GetState())
+		node.State = state.NodeState(nodeChangeCommand.GetState())
 	}
-	state.Nodes[nodeChangeCommand.GetNodeId()] = node
-	return state
+	currState.Nodes[nodeChangeCommand.GetNodeId()] = node
+	return currState
 }
 
-func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange) ClusterState {
-	state := store.ClusterState()
-	node, ok := state.Nodes[partitionChangeCommand.GetNodeId()]
+func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange) state.Cluster {
+	currState := store.ClusterState()
+	node, ok := currState.Nodes[partitionChangeCommand.GetNodeId()]
 	// node is not yet present in the store
 	if !ok {
-		node = Node{
+		node = state.Node{
 			Id:         partitionChangeCommand.GetNodeId(),
-			Partitions: make(map[uint32]NodePartition),
+			Partitions: make(map[uint32]state.NodePartition),
 		}
 	}
 	if partitionChangeCommand.GetState() == proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING {
 		delete(node.Partitions, partitionChangeCommand.GetPartitionId())
-		state.Nodes[partitionChangeCommand.GetNodeId()] = node
-		return state
+		currState.Nodes[partitionChangeCommand.GetNodeId()] = node
+		return currState
 	}
-	node.Partitions[partitionChangeCommand.GetPartitionId()] = NodePartition{
+	node.Partitions[partitionChangeCommand.GetPartitionId()] = state.NodePartition{
 		Id:    partitionChangeCommand.GetPartitionId(),
-		State: NodePartitionState(partitionChangeCommand.GetState()),
-		Role:  Role(partitionChangeCommand.GetRole()),
+		State: state.NodePartitionState(partitionChangeCommand.GetState()),
+		Role:  state.Role(partitionChangeCommand.GetRole()),
 	}
 	if partitionChangeCommand.GetRole() == proto.Role_ROLE_TYPE_LEADER {
-		state.Partitions[partitionChangeCommand.GetPartitionId()] = Partition{
+		currState.Partitions[partitionChangeCommand.GetPartitionId()] = state.Partition{
 			Id:       partitionChangeCommand.GetPartitionId(),
 			LeaderId: partitionChangeCommand.GetNodeId(),
 		}
 	}
-	state.Nodes[partitionChangeCommand.GetNodeId()] = node
-	return state
+	currState.Nodes[partitionChangeCommand.GetNodeId()] = node
+	return currState
 }

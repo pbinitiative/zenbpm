@@ -12,6 +12,7 @@ import (
 	"context"
 	ssql "database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -19,9 +20,12 @@ import (
 	"slices"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -32,9 +36,11 @@ import (
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	oteltracing "google.golang.org/grpc/experimental/opentelemetry"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 )
 
 // Server provides information about the node and cluster.
@@ -45,6 +51,7 @@ type Server struct {
 	store      StoreService
 	controller ControllerService
 	jobManager *jobmanager.JobManager
+	client     *client.ClientManager
 	cpuProfile CpuProfile
 }
 
@@ -57,6 +64,7 @@ type StoreService interface {
 	Notify(nr *proto.NotifyRequest) error
 	Join(jr *proto.JoinRequest) error
 	WriteNodeChange(change *protoc.NodeChange) error
+	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
 }
 
@@ -64,6 +72,7 @@ type ControllerService interface {
 	PartitionEngine(ctx context.Context, partitionId uint32) *bpmn.Engine
 	Engines(ctx context.Context) map[uint32]*bpmn.Engine
 	PartitionQueries(ctx context.Context, partitionId uint32) *sql.Queries
+	GetPartition(ctx context.Context, partitionId uint32) *partition.ZenPartitionNode
 }
 
 // New returns a new instance of the zen cluster server
@@ -734,7 +743,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 }
 
 func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRequest) (*proto.PublishMessageResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.GetInstanceKey())
+	partitionId := zenflake.GetPartitionId(req.GetKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("engine with partition %d was not found", partitionId)
@@ -745,6 +754,7 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 			},
 		}, err
 	}
+
 	vars := map[string]any{}
 	err := json.Unmarshal(req.GetVariables(), &vars)
 	if err != nil {
@@ -756,9 +766,13 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 			},
 		}, err
 	}
-	err = engine.PublishMessageForInstance(ctx, req.GetInstanceKey(), req.GetName(), vars)
+
+	err = engine.PublishMessage(ctx,
+		req.GetKey(),
+		vars,
+	)
 	if err != nil {
-		err := fmt.Errorf("failed to publish message event for %d: %w", req.GetInstanceKey(), err)
+		err := fmt.Errorf("failed to publish message event %d: %w", req.GetKey(), err)
 		return &proto.PublishMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
@@ -766,7 +780,101 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 			},
 		}, err
 	}
+
 	return &proto.PublishMessageResponse{}, nil
+}
+
+func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.SetMessageSubscriptionPointerRequest) (*proto.SetMessageSubscriptionPointerResponse, error) {
+	partition := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partition == nil {
+		err := fmt.Errorf("node for partition %d was not found", req.GetPartitionId())
+		return &proto.SetMessageSubscriptionPointerResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	partitionId := s.store.ClusterState().GetPartitionIdFromString(req.GetCorrelationKey())
+	if partition.PartitionId == partitionId && partition.IsLeader(ctx) {
+		err := partition.DB.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
+			State:                  int64(req.GetState()),
+			CreatedAt:              req.GetCreatedAt(),
+			Name:                   req.GetName(),
+			CorrelationKey:         req.GetCorrelationKey(),
+			MessageSubscriptionKey: req.GetMessageSubscriptionKey(),
+			ExecutionTokenKey:      req.GetExecutionTokenKey(),
+		})
+		if err != nil {
+			err := fmt.Errorf("failed to save message subscription pointer for message subscription name:%s correlationId:%s : %w", req.GetName(), req.GetCorrelationKey(), err)
+			return &proto.SetMessageSubscriptionPointerResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+	} else {
+		err := fmt.Errorf("Node is not a leader for partition %d", req.PartitionId)
+		return &proto.SetMessageSubscriptionPointerResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	return &proto.SetMessageSubscriptionPointerResponse{}, nil
+}
+
+func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetExecutionTokenKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("failed to find partition %d", partitionId)
+		return &proto.FindActiveMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	subs, err := queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
+		ExecutionToken: req.GetExecutionTokenKey(),
+		State:          int64(runtime.ActivityStateActive),
+	})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		err := fmt.Errorf("failed to find message subscriptions %d", partitionId)
+		return &proto.FindActiveMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	// if len(subs) == 0{
+	// }
+	for _, message := range subs {
+		if message.CorrelationKey == req.GetCorrelationKey() && message.Name == req.GetName() {
+			return &proto.FindActiveMessageResponse{
+				Key:                  &message.Key,
+				ElementId:            &message.ElementID,
+				ProcessDefinitionKey: &message.ProcessDefinitionKey,
+				ProcessInstanceKey:   &message.ProcessInstanceKey,
+				Name:                 &message.Name,
+				State:                &message.State,
+				CorrelationKey:       &message.CorrelationKey,
+				ExecutionToken:       &message.ExecutionToken,
+			}, nil
+		}
+	}
+	err = fmt.Errorf("message subscription %s %s was not found in partition %d", req.GetName(), req.GetCorrelationKey(), partitionId)
+	return &proto.FindActiveMessageResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, status.Error(codes.NotFound, err.Error())
 }
 
 func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsRequest) (*proto.GetIncidentsResponse, error) {

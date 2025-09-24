@@ -20,40 +20,42 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ZenService_Notify_FullMethodName                    = "/cluster.ZenService/Notify"
-	ZenService_Join_FullMethodName                      = "/cluster.ZenService/Join"
-	ZenService_AddPartitionNode_FullMethodName          = "/cluster.ZenService/AddPartitionNode"
-	ZenService_ShutdownPartitionNode_FullMethodName     = "/cluster.ZenService/ShutdownPartitionNode"
-	ZenService_PartitionNodeLeaderChange_FullMethodName = "/cluster.ZenService/PartitionNodeLeaderChange"
-	ZenService_RemovePartitionNode_FullMethodName       = "/cluster.ZenService/RemovePartitionNode"
-	ZenService_ResumePartitionNode_FullMethodName       = "/cluster.ZenService/ResumePartitionNode"
-	ZenService_ClusterBackup_FullMethodName             = "/cluster.ZenService/ClusterBackup"
-	ZenService_ClusterRestore_FullMethodName            = "/cluster.ZenService/ClusterRestore"
-	ZenService_ConfigurationUpdate_FullMethodName       = "/cluster.ZenService/ConfigurationUpdate"
-	ZenService_AssignPartition_FullMethodName           = "/cluster.ZenService/AssignPartition"
-	ZenService_UnassignPartition_FullMethodName         = "/cluster.ZenService/UnassignPartition"
-	ZenService_PartitionBackup_FullMethodName           = "/cluster.ZenService/PartitionBackup"
-	ZenService_PartitionRestore_FullMethodName          = "/cluster.ZenService/PartitionRestore"
-	ZenService_StartCpuProfiler_FullMethodName          = "/cluster.ZenService/StartCpuProfiler"
-	ZenService_StopCpuProfiler_FullMethodName           = "/cluster.ZenService/StopCpuProfiler"
-	ZenService_NodeCommand_FullMethodName               = "/cluster.ZenService/NodeCommand"
-	ZenService_EvaluateDecision_FullMethodName          = "/cluster.ZenService/EvaluateDecision"
-	ZenService_DeployDecisionDefinition_FullMethodName  = "/cluster.ZenService/DeployDecisionDefinition"
-	ZenService_DeployProcessDefinition_FullMethodName   = "/cluster.ZenService/DeployProcessDefinition"
-	ZenService_ActivateJob_FullMethodName               = "/cluster.ZenService/ActivateJob"
-	ZenService_PublishMessage_FullMethodName            = "/cluster.ZenService/PublishMessage"
-	ZenService_CreateInstance_FullMethodName            = "/cluster.ZenService/CreateInstance"
-	ZenService_GetProcessInstances_FullMethodName       = "/cluster.ZenService/GetProcessInstances"
-	ZenService_GetJobs_FullMethodName                   = "/cluster.ZenService/GetJobs"
-	ZenService_GetProcessInstance_FullMethodName        = "/cluster.ZenService/GetProcessInstance"
-	ZenService_GetProcessInstanceJobs_FullMethodName    = "/cluster.ZenService/GetProcessInstanceJobs"
-	ZenService_GetFlowElementHistory_FullMethodName     = "/cluster.ZenService/GetFlowElementHistory"
-	ZenService_GetIncidents_FullMethodName              = "/cluster.ZenService/GetIncidents"
-	ZenService_ResolveIncident_FullMethodName           = "/cluster.ZenService/ResolveIncident"
-	ZenService_SubscribeJob_FullMethodName              = "/cluster.ZenService/SubscribeJob"
-	ZenService_CompleteJob_FullMethodName               = "/cluster.ZenService/CompleteJob"
-	ZenService_FailJob_FullMethodName                   = "/cluster.ZenService/FailJob"
-	ZenService_ReassignJob_FullMethodName               = "/cluster.ZenService/ReassignJob"
+	ZenService_Notify_FullMethodName                        = "/cluster.ZenService/Notify"
+	ZenService_Join_FullMethodName                          = "/cluster.ZenService/Join"
+	ZenService_AddPartitionNode_FullMethodName              = "/cluster.ZenService/AddPartitionNode"
+	ZenService_ShutdownPartitionNode_FullMethodName         = "/cluster.ZenService/ShutdownPartitionNode"
+	ZenService_PartitionNodeLeaderChange_FullMethodName     = "/cluster.ZenService/PartitionNodeLeaderChange"
+	ZenService_RemovePartitionNode_FullMethodName           = "/cluster.ZenService/RemovePartitionNode"
+	ZenService_ResumePartitionNode_FullMethodName           = "/cluster.ZenService/ResumePartitionNode"
+	ZenService_ClusterBackup_FullMethodName                 = "/cluster.ZenService/ClusterBackup"
+	ZenService_ClusterRestore_FullMethodName                = "/cluster.ZenService/ClusterRestore"
+	ZenService_ConfigurationUpdate_FullMethodName           = "/cluster.ZenService/ConfigurationUpdate"
+	ZenService_AssignPartition_FullMethodName               = "/cluster.ZenService/AssignPartition"
+	ZenService_UnassignPartition_FullMethodName             = "/cluster.ZenService/UnassignPartition"
+	ZenService_PartitionBackup_FullMethodName               = "/cluster.ZenService/PartitionBackup"
+	ZenService_PartitionRestore_FullMethodName              = "/cluster.ZenService/PartitionRestore"
+	ZenService_StartCpuProfiler_FullMethodName              = "/cluster.ZenService/StartCpuProfiler"
+	ZenService_StopCpuProfiler_FullMethodName               = "/cluster.ZenService/StopCpuProfiler"
+	ZenService_NodeCommand_FullMethodName                   = "/cluster.ZenService/NodeCommand"
+	ZenService_EvaluateDecision_FullMethodName              = "/cluster.ZenService/EvaluateDecision"
+	ZenService_DeployDecisionDefinition_FullMethodName      = "/cluster.ZenService/DeployDecisionDefinition"
+	ZenService_DeployProcessDefinition_FullMethodName       = "/cluster.ZenService/DeployProcessDefinition"
+	ZenService_ActivateJob_FullMethodName                   = "/cluster.ZenService/ActivateJob"
+	ZenService_PublishMessage_FullMethodName                = "/cluster.ZenService/PublishMessage"
+	ZenService_SetMessageSubscriptionPointer_FullMethodName = "/cluster.ZenService/SetMessageSubscriptionPointer"
+	ZenService_FindActiveMessage_FullMethodName             = "/cluster.ZenService/FindActiveMessage"
+	ZenService_CreateInstance_FullMethodName                = "/cluster.ZenService/CreateInstance"
+	ZenService_GetProcessInstances_FullMethodName           = "/cluster.ZenService/GetProcessInstances"
+	ZenService_GetJobs_FullMethodName                       = "/cluster.ZenService/GetJobs"
+	ZenService_GetProcessInstance_FullMethodName            = "/cluster.ZenService/GetProcessInstance"
+	ZenService_GetProcessInstanceJobs_FullMethodName        = "/cluster.ZenService/GetProcessInstanceJobs"
+	ZenService_GetFlowElementHistory_FullMethodName         = "/cluster.ZenService/GetFlowElementHistory"
+	ZenService_GetIncidents_FullMethodName                  = "/cluster.ZenService/GetIncidents"
+	ZenService_ResolveIncident_FullMethodName               = "/cluster.ZenService/ResolveIncident"
+	ZenService_SubscribeJob_FullMethodName                  = "/cluster.ZenService/SubscribeJob"
+	ZenService_CompleteJob_FullMethodName                   = "/cluster.ZenService/CompleteJob"
+	ZenService_FailJob_FullMethodName                       = "/cluster.ZenService/FailJob"
+	ZenService_ReassignJob_FullMethodName                   = "/cluster.ZenService/ReassignJob"
 )
 
 // ZenServiceClient is the client API for ZenService service.
@@ -95,7 +97,10 @@ type ZenServiceClient interface {
 	DeployDecisionDefinition(ctx context.Context, in *DeployDecisionDefinitionRequest, opts ...grpc.CallOption) (*DeployDecisionDefinitionResponse, error)
 	DeployProcessDefinition(ctx context.Context, in *DeployProcessDefinitionRequest, opts ...grpc.CallOption) (*DeployProcessDefinitionResponse, error)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
+	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
+	SetMessageSubscriptionPointer(ctx context.Context, in *SetMessageSubscriptionPointerRequest, opts ...grpc.CallOption) (*SetMessageSubscriptionPointerResponse, error)
+	FindActiveMessage(ctx context.Context, in *FindActiveMessageRequest, opts ...grpc.CallOption) (*FindActiveMessageResponse, error)
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
 	GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error)
@@ -349,6 +354,26 @@ func (c *zenServiceClient) PublishMessage(ctx context.Context, in *PublishMessag
 	return out, nil
 }
 
+func (c *zenServiceClient) SetMessageSubscriptionPointer(ctx context.Context, in *SetMessageSubscriptionPointerRequest, opts ...grpc.CallOption) (*SetMessageSubscriptionPointerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetMessageSubscriptionPointerResponse)
+	err := c.cc.Invoke(ctx, ZenService_SetMessageSubscriptionPointer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) FindActiveMessage(ctx context.Context, in *FindActiveMessageRequest, opts ...grpc.CallOption) (*FindActiveMessageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FindActiveMessageResponse)
+	err := c.cc.Invoke(ctx, ZenService_FindActiveMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateInstanceResponse)
@@ -511,7 +536,10 @@ type ZenServiceServer interface {
 	DeployDecisionDefinition(context.Context, *DeployDecisionDefinitionRequest) (*DeployDecisionDefinitionResponse, error)
 	DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
+	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
+	SetMessageSubscriptionPointer(context.Context, *SetMessageSubscriptionPointerRequest) (*SetMessageSubscriptionPointerResponse, error)
+	FindActiveMessage(context.Context, *FindActiveMessageRequest) (*FindActiveMessageResponse, error)
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
 	GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error)
@@ -601,6 +629,12 @@ func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.Serve
 }
 func (UnimplementedZenServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
+}
+func (UnimplementedZenServiceServer) SetMessageSubscriptionPointer(context.Context, *SetMessageSubscriptionPointerRequest) (*SetMessageSubscriptionPointerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetMessageSubscriptionPointer not implemented")
+}
+func (UnimplementedZenServiceServer) FindActiveMessage(context.Context, *FindActiveMessageRequest) (*FindActiveMessageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FindActiveMessage not implemented")
 }
 func (UnimplementedZenServiceServer) CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateInstance not implemented")
@@ -1048,6 +1082,42 @@ func _ZenService_PublishMessage_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_SetMessageSubscriptionPointer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetMessageSubscriptionPointerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).SetMessageSubscriptionPointer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_SetMessageSubscriptionPointer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).SetMessageSubscriptionPointer(ctx, req.(*SetMessageSubscriptionPointerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_FindActiveMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FindActiveMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).FindActiveMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_FindActiveMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).FindActiveMessage(ctx, req.(*FindActiveMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_CreateInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateInstanceRequest)
 	if err := dec(in); err != nil {
@@ -1343,6 +1413,14 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishMessage",
 			Handler:    _ZenService_PublishMessage_Handler,
+		},
+		{
+			MethodName: "SetMessageSubscriptionPointer",
+			Handler:    _ZenService_SetMessageSubscriptionPointer_Handler,
+		},
+		{
+			MethodName: "FindActiveMessage",
+			Handler:    _ZenService_FindActiveMessage_Handler,
 		},
 		{
 			MethodName: "CreateInstance",

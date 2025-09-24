@@ -17,7 +17,7 @@ import (
 
 func resolveIncident(t testing.TB, key int64) error {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/incident/%d/resolve", key)).
+		WithPath(fmt.Sprintf("/v1/incidents/%d/resolve", key)).
 		WithMethod("POST").
 		DoOk()
 	if err != nil {

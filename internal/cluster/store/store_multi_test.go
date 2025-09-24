@@ -17,6 +17,7 @@ import (
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/rqlite/rqlite/v8/random"
 )
 
@@ -63,9 +64,9 @@ func Test_MultiNode_VerifyLeader(t *testing.T) {
 	}
 
 	if err := s1.Join(&zproto.JoinRequest{
-		Id:      s2.ID(),
-		Address: s2.Addr(),
-		Voter:   true,
+		Id:      ptr.To(s2.ID()),
+		Address: ptr.To(s2.Addr()),
+		Voter:   ptr.To(true),
 	}); err != nil {
 		t.Fatalf("failed to join single-node store s2: %s", err.Error())
 	}
@@ -135,9 +136,9 @@ func Test_MultiNodeSimple(t *testing.T) {
 	}
 
 	if err := s1.Join(&zproto.JoinRequest{
-		Id:      s2.ID(),
-		Address: s2.Addr(),
-		Voter:   true,
+		Id:      ptr.To(s2.ID()),
+		Address: ptr.To(s2.Addr()),
+		Voter:   ptr.To(true),
 	}); err != nil {
 		t.Fatalf("failed to join single-node store: %s", err.Error())
 	}
@@ -147,10 +148,10 @@ func Test_MultiNodeSimple(t *testing.T) {
 
 	// Write some data.
 	err := s1.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      s2.ID(),
-		PartitionId: testPartitionId,
-		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED,
-		Role:        proto.Role_ROLE_TYPE_LEADER,
+		NodeId:      ptr.To(s2.ID()),
+		PartitionId: ptr.To(testPartitionId),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+		Role:        proto.Role_ROLE_TYPE_LEADER.Enum(),
 	})
 	if err != nil {
 		t.Fatalf("failed to write partition change on s1 node: %s", err.Error())
@@ -178,20 +179,20 @@ func Test_MultiNodeSimple(t *testing.T) {
 
 	// Write some more changes to state.
 	err = s1.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      s2.ID(),
-		PartitionId: testPartitionId,
-		State:       proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING,
-		Role:        proto.Role_ROLE_TYPE_LEADER,
+		NodeId:      ptr.To(s2.ID()),
+		PartitionId: ptr.To(testPartitionId),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_LEAVING.Enum(),
+		Role:        proto.Role_ROLE_TYPE_LEADER.Enum(),
 	})
 	if err != nil {
 		t.Fatalf("failed to write partition change on s1 node: %s", err.Error())
 	}
 
 	err = s1.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      s1.ID(),
-		PartitionId: testPartitionId,
-		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED,
-		Role:        proto.Role_ROLE_TYPE_LEADER,
+		NodeId:      ptr.To(s1.ID()),
+		PartitionId: ptr.To(testPartitionId),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+		Role:        proto.Role_ROLE_TYPE_LEADER.Enum(),
 	})
 	if err != nil {
 		t.Fatalf("failed to write partition change on s1 node: %s", err.Error())
@@ -260,9 +261,9 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 	}
 
 	if err := s1.Join(&zproto.JoinRequest{
-		Id:      s2.ID(),
-		Address: s2.Addr(),
-		Voter:   true,
+		Id:      ptr.To(s2.ID()),
+		Address: ptr.To(s2.Addr()),
+		Voter:   ptr.To(true),
 	}); err != nil {
 		t.Fatalf("failed to join single-node store: %s", err.Error())
 	}
@@ -317,9 +318,9 @@ func Test_MultiNodePeerObservations(t *testing.T) {
 	}
 
 	if err := s1.Join(&zproto.JoinRequest{
-		Id:      s3.ID(),
-		Address: s3.Addr(),
-		Voter:   true,
+		Id:      ptr.To(s3.ID()),
+		Address: ptr.To(s3.Addr()),
+		Voter:   ptr.To(true),
 	}); err != nil {
 		t.Fatalf("failed to join single-node store: %s", err.Error())
 	}

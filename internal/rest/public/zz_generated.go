@@ -47,13 +47,13 @@ const (
 
 // Activity defines model for Activity.
 type Activity struct {
-	BpmnElementType      *string    `json:"bpmnElementType,omitempty"`
-	CreatedAt            *time.Time `json:"createdAt,omitempty"`
-	ElementId            *string    `json:"elementId,omitempty"`
-	Key                  *string    `json:"key,omitempty"`
-	ProcessDefinitionKey *string    `json:"processDefinitionKey,omitempty"`
-	ProcessInstanceKey   *string    `json:"processInstanceKey,omitempty"`
-	State                *string    `json:"state,omitempty"`
+	BpmnElementType      string    `json:"bpmnElementType"`
+	CreatedAt            time.Time `json:"createdAt"`
+	ElementId            string    `json:"elementId"`
+	Key                  string    `json:"key"`
+	ProcessDefinitionKey string    `json:"processDefinitionKey"`
+	ProcessInstanceKey   string    `json:"processInstanceKey"`
+	State                string    `json:"state"`
 }
 
 // ActivityPage defines model for ActivityPage.
@@ -136,10 +136,10 @@ type EvaluatedDecisionRule struct {
 
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
-	CreatedAt          *time.Time `json:"createdAt,omitempty"`
-	ElementId          *string    `json:"elementId,omitempty"`
-	Key                *string    `json:"key,omitempty"`
-	ProcessInstanceKey *string    `json:"processInstanceKey,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	Key                string    `json:"key"`
+	ProcessInstanceKey string    `json:"processInstanceKey"`
 }
 
 // FlowElementHistoryPage defines model for FlowElementHistoryPage.
@@ -276,7 +276,6 @@ type EvaluateDecisionJSONBody struct {
 
 	// DecisionDefinitionId Can be used in combination with bindingType latest
 	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
-	DecisionId           string                  `json:"decisionId"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
@@ -309,9 +308,14 @@ type PublishMessageJSONBody struct {
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
+	// ProcessDefinitionKey Key of the process definition
 	ProcessDefinitionKey string `form:"processDefinitionKey" json:"processDefinitionKey"`
-	Page                 *int32 `form:"page,omitempty" json:"page,omitempty"`
-	Size                 *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
@@ -344,10 +348,10 @@ type ServerInterface interface {
 	// (GET /decision-definitions/{decisionDefinitionKey})
 	GetDecisionDefinition(w http.ResponseWriter, r *http.Request, decisionDefinitionKey string)
 	// Evaluate latest version of decision directly in engine
-	// (POST /decision/evaluation)
-	EvaluateDecision(w http.ResponseWriter, r *http.Request)
+	// (POST /decisions/{decisionId}/evaluate)
+	EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string)
 	// Resolve an incident
-	// (POST /incident/{incidentKey}/resolve)
+	// (POST /incidents/{incidentKey}/resolve)
 	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string)
 	// Get list of jobs on partitions
 	// (GET /jobs)
@@ -373,7 +377,7 @@ type ServerInterface interface {
 	// Create a new process instance
 	// (POST /process-instances)
 	CreateProcessInstance(w http.ResponseWriter, r *http.Request)
-	// Get state of a process instance selected by processInstanceId
+	// Get state of a process instance selected by processInstanceKey
 	// (GET /process-instances/{processInstanceKey})
 	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// Get list of activities for a process instance
@@ -389,10 +393,10 @@ type ServerInterface interface {
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string)
 	// start a cpu profiler
-	// (POST /test/{nodeId}/start-cpu-profile)
+	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
 	// stop a cpu profiler
-	// (POST /test/{nodeId}/stop-cpu-profile)
+	// (POST /tests/{nodeId}/stop-cpu-profile)
 	TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
 }
 
@@ -419,13 +423,13 @@ func (_ Unimplemented) GetDecisionDefinition(w http.ResponseWriter, r *http.Requ
 }
 
 // Evaluate latest version of decision directly in engine
-// (POST /decision/evaluation)
-func (_ Unimplemented) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
+// (POST /decisions/{decisionId}/evaluate)
+func (_ Unimplemented) EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Resolve an incident
-// (POST /incident/{incidentKey}/resolve)
+// (POST /incidents/{incidentKey}/resolve)
 func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -478,7 +482,7 @@ func (_ Unimplemented) CreateProcessInstance(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Get state of a process instance selected by processInstanceId
+// Get state of a process instance selected by processInstanceKey
 // (GET /process-instances/{processInstanceKey})
 func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -509,13 +513,13 @@ func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Req
 }
 
 // start a cpu profiler
-// (POST /test/{nodeId}/start-cpu-profile)
+// (POST /tests/{nodeId}/start-cpu-profile)
 func (_ Unimplemented) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // stop a cpu profiler
-// (POST /test/{nodeId}/stop-cpu-profile)
+// (POST /tests/{nodeId}/stop-cpu-profile)
 func (_ Unimplemented) TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -585,8 +589,19 @@ func (siw *ServerInterfaceWrapper) GetDecisionDefinition(w http.ResponseWriter, 
 // EvaluateDecision operation middleware
 func (siw *ServerInterfaceWrapper) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+
+	// ------------- Path parameter "decisionId" -------------
+	var decisionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "decisionId", chi.URLParam(r, "decisionId"), &decisionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decisionId", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.EvaluateDecision(w, r)
+		siw.Handler.EvaluateDecision(w, r, decisionId)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -1115,10 +1130,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/decision-definitions/{decisionDefinitionKey}", wrapper.GetDecisionDefinition)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/decision/evaluation", wrapper.EvaluateDecision)
+		r.Post(options.BaseURL+"/decisions/{decisionId}/evaluate", wrapper.EvaluateDecision)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/incident/{incidentKey}/resolve", wrapper.ResolveIncident)
+		r.Post(options.BaseURL+"/incidents/{incidentKey}/resolve", wrapper.ResolveIncident)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/jobs", wrapper.GetJobs)
@@ -1160,10 +1175,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetProcessInstanceJobs)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/test/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
+		r.Post(options.BaseURL+"/tests/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/test/{nodeId}/stop-cpu-profile", wrapper.TestStopCpuProfile)
+		r.Post(options.BaseURL+"/tests/{nodeId}/stop-cpu-profile", wrapper.TestStopCpuProfile)
 	})
 
 	return r
@@ -1185,6 +1200,15 @@ func (response GetDecisionDefinitions200JSONResponse) VisitGetDecisionDefinition
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetDecisionDefinitions502JSONResponse Error
+
+func (response GetDecisionDefinitions502JSONResponse) VisitGetDecisionDefinitionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateDecisionDefinitionRequestObject struct {
 	Body io.Reader
 }
@@ -1193,13 +1217,31 @@ type CreateDecisionDefinitionResponseObject interface {
 	VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error
 }
 
-type CreateDecisionDefinition200JSONResponse struct {
+type CreateDecisionDefinition201JSONResponse struct {
 	DecisionDefinitionKey string `json:"decisionDefinitionKey"`
 }
 
-func (response CreateDecisionDefinition200JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
+func (response CreateDecisionDefinition201JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDecisionDefinition400JSONResponse Error
+
+func (response CreateDecisionDefinition400JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDecisionDefinition409JSONResponse Error
+
+func (response CreateDecisionDefinition409JSONResponse) VisitCreateDecisionDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1239,17 +1281,18 @@ func (response GetDecisionDefinition400JSONResponse) VisitGetDecisionDefinitionR
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetDecisionDefinition500JSONResponse Error
+type GetDecisionDefinition502JSONResponse Error
 
-func (response GetDecisionDefinition500JSONResponse) VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error {
+func (response GetDecisionDefinition502JSONResponse) VisitGetDecisionDefinitionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
 type EvaluateDecisionRequestObject struct {
-	Body *EvaluateDecisionJSONRequestBody
+	DecisionId string `json:"decisionId"`
+	Body       *EvaluateDecisionJSONRequestBody
 }
 
 type EvaluateDecisionResponseObject interface {
@@ -1261,15 +1304,6 @@ type EvaluateDecision200JSONResponse EvaluatedDRDResult
 func (response EvaluateDecision200JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type EvaluateDecision400JSONResponse Error
-
-func (response EvaluateDecision400JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1334,20 +1368,20 @@ func (response GetJobs200JSONResponse) VisitGetJobsResponse(w http.ResponseWrite
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetJobs400JSONResponse Error
-
-func (response GetJobs400JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
 type GetJobs500JSONResponse Error
 
 func (response GetJobs500JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJobs502JSONResponse Error
+
+func (response GetJobs502JSONResponse) VisitGetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1436,6 +1470,15 @@ func (response GetProcessDefinitions200JSONResponse) VisitGetProcessDefinitionsR
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProcessDefinitions500JSONResponse Error
+
+func (response GetProcessDefinitions500JSONResponse) VisitGetProcessDefinitionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateProcessDefinitionRequestObject struct {
 	Body io.Reader
 }
@@ -1444,13 +1487,31 @@ type CreateProcessDefinitionResponseObject interface {
 	VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error
 }
 
-type CreateProcessDefinition200JSONResponse struct {
+type CreateProcessDefinition201JSONResponse struct {
 	ProcessDefinitionKey string `json:"processDefinitionKey"`
 }
 
-func (response CreateProcessDefinition200JSONResponse) VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error {
+func (response CreateProcessDefinition201JSONResponse) VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProcessDefinition400JSONResponse Error
+
+func (response CreateProcessDefinition400JSONResponse) VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProcessDefinition409JSONResponse Error
+
+func (response CreateProcessDefinition409JSONResponse) VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1551,11 +1612,11 @@ type CreateProcessInstanceResponseObject interface {
 	VisitCreateProcessInstanceResponse(w http.ResponseWriter) error
 }
 
-type CreateProcessInstance200JSONResponse ProcessInstance
+type CreateProcessInstance201JSONResponse ProcessInstance
 
-func (response CreateProcessInstance200JSONResponse) VisitCreateProcessInstanceResponse(w http.ResponseWriter) error {
+func (response CreateProcessInstance201JSONResponse) VisitCreateProcessInstanceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(201)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1648,33 +1709,6 @@ func (response GetActivities200JSONResponse) VisitGetActivitiesResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetActivities400JSONResponse Error
-
-func (response GetActivities400JSONResponse) VisitGetActivitiesResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetActivities500JSONResponse Error
-
-func (response GetActivities500JSONResponse) VisitGetActivitiesResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetActivities502JSONResponse Error
-
-func (response GetActivities502JSONResponse) VisitGetActivitiesResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(502)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
 type GetHistoryRequestObject struct {
 	ProcessInstanceKey string `json:"processInstanceKey"`
 }
@@ -1697,15 +1731,6 @@ type GetHistory400JSONResponse Error
 func (response GetHistory400JSONResponse) VisitGetHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetHistory500JSONResponse Error
-
-func (response GetHistory500JSONResponse) VisitGetHistoryResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1745,11 +1770,11 @@ func (response GetIncidents400JSONResponse) VisitGetIncidentsResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetIncidents500JSONResponse Error
+type GetIncidents502JSONResponse Error
 
-func (response GetIncidents500JSONResponse) VisitGetIncidentsResponse(w http.ResponseWriter) error {
+func (response GetIncidents502JSONResponse) VisitGetIncidentsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1823,15 +1848,6 @@ func (response TestStartCpuProfile500JSONResponse) VisitTestStartCpuProfileRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
-type TestStartCpuProfile502JSONResponse Error
-
-func (response TestStartCpuProfile502JSONResponse) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(502)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
 type TestStopCpuProfileRequestObject struct {
 	NodeId string `json:"nodeId"`
 }
@@ -1860,15 +1876,6 @@ func (response TestStopCpuProfile500JSONResponse) VisitTestStopCpuProfileRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
-type TestStopCpuProfile502JSONResponse Error
-
-func (response TestStopCpuProfile502JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(502)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Get list of decision definitions
@@ -1881,10 +1888,10 @@ type StrictServerInterface interface {
 	// (GET /decision-definitions/{decisionDefinitionKey})
 	GetDecisionDefinition(ctx context.Context, request GetDecisionDefinitionRequestObject) (GetDecisionDefinitionResponseObject, error)
 	// Evaluate latest version of decision directly in engine
-	// (POST /decision/evaluation)
+	// (POST /decisions/{decisionId}/evaluate)
 	EvaluateDecision(ctx context.Context, request EvaluateDecisionRequestObject) (EvaluateDecisionResponseObject, error)
 	// Resolve an incident
-	// (POST /incident/{incidentKey}/resolve)
+	// (POST /incidents/{incidentKey}/resolve)
 	ResolveIncident(ctx context.Context, request ResolveIncidentRequestObject) (ResolveIncidentResponseObject, error)
 	// Get list of jobs on partitions
 	// (GET /jobs)
@@ -1910,7 +1917,7 @@ type StrictServerInterface interface {
 	// Create a new process instance
 	// (POST /process-instances)
 	CreateProcessInstance(ctx context.Context, request CreateProcessInstanceRequestObject) (CreateProcessInstanceResponseObject, error)
-	// Get state of a process instance selected by processInstanceId
+	// Get state of a process instance selected by processInstanceKey
 	// (GET /process-instances/{processInstanceKey})
 	GetProcessInstance(ctx context.Context, request GetProcessInstanceRequestObject) (GetProcessInstanceResponseObject, error)
 	// Get list of activities for a process instance
@@ -1926,10 +1933,10 @@ type StrictServerInterface interface {
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(ctx context.Context, request GetProcessInstanceJobsRequestObject) (GetProcessInstanceJobsResponseObject, error)
 	// start a cpu profiler
-	// (POST /test/{nodeId}/start-cpu-profile)
+	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(ctx context.Context, request TestStartCpuProfileRequestObject) (TestStartCpuProfileResponseObject, error)
 	// stop a cpu profiler
-	// (POST /test/{nodeId}/stop-cpu-profile)
+	// (POST /tests/{nodeId}/stop-cpu-profile)
 	TestStopCpuProfile(ctx context.Context, request TestStopCpuProfileRequestObject) (TestStopCpuProfileResponseObject, error)
 }
 
@@ -2039,8 +2046,10 @@ func (sh *strictHandler) GetDecisionDefinition(w http.ResponseWriter, r *http.Re
 }
 
 // EvaluateDecision operation middleware
-func (sh *strictHandler) EvaluateDecision(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string) {
 	var request EvaluateDecisionRequestObject
+
+	request.DecisionId = decisionId
 
 	var body EvaluateDecisionJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -2501,46 +2510,80 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"//+ixP6MDlIAAA==",
+	"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",
+	"6Q6scInk39jLrklh59fz/wQAAP//ZGKZNL2AAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

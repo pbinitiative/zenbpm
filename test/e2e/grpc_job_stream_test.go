@@ -60,7 +60,7 @@ func TestGrpcJobStream(t *testing.T) {
 	completed := 0
 	start := time.Now()
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
-		assert.Equal(t, randomID, job.Type)
+		assert.Equal(t, randomID, job.GetType())
 		count++
 		return map[string]any{
 			"testVar": 456,
@@ -69,7 +69,7 @@ func TestGrpcJobStream(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
-		assert.Equal(t, completeType, job.Type)
+		assert.Equal(t, completeType, job.GetType())
 		completed++
 		return map[string]any{
 			"testVar": 456,
@@ -115,7 +115,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 	fmt.Println("registering worker")
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
-		assert.Equal(t, randomID, job.Type)
+		assert.Equal(t, randomID, job.GetType())
 		return nil, &client.WorkerError{
 			Err:       fmt.Errorf("job fail test"),
 			ErrorCode: "fail-test",
@@ -148,7 +148,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	zenClient = client.NewGrpc(conn)
 
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
-		assert.Equal(t, randomID, job.Type)
+		assert.Equal(t, randomID, job.GetType())
 		return map[string]any{
 			"testVar": 456,
 		}, nil
@@ -199,8 +199,8 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 }
 
-func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition200JSONResponse, error) {
-	result := public.CreateProcessDefinition200JSONResponse{}
+func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition201JSONResponse, error) {
+	result := public.CreateProcessDefinition201JSONResponse{}
 	wd, err := os.Getwd()
 	if err != nil {
 		return result, err

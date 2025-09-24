@@ -1,20 +1,42 @@
 openapi: 3.0.0
+
 info:
   title: ZenBPM OpenAPI
   description: REST API for ZenBPM
   version: 0.1.0
+  contact:
+    name: API Support
+    email: info@pbinitiative.org
+  license:
+    name: AGPL
+    url: https://www.gnu.org/licenses/agpl-3.0.en.html
+
 servers:
   - url: http://localhost:8080/v1
+
 tags:
-  - name: process-definitions
-  - name: process-instances
+  - name: process-definition
+  - name: process-instance
+  - name: decision-definition
+  - name: decision
+  - name: job
+  - name: message
+  - name: incident
+  - name: test
+
 paths:
   /decision-definitions:
     post:
       operationId: createDecisionDefinition
       summary: Deploy a new decision definition
       tags:
-        - decision-definitions
+        - decision-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/decision-definitions \
+              -H "Content-Type: application/xml" \
+              --data-binary @decision.dmn
       requestBody:
         required: true
         content:
@@ -22,8 +44,15 @@ paths:
             schema:
               type: string
               format: xml
+            example: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <definitions>
+                <decision id="loan-approval" name="Loan Approval">
+                  ...
+                </decision>
+              </definitions>
       responses:
-        200:
+        201:
           description: Decision definition deployed
           content:
             application/json:
@@ -34,17 +63,37 @@ paths:
                 properties:
                   decisionDefinitionKey:
                     type: string
+                    pattern: '^\d{15,20}$'
+              example:
+                decisionDefinitionKey: "4503599627370495"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict - decision definition already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
     get:
       operationId: getDecisionDefinitions
       summary: Get list of decision definitions
       tags:
-        - decision-definitions
+        - decision-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/decision-definitions
       responses:
         200:
           description: List of decision definitions
@@ -52,18 +101,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DecisionDefinitionsPage"
+              example:
+                items:
+                  - key: "4503599627370495"
+                    version: 1
+                    decisionDefinitionId: "loan-approval"
+                  - key: "4503599627370496"
+                    version: 2
+                    decisionDefinitionId: "loan-approval"
+                  - key: "4503599627370497"
+                    version: 1
+                    decisionDefinitionId: "credit-score-check"
+                offset: 0
+                size: 10
+                count: 3
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /decision-definitions/{decisionDefinitionKey}:
     get:
       operationId: getDecisionDefinition
       summary: Get decision definition
       tags:
-        - decision-definitions
+        - decision-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/decision-definitions/123456789
       parameters:
         - name: decisionDefinitionKey
           required: true
           in: path
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370495"
       responses:
         200:
           description: Decision definition
@@ -71,24 +147,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DecisionDefinitionDetail"
+              example:
+                key: "4503599627370495"
+                version: 1
+                decisionDefinitionId: "loan-approval"
+                dmnData: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <definitions>
+                    <decision id="loan-approval" name="Loan Approval">
+                      ...
+                    </decision>
+                  </definitions>
         400:
           description: Bad request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
+        502:
+          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /decision/evaluation:
+
+  /decisions/{decisionId}/evaluate:
     post:
       operationId: evaluateDecision
       summary: Evaluate latest version of decision directly in engine
       tags:
-        - decision-evaluation
+        - decision
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/decisions/sample-decision-id/evaluate \
+              -H "Content-Type: application/json" \
+              -d '{
+                "bindingType": "latest",
+                "variables": {
+                  "age": 25,
+                  "income": 50000
+                }
+              }'
+      parameters:
+        - name: decisionId
+          required: true
+          in: path
+          schema:
+            type: string
+          example: "loan-approval"
       requestBody:
         required: true
         content:
@@ -96,11 +203,8 @@ paths:
             schema:
               type: object
               required:
-                - decisionId
                 - bindingType
               properties:
-                decisionId:
-                  type: string
                 bindingType:
                   type: string
                   enum:
@@ -115,6 +219,11 @@ paths:
                   type: string
                 variables:
                   type: object
+            example:
+              bindingType: "latest"
+              variables:
+                age: 25
+                income: 50000
       responses:
         200:
           description: Decision Evaluated
@@ -122,24 +231,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EvaluatedDRDResult"
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              example:
+                evaluatedDecisions:
+                  - decisionId: "loan-approval"
+                    decisionName: "Loan Approval"
+                    decisionType: "DECISION_TABLE"
+                    decisionDefinitionVersion: 1
+                    decisionDefinitionKey: "4503599627370495"
+                    decisionDefinitionId: "loan-approval"
+                    matchedRules:
+                      - ruleId: "rule1"
+                        ruleIndex: 0
+                        evaluatedOutputs:
+                          - outputId: "output1"
+                            outputName: "approved"
+                            outputValue: {"approved": true}
+                    decisionOutput: {"approved": true}
+                    evaluatedInputs:
+                      - inputId: "input1"
+                        inputName: "Age"
+                        inputExpression: "age"
+                        inputValue: {"age": 25}
+                      - inputId: "input2"
+                        inputName: "Income"
+                        inputExpression: "income"
+                        inputValue: {"income": 50000}
+                decisionOutput: {"approved": true}
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-definitions:
     post:
       operationId: createProcessDefinition
       summary: Deploy a new process definition
       tags:
-        - process-definitions
+        - process-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/process-definitions \
+              -H "Content-Type: application/xml" \
+              --data-binary @process.bpmn
       requestBody:
         required: true
         content:
@@ -147,8 +283,15 @@ paths:
             schema:
               type: string
               format: xml
+            example: |
+              <?xml version="1.0" encoding="UTF-8"?>
+              <bpmn:definitions>
+                <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
+                  ...
+                </bpmn:process>
+              </bpmn:definitions>
       responses:
-        200:
+        201:
           description: Process definition deployed
           content:
             application/json:
@@ -159,6 +302,21 @@ paths:
                 properties:
                   processDefinitionKey:
                     type: string
+                    pattern: '^\d{15,20}$'
+              example:
+                processDefinitionKey: "4503599627370498"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict - process definition already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -169,7 +327,11 @@ paths:
       operationId: getProcessDefinitions
       summary: Get list of process definitions
       tags:
-        - process-definitions
+        - process-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-definitions
       responses:
         200:
           description: List of process definitions
@@ -177,18 +339,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessDefinitionsPage"
+              example:
+                items:
+                  - key: "4503599627370498"
+                    version: 1
+                    bpmnProcessId: "loan-application"
+                  - key: "4503599627370499"
+                    version: 2
+                    bpmnProcessId: "loan-application"
+                  - key: "4503599627370500"
+                    version: 1
+                    bpmnProcessId: "credit-check"
+                offset: 0
+                size: 10
+                count: 3
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-definitions/{processDefinitionKey}:
     get:
       operationId: getProcessDefinition
       summary: Get process definition
       tags:
-        - process-definitions
+        - process-definition
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-definitions/123456789
       parameters:
         - name: processDefinitionKey
           required: true
           in: path
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370498"
       responses:
         200:
           description: Process definition
@@ -196,6 +385,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessDefinitionDetail"
+              example:
+                key: "4503599627370498"
+                version: 1
+                bpmnProcessId: "loan-application"
+                bpmnData: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <bpmn:definitions>
+                    <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
+                      ...
+                    </bpmn:process>
+                  </bpmn:definitions>
         400:
           description: Bad request
           content:
@@ -208,12 +408,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-instances:
     post:
       operationId: createProcessInstance
       summary: Create a new process instance
       tags:
-        - process-instances
+        - process-instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/process-instances \
+              -H "Content-Type: application/json" \
+              -d '{
+                "processDefinitionKey": "123456789",
+                "variables": {
+                  "customerId": "customer-456",
+                  "amount": 1000
+                }
+              }'
       requestBody:
         required: true
         content:
@@ -225,15 +438,31 @@ paths:
               properties:
                 processDefinitionKey:
                   type: string
+                  pattern: '^\d{15,20}$'
                 variables:
                   type: object
+            example:
+              processDefinitionKey: "4503599627370498"
+              variables:
+                customerId: "customer-456"
+                amount: 1000
+                applicationDate: "2025-08-22"
       responses:
-        200:
+        201:
           description: Process instance created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstance"
+              example:
+                key: "4503599627370501"
+                processDefinitionKey: "4503599627370498"
+                createdAt: "2025-08-22T14:30:25Z"
+                state: "active"
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
         400:
           description: Bad request
           content:
@@ -256,25 +485,38 @@ paths:
       summary: Get list of running process instances
       operationId: getProcessInstances
       tags:
-        - process-instances
+        - process-instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "http://localhost:8080/v1/process-instances?processDefinitionKey=123456789&page=1&size=10"
       parameters:
         - name: processDefinitionKey
           in: query
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          description: Key of the process definition
+          example: "4503599627370498"
         - name: page
           in: query
           schema:
             type: integer
             format: int32
+            minimum: 1
             default: 1
+          description: Page number (1-based indexing)
+          example: 1
         - name: size
           in: query
           schema:
             type: integer
             format: int32
+            minimum: 1
             default: 10
+          description: Number of items per page
+          example: 10
       responses:
         200:
           description: List of running process instances
@@ -282,6 +524,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstancePage"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370501"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T14:30:25Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-456"
+                          amount: 1000
+                          applicationDate: "2025-08-22"
+                      - key: "4503599627370505"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T15:10:12Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-789"
+                          amount: 5000
+                          applicationDate: "2025-08-22"
+                  - partition: 2
+                    items:
+                      - key: "9007199254740992"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T15:45:33Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-101"
+                          amount: 7500
+                          applicationDate: "2025-08-22"
+                page: 1
+                size: 10
+                count: 3
         400:
           description: Bad request
           content:
@@ -300,18 +575,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-instances/{processInstanceKey}:
     get:
       operationId: getProcessInstance
       tags:
-        - process-instances
-      summary: Get state of a process instance selected by processInstanceId
+        - process-instance
+      summary: Get state of a process instance selected by processInstanceKey
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-instances/123456789
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
       responses:
         200:
           description: State of a process instance
@@ -319,6 +601,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstance"
+              example:
+                key: "4503599627370501"
+                processDefinitionKey: "4503599627370498"
+                createdAt: "2025-08-22T14:30:25Z"
+                state: "active"
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
+                  taskAssignee: "john.doe"
+                  currentStatus: "Application review"
         400:
           description: Bad request
           content:
@@ -337,18 +630,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-instances/{processInstanceKey}/jobs:
     get:
       operationId: getProcessInstanceJobs
       tags:
-        - process-instances
+        - process-instance
       summary: Get list of jobs for a process instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-instances/123456789/jobs
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
       responses:
         200:
           description: List of jobs
@@ -356,6 +656,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JobPage"
+              example:
+                items:
+                  - key: "4503599627370510"
+                    elementId: "Task_CheckApplication"
+                    type: "user-task"
+                    processInstanceKey: "4503599627370501"
+                    state: "active"
+                    createdAt: "2025-08-22T14:30:26Z"
+                    variables:
+                      formKey: "loan-application-form"
+                      assignee: "john.doe"
+                  - key: "4503599627370511"
+                    elementId: "Task_CreditCheck"
+                    type: "service-task"
+                    processInstanceKey: "4503599627370501"
+                    state: "completed"
+                    createdAt: "2025-08-22T14:32:15Z"
+                    variables:
+                      result: "approved"
+                      score: 85
+                offset: 0
+                size: 10
+                count: 2
         400:
           description: Bad request
           content:
@@ -374,18 +697,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-instances/{processInstanceKey}/activities:
     get:
       operationId: getActivities
       tags:
-        - process-instances
+        - process-instance
       summary: Get list of activities for a process instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-instances/123456789/activities
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
       responses:
         200:
           description: List of activities
@@ -393,36 +723,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActivityPage"
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to collect data from responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              example:
+                items:
+                  - key: "4503599627370520"
+                    processInstanceKey: "4503599627370501"
+                    processDefinitionKey: "4503599627370498"
+                    createdAt: "2025-08-22T14:30:26Z"
+                    state: "completed"
+                    elementId: "StartEvent_1"
+                    bpmnElementType: "startEvent"
+                  - key: "4503599627370521"
+                    processInstanceKey: "4503599627370501"
+                    processDefinitionKey: "4503599627370498"
+                    createdAt: "2025-08-22T14:30:27Z"
+                    state: "active"
+                    elementId: "Task_CheckApplication"
+                    bpmnElementType: "userTask"
+                offset: 0
+                size: 10
+                count: 2
+
   /process-instances/{processInstanceKey}/history:
     get:
       operationId: getHistory
       tags:
-        - process-instances
+        - process-instance
       summary: Get list of visited flow elements for a process instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-instances/123456789/history
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
       responses:
         200:
           description: List of activities
@@ -430,14 +768,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FlowElementHistoryPage"
+              example:
+                items:
+                  - key: "4503599627370525"
+                    elementId: "StartEvent_1"
+                    processInstanceKey: "4503599627370501"
+                    createdAt: "2025-08-22T14:30:26Z"
+                  - key: "4503599627370526"
+                    elementId: "Flow_1"
+                    processInstanceKey: "4503599627370501"
+                    createdAt: "2025-08-22T14:30:26Z"
+                  - key: "4503599627370527"
+                    elementId: "Task_CheckApplication"
+                    processInstanceKey: "4503599627370501"
+                    createdAt: "2025-08-22T14:30:27Z"
+                offset: 0
+                size: 10
+                count: 3
         400:
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -448,18 +797,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /process-instances/{processInstanceKey}/incidents:
     get:
       operationId: getIncidents
       tags:
-        - process-instances
+        - process-instance
       summary: Get list of incidents for a process instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET http://localhost:8080/v1/process-instances/123456789/incidents
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
       responses:
         200:
           description: List of incidents
@@ -467,14 +823,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IncidentPage"
+              example:
+                items:
+                  - key: "4503599627370530"
+                    elementInstanceKey: "4503599627370521"
+                    elementId: "Task_CheckApplication"
+                    processInstanceKey: "4503599627370501"
+                    message: "Failed to assign task: User not found"
+                    createdAt: "2025-08-22T14:35:10Z"
+                    executionToken: "123456"
+                  - key: "4503599627370531"
+                    elementInstanceKey: "4503599627370522"
+                    elementId: "Task_CreditCheck"
+                    processInstanceKey: "4503599627370501"
+                    message: "External service unavailable"
+                    createdAt: "2025-08-22T14:36:22Z"
+                    resolvedAt: "2025-08-22T14:45:18Z"
+                    executionToken: "123457"
+                offset: 0
+                size: 10
+                count: 2
         400:
           description: Bad request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
+        502:
+          description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
@@ -484,31 +860,39 @@ paths:
     get:
       operationId: getJobs
       tags:
-        - jobs
+        - job
       summary: Get list of jobs on partitions
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
       parameters:
         - name: jobType
           in: query
           required: false
           schema:
             type: string
+          example: "service-task"
         - name: state
           in: query
           required: false
           schema:
             $ref: "#/components/schemas/JobState"
+          example: "active"
         - name: page
           in: query
           schema:
             type: integer
             format: int32
             default: 1
+          example: 1
         - name: size
           in: query
           schema:
             type: integer
             format: int32
             default: 10
+          example: 10
       responses:
         200:
           description: List of jobs on partitions
@@ -516,24 +900,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JobPartitionPage"
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370540"
+                        elementId: "Task_ProcessPayment"
+                        type: "service-task"
+                        processInstanceKey: "4503599627370501"
+                        state: "active"
+                        createdAt: "2025-08-22T15:10:26Z"
+                        variables:
+                          paymentDetails:
+                            amount: 1000
+                            currency: "USD"
+                            method: "credit-card"
+                  - partition: 2
+                    items:
+                      - key: "9007199254740995"
+                        elementId: "Task_SendNotification"
+                        type: "service-task"
+                        processInstanceKey: "9007199254740992"
+                        state: "active"
+                        createdAt: "2025-08-22T15:46:33Z"
+                        variables:
+                          notificationType: "email"
+                          recipient: "customer@example.com"
+                page: 1
+                size: 10
+                count: 2
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: completeJob
       tags:
-        - jobs
+        - job
       summary: Complete a job
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/jobs \
+              -H "Content-Type: application/json" \
+              -d '{
+                "jobKey": "123456789",
+                "variables": {
+                  "result": "success",
+                  "processedItems": 42
+                }
+              }'
       requestBody:
         required: true
         content:
@@ -545,8 +969,15 @@ paths:
               properties:
                 jobKey:
                   type: string
+                  pattern: '^\d{15,20}$'
                 variables:
                   type: object
+            example:
+              jobKey: "4503599627370540"
+              variables:
+                result: "success"
+                transactionId: "tx-789-xyz"
+                processedAt: "2025-08-22T15:15:30Z"
       responses:
         201:
           description: Job completed
@@ -562,12 +993,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /messages:
     post:
       operationId: publishMessage
       tags:
-        - messages
+        - message
       summary: Publish a message
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/messages \
+              -H "Content-Type: application/json" \
+              -d '{
+                "processInstanceKey": "instance-key-789",
+                "messageName": "payment-received",
+                "variables": {
+                  "paymentId": "123456789",
+                  "amount": 500
+                }
+              }'
       requestBody:
         required: true
         content:
@@ -580,10 +1025,19 @@ paths:
               properties:
                 correlationKey:
                   type: string
+                  pattern: '^\d{15,20}$'
                 messageName:
                   type: string
                 variables:
                   type: object
+            example:
+              processInstanceKey: "4503599627370501"
+              messageName: "payment-received"
+              variables:
+                paymentId: "pay-123-abc"
+                amount: 1000
+                currency: "USD"
+                receivedAt: "2025-08-22T16:25:10Z"
       responses:
         201:
           description: Message sent
@@ -599,18 +1053,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /incident/{incidentKey}/resolve:
+
+  /incidents/{incidentKey}/resolve:
     post:
       operationId: resolveIncident
       tags:
-        - incidents
+        - incident
       summary: Resolve an incident
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/incidents/123456789/resolve
       parameters:
         - name: incidentKey
           in: path
           required: true
           schema:
             type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370530"
       responses:
         201:
           description: Incident resolved
@@ -626,12 +1087,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /test/{nodeId}/start-cpu-profile:
+
+  /tests/{nodeId}/start-cpu-profile:
     post:
       operationId: testStartCpuProfile
       summary: start a cpu profiler
       tags:
-        - start-cpu-profile
         - test
       parameters:
         - name: nodeId
@@ -639,6 +1100,8 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+          description: ID of the node to profile
       responses:
         200:
           description: Cpu profiler starter
@@ -648,18 +1111,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /test/{nodeId}/stop-cpu-profile:
+  /tests/{nodeId}/stop-cpu-profile:
     post:
       operationId: testStopCpuProfile
       summary: stop a cpu profiler
       tags:
-        - stop-cpu-profile
         - test
       parameters:
         - name: nodeId
@@ -667,6 +1123,8 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[a-zA-Z0-9-_]+$'
+          description: ID of the node to stop profiling
       responses:
         200:
           description: Cpu profiler stopped
@@ -684,12 +1142,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     PartitionedPageMetadata:
@@ -752,12 +1205,15 @@ components:
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         version:
           type: integer
         decisionDefinitionId:
           type: string
     DecisionDefinitionDetail:
       type: object
+      required:
+        - dmnData
       allOf:
         - $ref: "#/components/schemas/DecisionDefinitionSimple"
         - type: object
@@ -799,6 +1255,7 @@ components:
           type: integer
         decisionDefinitionKey:
           type: string
+          pattern: '^\d{15,20}$'
         decisionDefinitionId:
           type: string
         matchedRules:
@@ -876,12 +1333,15 @@ components:
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         version:
           type: integer
         bpmnProcessId:
           type: string
     ProcessDefinitionDetail:
       type: object
+      required:
+        - bpmnData
       allOf:
         - $ref: "#/components/schemas/ProcessDefinitionSimple"
         - type: object
@@ -911,8 +1371,10 @@ components:
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         processDefinitionKey:
           type: string
+          pattern: '^\d{15,20}$'
         createdAt:
           type: string
           format: date-time
@@ -973,12 +1435,14 @@ components:
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         elementId:
           type: string
         type:
           type: string
         processInstanceKey:
           type: string
+          pattern: '^\d{15,20}$'
         state:
           $ref: "#/components/schemas/JobState"
         createdAt:
@@ -1005,13 +1469,24 @@ components:
         - $ref: "#/components/schemas/PageMetadata"
     Activity:
       type: object
+      required:
+        - key
+        - processInstanceKey
+        - processDefinitionKey
+        - createdAt
+        - state
+        - elementId
+        - bpmnElementType
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         processInstanceKey:
           type: string
+          pattern: '^\d{15,20}$'
         processDefinitionKey:
           type: string
+          pattern: '^\d{15,20}$'
         createdAt:
           type: string
           format: date-time
@@ -1033,11 +1508,18 @@ components:
         - $ref: "#/components/schemas/PageMetadata"
     FlowElementHistory:
       type: object
+      required:
+        - key
+        - processInstanceKey
+        - createdAt
+        - elementId
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         processInstanceKey:
           type: string
+          pattern: '^\d{15,20}$'
         createdAt:
           type: string
           format: date-time
@@ -1068,12 +1550,15 @@ components:
       properties:
         key:
           type: string
+          pattern: '^\d{15,20}$'
         elementInstanceKey:
           type: string
+          pattern: '^\d{15,20}$'
         elementId:
           type: string
         processInstanceKey:
           type: string
+          pattern: '^\d{15,20}$'
         message:
           type: string
         createdAt:
@@ -1094,3 +1579,6 @@ components:
           type: string
         message:
           type: string
+      example:
+        code: "NOT_FOUND"
+        message: "Process instance with key 4503599627370501 not found"

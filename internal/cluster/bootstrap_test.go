@@ -157,8 +157,8 @@ func Test_BootstrapperBootSingleJoin(t *testing.T) {
 		if req == nil {
 			t.Fatal("expected join node request, got nil")
 		}
-		if req.Address != "192.168.1.1:1234" {
-			t.Fatalf("unexpected node address, got %s", req.Address)
+		if req.GetAddress() != "192.168.1.1:1234" {
+			t.Fatalf("unexpected node address, got %s", req.GetAddress())
 		}
 
 		return &proto.JoinResponse{}, nil
@@ -191,8 +191,8 @@ func Test_BootstrapperBootNonVoter(t *testing.T) {
 		if req == nil {
 			t.Fatal("expected join node request, got nil")
 		}
-		if req.Address != "192.168.1.1:1234" {
-			t.Fatalf("unexpected node address, got %s", req.Address)
+		if req.GetAddress() != "192.168.1.1:1234" {
+			t.Fatalf("unexpected node address, got %s", req.GetAddress())
 		}
 		// timeout the bootstrapper.
 		time.Sleep(5 * time.Second)
@@ -245,10 +245,10 @@ func Test_BootstrapperBootSingleNotify(t *testing.T) {
 		t.Fatalf("failed to boot: %s", err)
 	}
 
-	if got, exp := gotNR.Id, "node1"; got != exp {
+	if got, exp := gotNR.GetId(), "node1"; got != exp {
 		t.Fatalf("wrong node ID supplied, exp %s, got %s", exp, got)
 	}
-	if got, exp := gotNR.Address, "192.168.1.1:1234"; got != exp {
+	if got, exp := gotNR.GetAddress(), "192.168.1.1:1234"; got != exp {
 		t.Fatalf("wrong address supplied, exp %s, got %s", exp, got)
 	}
 	if exp, got := cluster.BootDone, bs.Status(); exp != got {

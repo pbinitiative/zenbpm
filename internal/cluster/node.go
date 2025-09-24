@@ -78,6 +78,11 @@ type ZenNode struct {
 	// TODO: add tracing to all the methods on ZenNode where it makes sense
 }
 
+type DeployResult struct {
+	Key         int64
+	IsDuplicate bool
+}
+
 // StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
 	node := &ZenNode{
@@ -253,9 +258,9 @@ func (node *ZenNode) GetDecisionDefinitions(ctx context.Context) ([]proto.Decisi
 	resp := make([]proto.DecisionDefinition, 0, len(definitions))
 	for _, def := range definitions {
 		resp = append(resp, proto.DecisionDefinition{
-			Key:                  def.Key,
-			Version:              int32(def.Version),
-			DecisionDefinitionId: def.DmnID,
+			Key:                  &def.Key,
+			Version:              ptr.To(int32(def.Version)),
+			DecisionDefinitionId: &def.DmnID,
 			Definition:           []byte(def.DmnData),
 		})
 	}
@@ -273,20 +278,20 @@ func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (prot
 		return proto.DecisionDefinition{}, fmt.Errorf("failed to read process decision from database: %w", err)
 	}
 	return proto.DecisionDefinition{
-		Key:                  def.Key,
-		Version:              int32(def.Version),
-		DecisionDefinitionId: def.DmnID,
+		Key:                  &def.Key,
+		Version:              ptr.To(int32(def.Version)),
+		DecisionDefinitionId: &def.DmnID,
 		Definition:           []byte(def.DmnData),
 	}, nil
 }
 
-func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
 	key, err := node.GetDecisionDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
 	}
 	if key != 0 {
-		return key, err
+		return DeployResult{key, true}, err
 	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
@@ -299,7 +304,7 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
 		resp, err := client.DeployDecisionDefinition(ctx, &proto.DeployDecisionDefinitionRequest{
-			Key:  definitionKey.Int64(),
+			Key:  ptr.To(definitionKey.Int64()),
 			Data: data,
 		})
 		if err != nil || resp.Error != nil {
@@ -312,9 +317,9 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 		}
 	}
 	if errJoin != nil {
-		return definitionKey.Int64(), errJoin
+		return DeployResult{definitionKey.Int64(), false}, errJoin
 	}
-	return definitionKey.Int64(), nil
+	return DeployResult{definitionKey.Int64(), false}, nil
 }
 
 func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
@@ -344,9 +349,9 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 		return nil, fmt.Errorf("failed to marshal variables to evaluate decision: %w", err)
 	}
 	resp, err := client.EvaluateDecision(ctx, &proto.EvaluateDecisionRequest{
-		BindingType: bindingType,
-		DecisionId:  decisionId,
-		VersionTag:  versionTag,
+		BindingType: &bindingType,
+		DecisionId:  &decisionId,
+		VersionTag:  &versionTag,
 		Variables:   vars,
 	})
 	if err != nil {
@@ -356,13 +361,13 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
 	}
 	if key != 0 {
-		return key, err
+		return DeployResult{key, true}, err
 	}
 	gen, _ := snowflake.NewNode(0)
 	definitionKey := gen.Generate()
@@ -375,7 +380,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
 		resp, err := client.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-			Key:  definitionKey.Int64(),
+			Key:  ptr.To(definitionKey.Int64()),
 			Data: data,
 		})
 		if err != nil || resp.Error != nil {
@@ -388,9 +393,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		}
 	}
 	if errJoin != nil {
-		return definitionKey.Int64(), errJoin
+		return DeployResult{definitionKey.Int64(), false}, errJoin
 	}
-	return definitionKey.Int64(), nil
+	return DeployResult{definitionKey.Int64(), false}, nil
 }
 
 func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
@@ -417,7 +422,7 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 		return fmt.Errorf("failed marshal variables: %w", err)
 	}
 	resp, err := client.CompleteJob(ctx, &proto.CompleteJobRequest{
-		Key:       key,
+		Key:       &key,
 		Variables: vars,
 	})
 	if err != nil || resp.Error != nil {
@@ -438,7 +443,7 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 	resp, err := client.ResolveIncident(ctx, &proto.ResolveIncidentRequest{
-		IncidentKey: key,
+		IncidentKey: &key,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("client call to resolve incident failed")
@@ -478,7 +483,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	}
 
 	resp, err := client.PublishMessage(ctx, &proto.PublishMessageRequest{
-		Key:       msPointer.MessageSubscriptionKey,
+		Key:       &msPointer.MessageSubscriptionKey,
 		Variables: vars,
 	})
 	if err != nil || resp.Error != nil {
@@ -506,9 +511,9 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context) ([]proto.Process
 	resp := make([]proto.ProcessDefinition, 0, len(definitions))
 	for _, def := range definitions {
 		resp = append(resp, proto.ProcessDefinition{
-			Key:        def.Key,
-			Version:    int32(def.Version),
-			ProcessId:  def.BpmnProcessID,
+			Key:        &def.Key,
+			Version:    ptr.To(int32(def.Version)),
+			ProcessId:  &def.BpmnProcessID,
 			Definition: []byte(def.BpmnData),
 		})
 	}
@@ -526,9 +531,9 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
 	return proto.ProcessDefinition{
-		Key:        def.Key,
-		Version:    int32(def.Version),
-		ProcessId:  def.BpmnProcessID,
+		Key:        &def.Key,
+		Version:    ptr.To(int32(def.Version)),
+		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
 }
@@ -544,9 +549,9 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
 	return proto.ProcessDefinition{
-		Key:        def.Key,
-		Version:    int32(def.Version),
-		ProcessId:  def.BpmnProcessID,
+		Key:        &def.Key,
+		Version:    ptr.To(int32(def.Version)),
+		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
 }
@@ -650,8 +655,8 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 			reqState = ptr.To(int64(*jobState))
 		}
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
-			Page:       page,
-			Size:       size,
+			Page:       &page,
+			Size:       &size,
 			Partitions: []uint32{partitionID},
 			JobType:    jobType,
 			State:      reqState,
@@ -685,10 +690,10 @@ func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionK
 			return result, fmt.Errorf("failed to get client to get process instances: %w", err)
 		}
 		resp, err := client.GetProcessInstances(ctx, &proto.GetProcessInstancesRequest{
-			Page:          page,
-			Size:          size,
+			Page:          &page,
+			Size:          &size,
 			Partitions:    []uint32{partitionId},
-			DefinitionKey: processDefinitionKey,
+			DefinitionKey: &processDefinitionKey,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process instances from partition %d", partitionId)
@@ -717,7 +722,7 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
 	}
 	resp, err := client.GetProcessInstance(ctx, &proto.GetProcessInstanceRequest{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: &processInstanceKey,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance from partition %d", partitionId)
@@ -744,7 +749,7 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
 	}
 	resp, err := client.GetProcessInstanceJobs(ctx, &proto.GetProcessInstanceJobsRequest{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: &processInstanceKey,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance jobs from partition %d", partitionId)
@@ -771,7 +776,7 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceK
 		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
 	}
 	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: &processInstanceKey,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance flow element history from partition %d", partitionId)
@@ -797,7 +802,7 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 		return nil, fmt.Errorf("failed to get client to get process instance: %w", err)
 	}
 	resp, err := client.GetIncidents(ctx, &proto.GetIncidentsRequest{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: &processInstanceKey,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get incidents from partition %d", partitionId)

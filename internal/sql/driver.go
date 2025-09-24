@@ -8,6 +8,7 @@
 package sql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -36,8 +37,8 @@ type Row struct {
 	ctx     context.Context
 }
 
-const (
-	ErrNoRows = "No result row"
+var (
+	ErrNoRows = errors.New("No result row")
 )
 
 func ConstructRows(ctx context.Context, columns []string, types []string, values []*proto.Values) *Rows {
@@ -388,9 +389,36 @@ func (rs *Rows) Err() error {
 	return nil
 }
 
+func (rs *Rows) String() string {
+	buf := &bytes.Buffer{}
+	if len(rs.values) > 1 {
+		buf.WriteRune('[')
+	}
+	for k, value := range rs.values {
+		buf.WriteRune('{')
+		buf.WriteRune('\n')
+		for i, col := range rs.columns {
+
+			fmt.Fprintf(buf, "  \"%s\":%s", col, strconv.Quote(value.Parameters[i].String()))
+			if i != len(rs.columns)-1 {
+				buf.WriteRune(',')
+			}
+			buf.WriteRune('\n')
+		}
+		buf.WriteRune('}')
+		if len(rs.values) > 1 && k > len(rs.values)-1 {
+			buf.WriteRune(',')
+		}
+	}
+	if len(rs.values) > 1 {
+		buf.WriteRune('[')
+	}
+	return buf.String()
+}
+
 func (r *Row) Scan(dest ...interface{}) error {
 	if r.values == nil {
-		return errors.New(ErrNoRows)
+		return ErrNoRows
 	}
 	return Scan(r.ctx, r.columns, r.values, dest...)
 }

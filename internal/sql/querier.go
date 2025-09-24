@@ -10,6 +10,9 @@ import (
 )
 
 type Querier interface {
+	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	// https://github.com/sqlc-dev/sqlc/issues/2452
+	CountWaitingJobs(ctx context.Context) (int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
 	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
@@ -31,6 +34,7 @@ type Querier interface {
 	FindLatestDecisionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionByIdAndVersionTagParams) (Decision, error)
 	FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
+	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
@@ -51,11 +55,12 @@ type Querier interface {
 	GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
 	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
+	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
-	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
-	GetTokensInStateForPartition(ctx context.Context, arg GetTokensInStateForPartitionParams) ([]ExecutionToken, error)
+	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
+	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	// Copyright 2021-present ZenBPM Contributors
 	// (based on git commit history).
 	//
@@ -98,6 +103,13 @@ type Querier interface {
 	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
 	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
+	// Copyright 2021-present ZenBPM Contributors
+	// (based on git commit history).
+	//
+	// ZenBPM project is available under two licenses:
+	//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
+	//  - Enterprise License (See LICENSE-ENTERPRISE.md)
+	SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error
 	// Copyright 2021-present ZenBPM Contributors
 	// (based on git commit history).
 	//

@@ -351,14 +351,7 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 }
 
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
-	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
-	if err != nil {
-		return public.PublishMessage400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	err = s.node.PublishMessage(ctx, request.Body.MessageName, key, *request.Body.Variables)
+	err := s.node.PublishMessage(ctx, request.Body.MessageName, request.Body.CorrelationKey, *request.Body.Variables)
 	if err != nil {
 		return public.PublishMessage502JSONResponse{
 			Code:    "TODO",

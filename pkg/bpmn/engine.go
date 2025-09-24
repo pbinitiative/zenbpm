@@ -63,19 +63,16 @@ func NewEngine(options ...EngineOption) Engine {
 	}
 	persistence := inmemory.NewStorage()
 	engine := Engine{
-		taskhandlersMu: &sync.RWMutex{},
-		taskHandlers:   []*taskHandler{},
-		exporters:      []exporter.EventExporter{},
-		persistence:    persistence,
-		logger:         logger,
-		runningInstances: &RunningInstancesCache{
-			processInstances: map[int64]*RunningInstance{},
-			mu:               &sync.RWMutex{},
-		},
-		tracer:    tracer,
-		meter:     meter,
-		metrics:   metrics,
-		dmnEngine: dmn.NewEngine(dmn.EngineWithStorage(persistence)),
+		taskhandlersMu:   &sync.RWMutex{},
+		taskHandlers:     []*taskHandler{},
+		exporters:        []exporter.EventExporter{},
+		persistence:      persistence,
+		logger:           logger,
+		runningInstances: newRunningInstanceCache(),
+		tracer:           tracer,
+		meter:            meter,
+		metrics:          metrics,
+		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence)),
 	}
 
 	for _, option := range options {
@@ -369,8 +366,17 @@ func (engine *Engine) Stop() {
 // Lock will be released once the runProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
 func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
+	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+	))
+	defer func() {
+		engine.metrics.ProcessesRunning.Add(ctx, -1, metric.WithAttributes(
+			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+		))
+	}()
 	engine.runningInstances.lockInstance(instance)
 	defer engine.runningInstances.unlockInstance(instance)
+
 	// we have to load the instance from DB because previous run could change it
 	inst, err := engine.FindProcessInstance(instance.Key)
 	if err != nil {
@@ -429,6 +435,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		updatedTokens, err := engine.processFlowNode(ctx, batch, instance, activity, currentToken)
 		if err != nil {
+			/*TODO: ked failne token tak sa potom resubscribne message ? asi nie ?*/
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
 			runErr = errors.Join(runErr, err)
 
@@ -457,24 +464,25 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		err = batch.Flush(ctx)
 		if err != nil {
+			engine.handleIncident(ctx, currentToken, err, tokenSpan)
+			runErr = errors.Join(runErr, err)
 			tokenSpan.RecordError(err)
 			tokenSpan.SetStatus(codes.Error, err.Error())
 			tokenSpan.End()
-			return errors.Join(newEngineErrorf("failed to close batch for token %d", currentToken.Key), err)
 		}
 		tokenSpan.End()
 	}
 
+	// if we encounter any error we switch the instance to failed state
+	if runErr != nil {
+		instance.State = runtime.ActivityStateFailed
+	}
 	if instance.State == runtime.ActivityStateCompleted || instance.State == runtime.ActivityStateFailed {
 		// TODO need to send failed State
 		engine.exportEndProcessEvent(*process, *instance)
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
 		))
-	}
-	// if we encounter any error we switch the instance to failed state
-	if runErr != nil {
-		instance.State = runtime.ActivityStateFailed
 	}
 	err = engine.persistence.SaveProcessInstance(ctx, *instance)
 	if err != nil {
@@ -575,6 +583,8 @@ func (engine *Engine) processFlowNode(
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
+		currentToken.State = runtime.TokenStateCompleted
+		return []runtime.ExecutionToken{currentToken}, nil
 	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
 	case *bpmn20.TIntermediateCatchEvent:
@@ -618,7 +628,6 @@ func (engine *Engine) processFlowNode(
 	default:
 		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", activity.Element().GetId(), activity.Element().GetType()))
 	}
-	return nil, nil
 }
 
 func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {

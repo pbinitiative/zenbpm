@@ -10,6 +10,7 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"slices"
 	"time"
@@ -54,13 +55,45 @@ func NewStorage() *Storage {
 	}
 }
 
+func (mem *Storage) Copy() *Storage {
+	c := NewStorage()
+	for k, v := range mem.Decision {
+		c.Decision[k] = v
+	}
+	for k, v := range mem.DecisionDefinitions {
+		c.DecisionDefinitions[k] = v
+	}
+	for k, v := range mem.ProcessInstances {
+		c.ProcessInstances[k] = v
+	}
+	for k, v := range mem.MessageSubscriptions {
+		c.MessageSubscriptions[k] = v
+	}
+	for k, v := range mem.Timers {
+		c.Timers[k] = v
+	}
+	for k, v := range mem.Jobs {
+		c.Jobs[k] = v
+	}
+	for k, v := range mem.ExecutionTokens {
+		c.ExecutionTokens[k] = v
+	}
+	for k, v := range mem.FlowElementHistory {
+		c.FlowElementHistory[k] = v
+	}
+	for k, v := range mem.Incidents {
+		c.Incidents[k] = v
+	}
+	return c
+}
+
 var _ storage.Storage = &Storage{}
 
 func (mem *Storage) NewBatch() storage.Batch {
 	return &StorageBatch{
-		db:                  mem,
-		stmtToRun:           make([]func() error, 0, 10),
-		flushSuccessActions: make([]func(), 0, 5),
+		db:               mem,
+		stmtToRun:        make([]func() error, 0, 10),
+		postFlushActions: make([]func(), 0, 5),
 	}
 }
 
@@ -377,6 +410,18 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
+func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	var res bpmnruntime.MessageSubscription
+	res, ok := mem.MessageSubscriptions[key]
+	if !ok {
+		return res, storage.ErrNotFound
+	}
+	if res.State == state {
+		return res, nil
+	}
+	return res, storage.ErrNotFound
+}
+
 // FindTokenMessageSubscriptions implements storage.Storage.
 func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	res := make([]bpmnruntime.MessageSubscription, 0)
@@ -425,6 +470,14 @@ func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, proce
 var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
+	for _, message := range mem.MessageSubscriptions {
+		if subscription.Key == message.Key {
+			break
+		}
+		if message.State == bpmnruntime.ActivityStateActive && message.Name == subscription.Name && message.CorrelationKey == subscription.CorrelationKey {
+			return fmt.Errorf("active message with the same correlationKey and name already exists")
+		}
+	}
 	mem.MessageSubscriptions[subscription.GetKey()] = subscription
 	return nil
 }
@@ -472,18 +525,24 @@ func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incid
 }
 
 type StorageBatch struct {
-	db                  *Storage
-	stmtToRun           []func() error
-	flushSuccessActions []func()
+	db               *Storage
+	stmtToRun        []func() error
+	postFlushActions []func()
+	preFlushActions  []func() error
 }
 
 var _ storage.Batch = &StorageBatch{}
 
-func (b *StorageBatch) AddFlushSuccessAction(ctx context.Context, f func()) {
-	b.flushSuccessActions = append(b.flushSuccessActions, f)
+func (b *StorageBatch) AddPostFlushAction(ctx context.Context, f func()) {
+	b.postFlushActions = append(b.postFlushActions, f)
+}
+
+func (b *StorageBatch) AddPreFlushAction(ctx context.Context, f func() error) {
+	b.preFlushActions = append(b.preFlushActions, f)
 }
 
 func (b *StorageBatch) Flush(ctx context.Context) error {
+	dbCopy := b.db.Copy()
 	var joinErr error
 	for _, stmt := range b.stmtToRun {
 		err := stmt()
@@ -492,9 +551,10 @@ func (b *StorageBatch) Flush(ctx context.Context) error {
 		}
 	}
 	if joinErr != nil {
+		b.db = dbCopy
 		return joinErr
 	}
-	for _, action := range b.flushSuccessActions {
+	for _, action := range b.postFlushActions {
 		action()
 	}
 	b.stmtToRun = make([]func() error, 0)

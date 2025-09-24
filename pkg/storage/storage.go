@@ -63,8 +63,10 @@ type Batch interface {
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
-	// AddFlushSuccessAction registers a function f that will be called after a successful flush has been performed
-	AddFlushSuccessAction(ctx context.Context, f func())
+	// AddPreFlushAction registers a function f that will be called after a before flush. If error is returned flush is not performed
+	AddPreFlushAction(ctx context.Context, f func() error)
+	// AddPostFlushAction registers a function f that will be called after a successful flush has been performed
+	AddPostFlushAction(ctx context.Context, f func())
 }
 
 type DecisionStorageReader interface {
@@ -159,7 +161,9 @@ type JobStorageWriter interface {
 }
 
 type MessageStorageReader interface {
-	// FindProcessInstanceMessageSubscription return message subscriptions for process instance that are in Active or Ready state
+	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+
+	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 
 	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
@@ -167,7 +171,7 @@ type MessageStorageReader interface {
 
 type MessageStorageWriter interface {
 	// SaveMessageSubscription persists the MessageSubscription
-	// and potentially overwrites prior data stored with given key
+	// returns an error if there is already an active conflicting message present.
 	SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error
 }
 

@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const countActiveProcessInstances = `-- name: CountActiveProcessInstances :one
+SELECT
+    count(*)
+FROM
+    process_instance
+WHERE
+    state = 1
+`
+
+func (q *Queries) CountActiveProcessInstances(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveProcessInstances)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
 SELECT
     "key", process_definition_key, created_at, state, variables, parent_process_execution_token

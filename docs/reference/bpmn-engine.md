@@ -207,9 +207,6 @@ Messages can be published through API or by triggering [Intermediate throw event
 :::note[Future plans]
 We plan to implement message start event along with timer start events in the future
 :::
-:::note[Future plans]
-Message boundary events are planned to be implemented in the future
-:::
 
 ### Link intermediate throw event
 
@@ -222,11 +219,6 @@ Link intermediate catch event is fully supported.
 ### Timer intermediate catch event
 
 Timer intermediate catch event is fully supported.
-:::note[Future plans]
-
-### Message throw event
-
-### Error event
 
 ### Boundary event
 
@@ -249,6 +241,11 @@ Currently supported event types with boundary events:
 
 ![Boudary event usage example](./assets/bpmn/boundary_events.png)
 _Boundary event usage example_
+:::note[Future plans]
+
+### Message throw event
+
+### Error event
 
 ### Activity multi instance
 

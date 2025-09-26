@@ -91,3 +91,57 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	assert.True(t, strings.HasPrefix(cp.CallPath, "task-for-timer"))
 	assert.NotContains(t, cp.CallPath, ",")
 }
+
+func Test_interrupting_boundary_event_timer_catch_triggered(t *testing.T) {
+	// 1) After process start the message subscription bound to the boundary event should be created
+	//    - process should be active
+	//    - message subscription should be active
+	// 2) After process message is thrown
+	//    - the job and
+	//    - any other boundary events subscriptions should be cancelled and
+	//    - flow outgoing from the boundary should be taken
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/timer-boundary-event-interrupting.bpmn")
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	assert.NoError(t, err)
+
+	// then
+
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	timers, err := bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now().Add(2*time.Second))
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(timers))
+
+	// when
+
+	time.Sleep(3 * time.Second)
+	// then
+	timers, err = bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now())
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(timers))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+
+}
+
+func findActiveJobsForProcessInstance(processInstanceKey int64, jobType string) []runtime.Job {
+	foundServiceJobs := make([]runtime.Job, 0)
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == processInstanceKey && job.Type == jobType && job.State == runtime.ActivityStateActive {
+			foundServiceJobs = append(foundServiceJobs, job)
+			break
+		}
+	}
+	return foundServiceJobs
+}

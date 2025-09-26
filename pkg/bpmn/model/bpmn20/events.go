@@ -18,6 +18,7 @@ const (
 	ElementTypeEndEvent               ElementType = "END_EVENT"
 	ElementTypeIntermediateCatchEvent ElementType = "INTERMEDIATE_CATCH_EVENT"
 	ElementTypeIntermediateThrowEvent ElementType = "INTERMEDIATE_THROW_EVENT"
+	ElementTypeBoundaryEvent          ElementType = "BOUNDARY_EVENT"
 
 	ElementTypeIntermediateMessageThrowEvent ElementType = "INTERMEDIATE_MESSAGE_THROW_EVENT"
 )
@@ -136,6 +137,47 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 func (intermediateCatchEvent TIntermediateThrowEvent) GetType() ElementType {
 	return ElementTypeIntermediateThrowEvent
 }
+
+type TBoundaryEvent struct {
+	TEvent
+	EventDefinition EventDefinition
+	AttachedToRef   string `xml:"attachedToRef,attr"`
+	CancellActivity bool   `xml:"cancelActivity,attr"`
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+}
+
+func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	tempStruct := struct {
+		TEvent
+		AttachedToRef          string                  `xml:"attachedToRef,attr"`
+		CancellActivity        bool                    `xml:"cancelActivity,attr"`
+		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
+		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
+		Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+	}{CancellActivity: true}
+	err := d.DecodeElement(&tempStruct, &start)
+	if err != nil {
+		return err
+	}
+	definitions.TEvent = tempStruct.TEvent
+	switch {
+	case tempStruct.MessageEventDefinition.Id != "":
+		definitions.EventDefinition = tempStruct.MessageEventDefinition
+	case tempStruct.TimerEventDefinition.Id != "":
+		definitions.EventDefinition = tempStruct.TimerEventDefinition
+	}
+	definitions.Output = tempStruct.Output
+	definitions.AttachedToRef = tempStruct.AttachedToRef
+	definitions.CancellActivity = tempStruct.CancellActivity
+	return nil
+}
+
+func (b TBoundaryEvent) GetId() string { return b.Id }
+func (b TBoundaryEvent) GetType() ElementType {
+	return ElementTypeBoundaryEvent
+}
+func (d TBoundaryEvent) GetOutputMapping() []extensions.TIoMapping { return d.Output }
 
 type TMessageEventDefinition struct {
 	TFlowNode

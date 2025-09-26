@@ -46,6 +46,16 @@ FROM
 WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
+    
+-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
+SELECT
+    *
+FROM
+    message_subscription
+WHERE
+    correlation_key = @correlation_key
+    AND name = @name
+    AND state = @state;
 
 -- name: GetMessageSubscriptionById :one
 SELECT

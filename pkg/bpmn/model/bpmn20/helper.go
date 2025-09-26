@@ -194,3 +194,12 @@ func FindFlowNodesById(definitions *TDefinitions, id string) (element FlowNode) 
 	}
 	return element
 }
+
+func FindBoundaryEventsForActivity(definitions *TDefinitions, activity FlowNode) (result []TBoundaryEvent) {
+	for _, boundaryEvent := range definitions.Process.BoundaryEvent {
+		if boundaryEvent.AttachedToRef == activity.GetId() {
+			result = append(result, boundaryEvent)
+		}
+	}
+	return result
+}

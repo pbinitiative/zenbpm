@@ -718,16 +718,20 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 var _ storage.ProcessInstanceStorageReader = &DB{}
 
 func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
-	var res bpmnruntime.ProcessInstance
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
-		return res, fmt.Errorf("failed to find process instance by key: %w", err)
+		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to find process instance by key: %w", err)
 	}
 
+	return rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
+}
+
+func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbInstance sql.ProcessInstance) (bpmnruntime.ProcessInstance, error) {
+	var res bpmnruntime.ProcessInstance
 	variables := map[string]any{}
-	err = json.Unmarshal([]byte(dbInstance.Variables), &variables)
+	err := json.Unmarshal([]byte(dbInstance.Variables), &variables)
 	if err != nil {
-		return res, fmt.Errorf("failed to unmarshal variables: %w", err)
+		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 
 	definition, err := rq.FindProcessDefinitionByKey(ctx, dbInstance.ProcessDefinitionKey)
@@ -764,6 +768,26 @@ func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey i
 		ParentProcessExecutionToken: parentToken,
 	}
 
+	return res, nil
+}
+
+func (rq *DB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+	var res []bpmnruntime.ProcessInstance
+	dbInstances, err := rq.Queries.FindProcessByParentExecutionToken(ctx, ssql.NullInt64{
+		Int64: parentExecutionTokenKey,
+		Valid: true,
+	})
+	if err != nil {
+		return res, fmt.Errorf("failed to find process instance by key: %w", err)
+	}
+
+	for _, dbInstance := range dbInstances {
+		inst, err := rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
+		if err != nil {
+			return res, fmt.Errorf("failed to inflate process instance: %w", err)
+		}
+		res = append(res, inst)
+	}
 	return res, nil
 }
 
@@ -805,6 +829,36 @@ func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey in
 	if err != nil {
 		return nil, fmt.Errorf("failed to find element timers for token %d: %w", tokenKey, err)
 	}
+
+	return rq.inflateTimers(ctx, dbTimers)
+}
+
+func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
+		ProcessInstanceKey: processInstanceKey,
+		State:              int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find element timers for process instance %d: %w", processInstanceKey, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
+
+}
+
+func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
+		State: int64(bpmnruntime.TimerStateCreated),
+		DueAt: end.UnixMilli(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers till %s in state CREATED: %w", end, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
+}
+
+func (rq *DB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]bpmnruntime.Timer, error) {
 	res := make([]bpmnruntime.Timer, len(dbTimers))
 	tokensToLoad := make([]int64, len(dbTimers))
 	for i, timer := range dbTimers {
@@ -821,52 +875,6 @@ func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey in
 		}
 		tokensToLoad[i] = timer.ExecutionToken
 		res[i].Duration = res[i].DueAt.Sub(res[i].CreatedAt)
-	}
-	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load timer subscriptions tokens: %w", err)
-	}
-	for _, token := range loadedTokens {
-		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-			}
-		}
-	}
-	return res, nil
-}
-
-func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
-	dbTimers, err := rq.Queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
-		State: int64(bpmnruntime.TimerStateCreated),
-		DueAt: end.UnixMilli(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to find timers till %s in state CREATED: %w", end, err)
-	}
-	res := make([]bpmnruntime.Timer, len(dbTimers))
-	tokensToLoad := make([]int64, len(dbTimers))
-	for i, timer := range dbTimers {
-		res[i] = bpmnruntime.Timer{
-			ElementId:            timer.ElementID,
-			ElementInstanceKey:   timer.ElementInstanceKey,
-			Key:                  timer.Key,
-			ProcessDefinitionKey: timer.ProcessDefinitionKey,
-			ProcessInstanceKey:   timer.ProcessInstanceKey,
-			TimerState:           bpmnruntime.TimerState(timer.State),
-			CreatedAt:            time.UnixMilli(timer.CreatedAt),
-			DueAt:                time.UnixMilli(timer.DueAt),
-			Duration:             time.Millisecond * time.Duration(timer.DueAt-timer.CreatedAt),
-			Token:                bpmnruntime.ExecutionToken{Key: timer.ExecutionToken},
-		}
-		tokensToLoad[i] = timer.ExecutionToken
 	}
 	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
 	if err != nil {
@@ -1204,6 +1212,18 @@ func (rq *DB) FindActiveMessageSubscriptionPointer(ctx context.Context, name str
 	}
 
 	return dbMessageSub, nil
+}
+
+func (rq *DB) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
+	dbMessageSub, err := rq.Queries.FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx, sql.FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams{
+		Name:           name,
+		CorrelationKey: correlationKey,
+		State:          int64(bpmnruntime.ActivityStateActive),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return dbMessageSub.Key, nil
 }
 
 var _ storage.MessageStorageReader = &DB{}

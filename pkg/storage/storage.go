@@ -119,6 +119,7 @@ type ProcessDefinitionStorageWriter interface {
 
 type ProcessInstanceStorageReader interface {
 	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
+	FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
 }
 
 type ProcessInstanceStorageWriter interface {
@@ -130,6 +131,8 @@ type ProcessInstanceStorageWriter interface {
 type TimerStorageReader interface {
 	// FindTimersTo returns a list of timers that have dueDate before end and are in CREATED state
 	FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
+
+	FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
 
 	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
@@ -159,6 +162,8 @@ type JobStorageWriter interface {
 
 type MessageStorageReader interface {
 	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+
+	FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
 
 	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)

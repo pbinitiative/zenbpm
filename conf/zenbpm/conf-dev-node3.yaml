@@ -1,23 +1,23 @@
 name: zenbpm
 httpServer:
   context: /
-  addr: :8081
+  addr: :8083
 grpcServer:
-  addr: :9091
+  addr: :9093
 cluster:
-  addr: localhost:8091
-  adv: localhost:8091
+  addr: localhost:8093
+  adv: localhost:8093
   raft:
-    dir: node-1
-    botstrapExpectTimeout: 30m
+    dir: node-3
+    bootstrapExpectTimeout: 30m
     bootstrapExpect: 3
     joinAttempts: 5
     joinAddresses: 
       - localhost:8091
       - localhost:8092
       - localhost:8093
-  nodeId: node-1
+  nodeId: node-3
 tracing:
   enabled: true
   endpoint: localhost:4318
-  name: ZenBPM-node-1
+  name: ZenBPM-node-3

@@ -57,10 +57,10 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	switch command.GetType() {
 	case proto.Command_TYPE_NODE_CHANGE:
 		nodeChangeCommand := command.GetNodeChange()
-		res = f.applyNodeChange(nodeChangeCommand)
+		res = f.applyNodeChange(nodeChangeCommand, command.GetIssuedAt())
 	case proto.Command_TYPE_NODE_PARTITION_CHANGE:
 		partitionChangeCommand := command.GetNodePartitionChange()
-		res = f.applyPartitionChange(partitionChangeCommand)
+		res = f.applyPartitionChange(partitionChangeCommand, command.GetIssuedAt())
 	default:
 		panic(fmt.Sprintf("unrecognized command type: %s", command.Type))
 	}
@@ -101,23 +101,23 @@ type FsmStore interface {
 	ClusterState() state.Cluster
 }
 
-func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange) interface{} {
+func (f *FSM) applyNodeChange(nodeChangeCommand *proto.NodeChange, issuedAtUnixMillis int64) interface{} {
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand)
+	changedState := FsmApplyNodeChange(f.store, nodeChangeCommand, issuedAtUnixMillis)
 	f.store.state = changedState
 	return nil
 }
 
-func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionChange) interface{} {
+func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionChange, issuedAtUnixMillis int64) interface{} {
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
-	changedState := FsmApplyPartitionChange(f.store, partitionChangeCommand)
+	changedState := FsmApplyPartitionChange(f.store, partitionChangeCommand, issuedAtUnixMillis)
 	f.store.state = changedState
 	return nil
 }
 
-func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) state.Cluster {
+func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange, issuedAtUnixMillis int64) state.Cluster {
 	currState := store.ClusterState()
 	node, ok := currState.Nodes[nodeChangeCommand.GetNodeId()]
 	// node is not yet present in the store
@@ -161,7 +161,7 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	return currState
 }
 
-func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange) state.Cluster {
+func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodePartitionChange, issuedAtUnixMillis int64) state.Cluster {
 	currState := store.ClusterState()
 	node, ok := currState.Nodes[partitionChangeCommand.GetNodeId()]
 	// node is not yet present in the store
@@ -177,9 +177,10 @@ func FsmApplyPartitionChange(store FsmStore, partitionChangeCommand *proto.NodeP
 		return currState
 	}
 	node.Partitions[partitionChangeCommand.GetPartitionId()] = state.NodePartition{
-		Id:    partitionChangeCommand.GetPartitionId(),
-		State: state.NodePartitionState(partitionChangeCommand.GetState()),
-		Role:  state.Role(partitionChangeCommand.GetRole()),
+		Id:           partitionChangeCommand.GetPartitionId(),
+		State:        state.NodePartitionState(partitionChangeCommand.GetState()),
+		Role:         state.Role(partitionChangeCommand.GetRole()),
+		LastChangeMs: issuedAtUnixMillis,
 	}
 	if partitionChangeCommand.GetRole() == proto.Role_ROLE_TYPE_LEADER {
 		currState.Partitions[partitionChangeCommand.GetPartitionId()] = state.Partition{

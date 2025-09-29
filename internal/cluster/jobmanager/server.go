@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -57,8 +58,8 @@ type nodeSub struct {
 }
 
 type jobTypeData struct {
-	index   int
-	clients []ClientID
+	Index   int
+	Clients []ClientID
 }
 
 type jobServer struct {
@@ -86,6 +87,7 @@ func newJobServer(
 	nodeID NodeId,
 	jobLoader JobLoader,
 	jobCompleter JobCompleter,
+	logger hclog.Logger,
 ) *jobServer {
 	return &jobServer{
 		nodeMu:                   &sync.RWMutex{},
@@ -96,7 +98,7 @@ func newJobServer(
 		subscriptions:            map[JobType]map[ClientID]*nodeSub{},
 		jobTypes:                 map[JobType]jobTypeData{},
 		clientMu:                 &sync.RWMutex{},
-		logger:                   hclog.Default().Named("job-manager-server"),
+		logger:                   logger,
 		loader:                   jobLoader,
 		maxPartitionJobLoadCount: 300,
 		completer:                jobCompleter,
@@ -110,6 +112,7 @@ func (s *jobServer) startServer(ctx context.Context) {
 }
 
 func (s *jobServer) distributeJobs() {
+	lastPing := time.Now()
 	for {
 		if s.ctx.Err() != nil {
 			for _, sub := range s.nodeSubs {
@@ -124,7 +127,7 @@ func (s *jobServer) distributeJobs() {
 		clients := make(map[ClientID]int64)
 		for jobType, jobTypeData := range s.jobTypes {
 			jobTypes = append(jobTypes, string(jobType))
-			for _, client := range jobTypeData.clients {
+			for _, client := range jobTypeData.Clients {
 				clients[client] = maxActiveJobsPerClient
 			}
 		}
@@ -145,6 +148,10 @@ func (s *jobServer) distributeJobs() {
 		jobsToLoad := int64(0)
 		for _, numberOfSlots := range clients {
 			jobsToLoad += numberOfSlots
+		}
+		if lastPing.Before(time.Now().Add(-1 * time.Second)) {
+			fmt.Printf("%+v\n", s.jobTypes)
+			lastPing = time.Now()
 		}
 		if jobsToLoad <= 0 {
 			time.Sleep(20 * time.Millisecond)
@@ -177,29 +184,29 @@ func (s *jobServer) distributeJobs() {
 			jType := JobType(job.Type)
 			jobTypeData := s.jobTypes[jType]
 			// check if there are any clients able to process
-			if len(jobTypeData.clients) == 0 {
+			if len(jobTypeData.Clients) == 0 {
 				s.clientMu.RUnlock()
 				continue
 			}
-			jobTypeData.index++
+			jobTypeData.Index++
 			// index overflow
-			if jobTypeData.index >= len(jobTypeData.clients)-1 {
-				jobTypeData.index = 0
+			if jobTypeData.Index >= len(jobTypeData.Clients)-1 {
+				jobTypeData.Index = 0
 			}
-			clientIdx := jobTypeData.index
-			clientID := jobTypeData.clients[clientIdx]
+			clientIdx := jobTypeData.Index
+			clientID := jobTypeData.Clients[clientIdx]
 
 			candidateIndex := clientIdx // contains the first matched client
 		indexLogic:
 			// if client under index is fully saturated check the next one
 			if clients[clientID] <= 0 {
-				jobTypeData.index++
+				jobTypeData.Index++
 				// index overflow
-				if jobTypeData.index >= len(jobTypeData.clients)-1 {
-					jobTypeData.index = 0
+				if jobTypeData.Index >= len(jobTypeData.Clients)-1 {
+					jobTypeData.Index = 0
 				}
-				clientIdx = jobTypeData.index
-				clientID = jobTypeData.clients[clientIdx]
+				clientIdx = jobTypeData.Index
+				clientID = jobTypeData.Clients[clientIdx]
 				if candidateIndex != clientIdx {
 					goto indexLogic
 				}
@@ -327,13 +334,13 @@ func (s *jobServer) subscribeClient(clientsNodeID NodeId, clientID ClientID, jTy
 	}
 	if _, ok := s.jobTypes[jType]; !ok {
 		s.jobTypes[jType] = jobTypeData{
-			index:   0,
-			clients: make([]ClientID, 0, 10),
+			Index:   0,
+			Clients: make([]ClientID, 0, 10),
 		}
 	}
 	jobTypeData := s.jobTypes[jType]
 	s.subscriptions[jType][clientID] = clientsNode
-	jobTypeData.clients = append(jobTypeData.clients, clientID)
+	jobTypeData.Clients = append(jobTypeData.Clients, clientID)
 	s.jobTypes[jType] = jobTypeData
 }
 
@@ -342,7 +349,7 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 	defer s.clientMu.Unlock()
 	delete(s.subscriptions[jType], clientID)
 	index := -1
-	for i, client := range s.jobTypes[jType].clients {
+	for i, client := range s.jobTypes[jType].Clients {
 		if client == clientID {
 			index = i
 			break
@@ -352,7 +359,7 @@ func (s *jobServer) unsubscribeClient(clientID ClientID, jType JobType) {
 		return
 	}
 	jobTypeData := s.jobTypes[jType]
-	jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
+	jobTypeData.Clients = append(jobTypeData.Clients[:index], jobTypeData.Clients[index+1:]...)
 	s.jobTypes[jType] = jobTypeData
 }
 
@@ -364,7 +371,7 @@ func (s *jobServer) removeClient(clientID ClientID) {
 	}
 	for jType, jobTypeData := range s.jobTypes {
 		index := -1
-		for k, client := range jobTypeData.clients {
+		for k, client := range jobTypeData.Clients {
 			if client == clientID {
 				index = k
 				break
@@ -372,10 +379,10 @@ func (s *jobServer) removeClient(clientID ClientID) {
 		}
 		if index >= 0 {
 			jobTypeData := s.jobTypes[jType]
-			jobTypeData.clients = append(jobTypeData.clients[:index], jobTypeData.clients[index+1:]...)
+			jobTypeData.Clients = append(jobTypeData.Clients[:index], jobTypeData.Clients[index+1:]...)
 			s.jobTypes[jType] = jobTypeData
 		}
-		if len(s.jobTypes[jType].clients) == 0 {
+		if len(s.jobTypes[jType].Clients) == 0 {
 			delete(s.jobTypes, jType)
 		}
 	}
@@ -422,4 +429,10 @@ func (s *jobServer) failJob(ctx context.Context, clientID ClientID, jobKey int64
 
 func (s *jobServer) onJobRejected(ctx context.Context, jobKey int64) {
 	// TODO: unlock the job and assign to new node, if there is no new node we need to remove the type from currently needed jobTypes
+}
+
+func (s *jobServer) GetJobTypes() map[JobType]jobTypeData {
+	res := make(map[JobType]jobTypeData)
+	maps.Copy(res, s.jobTypes)
+	return res
 }

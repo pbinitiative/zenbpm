@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
@@ -35,7 +36,7 @@ func Test_AddressProviderString(t *testing.T) {
 }
 
 func Test_NewBootstrapper(t *testing.T) {
-	bs := NewBootstrapper(nil, nil)
+	bs := NewBootstrapper(nil, nil, hclog.Default().Named("bootstrapper"))
 	if bs == nil {
 		t.Fatalf("failed to create a simple Bootstrapper")
 	}
@@ -57,7 +58,7 @@ func Test_BootstrapperBootDoneImmediately(t *testing.T) {
 		return true
 	}
 	p := NewAddressProviderString([]string{srv.Addr()})
-	bs := NewBootstrapper(p, nil)
+	bs := NewBootstrapper(p, nil, hclog.Default().Named("bootstrapper"))
 	if err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 10*time.Second); err != nil {
 		t.Fatalf("failed to boot: %s", err)
 	}
@@ -82,7 +83,7 @@ func Test_BootstrapperBootTimeout(t *testing.T) {
 	}
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 1*time.Second)
 	if err == nil {
@@ -109,7 +110,7 @@ func Test_BootstrapperBootCanceled(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
 	if err == nil {
@@ -138,7 +139,7 @@ func Test_BootstrapperBootCanceledDone(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
 	if err != nil {
@@ -170,7 +171,7 @@ func Test_BootstrapperBootSingleJoin(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 
 	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
@@ -205,7 +206,7 @@ func Test_BootstrapperBootNonVoter(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 
 	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.NonVoter, done, 3*time.Second)
@@ -237,7 +238,7 @@ func Test_BootstrapperBootSingleNotify(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 
 	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 60*time.Second)
@@ -295,7 +296,7 @@ func Test_BootstrapperBootMultiJoinNotify(t *testing.T) {
 
 	p := NewAddressProviderString([]string{srv1.Addr(), srv2.Addr()})
 	clientMgr := client.NewClientManager(nil)
-	bs := NewBootstrapper(p, clientMgr)
+	bs := NewBootstrapper(p, clientMgr, hclog.Default().Named("bootstrapper"))
 	bs.Interval = time.Second
 
 	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 60*time.Second)

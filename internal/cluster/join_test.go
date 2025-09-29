@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
@@ -39,7 +40,7 @@ func Test_SingleJoinOK(t *testing.T) {
 	}
 
 	clientMgr := client.NewClientManager(nil)
-	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
+	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval, hclog.Default().Named("joiner"))
 	addr, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +59,7 @@ func Test_SingleJoinZeroAttempts(t *testing.T) {
 	}
 
 	clientMgr := client.NewClientManager(nil)
-	joiner := NewJoiner(clientMgr, 0, attemptInterval)
+	joiner := NewJoiner(clientMgr, 0, attemptInterval, hclog.Default().Named("joiner"))
 	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
 	if err != ErrJoinFailed {
 		t.Fatalf("Incorrect error returned when zero attempts specified")
@@ -73,7 +74,7 @@ func Test_SingleJoinFail(t *testing.T) {
 	}
 
 	clientMgr := client.NewClientManager(nil)
-	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
+	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval, hclog.Default().Named("joiner"))
 	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
 	if err == nil {
 		t.Fatalf("expected error when joining bad node")
@@ -95,7 +96,7 @@ func Test_SingleJoinCancel(t *testing.T) {
 	}()
 
 	clientMgr := client.NewClientManager(nil)
-	joiner := NewJoiner(clientMgr, 10, attemptInterval)
+	joiner := NewJoiner(clientMgr, 10, attemptInterval, hclog.Default().Named("joiner"))
 	_, err := joiner.Do(ctx, []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
 	if err != ErrJoinCanceled {
 		t.Fatalf("incorrect error returned when canceling: %s", err)
@@ -116,7 +117,7 @@ func Test_DoubleJoinOKSecondNode(t *testing.T) {
 	}
 
 	clientMgr := client.NewClientManager(nil)
-	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
+	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval, hclog.Default().Named("joiner"))
 	addr, err := joiner.Do(context.Background(), []string{srv1.Addr(), srv2.Addr()}, "id0", "1.2.3.4", cluster.Voter)
 	if err != nil {
 		t.Fatal(err)

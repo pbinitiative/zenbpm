@@ -96,7 +96,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 
 	node.muxLn = muxLn
-	node.controller, err = controller.NewController(mux, conf.Cluster)
+	node.controller, err = controller.NewController(mux, conf.Cluster, node.logger.Named("controller"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node controller: %w", err)
 	}
@@ -106,6 +106,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.store = store.New(
 		raftTn,
 		node.controller.ClusterStateChangeNotification,
+		node.logger.Named("store"),
 		store.DefaultConfig(conf.Cluster),
 	)
 	if err = node.store.Open(); err != nil {
@@ -118,11 +119,18 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		return nil, fmt.Errorf("failed to start node controller: %w", err)
 	}
 
-	node.JobManager = jobmanager.New(mainCtx, node.store, node.client, node, node)
+	node.JobManager = jobmanager.New(
+		mainCtx,
+		node.store,
+		node.client,
+		node.logger.Named("job-manger"),
+		node,
+		node,
+	)
 	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
+	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.logger.Named("cluster-server"))
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}
@@ -153,7 +161,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	}
 	clusterSuf := cluster.VoterSuffrage(!conf.Cluster.Raft.NonVoter)
 
-	joiner := NewJoiner(node.client, conf.Cluster.Raft.JoinAttempts, conf.Cluster.Raft.JoinInterval)
+	joiner := NewJoiner(node.client, conf.Cluster.Raft.JoinAttempts, conf.Cluster.Raft.JoinInterval, node.logger.Named("joiner"))
 	if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect == 0 {
 		// Explicit join operation requested, so do it.
 		j, err := joiner.Do(mainCtx, conf.Cluster.Raft.JoinAddresses, node.store.ID(), conf.Cluster.Adv, clusterSuf)
@@ -166,6 +174,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		bs := NewBootstrapper(
 			cluster.NewAddressProviderString(conf.Cluster.Raft.JoinAddresses),
 			node.client,
+			node.logger.Named("bootstrapper"),
 		)
 		err := bs.Boot(mainCtx, node.store.ID(), conf.Cluster.Adv, clusterSuf, bootDoneFn, conf.Cluster.Raft.BootstrapExpectTimeout)
 		if err != nil {

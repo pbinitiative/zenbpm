@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -32,7 +33,7 @@ func TestServer(t *testing.T) {
 	}
 	cLn := network.NewZenBpmClusterListener(mux)
 	tStore := &testStore{}
-	srv := New(cLn, tStore, nil, nil)
+	srv := New(cLn, tStore, nil, nil, hclog.Default().Named("server"))
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)
@@ -84,7 +85,7 @@ func TestServerTCPHeaderMux(t *testing.T) {
 	}
 	cLn := network.NewZenBpmClusterListener(mux)
 	tStore := &testStore{}
-	srv := New(cLn, tStore, nil, nil)
+	srv := New(cLn, tStore, nil, nil, hclog.Default().Named("server"))
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)

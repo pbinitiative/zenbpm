@@ -15,6 +15,7 @@ message Command {
     NodeChange node_change = 2;
     NodePartitionChange node_partition_change = 3;
   }
+  int64 issuedAt = 4;
 }
 
 enum Role {

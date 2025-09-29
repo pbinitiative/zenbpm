@@ -111,7 +111,7 @@ func (c *jobClient) updateNodeSubs(ctx context.Context) {
 	}
 }
 
-func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager *client.ClientManager) *jobClient {
+func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager *client.ClientManager, logger hclog.Logger) *jobClient {
 	return &jobClient{
 		clientSubs:        map[ClientID]*clientSub{},
 		clientMu:          &sync.RWMutex{},
@@ -121,7 +121,7 @@ func newJobClient(ctx context.Context, nodeID NodeId, store Store, clientManager
 		nodeStreams:       []*clientNodeStream{},
 		nodeMu:            &sync.RWMutex{},
 		jobsChan:          make(chan Job),
-		logger:            hclog.Default().Named("job-manager-client"),
+		logger:            logger,
 		ctx:               ctx,
 	}
 }

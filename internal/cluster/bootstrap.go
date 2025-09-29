@@ -49,11 +49,11 @@ type Bootstrapper struct {
 }
 
 // NewBootstrapper returns an instance of a Bootstrapper.
-func NewBootstrapper(p AddressProvider, client *client.ClientManager) *Bootstrapper {
+func NewBootstrapper(p AddressProvider, client *client.ClientManager, logger hclog.Logger) *Bootstrapper {
 	bs := &Bootstrapper{
 		provider:  p,
 		clientMgr: client,
-		logger:    hclog.Default().Named("cluster-bootstrap"),
+		logger:    logger,
 		Interval:  bootCheckInterval,
 	}
 	return bs
@@ -82,7 +82,7 @@ func (b *Bootstrapper) Boot(ctx context.Context, id, raftAddr string, suf cluste
 	tickerT := time.NewTimer(random.Jitter(time.Millisecond)) // Check fast, just once at the start.
 	defer tickerT.Stop()
 
-	joiner := NewJoiner(b.clientMgr, numJoinAttempts, requestTimeout)
+	joiner := NewJoiner(b.clientMgr, numJoinAttempts, requestTimeout, b.logger.Named("joiner"))
 	for {
 		select {
 		case <-ctx.Done():

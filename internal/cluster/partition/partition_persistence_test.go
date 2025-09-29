@@ -81,7 +81,7 @@ func TestRqLiteStorage(t *testing.T) {
 	}
 	clientMgr := client.NewClientManager(tStore)
 
-	partition, err := StartZenPartitionNode(ctx, mux, conf, clientMgr, 1, PartitionChangesCallbacks{}, func() state.Cluster {
+	partition, err := StartZenPartitionNode(ctx, mux, conf, clientMgr, 1, hclog.Default(), PartitionChangesCallbacks{}, func() state.Cluster {
 		return state.Cluster{
 			Config: state.ClusterConfig{},
 			Partitions: map[uint32]state.Partition{
@@ -364,11 +364,11 @@ func (c *testStore) Notify(nr *zenproto.NotifyRequest) error {
 }
 
 func (c *testStore) WriteNodeChange(change *comproto.NodeChange) error {
-	c.clusterState = store.FsmApplyNodeChange(c, change)
+	c.clusterState = store.FsmApplyNodeChange(c, change, 0)
 	return nil
 }
 
 func (c *testStore) WritePartitionChange(change *comproto.NodePartitionChange) error {
-	c.clusterState = store.FsmApplyPartitionChange(c, change)
+	c.clusterState = store.FsmApplyPartitionChange(c, change, 0)
 	return nil
 }

@@ -121,6 +121,11 @@ run2: ## Start 2nd node
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node2.yaml; \
 	go run cmd/zenbpm/*.go
 
+.PHONY: run3
+run3: ## Start 3rd node
+	export PROFILE=DEV; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-dev-node3.yaml; \
+	go run cmd/zenbpm/*.go
 
 .PHONY: start-monitoring
 start-monitoring: ## Start monitoring stack

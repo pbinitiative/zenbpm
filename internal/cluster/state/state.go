@@ -142,7 +142,7 @@ func (c Cluster) GetPartitionIdFromString(str string) uint32 {
 
 // +k8s:deepcopy-gen=true
 type ClusterConfig struct {
-	DesiredPartitions uint32 `json:"desiredPartitions"`
+	DesiredPartitions int `json:"desiredPartitions"`
 	// Version           int    `json:"version"`
 }
 
@@ -199,9 +199,12 @@ type Node struct {
 	// TODO: add zones
 }
 
+// NodePartition holds information about partitions assigned to node
+// +k8s:deepcopy-gen=true
 type NodePartition struct {
-	Id    uint32             `json:"id"`
-	State NodePartitionState `json:"state"`
+	Id           uint32             `json:"id"`
+	State        NodePartitionState `json:"state"`
+	LastChangeMs int64              `json:"lastChange"` // contains timestamp when the command was issued for the current state in milliseconds
 	// role of a node in partition group
 	Role Role `json:"role"`
 }

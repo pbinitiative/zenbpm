@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
@@ -40,7 +41,7 @@ func TestFkdUpClient(t *testing.T) {
 
 	tStore := &StoreSvc{}
 	// srv := server.New(ln, tStore)
-	srv := server.New(cLn, tStore, nil, nil)
+	srv := server.New(cLn, tStore, nil, nil, hclog.Default().Named("server"))
 	err = srv.Open()
 	if err != nil {
 		t.Fatalf("failed to start server: %s", err)
@@ -74,7 +75,8 @@ func TestFkdUpClient(t *testing.T) {
 		now = time.Now()
 		fmt.Println(now)
 		_, err = c.NodeCommand(ctx, &proto.Command{
-			Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+			Type:     proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+			IssuedAt: ptr.To(time.Now().UnixMilli()),
 			Request: &proto.Command_NodePartitionChange{
 				NodePartitionChange: &proto.NodePartitionChange{
 					NodeId:      ptr.To("123"),

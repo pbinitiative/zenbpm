@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,12 +47,12 @@ type Controller struct {
 	clusterStateChangeHooks []func(context.Context)
 }
 
-func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
+func NewController(mux *tcp.Mux, conf config.Cluster, logger hclog.Logger) (*Controller, error) {
 	c := Controller{
 		config:                  conf,
 		mux:                     mux,
 		partitions:              make(map[uint32]*partition.ZenPartitionNode),
-		logger:                  hclog.Default().Named("zen-controller"),
+		logger:                  logger,
 		partitionsMu:            sync.RWMutex{},
 		clusterStateChangeHooks: []func(context.Context){},
 	}
@@ -122,12 +123,12 @@ func (c *Controller) performLeaderOperations(ctx context.Context) {
 		c.assignNewPartition(ctx, currentPartitionCount+1)
 	}
 	// check if there is node with no partitions and if there is assign it to partition with least nodes // TODO
-	cs = c.store.ClusterState()
-	for _, node := range cs.Nodes {
-		if len(node.Partitions) == 0 {
-			c.assignPartition(ctx, 1, node.Id)
-		}
-	}
+	// cs = c.store.ClusterState()
+	// for _, node := range cs.Nodes {
+	// 	if len(node.Partitions) == 0 {
+	// 		c.assignPartition(ctx, 1, node.Id)
+	// 	}
+	// }
 	// TODO:
 	// if node is leader he needs to:
 	//  - verify that the partitions are spread across the cluster in the desired manner (we dont have spread logic yet)
@@ -185,7 +186,7 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 	cs := c.store.ClusterState()
 	currentNode, err := cs.GetNode(c.store.ID())
 	if err != nil {
-		c.logger.Error("Controller encountered a node not yet registered in the cluster.")
+		c.logger.Debug("current controller node not yet registered in the cluster.")
 		return
 	}
 	leaderClient, err := c.client.ClusterLeader()
@@ -235,8 +236,9 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 		c.logger.Debug("Skipping handlePartitionStateJoining due to expired context")
 		return
 	}
+	currState := c.store.ClusterState()
 	// check if partition is already assigned and skip
-	if node, err := c.store.ClusterState().GetNode(c.store.ID()); err == nil {
+	if node, err := currState.GetNode(c.store.ID()); err == nil {
 		if partition, ok := node.Partitions[partitionId]; ok {
 			// if we dont have running partition node we need to initialize it again
 			_, runningOk := c.partitions[partitionId]
@@ -246,11 +248,58 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 			}
 		}
 	}
+	partitionMembers := make([]string, 0)
+	// if we joining fill out members
+	for _, node := range currState.Nodes {
+		if _, ok := node.Partitions[partitionId]; ok {
+			partitionMembers = append(partitionMembers, node.Addr)
+		}
+	}
+	// if we are bootstrapping bootstrap with self
+	if len(partitionMembers) == 0 {
+		partitionMembers = []string{c.store.Addr()}
+	}
+	partitionConf := c.persistenceConfig
+	partitionConf.RqLite.JoinAddrs = strings.Join(partitionMembers, ",")
+	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
+	partitionConf.RqLite.DataPath = filepath.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
+	partitionNode, err := partition.StartZenPartitionNode(
+		context.Background(),
+		c.mux,
+		c.persistenceConfig,
+		c.client,
+		partitionId,
+		c.logger.Named(fmt.Sprintf("zen-partition-node-%d", partitionId)),
+		partition.PartitionChangesCallbacks{
+			AddNewNode: func(s raft.Server) error {
+				return c.partitionAddNewNode(s, partitionId)
+			},
+			ShutdownNode: func(s raft.ServerID) error {
+				return c.partitionShutdownNode(s, partitionId)
+			},
+			LeaderChange: func(s raft.ServerID) error {
+				return c.partitionLeaderChange(s, partitionId)
+			},
+			RemoveNode: func(id string) error {
+				return c.partitionRemoveNode(id, partitionId)
+			},
+			ResumeNode: func(id string) error {
+				return c.partitionResumeNode(id, partitionId)
+			},
+		},
+		c.store.ClusterState,
+	)
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
+		_ = partitionNode.Stop()
+		return
+	}
 	// change the state
 	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
+		Type:     proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+		IssuedAt: ptr.To(time.Now().UnixMilli()),
 		Request: &proto.Command_NodePartitionChange{
 			NodePartitionChange: &proto.NodePartitionChange{
 				NodeId:      ptr.To(c.store.ID()),
@@ -262,33 +311,6 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	})
 	if err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionId, err))
-	}
-	partitionConf := c.persistenceConfig
-	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.RqLite.DataPath = filepath.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
-	partitionNode, err := partition.StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, c.client, partitionId, partition.PartitionChangesCallbacks{
-		AddNewNode: func(s raft.Server) error {
-			return c.partitionAddNewNode(s, partitionId)
-		},
-		ShutdownNode: func(s raft.ServerID) error {
-			return c.partitionShutdownNode(s, partitionId)
-		},
-		LeaderChange: func(s raft.ServerID) error {
-			return c.partitionLeaderChange(s, partitionId)
-		},
-		RemoveNode: func(id string) error {
-			return c.partitionRemoveNode(id, partitionId)
-		},
-		ResumeNode: func(id string) error {
-			return c.partitionResumeNode(id, partitionId)
-		},
-	},
-		c.store.ClusterState,
-	)
-	if err != nil {
-		c.logger.Error(fmt.Sprintf("Failed to start partition %d node: %s", partitionId, err))
-		_ = partitionNode.Stop()
-		return
 	}
 	c.partitions[partitionId] = partitionNode
 
@@ -348,8 +370,9 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	ctxClient, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err = leaderClient.NodeCommand(ctxClient, &proto.Command{
-		Type:    proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
-		Request: partitionChangeCmd,
+		Type:     proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),
+		Request:  partitionChangeCmd,
+		IssuedAt: ptr.To(time.Now().UnixMilli()),
 	})
 	if err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to update state of the partition to INITIALIZED %d: %s", partitionId, err))

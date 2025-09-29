@@ -20,13 +20,13 @@ import (
 	"slices"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
-	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -46,6 +46,7 @@ import (
 // Server provides information about the node and cluster.
 type Server struct {
 	proto.UnimplementedZenServiceServer
+	logger     hclog.Logger
 	ln         net.Listener // Incoming connections to the service
 	addr       net.Addr     // Address on which this service is listening
 	store      StoreService
@@ -76,13 +77,14 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager, logger hclog.Logger) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
 		controller: controller,
 		jobManager: jobManager,
+		logger:     logger,
 	}
 }
 
@@ -101,8 +103,12 @@ func (s *Server) Open() error {
 	}))
 	proto.RegisterZenServiceServer(srv, s)
 	go srv.Serve(s.ln)
-	log.Info("zen cluster service listening on %s", s.addr)
+	s.logger.Info(fmt.Sprintf("zen cluster server listening on %s", s.addr))
 	return nil
+}
+
+func (s *Server) Addr() net.Addr {
+	return s.ln.Addr()
 }
 
 // Close closes the Server.

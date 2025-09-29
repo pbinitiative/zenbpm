@@ -141,7 +141,11 @@ func (l *HcLogger) Name() string {
 
 func (l *HcLogger) Named(name string) hclog.Logger {
 	logger := NewHcLog(l.slog, l.skip)
-	logger.name = name
+	if l.name != "" {
+		logger.name = l.name + "." + name
+	} else {
+		logger.name = name
+	}
 	logger.args = l.args
 	return logger
 }

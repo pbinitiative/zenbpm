@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/snowflake"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -52,11 +53,11 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 	_ = loader
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.Server, "server should not be initialized")
 
 	*testStr = *getTestStore(ln)
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.NotNil(t, jm1.server, "server should be initialized")
+	assert.NotNil(t, jm1.Server, "server should be initialized")
 
 	testStr2 := &testStore{
 		state: *testStr.state.DeepCopy(),
@@ -81,11 +82,11 @@ func TestManagerHandlesLeaderChanges(t *testing.T) {
 
 	testStr.state.Partitions = map[uint32]state.Partition{}
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.Server, "server should not be initialized")
 
 	testStr2.state.Partitions = map[uint32]state.Partition{}
 	jm2.OnPartitionRoleChange(t.Context())
-	assert.Empty(t, jm2.client.nodeStreams)
+	assert.Empty(t, jm2.Client.nodeStreams)
 }
 
 func TestManagerDistributesJob(t *testing.T) {
@@ -120,11 +121,11 @@ func TestManagerDistributesJob(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Contains(t, completer.completedJobs, generatedJobs[0].Key)
-	assert.NotEmpty(t, jm1.server.jobTypes[job.Type])
+	assert.NotEmpty(t, jm1.Server.jobTypes[job.Type])
 
 	jm2.RemoveClient(t.Context(), "client-1")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes[job.Type].clients) == 0
+		return len(jm1.Server.jobTypes[job.Type].Clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -173,7 +174,7 @@ func TestManagerHandlesMultipleClients(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return len(jm1.Server.jobTypes["test-job"].Clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -230,7 +231,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 	jm2.RemoveClient(t.Context(), "client-1")
 
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 1
+		return len(jm1.Server.jobTypes["test-job"].Clients) == 1
 	}, 1*time.Second, 100*time.Millisecond)
 
 	generatedJobsBatch3 := generateJobs(6)
@@ -245,7 +246,7 @@ func TestManagerHandlesClientConnections(t *testing.T) {
 
 	jm2.RemoveClient(t.Context(), "client-2")
 	assert.Eventually(t, func() bool {
-		return len(jm1.server.jobTypes["test-job"].clients) == 0
+		return len(jm1.Server.jobTypes["test-job"].Clients) == 0
 	}, 1*time.Second, 100*time.Millisecond)
 }
 
@@ -347,7 +348,7 @@ func createServerNode(t *testing.T, partition uint32, listener net.Listener, sto
 			mu:         &sync.RWMutex{},
 		},
 	}
-	jm := New(t.Context(), store, cm, completer.loader, completer)
+	jm := New(t.Context(), store, cm, hclog.Default().Named("jobmanager"), completer.loader, completer)
 
 	srv := grpc.NewServer()
 	zenSrv := &grpcSrv{
@@ -368,7 +369,7 @@ func createClientNode(t *testing.T, store *testStore) *JobManager {
 			mu:         &sync.RWMutex{},
 		},
 	}
-	jm := New(t.Context(), store, cm, completer.loader, completer)
+	jm := New(t.Context(), store, cm, hclog.Default().Named("jobmanager"), completer.loader, completer)
 	jm.Start()
 	return jm
 }
@@ -529,11 +530,11 @@ func TestManagerTroughput(t *testing.T) {
 	jm1, completer := createServerNode(t, 1, ln, testStr)
 	loader := completer.loader
 	_ = loader
-	assert.Nil(t, jm1.server, "server should not be initialized")
+	assert.Nil(t, jm1.Server, "server should not be initialized")
 
 	*testStr = *getTestStore(ln)
 	jm1.OnPartitionRoleChange(t.Context())
-	assert.NotNil(t, jm1.server, "server should be initialized")
+	assert.NotNil(t, jm1.Server, "server should be initialized")
 
 	testStr2 := &testStore{
 		state: *testStr.state.DeepCopy(),
@@ -566,7 +567,7 @@ func TestManagerTroughput(t *testing.T) {
 			}
 		}()
 		assert.Eventually(t, func() bool {
-			return len(jm1.server.jobTypes["test-job"].clients) == i+1
+			return len(jm1.Server.jobTypes["test-job"].Clients) == i+1
 		}, 5*time.Second, 100*time.Millisecond, "wait for client to register")
 
 		generatedJobs := generateJobs(jobsToDistribute)

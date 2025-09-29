@@ -10,11 +10,12 @@ cluster:
   raft:
     dir: node-2
     bootstrapExpectTimeout: 30m
-    bootstrapExpect: 2
+    bootstrapExpect: 3
     joinAttempts: 5
     joinAddresses: 
       - localhost:8091
       - localhost:8092
+      - localhost:8093
   nodeId: node-2
 tracing:
   enabled: true

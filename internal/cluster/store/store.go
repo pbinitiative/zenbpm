@@ -168,13 +168,13 @@ func DefaultConfig(c config.Cluster) Config {
 
 // New returns a new Store.
 // The store is in closed state and needs to be opened by calling Open before usage.
-func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, c Config) *Store {
+func New(layer *tcp.Layer, stateObserverFn ClusterStateObserverFunc, logger hclog.Logger, c Config) *Store {
 	s := &Store{
 		cfg:             c,
 		stateMu:         sync.Mutex{},
 		boltDB:          &raftboltdb.BoltStore{},
 		raft:            &raft.Raft{},
-		logger:          hclog.Default().Named("zenbpm-store"),
+		logger:          logger,
 		open:            &atomic.Bool{},
 		raftID:          c.NodeId,
 		layer:           layer,
@@ -220,6 +220,7 @@ func (s *Store) Open() (retErr error) {
 	// Setup Raft configuration.
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(s.raftID)
+	cfg.Logger = s.logger.Named("raft")
 
 	// Create Raft-compatible network layer.
 	s.raftTn = raft.NewNetworkTransport(NewTransport(s.layer), connectionPoolCount, connectionTimeout, nil)
@@ -661,6 +662,7 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 		Request: &proto.Command_NodeChange{
 			NodeChange: change,
 		},
+		IssuedAt: ptr.To(time.Now().UnixMilli()),
 	}
 	b, err := pb.Marshal(command)
 	if err != nil {
@@ -679,6 +681,7 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 		Request: &proto.Command_NodePartitionChange{
 			NodePartitionChange: change,
 		},
+		IssuedAt: ptr.To(time.Now().UnixMilli()),
 	}
 	b, err := pb.Marshal(command)
 	if err != nil {

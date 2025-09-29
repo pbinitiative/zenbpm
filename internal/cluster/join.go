@@ -44,12 +44,12 @@ type Joiner struct {
 }
 
 // NewJoiner returns an instantiated Joiner.
-func NewJoiner(clientMgr *client.ClientManager, numAttempts int, attemptInterval time.Duration) *Joiner {
+func NewJoiner(clientMgr *client.ClientManager, numAttempts int, attemptInterval time.Duration, logger hclog.Logger) *Joiner {
 	return &Joiner{
 		clientMgr:       clientMgr,
 		numAttempts:     numAttempts,
 		attemptInterval: attemptInterval,
-		logger:          hclog.Default().Named("cluster-join"),
+		logger:          logger,
 	}
 }
 

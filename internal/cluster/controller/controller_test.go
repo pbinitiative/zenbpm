@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
@@ -50,7 +51,7 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 		leader: true,
 	}
 	srvLn := network.NewZenBpmClusterListener(mux)
-	srv := server.New(srvLn, tStore, nil, nil)
+	srv := server.New(srvLn, tStore, nil, nil, hclog.Default().Named("server"))
 	err = srv.Open()
 	assert.NoError(t, err)
 
@@ -67,7 +68,7 @@ func TestControllerCanStartNewPartitions(t *testing.T) {
 			BootstrapExpect:        1,
 			BootstrapExpectTimeout: 1 * time.Second,
 		},
-	})
+	}, hclog.Default().Named("controller"))
 	assert.NoError(t, err)
 
 	err = controller.Start(tStore, clientMgr)
@@ -177,13 +178,13 @@ func (c *ControllerTestStore) Notify(nr *zenproto.NotifyRequest) error {
 
 // WriteNodeChange implements server.StoreService.
 func (c *ControllerTestStore) WriteNodeChange(change *proto.NodeChange) error {
-	c.clusterState = store.FsmApplyNodeChange(c, change)
+	c.clusterState = store.FsmApplyNodeChange(c, change, time.Now().UnixMilli())
 	return nil
 }
 
 // WritePartitionChange implements ControlledStore.
 func (c *ControllerTestStore) WritePartitionChange(change *proto.NodePartitionChange) error {
-	c.clusterState = store.FsmApplyPartitionChange(c, change)
+	c.clusterState = store.FsmApplyPartitionChange(c, change, time.Now().UnixMilli())
 	return nil
 }
 

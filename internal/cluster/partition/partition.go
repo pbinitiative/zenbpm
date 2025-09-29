@@ -102,13 +102,13 @@ const (
 	partitionMeter string = "partition"
 )
 
-func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
+func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, logger hclog.Logger, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
 		statuses:             map[string]httpd.StatusReporter{},
 		PartitionId:          partition,
-		logger:               hclog.Default().Named(fmt.Sprintf("zen-partition-node-%d", partition)),
+		logger:               logger,
 		stateChangeCallbacks: callbacks,
 	}
 	zpn.logger.Info(fmt.Sprintf("Starting partition %d node", partition))
@@ -134,7 +134,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	zpn.DB, err = NewDB(
 		zpn.store,
 		zpn.PartitionId,
-		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
+		zpn.logger.Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
 		persistenceConfig,
 		client,
 		zenState,
@@ -145,11 +145,11 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 
 	// Install the auto-restore data, if necessary.
 	if cfg.AutoRestoreFile != "" {
-		hd, err := store.HasData(str.Path())
+		hasData, err := store.HasData(str.Path())
 		if err != nil {
 			return nil, fmt.Errorf("failed to check for existing data: %w", err)
 		}
-		if hd {
+		if hasData {
 			zpn.logger.Info(fmt.Sprintf("auto-restore requested, but data already exists in %s, skipping", str.Path()))
 		} else {
 			zpn.logger.Info("auto-restore requested, initiating download")
@@ -349,8 +349,8 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 		DBConf: dbConf,
 		Dir:    cfg.DataPath,
 		ID:     cfg.NodeID,
-		Logger: hclog.Default().
-			Named(fmt.Sprintf("rqlite-partition-store-%d", partition)).
+		Logger: zpn.logger.
+			Named(fmt.Sprintf("store-%d", partition)).
 			StandardLogger(&hclog.StandardLoggerOptions{
 				ForceLevel: hclog.Default().GetLevel(),
 			}),

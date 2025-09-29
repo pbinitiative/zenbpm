@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -310,7 +311,7 @@ func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	ln := network.NewZenBpmRaftListener(mux)
 	raftTn := tcp.NewLayer(ln, network.NewZenBpmRaftDialer())
 
-	s := New(raftTn, nil, DefaultConfig(c))
+	s := New(raftTn, nil, hclog.Default().Named("store"), DefaultConfig(c))
 	return s, ln
 }
 

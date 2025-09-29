@@ -19,7 +19,7 @@ SELECT
 FROM
     job
 WHERE
-    key = sqlc.arg('key');
+    key = @key;
 
 -- name: FindActiveJobsByType :many
 SELECT

@@ -218,6 +218,11 @@ message ProcessDefinition {
   bytes definition = 4;
 }
 
+message ProcessDefinitionsPage {
+  repeated ProcessDefinition  items = 1;
+  int32 totalCount = 2;
+}
+
 message ProcessInstance {
   int64 key = 1;
   string process_id = 2;

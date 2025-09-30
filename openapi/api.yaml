@@ -93,7 +93,27 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/decision-definitions
+            curl -X GET "http://localhost:8080/v1/decision-definitions?page=1&size=10"
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of decision definitions
@@ -112,9 +132,10 @@ paths:
                   - key: "4503599627370497"
                     version: 1
                     decisionDefinitionId: "credit-score-check"
-                offset: 0
+                page: 1
                 size: 10
                 count: 3
+                totalCount: 3
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -331,7 +352,27 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/process-definitions
+            curl -X GET "http://localhost:8080/v1/process-definitions?page=1&size=10"
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of process definitions
@@ -350,9 +391,10 @@ paths:
                   - key: "4503599627370500"
                     version: 1
                     bpmnProcessId: "credit-check"
-                offset: 0
+                page: 1
                 size: 10
                 count: 3
+                totalCount: 3
         500:
           description: Internal server error
           content:
@@ -557,6 +599,7 @@ paths:
                 page: 1
                 size: 10
                 count: 3
+                totalCount: 3
         400:
           description: Bad request
           content:
@@ -640,7 +683,7 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789/jobs
+            curl -X GET "http://localhost:8080/v1/process-instances/123456789/jobs?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -649,6 +692,25 @@ paths:
             type: string
             pattern: '^\d{15,20}$'
           example: "4503599627370501"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of jobs
@@ -676,9 +738,10 @@ paths:
                     variables:
                       result: "approved"
                       score: 85
-                offset: 0
+                page: 1
                 size: 10
                 count: 2
+                totalCount: 2
         400:
           description: Bad request
           content:
@@ -707,7 +770,7 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789/activities
+            curl -X GET "http://localhost:8080/v1/process-instances/123456789/activities?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -716,6 +779,25 @@ paths:
             type: string
             pattern: '^\d{15,20}$'
           example: "4503599627370501"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of activities
@@ -739,9 +821,10 @@ paths:
                     state: "active"
                     elementId: "Task_CheckApplication"
                     bpmnElementType: "userTask"
-                offset: 0
+                page: 1
                 size: 10
                 count: 2
+                totalCount: 2
 
   /process-instances/{processInstanceKey}/history:
     get:
@@ -752,7 +835,7 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789/history
+            curl -X GET "http://localhost:8080/v1/process-instances/123456789/history?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -761,6 +844,25 @@ paths:
             type: string
             pattern: '^\d{15,20}$'
           example: "4503599627370501"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of activities
@@ -782,9 +884,10 @@ paths:
                     elementId: "Task_CheckApplication"
                     processInstanceKey: "4503599627370501"
                     createdAt: "2025-08-22T14:30:27Z"
-                offset: 0
+                page: 1
                 size: 10
                 count: 3
+                totalCount: 3
         400:
           description: Bad request
           content:
@@ -807,7 +910,7 @@ paths:
       x-code-samples:
         - lang: curl
           source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789/incidents
+            curl -X GET "http://localhost:8080/v1/process-instances/123456789/incidents?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -816,6 +919,25 @@ paths:
             type: string
             pattern: '^\d{15,20}$'
           example: "4503599627370501"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page (max 100)
+          example: 10
       responses:
         200:
           description: List of incidents
@@ -840,9 +962,10 @@ paths:
                     createdAt: "2025-08-22T14:36:22Z"
                     resolvedAt: "2025-08-22T14:45:18Z"
                     executionToken: "123457"
-                offset: 0
+                page: 1
                 size: 10
                 count: 2
+                totalCount: 2
         400:
           description: Bad request
           content:
@@ -929,6 +1052,7 @@ paths:
                 page: 1
                 size: 10
                 count: 2
+                totalCount: 2
         500:
           description: Internal server error
           content:
@@ -1006,7 +1130,7 @@ paths:
             curl -X POST http://localhost:8080/v1/messages \
               -H "Content-Type: application/json" \
               -d '{
-                "processInstanceKey": "instance-key-789",
+                "correlationKey": "instance-key-789",
                 "messageName": "payment-received",
                 "variables": {
                   "paymentId": "123456789",
@@ -1031,7 +1155,7 @@ paths:
                 variables:
                   type: object
             example:
-              processInstanceKey: "4503599627370501"
+              correlationKey: "4503599627370501"
               messageName: "payment-received"
               variables:
                 paymentId: "pay-123-abc"
@@ -1151,27 +1275,40 @@ components:
         - page
         - size
         - count
+        - totalCount
       properties:
         page:
           type: integer
+          description: Current page number (1-based indexing)
         size:
           type: integer
+          description: Number of items per page
         count:
-          description: number of items returned
           type: integer
+          description: Number of items returned in the current page
+        totalCount:
+          type: integer
+          description: Total number of items available
     PageMetadata:
       type: object
       required:
-        - offset
+        - page
         - size
         - count
+        - totalCount
       properties:
-        offset:
+        page:
           type: integer
+          description: Current page number (1-based indexing)
         size:
           type: integer
+          description: Number of items per page
         count:
           type: integer
+          description: Number of items returned in the current page
+        totalCount:
+          type: integer
+          description: Total number of items available
     PartitionProcessInstances:
       type: object
       required:

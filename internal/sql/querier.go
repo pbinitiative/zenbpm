@@ -58,6 +58,8 @@ type Querier interface {
 	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
+	GetProcessDefinitionsCount(ctx context.Context) (int64, error)
+	GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]ProcessDefinition, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)

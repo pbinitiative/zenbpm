@@ -32,11 +32,11 @@ type Config struct {
 // TODO: clean up cluster & rqlite configuration
 type Cluster struct {
 	// BootstrapExpect sets expected number of servers to join into the cluster before bootstrap is called
-	NodeId string `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID"`
+	NodeId string `yaml:"nodeId" json:"nodeId" env:"CLUSTER_NODE_ID" env-default:"zenbpm"`
 	// internal communication bind address
-	Addr string `yaml:"addr" json:"addr" env:"CLUSTER_RAFT_ADDR" env-default:":8090"`
+	Addr string `yaml:"addr" json:"addr" env:"CLUSTER_RAFT_ADDR" env-default:"localhost:8090"`
 	// inter communication advertise address. If not set, same as internal communication bind address
-	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV"`
+	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV" env-default:"localhost:8090"`
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
 }
@@ -51,9 +51,9 @@ type ClusterRaft struct {
 	// Period between join attempts
 	JoinInterval time.Duration `yaml:"joinInterval" json:"joinInterval" env:"CLUSTER_RAFT_JOIN_INTERVAL" env-default:"2s"`
 	// List of nodes, in host:port form, through which a cluster can be joined
-	JoinAddresses []string `yaml:"joinAddresses" json:"joinAddresses" env:"CLUSTER_RAFT_JOIN_ADDRESSES"`
+	JoinAddresses []string `yaml:"joinAddresses" json:"joinAddresses" env:"CLUSTER_RAFT_JOIN_ADDRESSES" env-default:"localhost:8090"`
 	// Minimum number of nodes required for a bootstrap
-	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_RAFT_BOOTSTRAP_EXPECT" env-default:"0"`
+	BootstrapExpect int `yaml:"bootstrapExpect" json:"bootstrapExpect" env:"CLUSTER_RAFT_BOOTSTRAP_EXPECT" env-default:"1"`
 	// Maximum time for bootstrap process
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"CLUSTER_RAFT_EXPECT_BOOTSTRAP_TIMEOUT" env-default:"10s"`
 	// Bootstrap              bool `yaml:"bootstrap" json:"bootstrap" env:"CLUSTER_RAFT_BOOTSTRAP"`

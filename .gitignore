@@ -13,6 +13,8 @@ sqlite-test-data-*/
 cmd/zenbpm/__debug_*
 bin
 node-*
+zen_bpm_node_*
 cover.out
 
 docs/docusaurus/
+dist/

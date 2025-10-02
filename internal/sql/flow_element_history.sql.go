@@ -47,7 +47,6 @@ func (q *Queries) GetFlowElementHistory(ctx context.Context, processInstanceKey 
 }
 
 const saveFlowElementHistory = `-- name: SaveFlowElementHistory :exec
-
 INSERT INTO flow_element_history(key, element_id, process_instance_key, created_at)
     VALUES (?, ? ,? ,?)
 ON CONFLICT
@@ -63,12 +62,6 @@ type SaveFlowElementHistoryParams struct {
 	CreatedAt          int64  `json:"created_at"`
 }
 
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error {
 	_, err := q.db.ExecContext(ctx, saveFlowElementHistory,
 		arg.Key,

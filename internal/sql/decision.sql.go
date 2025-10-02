@@ -165,7 +165,6 @@ func (q *Queries) FindLatestDecisionByIdAndVersionTag(ctx context.Context, arg F
 }
 
 const saveDecision = `-- name: SaveDecision :exec
-
 INSERT INTO decision(version, decision_id, version_tag, decision_definition_id, decision_definition_key)
     VALUES (?, ?, ?, ?, ?)
 `
@@ -178,12 +177,6 @@ type SaveDecisionParams struct {
 	DecisionDefinitionKey int64  `json:"decision_definition_key"`
 }
 
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveDecision(ctx context.Context, arg SaveDecisionParams) error {
 	_, err := q.db.ExecContext(ctx, saveDecision,
 		arg.Version,

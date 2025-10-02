@@ -89,7 +89,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: generate
-generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc license.add## Run all the generators in the project
+generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators in the project
 	@PATH=$(LOCALBIN):$(PATH) go generate ./...
 	@$(SQLC) generate
 	@cp internal/sql/db.go.template internal/sql/db.go
@@ -157,13 +157,5 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 .PHONY: build
 build: generate ## Build the project
 	go build -o zenbpm cmd/zenbpm/main.go
-
-.PHONY: license.add
-license.add: ## Add license headers to non-generated .go files
-	@./scripts/license-headers.sh add
-
-.PHONY: license.check
-license.check: ## Check license headers on non-generated .go files
-	@./scripts/license-headers.sh check
 
 

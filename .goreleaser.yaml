@@ -78,15 +78,17 @@ archives:
         formats: [zip]
 
 dockers_v2:
-  - id: zenpmb
+  - id: zenbpm
     images: 
      - ghcr.io/pbinitiative/zenbpm
     dockerfile: Dockerfile
     ids: 
      - zenbpm
+    tags:
+      - latest
+      - "{{ .Tag }}"
     platforms:
     - linux/amd64
-    - linux/arm64
     labels:
       "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
       "org.opencontainers.image.created": "{{.Date}}"
@@ -105,7 +107,7 @@ changelog:
 
 release:
   github:
-    owner: goreleaser
+    owner: pbinitiative
     name: zenbpm
   prerelease: auto
   draft: false

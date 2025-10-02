@@ -21,7 +21,7 @@ var version string = "dev"
 func main() {
 	profile.InitProfile()
 	log.Init()
-	log.Error("Starting ZenBPM version %s", version)
+	log.Info("Starting ZenBPM version %s", version)
 
 	appContext, ctxCancel := context.WithCancel(context.Background())
 

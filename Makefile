@@ -6,8 +6,6 @@ SHELL = /usr/bin/env bash -o pipefail
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 
-GOLANG_CROSS_VERSION ?= v1.25.1
-
 ##@ Build Dependencies
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
@@ -23,11 +21,13 @@ PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 ## Setup PATH to point to tools binaries
 PATH := $(LOCALBIN):$(PATH)
 
+PACKAGE_NAME ?= github.com/pbinitiative/zenbpm
 ## Tool Versions
 SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 30.1
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
+GOLANG_CROSS_VERSION ?= v1.25.1
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
@@ -169,7 +169,7 @@ release-dry-run:
 		-v `pwd`/sysroot:/sysroot \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		--clean --skip=validate --skip=publish
+		--clean --skip=validate --skip=publish --snapshot --verbose
 
 .PHONY: release
 release:

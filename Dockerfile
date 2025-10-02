@@ -1,4 +1,4 @@
-FROM scratch
+FROM ubuntu:latest
 ARG TARGETPLATFORM
-ENTRYPOINT ["/usr/bin/zenbpm"]
 COPY $TARGETPLATFORM/zenbpm /usr/bin/
+ENTRYPOINT ["/usr/bin/zenbpm"]

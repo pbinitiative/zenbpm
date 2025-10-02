@@ -40,7 +40,6 @@ func (q *Queries) GetMigrations(ctx context.Context) ([]Migration, error) {
 }
 
 const saveMigration = `-- name: SaveMigration :exec
-
 INSERT INTO migration(name, ran_at)
     VALUES (?1, ?2)
 `
@@ -50,12 +49,6 @@ type SaveMigrationParams struct {
 	RanAt int64  `json:"ran_at"`
 }
 
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveMigration(ctx context.Context, arg SaveMigrationParams) error {
 	_, err := q.db.ExecContext(ctx, saveMigration, arg.Name, arg.RanAt)
 	return err

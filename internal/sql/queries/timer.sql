@@ -1,10 +1,3 @@
--- Copyright 2021-present ZenBPM Contributors
--- (based on git commit history).
---
--- ZenBPM project is available under two licenses:
---  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
---  - Enterprise License (See LICENSE-ENTERPRISE.md)
-
 -- name: SaveTimer :exec
 INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

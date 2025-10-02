@@ -235,7 +235,6 @@ func (q *Queries) GetMessageSubscriptionById(ctx context.Context, arg GetMessage
 }
 
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec
-
 INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
     created_at, correlation_key, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -256,12 +255,6 @@ type SaveMessageSubscriptionParams struct {
 	ExecutionToken       int64  `json:"execution_token"`
 }
 
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error {
 	_, err := q.db.ExecContext(ctx, saveMessageSubscription,
 		arg.Key,

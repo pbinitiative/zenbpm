@@ -41,7 +41,6 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 }
 
 const saveMessageSubscriptionPointer = `-- name: SaveMessageSubscriptionPointer :exec
-
 INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(name,correlation_key)
@@ -61,12 +60,6 @@ type SaveMessageSubscriptionPointerParams struct {
 	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }
 
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//   - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//   - Enterprise License (See LICENSE-ENTERPRISE.md)
 func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error {
 	_, err := q.db.ExecContext(ctx, saveMessageSubscriptionPointer,
 		arg.State,

@@ -1,10 +1,3 @@
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//  - Enterprise License (See LICENSE-ENTERPRISE.md)
-
 package bpmn
 
 import (
@@ -64,6 +57,7 @@ func (engine *Engine) initMultiInstances(
 	}
 
 	currentToken.State = runtime.TokenStateWaiting
+	//instance.State = runtime.ActivityStateReady
 
 	// initialize and persist the output collection for the multi-instance
 	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), make([]interface{}, 0, len(vhs)))
@@ -147,7 +141,8 @@ func (engine *Engine) handleMultiInstanceCompletion(
 			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
 
 			// for call activity we need to update outputCollection in the working process instance
-			instance.VariableHolder.SetVariable(outColName, outputCollection)
+			instance.VariableHolder = originalInstance.VariableHolder
+			//instance.VariableHolder.SetVariable(outColName, outputCollection)
 
 			inColExpr := mi.LoopCharacteristics.InputCollection
 			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
@@ -167,7 +162,7 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				return false, fmt.Errorf("failed to save updated parent process instance: %w", err)
 			}
 
-			// heck if any boundary events have been triggered
+			// check if any boundary events have been triggered
 			boundaryEvents := bpmn20.FindBoundaryEventsForActivity(&instance.Definition.Definitions, element)
 			if len(boundaryEvents) > 0 {
 				// check for active message subscriptions
@@ -257,4 +252,33 @@ func (engine *Engine) terminateMultiInstanceJobs(
 		}
 	}
 	return nil
+}
+
+func (engine *Engine) shouldCallActivityContinue(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
+	activityElement := engine.castToTActivity(element)
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	if mi.LoopCharacteristics.InputCollection == "" {
+		return true, nil
+	}
+
+	outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
+	outputCollection, ok := instance.GetVariable(outColName).([]interface{})
+	if !ok {
+		return false, errors.New("outputCollection is not a collection")
+	}
+
+	inColExpr := mi.LoopCharacteristics.InputCollection
+
+	// TODO: implement completion condition
+	// TODO: save input collection as process instance variable
+	inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
+	}
+	inputCollection, ok := inputCollectionObject.([]interface{})
+	if !ok {
+		instance.State = runtime.ActivityStateFailed
+		return false, errors.New("inputCollection is not a collection")
+	}
+	return len(outputCollection) == len(inputCollection), nil
 }

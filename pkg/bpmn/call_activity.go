@@ -93,14 +93,21 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to save updated parent process instance: %w", err)
 	}
-	batch.AddPostFlushAction(ctx, func() {
-		go func() {
-			err = engine.runProcessInstance(ctx, parentInstance, tokens)
-			if err != nil {
-				engine.logger.Error("failed to continue with parent process instance: %w", err)
-			}
-		}()
-	})
+
+	shouldContinue, err := engine.shouldCallActivityContinue(parentInstance, element)
+	if err != nil {
+		return err
+	}
+	if shouldContinue {
+		batch.AddPostFlushAction(ctx, func() {
+			go func() {
+				err = engine.runProcessInstance(ctx, parentInstance, tokens)
+				if err != nil {
+					engine.logger.Error("failed to continue with parent process instance: %w", err)
+				}
+			}()
+		})
+	}
 
 	return nil
 }

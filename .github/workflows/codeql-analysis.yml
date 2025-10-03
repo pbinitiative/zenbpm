@@ -22,7 +22,6 @@ on:
 
 jobs:
   codeql-analysis:
-    if: false  # Disabled for now because: Code scanning for private repositories is part of GitHub Advanced Security
     name: Analyze
     runs-on: ubuntu-latest
     permissions:

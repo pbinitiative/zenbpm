@@ -29,37 +29,31 @@ builds:
         env:
           - CGO_ENABLED=1
           - CC=x86_64-linux-gnu-gcc
-          - CXX=x86_64-linux-gnu-g++
       - goos: linux
         goarch: arm64
         env:
           - CGO_ENABLED=1
           - CC=aarch64-linux-gnu-gcc
-          - CXX=aarch64-linux-gnu-g++
       - goos: darwin
         goarch: amd64
         env:
           - CGO_ENABLED=1
           - CC=o64-clang
-          - CXX=o64-clang++
       - goos: darwin
         goarch: arm64
         env:
           - CGO_ENABLED=1
           - CC=oa64-clang
-          - CXX=oa64-clang++
       - goos: windows
         goarch: amd64
         env:
           - CGO_ENABLED=1
           - CC=x86_64-w64-mingw32-gcc
-          - CXX=x86_64-w64-mingw32-g++	
       - goos: windows
         goarch: arm64
         env:
           - CGO_ENABLED=1
           - CC=/llvm-mingw/bin/aarch64-w64-mingw32-gcc
-          - CXX=/llvm-mingw/bin/aarch64-w64-mingw32-g++	
 
 archives:
   - formats: [tar.gz]

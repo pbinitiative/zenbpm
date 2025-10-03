@@ -172,16 +172,26 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 	batch.SaveTimer(ctx, timer)
 
 	if listener.CancellActivity {
-		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
+		// cancel job / jobs
+		if engine.isBoundaryEventMultiInstance(instance, listener) {
+			// cancel all jobs for multi-instance activity
+			err := engine.terminateMultiInstanceJobs(ctx, instance, token, batch)
+			if err != nil {
+				return nil, fmt.Errorf("failed to terminate multi-instance jobs %w", err)
+			}
+		} else {
+			// for regular activities, cancel the single job
+			job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
+			}
+			job.State = runtime.ActivityStateTerminated
+			err = batch.SaveJob(ctx, job)
+			if err != nil {
+				return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+			}
 		}
-		job.State = runtime.ActivityStateTerminated
-		err = batch.SaveJob(ctx, job)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
-		}
+
 		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
 		// cancel all called processes
 		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)

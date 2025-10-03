@@ -635,12 +635,20 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 
 	mi := activityElement.MultiInstanceLoopCharacteristics
 	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
-	// multi instance
+
+	// multi-instance
 	if isMultiInstance {
 		err = engine.initMultiInstances(ctx, instance, activityElement, &currentToken, batch, activity)
 		if err != nil {
 			return []runtime.ExecutionToken{currentToken}, err
 		}
+
+		// Create boundary event subscriptions for the multi-instance activity
+		err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+		if err != nil {
+			return nil, fmt.Errorf("failed to process boundary events for multi-instance %s %d: %w", element.GetType(), activity.GetKey(), err)
+		}
+
 		return []runtime.ExecutionToken{currentToken}, nil
 	} else {
 		activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
@@ -712,11 +720,6 @@ func (engine *Engine) activityElementExecutor(
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
 		// we created process instance and its running in separate goroutine
-		// TODO: check why should be present and implement in another way
-		//if activityResult == runtime.ActivityStateActive {
-		//	currentToken.State = runtime.TokenStateWaiting
-		//	return []runtime.ExecutionToken{currentToken}, nil
-		//}
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
 	default:

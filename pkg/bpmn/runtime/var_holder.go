@@ -1,10 +1,14 @@
 package runtime
 
-import "maps"
+import (
+	"maps"
+	"sync"
+)
 
 type VariableHolder struct {
 	parent    *VariableHolder
 	variables map[string]interface{}
+	mu        sync.RWMutex
 }
 
 // NewVariableHolder creates a new VariableHolder with a given parent and variables map.
@@ -15,7 +19,9 @@ func NewVariableHolder(parent *VariableHolder, variables map[string]interface{})
 		variables = make(map[string]interface{})
 	}
 	if parent != nil {
-		maps.Copy(variables, parent.variables)
+		parentVars := parent.snapshot()
+		maps.Copy(variables, parentVars)
+		//maps.Copy(variables, parent.variables)
 	}
 	return VariableHolder{
 		parent:    parent,
@@ -37,6 +43,8 @@ func NewVariableHolderForPropagation(parent *VariableHolder, variables map[strin
 }
 
 func (vh *VariableHolder) GetVariable(key string) interface{} {
+	vh.mu.RLock()
+	defer vh.mu.RUnlock()
 	if v, ok := vh.variables[key]; ok {
 		return v
 	}
@@ -44,11 +52,15 @@ func (vh *VariableHolder) GetVariable(key string) interface{} {
 }
 
 func (vh *VariableHolder) SetVariable(key string, val interface{}) {
+	vh.mu.Lock()
+	defer vh.mu.Unlock()
 	vh.variables[key] = val
 }
 
 // PropagateVariable set a value with given key to the parent VariableHolder
 func (vh *VariableHolder) PropagateVariable(key string, value interface{}) {
+	vh.mu.Lock()
+	defer vh.mu.Unlock()
 	if vh.parent != nil {
 		vh.parent.SetVariable(key, value)
 	}
@@ -56,5 +68,17 @@ func (vh *VariableHolder) PropagateVariable(key string, value interface{}) {
 
 // Variables return all variables within this holder
 func (vh *VariableHolder) Variables() map[string]interface{} {
-	return vh.variables
+	// return vh.variables
+	return vh.snapshot()
+}
+
+// snapshot returns a shallow copy of the current variables under read lock.
+func (vh *VariableHolder) snapshot() map[string]interface{} {
+	vh.mu.RLock()
+	defer vh.mu.RUnlock()
+	cp := make(map[string]interface{}, len(vh.variables))
+	for k, v := range vh.variables {
+		cp[k] = v
+	}
+	return cp
 }

@@ -49,6 +49,7 @@ func Test_multi_instance_service_task(t *testing.T) {
 	assert.Equal(t, 3, jobCompletionCount, "3 jobs should have completed")
 
 }
+
 func Test_multi_instance_service_task_with_error_handling(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile("./test-cases/multi-instance-service-task.bpmn")
 	assert.NoError(t, err)
@@ -134,5 +135,40 @@ func Test_multi_instance_boundary_event(t *testing.T) {
 	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
+
+}
+
+func Test_multi_instance_call_activity(t *testing.T) {
+	callActivityProcess, err := bpmnEngine.LoadFromFile("./test-cases/multi-instance-call-activity.bpmn")
+	assert.NoError(t, err)
+	_, err = bpmnEngine.LoadFromFile("./test-cases/external-process.bpmn")
+	assert.NoError(t, err)
+
+	jobHandler := func(job ActivatedJob) {
+		//rand.Seed(time.Now().UnixNano())
+		//time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+
+		inputElementValue := job.Variable("inputElementName")
+
+		job.SetVariable("out", inputElementValue)
+		job.Complete()
+		fmt.Printf("Job completed for input: %v\n", inputElementValue)
+	}
+
+	job1Handler := bpmnEngine.NewTaskHandler().Type("job1").Handler(jobHandler)
+	defer bpmnEngine.RemoveHandler(job1Handler)
+
+	pi, err := bpmnEngine.CreateInstance(t.Context(), callActivityProcess, nil)
+	assert.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+	currentPi, err := bpmnEngine.FindProcessInstance(pi.Key)
+	assert.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+	assert.Equal(t, runtime.ActivityStateCompleted, currentPi.GetState(),
+		"Process should be completed")
+
+	assert.Equal(t, 3, len(currentPi.VariableHolder.GetVariable("outArray").([]interface{})), "3 jobs should have completed")
 
 }

@@ -15,6 +15,10 @@ jobs:
       - name: setup dependencies
         uses: actions/setup-go@v2
       - uses: docker/setup-buildx-action@v3
+      - name: make localbin dir
+        run: mkdir -p bin
+      - name: export localbin to GITHUB_PATH
+        run: echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: release dry run
         run: make release-dry-run
       - name: setup release environment

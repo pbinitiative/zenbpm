@@ -36,7 +36,6 @@ func (engine *Engine) initMultiInstances(
 		// TODO: serial
 	}
 
-	// Track last transition result from internal completions
 	var lastTransitionToken runtime.ExecutionToken
 	var lastTokenSet bool
 
@@ -48,7 +47,7 @@ func (engine *Engine) initMultiInstances(
 			return err
 		}
 		if activityResult == runtime.ActivityStateActive {
-			// external worker will complete the job later
+			// an external worker will complete the job later
 			continue
 		}
 		if activityResult == runtime.ActivityStateCompleted {
@@ -168,6 +167,34 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				return false, fmt.Errorf("failed to save updated parent process instance: %w", err)
 			}
 
+			// heck if any boundary events have been triggered
+			boundaryEvents := bpmn20.FindBoundaryEventsForActivity(&instance.Definition.Definitions, element)
+			if len(boundaryEvents) > 0 {
+				// check for active message subscriptions
+				subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
+				if err != nil {
+					return false, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
+				}
+
+				// if there are no active subscriptions for this activity, it means a boundary event was triggered
+				hasActiveSubscription := false
+				for _, sub := range subscriptions {
+					if sub.Token.ElementId == element.GetId() {
+						hasActiveSubscription = true
+						break
+					}
+				}
+
+				// if a boundary event was triggered, and it was interrupting, don't complete the multi-instance activity
+				if !hasActiveSubscription {
+					for _, be := range boundaryEvents {
+						if be.CancellActivity {
+							return false, nil
+						}
+					}
+				}
+			}
+
 			// TODO: implement completion condition
 			if len(outputCollection) != len(inputCollection) {
 				return false, nil
@@ -200,4 +227,34 @@ func (engine *Engine) castToTActivity(element bpmn20.FlowNode) *bpmn20.TActivity
 		activityElement = &e.TActivity
 	}
 	return activityElement
+}
+
+func (engine *Engine) isBoundaryEventMultiInstance(instance *runtime.ProcessInstance, listener *bpmn20.TBoundaryEvent) bool {
+	element := instance.Definition.Definitions.Process.GetFlowNodeById(listener.AttachedToRef)
+	activityElement := engine.castToTActivity(element)
+	return activityElement != nil && activityElement.MultiInstanceLoopCharacteristics.LoopCharacteristics.InputCollection != ""
+}
+
+func (engine *Engine) terminateMultiInstanceJobs(
+	ctx context.Context,
+	instance *runtime.ProcessInstance,
+	token runtime.ExecutionToken,
+	batch storage.Batch,
+) error {
+	// find and cancel all jobs
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find jobs for multi-instance jobs termination %s: %w", token.ElementId, err)
+	}
+	// filter jobs by element ID
+	for _, job := range jobs {
+		if job.ElementId == token.ElementId {
+			job.State = runtime.ActivityStateTerminated
+			err = batch.SaveJob(ctx, job)
+			if err != nil {
+				return fmt.Errorf("failed to terminate muli-instance job %d: %w", job.Key, err)
+			}
+		}
+	}
+	return nil
 }

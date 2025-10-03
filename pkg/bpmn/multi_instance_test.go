@@ -9,7 +9,9 @@ package bpmn
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
@@ -81,5 +83,56 @@ func Test_multi_instance_service_task_with_error_handling(t *testing.T) {
 
 	// Only 2 jobs should have completed successfully
 	assert.Equal(t, 2, jobCompletionCount, "Only 2 jobs should have completed (input 1 and 3)")
+
+}
+
+func Test_multi_instance_boundary_event(t *testing.T) {
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi-instance-service-task-boundary-event.bpmn")
+
+	jobHandler := func(job ActivatedJob) {
+		time.Sleep(10 * time.Millisecond) // simulate work
+		job.Complete()
+		fmt.Println("Job completed")
+	}
+
+	variableContext := make(map[string]interface{}, 1)
+	randomCorrelationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorrelationKey)
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
+	assert.NoError(t, err)
+
+	// then
+	time.Sleep(1 * time.Second)
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subscriptions))
+
+	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	// when
+	variables := map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorrelationKey), variables)
+	assert.NoError(t, err)
+
+	simpleJobHandler := bpmnEngine.NewTaskHandler().Type("simple-job").Handler(jobHandler)
+	defer bpmnEngine.RemoveHandler(simpleJobHandler)
+
+	// then
+	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+
+	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
 
 }

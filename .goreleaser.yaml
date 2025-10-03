@@ -7,6 +7,8 @@ version: 2
 
 before:
   hooks:
+    - apt-get update
+    - apt-get install unzip # install unzip for the docker image
     - go mod tidy
     - make generate
 

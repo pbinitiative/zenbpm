@@ -159,6 +159,10 @@ type TMultiInstanceLoopCharacteristics struct {
 	LoopCharacteristics extensions.TLoopCharacteristics `xml:"extensionElements>loopCharacteristics"`
 }
 
+func (mi TMultiInstanceLoopCharacteristics) GetInputCollectionName(element TBaseElement) string {
+	return fmt.Sprintf("__inputCollection_%s", element.Id)
+}
+
 func (mi TMultiInstanceLoopCharacteristics) GetOutCollectionName(element TBaseElement) string {
 	if mi.LoopCharacteristics.OutputCollection != "" {
 		return mi.LoopCharacteristics.OutputCollection

@@ -942,7 +942,7 @@ func (engine *Engine) handleSimpleTransition(
 
 	finished, err := engine.handleMultiInstanceCompletion(ctx, batch, instance, element)
 	if err != nil {
-		return resTokens, fmt.Errorf("failed to handle multi instance transition: %w", err)
+		return resTokens, fmt.Errorf("failed to handle multi-instance transition: %w", err)
 	}
 	if !finished {
 		return resTokens, nil

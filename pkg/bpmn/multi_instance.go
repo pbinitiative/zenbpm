@@ -1,10 +1,3 @@
-// Copyright 2021-present ZenBPM Contributors
-// (based on git commit history).
-//
-// ZenBPM project is available under two licenses:
-//  - SPDX-License-Identifier: AGPL-3.0-or-later (See LICENSE-AGPL.md)
-//  - Enterprise License (See LICENSE-ENTERPRISE.md)
-
 package bpmn
 
 import (
@@ -51,7 +44,7 @@ func (engine *Engine) initMultiInstances(
 			continue
 		}
 		if activityResult == runtime.ActivityStateCompleted {
-			// Internal handler completed synchronously => force multi-instance completion (usefully for tests)
+			// internal task is completed synchronously => trigger multi-instance completion
 			tokens, err := engine.handleSimpleTransition(ctx, batch, &instanceCopy, activity.Element(), *currentToken)
 			if err != nil {
 				return err
@@ -97,6 +90,8 @@ func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *r
 		// do nothing
 		return []runtime.VariableHolder{}, nil
 	}
+
+	instance.VariableHolder.SetVariable(mi.GetInputCollectionName(element.TBaseElement), inputCollection)
 	vh := make([]runtime.VariableHolder, total)
 
 	inputElementName := mi.LoopCharacteristics.InputElement
@@ -105,7 +100,6 @@ func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *r
 		if inputElementName != "" {
 			variableHolder.SetVariable(inputElementName, input)
 		}
-		//vh = append(vh, variableHolder)
 		vh[i] = variableHolder
 	}
 	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(element.TBaseElement), make([]interface{}, 0, total))
@@ -147,18 +141,12 @@ func (engine *Engine) handleMultiInstanceCompletion(
 			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
 
 			// for call activity we need to update outputCollection in the working process instance
-			instance.VariableHolder.SetVariable(outColName, outputCollection)
+			instance.VariableHolder = originalInstance.VariableHolder
 
-			inColExpr := mi.LoopCharacteristics.InputCollection
-			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
-			if err != nil {
-				return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
-
-			}
+			inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
 			inputCollection, ok := inputCollectionObject.([]interface{})
 			if !ok {
 				return false, errors.New("inputCollection is not a collection")
-
 			}
 
 			// persistently store the outputCollection
@@ -167,7 +155,7 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				return false, fmt.Errorf("failed to save updated parent process instance: %w", err)
 			}
 
-			// heck if any boundary events have been triggered
+			// check if any boundary events have been triggered
 			boundaryEvents := bpmn20.FindBoundaryEventsForActivity(&instance.Definition.Definitions, element)
 			if len(boundaryEvents) > 0 {
 				// check for active message subscriptions
@@ -201,12 +189,17 @@ func (engine *Engine) handleMultiInstanceCompletion(
 			}
 
 			// clear an output collection if it was not defined and a default name was used instead
-			if mi.LoopCharacteristics.OutputCollection == "" {
-				originalInstance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
-				if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
-					return false, fmt.Errorf("failed to save process instance after clearing default outputCollection: %w", err)
+			batch.AddPreFlushAction(ctx, func() error {
+				if mi.LoopCharacteristics.OutputCollection == "" {
+					originalInstance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
 				}
-			}
+				originalInstance.VariableHolder.SetVariable(mi.GetInputCollectionName(activityElement.TBaseElement), nil)
+				if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
+					engine.logger.Error(fmt.Sprintf("failed to save process instance after clearing default outputCollection: %e", err))
+					return err
+				}
+				return nil
+			})
 		}
 	}
 	return true, nil
@@ -257,4 +250,26 @@ func (engine *Engine) terminateMultiInstanceJobs(
 		}
 	}
 	return nil
+}
+
+func (engine *Engine) shouldCallActivityContinue(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
+	activityElement := engine.castToTActivity(element)
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	if mi.LoopCharacteristics.InputCollection == "" {
+		return true, nil
+	}
+
+	outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
+	outputCollection, ok := instance.GetVariable(outColName).([]interface{})
+	if !ok {
+		return false, errors.New("outputCollection is not a collection")
+	}
+
+	// TODO: implement completion condition
+	inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
+	inputCollection, ok := inputCollectionObject.([]interface{})
+	if !ok {
+		return false, errors.New("inputCollection is not a collection")
+	}
+	return len(outputCollection) == len(inputCollection), nil
 }

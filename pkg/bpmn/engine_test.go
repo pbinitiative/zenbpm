@@ -294,6 +294,8 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
+	time.Sleep(2 * time.Second)
+
 	err = bpmnEngine.CancelInstanceByKey(t.Context(), instance.GetInstanceKey())
 	assert.NoError(t, err)
 

@@ -14,7 +14,7 @@ import (
 	"github.com/rqlite/rqlite/v8/random"
 )
 
-func Test_MultiNode_VerifyLeader(t *testing.T) {
+func TestMultiNodeVerifyLeader(t *testing.T) {
 	c1 := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: filepath.Join(t.TempDir(), "s1"),
@@ -88,7 +88,7 @@ func Test_MultiNode_VerifyLeader(t *testing.T) {
 // Test_MultiNodeSimple tests that the core operation of a multi-node
 // cluster works as expected. That is, with a two node cluster, writes
 // actually replicate, and reads are consistent.
-func Test_MultiNodeSimple(t *testing.T) {
+func TestMultiNodeSimple(t *testing.T) {
 	testPartitionId := uint32(1)
 
 	c1 := config.Cluster{
@@ -213,7 +213,7 @@ func Test_MultiNodeSimple(t *testing.T) {
 	verifyChangedNodeState(t, s2)
 }
 
-func Test_MultiNodePeerObservations(t *testing.T) {
+func TestMultiNodePeerObservations(t *testing.T) {
 	c1 := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: filepath.Join(t.TempDir(), "s1"),

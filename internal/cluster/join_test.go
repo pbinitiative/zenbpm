@@ -15,7 +15,7 @@ import (
 const numAttempts int = 3
 const attemptInterval = 1 * time.Second
 
-func Test_SingleJoinOK(t *testing.T) {
+func TestSingleJoinOK(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -42,7 +42,7 @@ func Test_SingleJoinOK(t *testing.T) {
 	}
 }
 
-func Test_SingleJoinZeroAttempts(t *testing.T) {
+func TestSingleJoinZeroAttempts(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.GlobalHandler = func() error {
@@ -58,7 +58,7 @@ func Test_SingleJoinZeroAttempts(t *testing.T) {
 	}
 }
 
-func Test_SingleJoinFail(t *testing.T) {
+func TestSingleJoinFail(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -73,7 +73,7 @@ func Test_SingleJoinFail(t *testing.T) {
 	}
 }
 
-func Test_SingleJoinCancel(t *testing.T) {
+func TestSingleJoinCancel(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -95,7 +95,7 @@ func Test_SingleJoinCancel(t *testing.T) {
 	}
 }
 
-func Test_DoubleJoinOKSecondNode(t *testing.T) {
+func TestDoubleJoinOKSecondNode(t *testing.T) {
 	srv1 := servertest.NewTestServer()
 	defer srv1.Close()
 	srv1.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {

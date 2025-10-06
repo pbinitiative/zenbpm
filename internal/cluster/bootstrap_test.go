@@ -15,7 +15,7 @@ import (
 	"github.com/rqlite/rqlite/v8/cluster"
 )
 
-func Test_AddressProviderString(t *testing.T) {
+func TestAddressProviderString(t *testing.T) {
 	a := []string{"a", "b", "c"}
 	p := NewAddressProviderString(a)
 	b, err := p.Lookup()
@@ -27,7 +27,7 @@ func Test_AddressProviderString(t *testing.T) {
 	}
 }
 
-func Test_NewBootstrapper(t *testing.T) {
+func TestNewBootstrapper(t *testing.T) {
 	bs := NewBootstrapper(nil, nil)
 	if bs == nil {
 		t.Fatalf("failed to create a simple Bootstrapper")
@@ -37,7 +37,7 @@ func Test_NewBootstrapper(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootDoneImmediately(t *testing.T) {
+func TestBootstrapperBootDoneImmediately(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 
@@ -59,7 +59,7 @@ func Test_BootstrapperBootDoneImmediately(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootTimeout(t *testing.T) {
+func TestBootstrapperBootTimeout(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.JoinHandler = func(jr *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -89,7 +89,7 @@ func Test_BootstrapperBootTimeout(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootCanceled(t *testing.T) {
+func TestBootstrapperBootCanceled(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 
@@ -118,7 +118,7 @@ func Test_BootstrapperBootCanceled(t *testing.T) {
 
 // Test_BootstrapperBootCanceledDone tests that a boot that is canceled
 // but is done does not return an error.
-func Test_BootstrapperBootCanceledDone(t *testing.T) {
+func TestBootstrapperBootCanceledDone(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 
@@ -142,7 +142,7 @@ func Test_BootstrapperBootCanceledDone(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootSingleJoin(t *testing.T) {
+func TestBootstrapperBootSingleJoin(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 
@@ -177,7 +177,7 @@ func Test_BootstrapperBootSingleJoin(t *testing.T) {
 
 // Test_BootstrapperBootNonVoter tests that a non-voter just attempts
 // to join the cluster, and does not send a notify request.
-func Test_BootstrapperBootNonVoter(t *testing.T) {
+func TestBootstrapperBootNonVoter(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 	srv.JoinHandler = func(req *proto.JoinRequest) (*proto.JoinResponse, error) {
@@ -210,7 +210,7 @@ func Test_BootstrapperBootNonVoter(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootSingleNotify(t *testing.T) {
+func TestBootstrapperBootSingleNotify(t *testing.T) {
 	srv := servertest.NewTestServer()
 	defer srv.Close()
 
@@ -249,7 +249,7 @@ func Test_BootstrapperBootSingleNotify(t *testing.T) {
 	}
 }
 
-func Test_BootstrapperBootMultiJoinNotify(t *testing.T) {
+func TestBootstrapperBootMultiJoinNotify(t *testing.T) {
 	var srv1JoinC int32
 	var srv1NotifiedC int32
 	srv1 := servertest.NewTestServer()

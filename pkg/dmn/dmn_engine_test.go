@@ -157,7 +157,7 @@ type configuration struct {
 
 const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
 
-func Test_BulkEvaluateDRD(t *testing.T) {
+func TestBulkEvaluateDRD(t *testing.T) {
 	// setup
 	dmnEngine.persistence = inmemory.NewStorage()
 	bulkTestConfigs, err := loadBulkTestConfigs()

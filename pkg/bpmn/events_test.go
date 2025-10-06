@@ -13,7 +13,7 @@ func cleanUpMessageSubscriptions() {
 	engineStorage.MessageSubscriptions = make(map[int64]runtime.MessageSubscription)
 }
 
-func Test_creating_a_process_sets_state_to_ACTIVE(t *testing.T) {
+func TestCreatingAProcessSetsStateToACTIVE(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
@@ -27,7 +27,7 @@ func Test_creating_a_process_sets_state_to_ACTIVE(t *testing.T) {
 		"Since the BPMN contains an intermediate catch event, the process instance must be active and can't complete.")
 }
 
-func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *testing.T) {
+func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
@@ -48,7 +48,7 @@ func Test_IntermediateCatchEvent_received_message_completes_the_instance(t *test
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
-func Test_IntermediateCatchEvent_a_catch_event_produces_an_active_subscription(t *testing.T) {
+func TestIntermediateCatchEventACatchEventProducesAnActiveSubscription(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
@@ -69,7 +69,7 @@ func Test_IntermediateCatchEvent_a_catch_event_produces_an_active_subscription(t
 	assert.Equal(t, runtime.ActivityStateActive, subscription.State)
 }
 
-func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing.T) {
+func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	engineStorage.Incidents = make(map[int64]runtime.Incident)
 
@@ -120,7 +120,7 @@ func Test_IntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testin
 	assert.Equal(t, runtime.ActivityStateCompleted, pi2.GetState())
 }
 
-func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_state_is_maintained(t *testing.T) {
+func TestHavingIntermediateCatchEventAndServiceTaskInParallelTheProcessStateIsMaintained(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	cp := CallPath{}
 
@@ -151,7 +151,7 @@ func Test_Having_IntermediateCatchEvent_and_ServiceTask_in_parallel_the_process_
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
-func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
+func TestMultipleIntermediateCatchEventsPossible(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// setup
 	cp := CallPath{}
@@ -183,7 +183,7 @@ func Test_multiple_intermediate_catch_events_possible(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndMergedCOMPLETED(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
@@ -217,7 +217,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_COMPLETED(
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndMergedACTIVE(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
@@ -235,7 +235,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_merged_ACTIVE(t *
 	assert.Equal(t, instance.GetState(), runtime.ActivityStateActive)
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_COMPLETED(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
@@ -274,7 +274,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.Equal(t, runtime.ActivityStateCompleted.String(), instance.State.String())
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_ACTIVE(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayACTIVE(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
@@ -291,7 +291,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_parallel_gateway_
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_COMPLETED(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayCOMPLETED(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
@@ -326,7 +326,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
-func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway_ACTIVE(t *testing.T) {
+func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayACTIVE(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
@@ -348,7 +348,7 @@ func Test_multiple_intermediate_catch_events_implicit_fork_and_exclusive_gateway
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 }
 
-func Test_publishing_a_random_message_does_no_harm(t *testing.T) {
+func TestPublishingARandomMessageDoesNoHarm(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
@@ -399,7 +399,7 @@ func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
 
-func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *testing.T) {
+func TestIntermediateMessageCatchEventPublishesVariablesIntoInstance(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-intermediate-message-catch-event.bpmn")
@@ -423,7 +423,7 @@ func Test_intermediate_message_catch_event_publishes_variables_into_instance(t *
 	assert.Equal(t, "bar", instance.GetVariable("mappedFoo"))
 }
 
-func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
+func TestIntermediateMessageCatchEventOutputMappingFailed(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-intermediate-message-catch-event-broken.bpmn")
@@ -450,7 +450,7 @@ func Test_intermediate_message_catch_event_output_mapping_failed(t *testing.T) {
 	assert.Equal(t, message[0].GetState(), runtime.ActivityStateFailed)
 }
 
-func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
+func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	// 1) After process start the message subscription bound to the boundary event should be created
 	//    - process should be active
 	//    - message subscription should be active
@@ -497,7 +497,7 @@ func Test_interrupting_boundary_event_message_catch_triggered(t *testing.T) {
 
 }
 
-func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
+func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
 	variableContext := make(map[string]interface{}, 1)
@@ -536,7 +536,7 @@ func Test_noninterrupting_boundary_event_message_catch_triggered(t *testing.T) {
 
 }
 
-func Test_BoundaryEventActivityComplete_CancelsSubscriptions(t *testing.T) {
+func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-noninterrupting.bpmn")
 	variableContext := make(map[string]interface{}, 1)

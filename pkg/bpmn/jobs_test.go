@@ -29,7 +29,7 @@ func jobCompleteHandler(job ActivatedJob) {
 	job.Complete()
 }
 
-func Test_a_job_can_fail_and_moves_process_to_failed_state(t *testing.T) {
+func TestAJobCanFailAndMovesProcessToFailedState(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
@@ -45,8 +45,8 @@ func Test_a_job_can_fail_and_moves_process_to_failed_state(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 }
 
-// Test_simple_count_loop requires correct Task-Output-Mapping in the BPMN file
-func Test_simple_count_loop(t *testing.T) {
+// TestSimpleCountLoop requires correct Task-Output-Mapping in the BPMN file
+func TestSimpleCountLoop(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id-increaseCounter").Handler(increaseCounterHandler)
@@ -61,7 +61,7 @@ func Test_simple_count_loop(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }
 
-func Test_simple_count_loop_with_message(t *testing.T) {
+func TestSimpleCountLoopWithMessage(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
@@ -118,7 +118,7 @@ func Test_simple_count_loop_with_message(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, messages[1].State)
 }
 
-func Test_activated_job_data(t *testing.T) {
+func TestActivatedJobData(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(func(aj ActivatedJob) {
@@ -137,7 +137,7 @@ func Test_activated_job_data(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
 
-func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
+func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -176,7 +176,7 @@ func Test_task_InputOutput_mapping_happy_path(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
 }
 
-func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
+func TestInstanceFailsOnInvalidInputMapping(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -201,7 +201,7 @@ func Test_instance_fails_on_Invalid_Input_mapping(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateFailed, pi.GetState())
 }
 
-func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
+func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -228,7 +228,7 @@ func Test_job_fails_on_Invalid_Output_mapping(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateFailed.String(), pi.GetState().String())
 }
 
-func Test_task_type_handler(t *testing.T) {
+func TestTaskTypeHandler(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -248,7 +248,7 @@ func Test_task_type_handler(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
-func Test_task_type_handler_ID_handler_has_precedence(t *testing.T) {
+func TestTaskTypeHandlerIDHandlerHasPrecedence(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -278,7 +278,7 @@ func Test_task_type_handler_ID_handler_has_precedence(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
-func Test_just_one_handler_called(t *testing.T) {
+func TestJustOneHandlerCalled(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -302,7 +302,7 @@ func Test_just_one_handler_called(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
-func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
+func TestAssigneeAndCandidateGroupsAreAssignedToHandler(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -324,7 +324,7 @@ func Test_assignee_and_candidate_groups_are_assigned_to_handler(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
 }
 
-func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T) {
+func TestTaskDefaultAllOutputVariablesMapToProcessInstance(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
@@ -339,7 +339,7 @@ func Test_task_default_all_output_variables_map_to_process_instance(t *testing.T
 	assert.True(t, instance.GetVariable("aVariable").(bool))
 }
 
-func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
+func TestTaskNoOutputVariablesMappingOnFailure(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -355,7 +355,7 @@ func Test_task_no_output_variables_mapping_on_failure(t *testing.T) {
 	assert.Nil(t, instance.GetVariable("aVariable"))
 }
 
-func Test_task_just_declared_output_variables_map_to_process_instance(t *testing.T) {
+func TestTaskJustDeclaredOutputVariablesMapToProcessInstance(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -374,7 +374,7 @@ func Test_task_just_declared_output_variables_map_to_process_instance(t *testing
 	assert.Nil(t, instance.GetVariable("otherVariable"))
 }
 
-func Test_missing_task_handlers_break_execution_and_can_be_continued_later(t *testing.T) {
+func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	// TODO: flaky test...sometimes the call path is id-a-1,id-b-2,id-b-1
 	t.Skip("TODO: re-enable once refactoring is done")
 

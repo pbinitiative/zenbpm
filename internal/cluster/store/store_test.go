@@ -18,7 +18,7 @@ import (
 )
 
 // Test_NonOpenStore tests that a non-open Store handles public methods correctly.
-func Test_NonOpenStore(t *testing.T) {
+func TestNonOpenStore(t *testing.T) {
 	c := config.Cluster{
 		NodeId: random.String(),
 	}
@@ -59,7 +59,7 @@ func Test_NonOpenStore(t *testing.T) {
 }
 
 // Test_OpenStoreSingleNode tests that a single node basically operates.
-func Test_OpenStoreSingleNode(t *testing.T) {
+func TestOpenStoreSingleNode(t *testing.T) {
 	c := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: t.TempDir(),
@@ -102,7 +102,7 @@ func Test_OpenStoreSingleNode(t *testing.T) {
 }
 
 // Test_StoreRestartSingleNode tests that a store shutdown and opening a new instance results in the same state.
-func Test_StoreRestartSingleNode(t *testing.T) {
+func TestStoreRestartSingleNode(t *testing.T) {
 	c := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: t.TempDir(),
@@ -171,7 +171,7 @@ func Test_StoreRestartSingleNode(t *testing.T) {
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot
 // and recovers from it.
-func Test_SingleNodeSnapshot(t *testing.T) {
+func TestSingleNodeSnapshot(t *testing.T) {
 	c := config.Cluster{
 		Raft: config.ClusterRaft{
 			Dir: t.TempDir(),

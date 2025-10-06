@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_no_expression_when_only_blanks(t *testing.T) {
+func TestNoExpressionWhenOnlyBlanks(t *testing.T) {
 	// given
 	flow := TSequenceFlow{
 		ConditionExpression: TExpression{Text: "   "},
@@ -18,7 +18,7 @@ func Test_no_expression_when_only_blanks(t *testing.T) {
 	assert.False(t, result)
 }
 
-func Test_has_expression_when_some_characters_present(t *testing.T) {
+func TestHasExpressionWhenSomeCharactersPresent(t *testing.T) {
 	// given
 	flow := TSequenceFlow{
 		ConditionExpression: TExpression{
@@ -31,7 +31,7 @@ func Test_has_expression_when_some_characters_present(t *testing.T) {
 	assert.True(t, result)
 }
 
-func Test_unmarshalling_with_reference_resolution(t *testing.T) {
+func TestUnmarshallingWithReferenceResolution(t *testing.T) {
 	var definitions TDefinitions
 	var xmlData, err = os.ReadFile("./test-cases/simple_task.bpmn")
 

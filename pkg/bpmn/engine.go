@@ -229,7 +229,10 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 		}
 
 		for _, calledProcess := range calledProcesses {
-			engine.cancelInstance(ctx, calledProcess, batch)
+			err = engine.cancelInstance(ctx, calledProcess, batch)
+			if err != nil {
+				return fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
+			}
 		}
 		token.State = runtime.TokenStateCanceled
 		err = batch.SaveToken(ctx, token)

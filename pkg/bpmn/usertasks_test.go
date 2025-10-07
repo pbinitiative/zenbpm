@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_user_tasks_can_be_handled(t *testing.T) {
+func TestUserTasksCanBeHandled(t *testing.T) {
 
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
@@ -22,7 +22,7 @@ func Test_user_tasks_can_be_handled(t *testing.T) {
 	assert.Equal(t, "user-task", cp.CallPath)
 }
 
-func Test_user_tasks_can_be_continue(t *testing.T) {
+func TestUserTasksCanBeContinue(t *testing.T) {
 	t.Skip("runtime modification of handlers is not supported yet")
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")

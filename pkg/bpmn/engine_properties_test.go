@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *testing.T) {
+func TestFindProcessInstanceComfortFunctionReturnsNilIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	_, err := bpmnEngine.FindProcessInstance(1234)
@@ -19,7 +19,7 @@ func Test_FindProcessInstance_ComfortFunction_ReturnsNilIfNoInstanceFound(t *tes
 	assert.ErrorIs(t, err, storage.ErrNotFound, "expected ErrNotFound for not existing process")
 }
 
-func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
+func TestFindProcessesByIdComfortFunctionReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	instanceInfos, err := bpmnEngine.FindProcessesById("unknown-id")
@@ -28,7 +28,7 @@ func Test_FindProcessesById_ComfortFunction_ReturnsEmptyArrayIfNoInstanceFound(t
 	assert.Nil(t, err)
 }
 
-func Test_FindProcessesById_result_is_ordered_by_version(t *testing.T) {
+func TestFindProcessesByIdResultIsOrderedByVersion(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_GetPartitionIdFromString(t *testing.T) {
+func TestGetPartitionIdFromString(t *testing.T) {
 	partitions := make(map[uint32]Partition)
 	partitions[1] = Partition{
 		Id:       1,

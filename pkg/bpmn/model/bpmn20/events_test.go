@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_BoundaryEvent_Parses(t *testing.T) {
+func TestBoundaryEventParses(t *testing.T) {
 	var definitions TDefinitions
 	var xmlData, err = os.ReadFile("../../test-cases/message-boundary-event-interrupting.bpmn")
 

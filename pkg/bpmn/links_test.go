@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
+func TestLinkEventsAreThrownAndCaughtAndFlowContinued(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -23,7 +23,7 @@ func Test_Link_events_are_thrown_and_caught_and_flow_continued(t *testing.T) {
 	assert.Equal(t, "Task-A,Task-B", cp.CallPath)
 }
 
-func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testing.T) {
+func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
 	// setup
 	cp := CallPath{}
 
@@ -44,7 +44,7 @@ func Test_missing_intermediate_link_catch_event_stops_engine_with_error(t *testi
 	assert.Equal(t, runtime.ActivityStateFailed, instanceDb.State)
 }
 
-func Test_missing_intermediate_link_variables_mapped(t *testing.T) {
+func TestMissingIntermediateLinkVariablesMapped(t *testing.T) {
 	// setup
 	cp := CallPath{}
 

@@ -218,7 +218,7 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	assert.Equal(t, "id-a-1,id-b-1,id-b-2", cp.CallPath)
 }
 
-func Test_multiple_engines_create_unique_Ids(t *testing.T) {
+func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine1 := NewEngine(EngineWithStorage(store))
@@ -235,7 +235,7 @@ func Test_multiple_engines_create_unique_Ids(t *testing.T) {
 	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
-func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
+func TestCreateInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -251,7 +251,7 @@ func Test_CreateInstanceById_uses_latest_process_version(t *testing.T) {
 	assert.Equal(t, int32(v2.Version), instance.Definition.Version)
 }
 
-func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
+func TestCreateAndRunInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	// when
 	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -269,7 +269,7 @@ func Test_CreateAndRunInstanceById_uses_latest_process_version(t *testing.T) {
 	assert.Equal(t, int32(v2.Version), instance.Definition.Version)
 }
 
-func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
+func TestCreateInstanceByIdReturnErrorWhenNoIDFound(t *testing.T) {
 	// when
 	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process_not_existing", nil)
 
@@ -279,7 +279,7 @@ func Test_CreateInstanceById_return_error_when_no_ID_found(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "no process with id=Simple_Task_Process_not_existing was found (prior loaded into the engine)"))
 }
 
-func Test_CancelInstance_shouldCancelInstance(t *testing.T) {
+func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -293,6 +293,8 @@ func Test_CancelInstance_shouldCancelInstance(t *testing.T) {
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
 
 	err = bpmnEngine.CancelInstanceByKey(t.Context(), instance.GetInstanceKey())
 	assert.NoError(t, err)

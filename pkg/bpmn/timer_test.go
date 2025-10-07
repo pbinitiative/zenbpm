@@ -85,7 +85,7 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	assert.NotContains(t, cp.CallPath, ",")
 }
 
-func Test_interrupting_boundary_event_timer_catch_triggered(t *testing.T) {
+func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	// 1) After process start the message subscription bound to the boundary event should be created
 	//    - process should be active
 	//    - message subscription should be active

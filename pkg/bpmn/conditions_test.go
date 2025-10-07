@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_exclusive_gateway_with_expressions_selects_one_and_not_the_other(t *testing.T) {
+func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -33,7 +33,7 @@ func Test_exclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 }
 
 // Test of corrupted process (no outgoing conditional flows resolved positively nor default flow defined). Incident has to be raised
-func Test_exclusive_gateway_with_expressions_fails_no_default(t *testing.T) {
+func TestExclusiveGatewayWithExpressionsFailsNoDefault(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -58,7 +58,7 @@ func Test_exclusive_gateway_with_expressions_fails_no_default(t *testing.T) {
 	assert.Equal(t, "", cp.CallPath)
 }
 
-func Test_exclusive_gateway_executes_just_one_matching_path(t *testing.T) {
+func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -84,7 +84,7 @@ func Test_exclusive_gateway_executes_just_one_matching_path(t *testing.T) {
 	assert.Equal(t, "task-a", cp.CallPath)
 }
 
-func Test_exclusive_gateway_executes_just_no_matching_path_default_is_used(t *testing.T) {
+func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -110,7 +110,7 @@ func Test_exclusive_gateway_executes_just_no_matching_path_default_is_used(t *te
 	assert.Equal(t, "task-default", cp.CallPath)
 }
 
-func Test_exclusive_gateway_executes_just_no_matching_no_default_error_thrown(t *testing.T) {
+func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -136,7 +136,7 @@ func Test_exclusive_gateway_executes_just_no_matching_no_default_error_thrown(t 
 	assert.Equal(t, "", cp.CallPath)
 }
 
-func Test_boolean_expression_evaluates(t *testing.T) {
+func TestBooleanExpressionEvaluates(t *testing.T) {
 	variables := map[string]interface{}{
 		"aValue": 3,
 	}
@@ -147,7 +147,7 @@ func Test_boolean_expression_evaluates(t *testing.T) {
 	assert.True(t, result.(bool))
 }
 
-func Test_boolean_expression_with_equal_sign_evaluates(t *testing.T) {
+func TestBooleanExpressionWithEqualSignEvaluates(t *testing.T) {
 	variables := map[string]interface{}{
 		"aValue": 3,
 	}
@@ -158,7 +158,7 @@ func Test_boolean_expression_with_equal_sign_evaluates(t *testing.T) {
 	assert.True(t, result.(bool))
 }
 
-func Test_mathematical_expression_evaluates(t *testing.T) {
+func TestMathematicalExpressionEvaluates(t *testing.T) {
 	variables := map[string]interface{}{
 		"foo": 3,
 		"bar": 7,
@@ -171,7 +171,7 @@ func Test_mathematical_expression_evaluates(t *testing.T) {
 	assert.True(t, result.(bool))
 }
 
-func Test_evaluation_error_percolates_up(t *testing.T) {
+func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -189,7 +189,7 @@ func Test_evaluation_error_percolates_up(t *testing.T) {
 	assert.ErrorContains(t, err, "Error evaluating expression")
 }
 
-func Test_inclusive_gateway_with_expressions_selects_one_and_not_the_other(t *testing.T) {
+func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -214,7 +214,7 @@ func Test_inclusive_gateway_with_expressions_selects_one_and_not_the_other(t *te
 }
 
 // Test of corrupted process (no outgoing conditional flows resolved positively nor default flow defined). Incident has to be raised
-func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
+func TestInclusiveGatewayWithExpressionsSelectsDefault(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
@@ -237,7 +237,7 @@ func Test_inclusive_gateway_with_expressions_selects_default(t *testing.T) {
 	assert.Equal(t, cp.CallPath, "")
 }
 
-func Test_inclusive_gateway_executes_all_positive_resolved_no_defaults(t *testing.T) {
+func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_callActivity_startsAndCompletes(t *testing.T) {
+func TestCallActivityStartsAndCompletes(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -50,7 +50,7 @@ func Test_callActivity_startsAndCompletes(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }
 
-func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
+func TestCallActivityStartsAndCompletesAfterFinishingtheJob(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
@@ -99,7 +99,7 @@ func Test_callActivity_startsAndCompletes_afterFinishingtheJob(t *testing.T) {
 	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
 }
 
-func Test_callActivity_cancelsOnInterruptingBoudnaryEvent(t *testing.T) {
+func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)

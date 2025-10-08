@@ -13,12 +13,7 @@ FROM
 WHERE
     COALESCE(sqlc.narg('process_instance_key'), process_instance_key) = process_instance_key
     AND COALESCE(sqlc.narg('element_instance_key'), "element_instance_key") = "element_instance_key"
-    AND (sqlc.narg('states') IS NULL
-        OR "state" IN (
-            SELECT
-                value
-            FROM
-                json_each(?3)));
+    AND state IN sqlc.slice('states');
 
 -- name: FindElementTimers :many
 SELECT

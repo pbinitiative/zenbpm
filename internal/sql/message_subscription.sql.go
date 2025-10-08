@@ -8,6 +8,7 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
@@ -53,28 +54,31 @@ WHERE
     COALESCE(?1, "execution_token") = "execution_token"
     AND COALESCE(?2, process_instance_key) = process_instance_key
     AND COALESCE(?3, element_id) = element_id
-    AND (?4 IS NULL
-        OR "state" IN (
-            SELECT
-                value
-            FROM
-                json_each(?4)))
+    AND state IN /*SLICE:states*/?
 `
 
 type FindMessageSubscriptionsParams struct {
 	ExecutionToken     sql.NullInt64  `json:"execution_token"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	ElementID          sql.NullString `json:"element_id"`
-	States             interface{}    `json:"states"`
+	States             []int64        `json:"states"`
 }
 
 func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error) {
-	rows, err := q.db.QueryContext(ctx, findMessageSubscriptions,
-		arg.ExecutionToken,
-		arg.ProcessInstanceKey,
-		arg.ElementID,
-		arg.States,
-	)
+	query := findMessageSubscriptions
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ExecutionToken)
+	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	queryParams = append(queryParams, arg.ElementID)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const findElementTimers = `-- name: FindElementTimers :many
@@ -114,22 +115,29 @@ FROM
 WHERE
     COALESCE(?1, process_instance_key) = process_instance_key
     AND COALESCE(?2, "element_instance_key") = "element_instance_key"
-    AND (?3 IS NULL
-        OR "state" IN (
-            SELECT
-                value
-            FROM
-                json_each(?3)))
+    AND state IN /*SLICE:states*/?
 `
 
 type FindTimersParams struct {
 	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
 	ElementInstanceKey sql.NullInt64 `json:"element_instance_key"`
-	States             interface{}   `json:"states"`
+	States             []int64       `json:"states"`
 }
 
 func (q *Queries) FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error) {
-	rows, err := q.db.QueryContext(ctx, findTimers, arg.ProcessInstanceKey, arg.ElementInstanceKey, arg.States)
+	query := findTimers
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	queryParams = append(queryParams, arg.ElementInstanceKey)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

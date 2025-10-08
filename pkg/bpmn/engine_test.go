@@ -60,7 +60,7 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(idH)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -77,7 +77,7 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 		job.Complete()
 	}
 	// // given
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(taskHandler)
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variableContext)
 	assert.NoError(t, err)
 
 	v := engineStorage.ProcessInstances[instance.Key]
@@ -157,6 +157,25 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
+func TestInstanceCanStartAtChosenFlowNode(t *testing.T) {
+	cp := CallPath{}
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/forked-flow.bpmn")
+	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(a1H)
+	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(b1H)
+	b2H := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(b2H)
+
+	startingFlowNodeId := "id-b-1"
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, &startingFlowNodeId, nil)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "id-b-1", cp.CallPath)
+}
+
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	// setup
 	beforeCreation := time.Now()
@@ -166,9 +185,9 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when
-	instance1, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance1, err := bpmnEngine.CreateInstance(t.Context(), process, nil, nil)
 	assert.NoError(t, err)
-	instance2, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance2, err := bpmnEngine.CreateInstance(t.Context(), process, nil, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -190,7 +209,7 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -211,7 +230,7 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -245,7 +264,7 @@ func TestCreateInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
-	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process", nil)
+	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process", nil, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, instance)
 	assert.Equal(t, int32(v2.Version), instance.Definition.Version)
@@ -261,7 +280,7 @@ func TestCreateAndRunInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
-	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process", nil)
+	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process", nil, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, instance)
 
@@ -271,7 +290,7 @@ func TestCreateAndRunInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 
 func TestCreateInstanceByIdReturnErrorWhenNoIDFound(t *testing.T) {
 	// when
-	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process_not_existing", nil)
+	instance, err := bpmnEngine.CreateInstanceById(t.Context(), "Simple_Task_Process_not_existing", nil, nil)
 
 	// then
 	assert.Nil(t, instance)
@@ -291,7 +310,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variableContext)
 	assert.NoError(t, err)
 
 	time.Sleep(2 * time.Second)
@@ -349,7 +368,7 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.NoError(t, err)
 
 	// when
@@ -382,7 +401,7 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	assert.NoError(t, err)
 
 	//run
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 
 	assert.NotEmpty(t, instance.VariableHolder.Variables())
 	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable"])

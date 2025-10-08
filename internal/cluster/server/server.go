@@ -280,9 +280,9 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	var instance *runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
-		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
+		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, req.StartingFlowNodeId, vars)
 	case *proto.CreateInstanceRequest_LatestProcessId:
-		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
+		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, req.StartingFlowNodeId, vars)
 	}
 	if err != nil {
 		err := fmt.Errorf("failed to create process instance: %w", err)

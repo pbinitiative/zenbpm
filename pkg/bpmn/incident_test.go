@@ -25,7 +25,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 	}
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
 	assert.Error(t, err)
 
 	// then
@@ -58,7 +58,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	}
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
 	assert.Error(t, err)
 
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)

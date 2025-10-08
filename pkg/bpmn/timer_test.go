@@ -19,7 +19,7 @@ func TestEventBasedGatewaySelectsPathWhereTimerOccurs(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 
 	time.Sleep(2 * time.Second)
 
@@ -35,7 +35,7 @@ func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-invalid-timer-event.bpmn")
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.NotNil(t, err)
@@ -52,7 +52,7 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
@@ -64,7 +64,7 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	assert.NotContains(t, cp.CallPath, ",")
 
 	cp.CallPath = ""
-	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 
 	assert.Eventually(t, func() bool {
 		if strings.HasPrefix(cp.CallPath, "task-for-timer") {
@@ -97,7 +97,7 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/timer-boundary-event-interrupting.bpmn")
 	// when
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil, nil)
 	assert.NoError(t, err)
 
 	// then

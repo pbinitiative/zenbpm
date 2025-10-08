@@ -30,7 +30,7 @@ func TestTracer(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, err := bpmnEngine.CreateInstanceByKey(ctx, process.Key, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(ctx, process.Key, nil, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 

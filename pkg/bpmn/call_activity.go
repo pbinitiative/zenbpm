@@ -28,7 +28,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &currentToken)
+			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, nil, variableHolder, &currentToken)
 			if err != nil {
 				// TODO: update parent instance/token with fail
 				engine.logger.Error("failed to run activity instance %d: %w", calledProcessInstance.Key, err)

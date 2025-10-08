@@ -20,7 +20,7 @@ func TestForkUncontrolledJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -41,7 +41,7 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -62,7 +62,7 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
 	assert.Nil(t, err)
 
 	// then

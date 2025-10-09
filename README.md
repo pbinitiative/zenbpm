@@ -78,4 +78,4 @@ ZenBPM provides both REST and gRPC APIs:
 
 ## Documentation
 
-ZenBPM documentation can be found at [https://zenbpm.pbinitiative.org](https://zenbpm.pbinitiative.org).
+ZenBPM documentation can be found at [zenbpm.pbinitiative.org](https://zenbpm.pbinitiative.org).

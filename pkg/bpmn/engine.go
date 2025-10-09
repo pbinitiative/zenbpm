@@ -945,7 +945,6 @@ func (engine *Engine) handleSimpleTransition(
 		return resTokens, fmt.Errorf("failed to handle multi-instance transition: %w", err)
 	}
 	if !finished {
-		//resTokens[0].State = runtime.TokenStateWaiting
 		return resTokens, nil
 	}
 

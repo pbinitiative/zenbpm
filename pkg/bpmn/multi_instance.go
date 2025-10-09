@@ -91,11 +91,14 @@ func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *r
 		// do nothing
 		return []runtime.VariableHolder{}, nil
 	}
+
+	instance.VariableHolder.SetVariable(mi.GetInputCollectionName(element.TBaseElement), inputCollection)
 	vh := make([]runtime.VariableHolder, total)
 
 	inputElementName := mi.LoopCharacteristics.InputElement
 	for i, input := range inputCollection {
 		variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+		//variableHolder.SetVariable(mi.GetInputCollectionName(element.TBaseElement), inputCollection)
 		if inputElementName != "" {
 			variableHolder.SetVariable(inputElementName, input)
 		}
@@ -142,19 +145,24 @@ func (engine *Engine) handleMultiInstanceCompletion(
 
 			// for call activity we need to update outputCollection in the working process instance
 			instance.VariableHolder = originalInstance.VariableHolder
-			//instance.VariableHolder.SetVariable(outColName, outputCollection)
 
-			inColExpr := mi.LoopCharacteristics.InputCollection
-			inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
-			if err != nil {
-				return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
+			//inColExpr := mi.LoopCharacteristics.InputCollection
+			//inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+			//if err != nil {
+			//	return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
+			//
+			//}
+			//inputCollection, ok := inputCollectionObject.([]interface{})
 
-			}
+			inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
 			inputCollection, ok := inputCollectionObject.([]interface{})
 			if !ok {
 				return false, errors.New("inputCollection is not a collection")
-
 			}
+			//if !ok {
+			//	return false, errors.New("inputCollection is not a collection")
+			//
+			//}
 
 			// persistently store the outputCollection
 			err = batch.SaveProcessInstance(ctx, originalInstance)
@@ -198,10 +206,17 @@ func (engine *Engine) handleMultiInstanceCompletion(
 			// clear an output collection if it was not defined and a default name was used instead
 			if mi.LoopCharacteristics.OutputCollection == "" {
 				originalInstance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
-				if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
-					return false, fmt.Errorf("failed to save process instance after clearing default outputCollection: %w", err)
-				}
 			}
+			//originalInstance.VariableHolder.SetVariable(mi.GetInputCollectionName(activityElement.TBaseElement), nil)
+			if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
+				engine.logger.Error(fmt.Sprintf("failed to save process instance after clearing default outputCollection: %e", err))
+			}
+			//batch.AddPostFlushAction(ctx, func() {
+			//	originalInstance.VariableHolder.SetVariable(mi.GetInputCollectionName(activityElement.TBaseElement), nil)
+			//	if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
+			//		engine.logger.Error(fmt.Sprintf("failed to save process instance after clearing default outputCollection: %e", err))
+			//	}
+			//})
 		}
 	}
 	return true, nil
@@ -267,18 +282,22 @@ func (engine *Engine) shouldCallActivityContinue(instance *runtime.ProcessInstan
 		return false, errors.New("outputCollection is not a collection")
 	}
 
-	inColExpr := mi.LoopCharacteristics.InputCollection
+	//inColExpr := mi.LoopCharacteristics.InputCollection
 
 	// TODO: implement completion condition
-	// TODO: save input collection as process instance variable
-	inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
-	if err != nil {
-		return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
-	}
+	inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
 	inputCollection, ok := inputCollectionObject.([]interface{})
 	if !ok {
-		instance.State = runtime.ActivityStateFailed
 		return false, errors.New("inputCollection is not a collection")
 	}
+	//inputCollectionObject, err := evaluateExpression(inColExpr, instance.VariableHolder.Variables())
+	//if err != nil {
+	//	return false, fmt.Errorf("failed to evaluate inputCollection expression: %w", err)
+	//}
+	//inputCollection, ok := inputCollectionObject.([]interface{})
+	//if !ok {
+	//	instance.State = runtime.ActivityStateFailed
+	//	return false, errors.New("inputCollection is not a collection")
+	//}
 	return len(outputCollection) == len(inputCollection), nil
 }

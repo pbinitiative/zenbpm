@@ -10,8 +10,6 @@ definitions.
 It provides a lightweight, cloud-ready platform for defining, deploying, and executing business processes with minimal
 overhead and maximum flexibility.
 
-> ⚠️ **Warning**: This project is in early stages and is not suitable for production use yet.
-
 ## What is BPMN?
 
 Business Process Model and Notation (BPMN) is a graphical representation for specifying business processes in a business process model. It provides businesses with a standard notation that is readily understandable by all business stakeholders.
@@ -80,4 +78,4 @@ ZenBPM provides both REST and gRPC APIs:
 
 ## Documentation
 
-ZenBPM documentation can be found at [pbinitiative.github.io/zenbpm-docusaurus](https://pbinitiative.github.io/zenbpm-docusaurus).
+ZenBPM documentation can be found at [https://zenbpm.pbinitiative.org](https://zenbpm.pbinitiative.org).

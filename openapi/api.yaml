@@ -266,18 +266,18 @@ paths:
                         evaluatedOutputs:
                           - outputId: "output1"
                             outputName: "approved"
-                            outputValue: {"approved": true}
-                    decisionOutput: {"approved": true}
+                            outputValue: { "approved": true }
+                    decisionOutput: { "approved": true }
                     evaluatedInputs:
                       - inputId: "input1"
                         inputName: "Age"
                         inputExpression: "age"
-                        inputValue: {"age": 25}
+                        inputValue: { "age": 25 }
                       - inputId: "input2"
                         inputName: "Income"
                         inputExpression: "income"
-                        inputValue: {"income": 50000}
-                decisionOutput: {"approved": true}
+                        inputValue: { "income": 50000 }
+                decisionOutput: { "approved": true }
         500:
           description: Internal server error
           content:
@@ -614,6 +614,85 @@ paths:
                 $ref: "#/components/schemas/Error"
         502:
           description: Failed to collect data from responsible nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /process-instances/custom-start-point:
+    post:
+      operationId: createProcessInstanceAtCustomStartPoint
+      summary: Create a new process instance starting at chosen flow node
+      tags:
+        - process-instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/process-instances \
+              -H "Content-Type: application/json" \
+              -d '{
+                "processDefinitionKey": "123456789",
+                "variables": {
+                  "customerId": "customer-456",
+                  "amount": 1000
+                }
+                "startingFlowNodeId": "flowNode-123",
+              }'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processDefinitionKey
+                - startingFlowNodeId
+              properties:
+                processDefinitionKey:
+                  type: string
+                  pattern: '^\d{15,20}$'
+                variables:
+                  type: object
+                startingFlowNodeId:
+                  type: string
+                  description: "Allows for a start at chosen flow node"
+            example:
+              processDefinitionKey: "4503599627370498"
+              variables:
+                customerId: "customer-456"
+                amount: 1000
+                applicationDate: "2025-08-22"
+              startingFlowNodeId: "flowNode-123"
+      responses:
+        201:
+          description: Process instance created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstance"
+              example:
+                key: "4503599627370501"
+                processDefinitionKey: "4503599627370498"
+                createdAt: "2025-08-22T14:30:25Z"
+                state: "active"
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:

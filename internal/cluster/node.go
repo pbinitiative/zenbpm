@@ -608,7 +608,7 @@ func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte,
 	return resp.Pprof, nil
 }
 
-func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {
+func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, startingFlowNodeId *string, variables map[string]any) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -626,7 +626,8 @@ func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey in
 		StartBy: &proto.CreateInstanceRequest_DefinitionKey{
 			DefinitionKey: processDefinitionKey,
 		},
-		Variables: vars,
+		StartingFlowNodeId: startingFlowNodeId,
+		Variables:          vars,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to create process instance")

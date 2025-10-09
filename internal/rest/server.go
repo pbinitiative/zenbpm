@@ -487,7 +487,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.node.CreateInstance(ctx, key, variables)
+	process, err := s.node.CreateInstance(ctx, key, nil, variables)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -503,6 +503,43 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		}, nil
 	}
 	return public.CreateProcessInstance201JSONResponse{
+		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+		Key:                  fmt.Sprintf("%d", process.GetKey()),
+		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+		// TODO: make sure its the same string
+		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+		Variables: processVars,
+	}, nil
+}
+
+func (s *Server) CreateProcessInstanceAtCustomStartPoint(ctx context.Context, request public.CreateProcessInstanceAtCustomStartPointRequestObject) (public.CreateProcessInstanceAtCustomStartPointResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
+	if err != nil {
+		return public.CreateProcessInstanceAtCustomStartPoint400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	variables := make(map[string]interface{})
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+	process, err := s.node.CreateInstance(ctx, key, &request.Body.StartingFlowNodeId, variables)
+	if err != nil {
+		return public.CreateProcessInstanceAtCustomStartPoint502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &processVars)
+	if err != nil {
+		return public.CreateProcessInstanceAtCustomStartPoint500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.CreateProcessInstanceAtCustomStartPoint201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 		Key:                  fmt.Sprintf("%d", process.GetKey()),
 		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),

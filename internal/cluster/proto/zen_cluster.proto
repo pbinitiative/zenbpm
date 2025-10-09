@@ -366,7 +366,8 @@ message CreateInstanceRequest {
     int64 definition_key = 1;
     string latest_process_id = 2;
   }
-  bytes variables = 3;
+  string starting_flow_node_id = 3;
+  bytes variables = 4;
 }
 
 message CreateInstanceResponse {

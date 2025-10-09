@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"sync"
 	"time"
 
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
@@ -27,6 +28,7 @@ type Storage struct {
 	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
 	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
 	Incidents            map[int64]bpmnruntime.Incident
+	mu                   sync.Mutex
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -49,6 +51,9 @@ func NewStorage() *Storage {
 }
 
 func (mem *Storage) Copy() *Storage {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	c := NewStorage()
 	for k, v := range mem.Decision {
 		c.Decision[k] = v
@@ -289,6 +294,9 @@ func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Con
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.ProcessInstances[processInstance.Key] = processInstance
 	return nil
 }

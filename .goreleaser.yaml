@@ -73,25 +73,26 @@ archives:
       - goos: windows
         formats: [zip]
 
-# dockers_v2:
-#   - id: zenbpm
-#     images: 
-#      - ghcr.io/pbinitiative/zenbpm
-#     dockerfile: Dockerfile
-#     ids: 
-#      - zenbpm
-#     tags:
-#       - latest
-#       - "{{ .Tag }}"
-#     platforms:
-#     - linux/amd64
-#     labels:
-#       "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
-#       "org.opencontainers.image.created": "{{.Date}}"
-#       "org.opencontainers.image.name": "{{.ProjectName}}"
-#       "org.opencontainers.image.revision": "{{.FullCommit}}"
-#       "org.opencontainers.image.version": "{{.Version}}"
-#       "org.opencontainers.image.source": "{{.GitURL}}"
+dockers_v2:
+  - id: zenbpm
+    images:
+     - ghcr.io/pbinitiative/zenbpm
+    dockerfile: Dockerfile
+    ids:
+     - zenbpm
+    tags:
+      - latest
+      - "{{ .Tag }}"
+    platforms:
+    - linux/amd64
+    - linux/arm64
+    labels:
+      "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
 
 changelog:
   sort: asc

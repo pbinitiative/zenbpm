@@ -157,6 +157,25 @@ func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T)
 	assert.NotEqual(t, process2.Key, process1.Key)
 }
 
+func TestInstanceCanStartAtChosenFlowNode(t *testing.T) {
+	cp := CallPath{}
+
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/forked-flow.bpmn")
+	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(a1H)
+	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(b1H)
+	b2H := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(b2H)
+
+	startingElementIds := []string{"id-b-1", "id-b-2"}
+	_, err := bpmnEngine.StartInstanceOnElementsByKey(t.Context(), process.Key, startingElementIds, nil, nil)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "id-b-1,id-b-2", cp.CallPath)
+}
+
 func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	// setup
 	beforeCreation := time.Now()

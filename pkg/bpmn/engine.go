@@ -273,6 +273,7 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 		createSpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
+
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
 		var be bpmn20.FlowNode = &startEvent
@@ -284,13 +285,80 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 			State:              runtime.TokenStateRunning,
 		})
 	}
+
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
+
 	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
 	))
+
+	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
+	if err != nil {
+		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
+	}
+	return &processInstance, nil
+}
+
+func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
+	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
+	}
+
+	return engine.startInstanceOnElements(ctx, &processDefinition, startingElementIds, runtime.NewVariableHolder(nil, variableContext), nil)
+}
+
+func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefinition *runtime.ProcessDefinition, startingElementIds []string, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
+	processInstance := runtime.ProcessInstance{
+		Definition:                  processDefinition,
+		Key:                         engine.generateKey(),
+		VariableHolder:              variableHolder,
+		CreatedAt:                   time.Now(),
+		State:                       runtime.ActivityStateReady,
+		ParentProcessExecutionToken: parentToken,
+	}
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", processInstance.Definition.BpmnProcessId, startingElementIds), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	))
+	defer createSpan.End()
+	batch := engine.persistence.NewBatch()
+	err := batch.SaveProcessInstance(ctx, processInstance)
+	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	executionTokens := make([]runtime.ExecutionToken, 0, 1)
+
+	for _, startingFlowNodeId := range startingElementIds {
+		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
+		if startNode == nil {
+			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key)
+		}
+		executionTokens = append(executionTokens, runtime.ExecutionToken{
+			Key:                engine.generateKey(),
+			ElementInstanceKey: engine.generateKey(),
+			ElementId:          startNode.GetId(),
+			ProcessInstanceKey: processInstance.Key,
+			State:              runtime.TokenStateRunning,
+		})
+	}
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
+	}
+
+	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
+	))
+
 	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
 	if err != nil {
 		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)

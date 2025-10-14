@@ -32,13 +32,13 @@ func TestRestApiProcessInstance(t *testing.T) {
 	})
 
 	t.Run("read instance state", func(t *testing.T) {
-		instance, err := getProcessInstance(t, instance.Key)
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
-		definition, err := getDefinitionDetail(t, instance.ProcessDefinitionKey)
+		fetchedDefinition, err := getDefinitionDetail(t, fetchedInstance.ProcessDefinitionKey)
 		assert.NoError(t, err)
-		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
-		assert.Equal(t, definition.BpmnProcessId, "service-task-input-output")
-		assert.Equal(t, map[string]any{"testVar": float64(123)}, instance.Variables)
+		assert.Equal(t, fetchedDefinition.Key, fetchedInstance.ProcessDefinitionKey)
+		assert.Equal(t, fetchedDefinition.BpmnProcessId, "service-task-input-output")
+		assert.Equal(t, map[string]any{"testVar": float64(123)}, fetchedInstance.Variables)
 	})
 
 	t.Run("read process instance jobs", func(t *testing.T) {

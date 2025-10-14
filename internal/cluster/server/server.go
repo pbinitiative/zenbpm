@@ -315,6 +315,62 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	}, nil
 }
 
+func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.StartInstanceOnElementIdsRequest) (*proto.StartInstanceOnElementIdsResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	instance, err := engine.StartInstanceOnElementsByKey(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
+	if err != nil {
+		err := fmt.Errorf("failed to start process instance: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	return &proto.StartInstanceOnElementIdsResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+	}, nil
+}
+
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {

@@ -596,10 +596,6 @@ func (rq *DB) FindLatestProcessDefinitionById(ctx context.Context, processDefini
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
-	err = definitions.ResolveReferences()
-	if err != nil {
-		return res, fmt.Errorf("failed to resolve references in definition with bpmn id%s: %w", processDefinitionId, err)
-	}
 
 	res = bpmnruntime.ProcessDefinition{
 		BpmnProcessId:    dbDefinition.BpmnProcessID,
@@ -668,10 +664,7 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 		if err != nil {
 			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 		}
-		err = definitions.ResolveReferences()
-		if err != nil {
-			return res, fmt.Errorf("failed to resolve references in definition %d: %w", def.Key, err)
-		}
+
 		res[i] = bpmnruntime.ProcessDefinition{
 			BpmnProcessId:    def.BpmnProcessID,
 			Version:          int32(def.Version),

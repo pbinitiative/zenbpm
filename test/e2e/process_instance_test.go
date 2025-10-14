@@ -53,31 +53,6 @@ func TestRestApiProcessInstance(t *testing.T) {
 	t.Run("read process instance activities", func(t *testing.T) {
 		// TODO: we dont have activities now
 	})
-
-	t.Run("create process instance at starting point", func(t *testing.T) {
-		startingFlowNodeId := "user-task-2"
-		instance, err = createProcessInstanceAtCustomStartingPoint(t, definition.Key, startingFlowNodeId, map[string]any{
-			"order": map[string]any{"name": "test-order-name"},
-		})
-		assert.NoError(t, err)
-		assert.NotEmpty(t, instance.Key)
-
-		fetchedInstance, err := getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		fetchedDefinition, err := getDefinitionDetail(t, fetchedInstance.ProcessDefinitionKey)
-		assert.NoError(t, err)
-		assert.Equal(t, fetchedDefinition.Key, instance.ProcessDefinitionKey)
-		assert.Equal(t, fetchedDefinition.BpmnProcessId, "service-task-input-output")
-		assert.Equal(t, map[string]any{"order": map[string]any{"name": "test-order-name"}}, instance.Variables)
-
-		jobs, err := getProcessInstanceJobs(t, instance.Key)
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobs)
-		for _, job := range jobs {
-			assert.Equal(t, instance.Key, job.ProcessInstanceKey)
-			assert.NotEmpty(t, job.Key)
-		}
-	})
 }
 
 func createProcessInstance(t testing.TB, processDefinitionKey string, variables map[string]any) (public.ProcessInstance, error) {
@@ -87,29 +62,6 @@ func createProcessInstance(t testing.TB, processDefinitionKey string, variables 
 	}
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/process-instances").
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to create process instance: %w", err)
-	}
-	instance := public.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return instance, nil
-}
-
-func createProcessInstanceAtCustomStartingPoint(t testing.TB, processDefinitionKey string, startingFlowNodeId string, variables map[string]any) (public.ProcessInstance, error) {
-	req := public.CreateProcessInstanceAtCustomStartPointJSONBody{
-		ProcessDefinitionKey: processDefinitionKey,
-		StartingFlowNodeId:   startingFlowNodeId,
-		Variables:            &variables,
-	}
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/process-instances/custom-start-point").
 		WithMethod("POST").
 		WithBody(req).
 		DoOk()

@@ -25,7 +25,7 @@ func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -51,7 +51,7 @@ func TestExclusiveGatewayWithExpressionsFailsNoDefault(t *testing.T) {
 
 	// when
 	// Run the engine and check that Gateway haven't triggered any task
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.ErrorContains(t, err, "No default flow, nor matching expressions found, for flow elements")
 
 	// no tasks called
@@ -77,7 +77,7 @@ func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -103,7 +103,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -129,7 +129,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 
 	// then
 	assert.NotNil(t, err)
@@ -181,7 +181,7 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 
 	// when
 	// don't provide variables, for execution to get an evaluation error
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	// then
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
@@ -206,7 +206,7 @@ func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -231,7 +231,7 @@ func TestInclusiveGatewayWithExpressionsSelectsDefault(t *testing.T) {
 	}
 
 	// when
-	bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 
 	// process stuck with no further advance after inclusive gateway
 	assert.Equal(t, cp.CallPath, "")
@@ -256,7 +256,7 @@ func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variables)
+	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then

@@ -61,6 +61,7 @@ service ZenService {
   rpc SetMessageSubscriptionPointer(SetMessageSubscriptionPointerRequest) returns (SetMessageSubscriptionPointerResponse);
   rpc FindActiveMessage(FindActiveMessageRequest) returns (FindActiveMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
+  rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
@@ -366,11 +367,21 @@ message CreateInstanceRequest {
     int64 definition_key = 1;
     string latest_process_id = 2;
   }
-  string starting_flow_node_id = 3;
   bytes variables = 4;
 }
 
 message CreateInstanceResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
+}
+
+message StartInstanceOnElementIdsRequest {
+  int64 definition_key = 1;
+  repeated string starting_element_ids = 3;
+  bytes variables = 4;
+}
+
+message StartInstanceOnElementIdsResponse {
   ErrorResult error = 1;
   ProcessInstance process = 2;
 }

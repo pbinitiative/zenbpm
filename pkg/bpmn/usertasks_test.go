@@ -16,7 +16,7 @@ func TestUserTasksCanBeHandled(t *testing.T) {
 	h := bpmnEngine.NewTaskHandler().Id("user-task").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 	assert.Equal(t, "user-task", cp.CallPath)
@@ -31,7 +31,7 @@ func TestUserTasksCanBeContinue(t *testing.T) {
 
 	// given
 
-	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil, nil)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
 	assert.NoError(t, err)
 
 	userConfirm := false

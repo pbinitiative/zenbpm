@@ -37,7 +37,7 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(taskHandler)
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variableContext)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
 	v := engineStorage.ProcessInstances[instance.Key]
@@ -62,7 +62,7 @@ func TestCallActivityStartsAndCompletesAfterFinishingtheJob(t *testing.T) {
 	variableContext[variableName] = "oldVal"
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variableContext)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
 	// wait for call activity process to be created
@@ -115,7 +115,7 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
 
 	// when
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, variableContext)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
 	// wait for call activity process to be created

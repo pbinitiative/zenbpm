@@ -280,9 +280,9 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	var instance *runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
-		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, req.StartingFlowNodeId, vars)
+		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
 	case *proto.CreateInstanceRequest_LatestProcessId:
-		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, req.StartingFlowNodeId, vars)
+		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
 	}
 	if err != nil {
 		err := fmt.Errorf("failed to create process instance: %w", err)
@@ -304,6 +304,62 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		}, err
 	}
 	return &proto.CreateInstanceResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+	}, nil
+}
+
+func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.StartInstanceOnElementIdsRequest) (*proto.StartInstanceOnElementIdsResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	instance, err := engine.StartInstanceOnElementsByKey(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
+	if err != nil {
+		err := fmt.Errorf("failed to start process instance: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.StartInstanceOnElementIdsResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	return &proto.StartInstanceOnElementIdsResponse{
 		Process: &proto.ProcessInstance{
 			Key:           &instance.Key,
 			ProcessId:     &instance.Definition.BpmnProcessId,

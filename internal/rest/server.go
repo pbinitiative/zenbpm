@@ -487,7 +487,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.node.CreateInstance(ctx, key, nil, variables)
+	process, err := s.node.CreateInstance(ctx, key, variables)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -512,10 +512,10 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}, nil
 }
 
-func (s *Server) CreateProcessInstanceAtCustomStartPoint(ctx context.Context, request public.CreateProcessInstanceAtCustomStartPointRequestObject) (public.CreateProcessInstanceAtCustomStartPointResponseObject, error) {
+func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request public.StartProcessInstanceOnElementsRequestObject) (public.StartProcessInstanceOnElementsResponseObject, error) {
 	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
 	if err != nil {
-		return public.CreateProcessInstanceAtCustomStartPoint400JSONResponse{
+		return public.StartProcessInstanceOnElements400JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
@@ -524,9 +524,9 @@ func (s *Server) CreateProcessInstanceAtCustomStartPoint(ctx context.Context, re
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.node.CreateInstance(ctx, key, &request.Body.StartingFlowNodeId, variables)
+	process, err := s.node.StartProcessInstanceOnElements(ctx, key, request.Body.StartingElementIds, variables)
 	if err != nil {
-		return public.CreateProcessInstanceAtCustomStartPoint502JSONResponse{
+		return public.StartProcessInstanceOnElements502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
@@ -534,12 +534,12 @@ func (s *Server) CreateProcessInstanceAtCustomStartPoint(ctx context.Context, re
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.CreateProcessInstanceAtCustomStartPoint500JSONResponse{
+		return public.StartProcessInstanceOnElements500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.CreateProcessInstanceAtCustomStartPoint201JSONResponse{
+	return public.StartProcessInstanceOnElements201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 		Key:                  fmt.Sprintf("%d", process.GetKey()),
 		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),

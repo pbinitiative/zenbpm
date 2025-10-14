@@ -98,13 +98,13 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 
 // CreateInstanceById creates a new instance for a process with given process ID and uses latest version (if available)
 // Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, startingFlowNodeId *string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
+func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
 	}
 
-	instance, err := engine.CreateInstance(ctx, &processDefinition, startingFlowNodeId, variableContext)
+	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
 	if err != nil {
 		return instance, errors.Join(newEngineErrorf("failed to create process instance: %s", processId), err)
 	}
@@ -114,13 +114,13 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 
 // CreateInstanceByKey creates a new instance for a process with given process definition key
 // Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, startingFlowNodeId *string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
+func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err)
 	}
 
-	instance, err := engine.CreateInstance(ctx, &processDefinition, startingFlowNodeId, variableContext)
+	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
 	if err != nil {
 		return instance, errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", definitionKey), err)
 	}
@@ -130,8 +130,8 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 
 // CreateInstance creates a new instance for a process with given processKey
 // Might return BpmnEngineError, if process key was not found
-func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, startingFlowNodeId *string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	return engine.createInstance(ctx, process, startingFlowNodeId, runtime.NewVariableHolder(nil, variableContext), nil)
+func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
+	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
 }
 
 func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
@@ -251,7 +251,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	return nil
 }
 
-func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, startingFlowNodeId *string, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
+func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
 		Definition:                  process,
 		Key:                         engine.generateKey(),
@@ -275,10 +275,71 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	}
 
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
-	if startingFlowNodeId != nil {
-		startNode := process.Definitions.Process.GetFlowNodeById(*startingFlowNodeId)
+	for _, startEvent := range process.Definitions.Process.StartEvents {
+		var be bpmn20.FlowNode = &startEvent
+		executionTokens = append(executionTokens, runtime.ExecutionToken{
+			Key:                engine.generateKey(),
+			ElementInstanceKey: engine.generateKey(),
+			ElementId:          be.GetId(),
+			ProcessInstanceKey: processInstance.Key,
+			State:              runtime.TokenStateRunning,
+		})
+	}
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
+	}
+
+	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
+	))
+
+	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
+	if err != nil {
+		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
+	}
+	return &processInstance, nil
+}
+
+func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
+	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
+	if err != nil {
+		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
+	}
+
+	return engine.startInstanceOnElements(ctx, &processDefinition, startingElementIds, runtime.NewVariableHolder(nil, variableContext), nil)
+}
+
+func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefinition *runtime.ProcessDefinition, startingElementIds []string, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
+	processInstance := runtime.ProcessInstance{
+		Definition:                  processDefinition,
+		Key:                         engine.generateKey(),
+		VariableHolder:              variableHolder,
+		CreatedAt:                   time.Now(),
+		State:                       runtime.ActivityStateReady,
+		ParentProcessExecutionToken: parentToken,
+	}
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", processInstance.Definition.BpmnProcessId, startingElementIds), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	))
+	defer createSpan.End()
+	batch := engine.persistence.NewBatch()
+	err := batch.SaveProcessInstance(ctx, processInstance)
+	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	executionTokens := make([]runtime.ExecutionToken, 0, 1)
+
+	for _, startingFlowNodeId := range startingElementIds {
+		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
 		if startNode == nil {
-			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", *startingFlowNodeId, process.Key)
+			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key)
 		}
 		executionTokens = append(executionTokens, runtime.ExecutionToken{
 			Key:                engine.generateKey(),
@@ -287,17 +348,6 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 			ProcessInstanceKey: processInstance.Key,
 			State:              runtime.TokenStateRunning,
 		})
-	} else {
-		for _, startEvent := range process.Definitions.Process.StartEvents {
-			var be bpmn20.FlowNode = &startEvent
-			executionTokens = append(executionTokens, runtime.ExecutionToken{
-				Key:                engine.generateKey(),
-				ElementInstanceKey: engine.generateKey(),
-				ElementId:          be.GetId(),
-				ProcessInstanceKey: processInstance.Key,
-				State:              runtime.TokenStateRunning,
-			})
-		}
 	}
 
 	err = batch.Flush(ctx)

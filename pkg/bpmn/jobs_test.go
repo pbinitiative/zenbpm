@@ -35,7 +35,7 @@ func TestAJobCanFailAndMovesProcessToFailedState(t *testing.T) {
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
@@ -54,7 +54,7 @@ func TestSimpleCountLoop(t *testing.T) {
 
 	vars := map[string]interface{}{}
 	vars[varCounter] = 0.0
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, vars)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 4.0, instance.GetVariable(varCounter))
@@ -81,7 +81,7 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(validate)
 
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, vars) // should stop at the intermediate message catch event
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
@@ -132,7 +132,7 @@ func TestActivatedJobData(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
@@ -149,7 +149,7 @@ func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(ut1)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -186,7 +186,7 @@ func TestInstanceFailsOnInvalidInputMapping(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.ErrorContains(t, err, "failed to evaluate input variables")
 
 	// then
@@ -211,7 +211,7 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -240,7 +240,7 @@ func TestTaskTypeHandler(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -270,7 +270,7 @@ func TestTaskTypeHandlerIDHandlerHasPrecedence(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(idH)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -294,7 +294,7 @@ func TestJustOneHandlerCalled(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(foobarH)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -316,7 +316,7 @@ func TestAssigneeAndCandidateGroupsAreAssignedToHandler(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(markH)
 
 	// when
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -333,7 +333,7 @@ func TestTaskDefaultAllOutputVariablesMapToProcessInstance(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 
 	assert.True(t, instance.GetVariable("aVariable").(bool))
@@ -350,7 +350,7 @@ func TestTaskNoOutputVariablesMappingOnFailure(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.Nil(t, instance.GetVariable("aVariable"))
 }
@@ -367,7 +367,7 @@ func TestTaskJustDeclaredOutputVariablesMapToProcessInstance(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 
 	assert.True(t, instance.GetVariable("valueFromHandler").(bool))
@@ -387,7 +387,7 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	// given
 	ah := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(ah)
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 	assert.Equal(t, "id-a-1", cp.CallPath)
@@ -411,7 +411,7 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
 
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	foundServiceJob := runtime.Job{}
@@ -475,7 +475,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 func TestJobFailIsHandledCorrectly(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
 
-	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	foundServiceJob := runtime.Job{}
@@ -521,7 +521,7 @@ func TestBusinessRuleTaskExternalActivated(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Equal(t, runtime.ActivityStateActive, instance.State)
 }
@@ -534,7 +534,7 @@ func TestBusinessRuleTaskExternalComplete(t *testing.T) {
 	st1 := bpmnEngine.NewTaskHandler().Id("BusinessRuleTask1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(st1)
 
-	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil, nil)
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Equal(t, "BusinessRuleTask1", cp.CallPath)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)

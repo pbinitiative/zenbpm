@@ -40,7 +40,7 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	dmnEngine.persistence = inmemory.NewStorage()
 	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	assert.NoError(t, err)
-	metadata, decisions, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	metadata, decisions, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(1), metadata.Version)
@@ -69,7 +69,7 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefiniti
 		"",
 		*definition,
 		xmldata,
-		dmnEngine.generateKey(),
+		dmnEngine.GenerateKey(),
 	)
 	assert.NoError(t, err)
 	keyOne := metadata.Key
@@ -83,7 +83,7 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheDecisionDefiniti
 		"",
 		*definition,
 		xmldata,
-		dmnEngine.generateKey(),
+		dmnEngine.GenerateKey(),
 	)
 	assert.NoError(t, err)
 	keyTwo := metadata.Key
@@ -100,11 +100,11 @@ func TestLoadingTheSameDecisionDefinitionWithModificationWillCreateNewVersion(t 
 	definition2, xmldata2, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified.dmn"))
 	assert.NoError(t, err)
 
-	decisionDefinition1, decisions1, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	decisionDefinition1, decisions1, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
-	decisionDefinition2, decisions2, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition2, xmldata2, dmnEngine.generateKey())
+	decisionDefinition2, decisions2, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition2, xmldata2, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
-	decisionDefinition3, decisions3, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	decisionDefinition3, decisions3, err := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
 
 	assert.Equal(t, decisionDefinition1.Id, decisionDefinition2.Id, "both prepared files should have equal IDs")
@@ -133,9 +133,9 @@ func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	// when
 	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	assert.NoError(t, err)
-	decisionDefinition1, decisions1, err := dmnEngine1.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	decisionDefinition1, decisions1, err := dmnEngine1.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
-	decisionDefinition2, decisions2, err := dmnEngine2.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+	decisionDefinition2, decisions2, err := dmnEngine2.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 	assert.NoError(t, err)
 
 	// then
@@ -171,7 +171,7 @@ func TestBulkEvaluateDRD(t *testing.T) {
 		if loadErr != nil {
 			t.Fatalf("Failed to saveDecisionDefinition DMN file - %v", loadErr.Error())
 		}
-		dmnDefinition, _, loadErr := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.generateKey())
+		dmnDefinition, _, loadErr := dmnEngine.SaveDecisionDefinition(t.Context(), "", *definition, xmldata, dmnEngine.GenerateKey())
 
 		if loadErr != nil {
 			t.Fatalf("Failed to saveDecisionDefinition DMN file - %v", loadErr.Error())

@@ -72,15 +72,9 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 		return fmt.Errorf("failed to propagate variables to parent: %w", err)
 	}
 
-	// unblock token of the parent
-	//ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
-	//if err != nil {
-	//	return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
-	//}
-
 	element = ppi.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
 
-	tokens, err := engine.handleSimpleTransition(ctx, batch, parentInstance, element, *instance.ParentProcessExecutionToken)
+	tokens, err := engine.handleActivityCompletion(ctx, batch, parentInstance, element, *instance.ParentProcessExecutionToken, true)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to handle simple transition for call activity: %s", instance.ParentProcessExecutionToken.ElementId), err)
 	}

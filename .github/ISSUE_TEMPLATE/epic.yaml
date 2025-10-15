@@ -1,7 +1,8 @@
 name: "📦 Epic"
 description: "Create an Epic (group of related tasks)"
-title: "Epic: <short name>"
+title: "<short name>"
 labels: ["type: epic"]
+type: Epic
 body:
   - type: markdown
     attributes:

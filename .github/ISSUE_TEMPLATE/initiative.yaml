@@ -1,7 +1,8 @@
 name: "🚀 Initiative"
 description: "Create a high-level Initiative (above Epics)"
-title: "Initiative: <short name>"
+title: "<short name>"
 labels: ["type: initiative"]
+type: Initiative
 body:
   - type: markdown
     attributes:

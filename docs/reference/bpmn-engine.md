@@ -239,15 +239,39 @@ Currently supported event types with boundary events:
 - Message,
 - Timer
 
-![Boudary event usage example](./assets/bpmn/boundary_events.png)
+![Boundary event usage example](./assets/bpmn/boundary_events.png)
 _Boundary event usage example_
+
+### Activity multi instance
+
+For now is only supported **Parallel** multi instance with boundary events compatibility.
+
+Completion condition is not supported yet.
+
+Currently supported activity types with multi instance:
+- ServiceTask
+
+  ![Multi instance service task usage example](./assets/bpmn/multi_instance_service_task.png)
+- CallActivity
+
+  ![Multi instance call activity usage example](./assets/bpmn/multi_instance_call_activity.png)
+- BusinessRuleTask
+
+  ![Multi instance business rule task usage example](./assets/bpmn/multi_instance_business_rule.png)
+- UserTask
+
+  ![Multi instance user task usage example](./assets/bpmn/multi_instance_user_task.png)
+- SendTask
+
+  ![Multi instance send task usage example](./assets/bpmn/multi_instance_send_task.png)
+
 :::note[Future plans]
 
 ### Message throw event
 
 ### Error event
 
-### Activity multi instance
+### Sub process
 
 ### Script task
 

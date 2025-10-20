@@ -167,6 +167,7 @@ func Test_multi_instance_call_activity(t *testing.T) {
 func Test_multi_instance_business_rule_task(t *testing.T) {
 	// given
 	dmnDefinition, dmnXmlData, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-cases", "size-decision.dmn"))
+	assert.NoError(t, err)
 	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
 		t.Context(),
 		"",
@@ -174,7 +175,6 @@ func Test_multi_instance_business_rule_task(t *testing.T) {
 		dmnXmlData,
 		bpmnEngine.dmnEngine.GenerateKey(),
 	)
-	assert.NoError(t, err)
 	assert.NoError(t, err)
 	process, err := bpmnEngine.LoadFromFile("./test-cases/multi-instance-business-rule-task.bpmn")
 	assert.NoError(t, err)

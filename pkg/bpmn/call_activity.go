@@ -88,11 +88,11 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 		return fmt.Errorf("failed to save updated parent process instance: %w", err)
 	}
 
-	shouldContinue, err := engine.shouldCallActivityContinue(parentInstance, element)
+	finished, err := engine.isMultiInstanceFinished(parentInstance, element)
 	if err != nil {
 		return err
 	}
-	if shouldContinue {
+	if finished {
 		batch.AddPostFlushAction(ctx, func() {
 			go func() {
 				err = engine.runProcessInstance(ctx, parentInstance, tokens)

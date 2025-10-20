@@ -650,9 +650,9 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		}
 
 		return []runtime.ExecutionToken{currentToken}, nil
-	} else {
-		activityResult, err = engine.activityElementExecutor(ctx, batch, instance, currentToken, activity)
 	}
+
+	activityResult, err = engine.executeActivityElement(ctx, batch, instance, currentToken, activity)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), err)
@@ -701,7 +701,7 @@ func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch
 	return nil
 }
 
-func (engine *Engine) activityElementExecutor(
+func (engine *Engine) executeActivityElement(
 	ctx context.Context,
 	batch storage.Batch,
 	instance *runtime.ProcessInstance,

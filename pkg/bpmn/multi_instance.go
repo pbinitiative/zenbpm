@@ -34,7 +34,7 @@ func (engine *Engine) initMultiInstances(
 	for _, variableHolder := range vhs {
 		instanceCopy := *instance
 		instanceCopy.VariableHolder = runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variableHolder.Variables())
-		activityResult, err = engine.activityElementExecutor(ctx, batch, &instanceCopy, *currentToken, activity)
+		activityResult, err = engine.executeActivityElement(ctx, batch, &instanceCopy, *currentToken, activity)
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *r
 	inputCollection, ok := inputCollectionObject.([]interface{})
 	if !ok {
 		instance.State = runtime.ActivityStateFailed
-		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("inputCollection is not a collection"), err)
+		return []runtime.VariableHolder{}, newEngineErrorf("inputCollection expression '%s' does not evaluate to a collection", inColExpr)
 	}
 
 	total := len(inputCollection)
@@ -137,13 +137,7 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				instance.VariableHolder.SetVariable(outColName, outputCollection)
 			}
 
-			inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
-			inputCollection, ok := inputCollectionObject.([]interface{})
-			if !ok {
-				return false, errors.New("inputCollection is not a collection")
-			}
-
-			// persistently store the outputCollection
+			// persistently store the outputCollection for asynchronous multi-instance completion
 			err = batch.SaveProcessInstance(ctx, *instance)
 			if err != nil {
 				return false, fmt.Errorf("failed to save updated parent process instance: %w", err)
@@ -177,8 +171,11 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				}
 			}
 
-			// TODO: implement completion condition
-			if len(outputCollection) != len(inputCollection) {
+			finished, err := engine.isMultiInstanceFinished(instance, element)
+			if err != nil {
+				return false, err
+			}
+			if !finished {
 				return false, nil
 			}
 
@@ -207,6 +204,8 @@ func (engine *Engine) castToTActivity(element bpmn20.FlowNode) *bpmn20.TActivity
 		activityElement = &e.TTask.TActivity
 	case *bpmn20.TCallActivity:
 		activityElement = &e.TActivity
+	default:
+		panic(fmt.Sprintf("unsupported activity type %T", element))
 	}
 	return activityElement
 }
@@ -214,7 +213,7 @@ func (engine *Engine) castToTActivity(element bpmn20.FlowNode) *bpmn20.TActivity
 func (engine *Engine) isBoundaryEventMultiInstance(instance *runtime.ProcessInstance, listener *bpmn20.TBoundaryEvent) bool {
 	element := instance.Definition.Definitions.Process.GetFlowNodeById(listener.AttachedToRef)
 	activityElement := engine.castToTActivity(element)
-	return activityElement != nil && activityElement.MultiInstanceLoopCharacteristics.LoopCharacteristics.InputCollection != ""
+	return activityElement.MultiInstanceLoopCharacteristics.LoopCharacteristics.InputCollection != ""
 }
 
 func (engine *Engine) terminateMultiInstanceJobs(
@@ -241,17 +240,23 @@ func (engine *Engine) terminateMultiInstanceJobs(
 	return nil
 }
 
-func (engine *Engine) shouldCallActivityContinue(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
+func (engine *Engine) isMultiInstanceFinished(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
 	activityElement := engine.castToTActivity(element)
 	mi := activityElement.MultiInstanceLoopCharacteristics
 	if mi.LoopCharacteristics.InputCollection == "" {
 		return true, nil
 	}
 
+	var outputCollection []interface{}
 	outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
-	outputCollection, ok := instance.GetVariable(outColName).([]interface{})
+	var ok bool
+	if parent := instance.VariableHolder.GetParent(); parent != nil {
+		outputCollection, ok = parent.GetVariable(outColName).([]interface{})
+	} else {
+		outputCollection, ok = instance.VariableHolder.GetVariable(outColName).([]interface{})
+	}
 	if !ok {
-		return false, errors.New("outputCollection is not a collection")
+		return false, errors.New("outputCollection is not a collection on multi-instance flow")
 	}
 
 	// TODO: implement completion condition

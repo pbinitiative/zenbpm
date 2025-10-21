@@ -36,9 +36,5 @@ jobs:
         run: |-
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
 
-      # Setup QEMU for multi-platform builds
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: release publish
         run: make release

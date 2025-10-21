@@ -512,6 +512,43 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}, nil
 }
 
+func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request public.StartProcessInstanceOnElementsRequestObject) (public.StartProcessInstanceOnElementsResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
+	if err != nil {
+		return public.StartProcessInstanceOnElements400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	variables := make(map[string]interface{})
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+	process, err := s.node.StartProcessInstanceOnElements(ctx, key, request.Body.StartingElementIds, variables)
+	if err != nil {
+		return public.StartProcessInstanceOnElements502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &processVars)
+	if err != nil {
+		return public.StartProcessInstanceOnElements500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.StartProcessInstanceOnElements201JSONResponse{
+		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+		Key:                  fmt.Sprintf("%d", process.GetKey()),
+		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+		// TODO: make sure its the same string
+		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+		Variables: processVars,
+	}, nil
+}
+
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
 	page := int32(1)
 	if request.Params.Page != nil {

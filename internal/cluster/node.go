@@ -826,6 +826,34 @@ func (node *ZenNode) GetStatus() state.Cluster {
 	return node.store.ClusterState()
 }
 
+func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (*proto.ProcessInstance, error) {
+	state := node.store.ClusterState()
+	candidateNode, err := state.GetLeastStressedPartitionLeader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node to start process instance: %w", err)
+	}
+	client, err := node.client.For(candidateNode.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to start process instance: %w", err)
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal variables to start process instance: %w", err)
+	}
+	resp, err := client.StartProcessInstanceOnElements(ctx, &proto.StartInstanceOnElementIdsRequest{
+		DefinitionKey:      &processDefinitionKey,
+		StartingElementIds: startingElementIds,
+		Variables:          vars,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("failed to start process instance: %s", resp.Error.GetMessage())
+	}
+	return resp.Process, nil
+}
+
 func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, count int64) ([]sql.Job, error) {
 	// read jobs from all the partitions where this node is a leader
 	databases := node.controller.AllPartitionLeaderDBs(node.ctx)

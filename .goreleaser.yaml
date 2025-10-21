@@ -74,48 +74,21 @@ archives:
         formats: [zip]
 
 dockers_v2:
-  - #
-    id: zenbpm
-    dockerfile: "{{ .Env.DOCKERFILE }}"
-    ids:
-      - zenbpm
-    images:
-      - "pbinitiative/zenbpm"
-      - "ghcr.io/pbinitiative/zenbpm"
-    tags:
-      - "v{{ .Version }}"
-      - "{{ if .IsNightly }}nightly{{ end }}"
-      - "{{ if not .IsNightly }}latest{{ end }}"
-#    extra_files:
-#      - config.yml
-    labels:
-      "org.opencontainers.image.description": "My software"
-      "org.opencontainers.image.created": "{{.Date}}"
-      "org.opencontainers.image.name": "{{.ProjectName}}"
-      "org.opencontainers.image.revision": "{{.FullCommit}}"
-      "org.opencontainers.image.version": "{{.Version}}"
-      "org.opencontainers.image.source": "{{.GitURL}}"
-    annotations:
-      "project": "{{.ProjectName}}"
-    platforms:
-      - linux/amd64
-      - linux/arm64
-#    retry:
-#      attempts: 5
-#      delay: 5s
-#      max_delay: 2m
 
-#  - id: zenbpm
-#    images:
-#     - ghcr.io/pbinitiative/zenbpm
+#  - #
+#    id: zenbpm
 #    dockerfile: Dockerfile
 #    ids:
-#     - zenbpm
+#      - zenbpm
+#    images:
+#      - "pbinitiative/zenbpm"
+#      - "ghcr.io/pbinitiative/zenbpm"
 #    tags:
-#      - latest
-#      - "{{ .Tag }}"
+#      - "v{{ .Version }}"
+#      - "{{ if .IsNightly }}nightly{{ end }}"
+#      - "{{ if not .IsNightly }}latest{{ end }}"
 #    labels:
-#      "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
+#      "org.opencontainers.image.description": "My software"
 #      "org.opencontainers.image.created": "{{.Date}}"
 #      "org.opencontainers.image.name": "{{.ProjectName}}"
 #      "org.opencontainers.image.revision": "{{.FullCommit}}"
@@ -126,10 +99,33 @@ dockers_v2:
 #    platforms:
 #      - linux/amd64
 #      - linux/arm64
-#    retry:
-#      attempts: 5
-#      delay: 5s
-#      max_delay: 2m
+##    retry:
+##      attempts: 5
+##      delay: 5s
+##      max_delay: 2m
+
+  - id: zenbpm
+    images:
+      - "pbinitiative/zenbpm"
+      - "ghcr.io/pbinitiative/zenbpm"
+    dockerfile: Dockerfile
+    ids:
+     - zenbpm
+    tags:
+#      - latest
+      - "{{ .Version }}"
+    labels:
+      "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+    annotations:
+      "project": "{{.ProjectName}}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
 
 changelog:
   sort: asc

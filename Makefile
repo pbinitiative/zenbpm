@@ -178,6 +178,7 @@ release:
 	fi
 	docker run \
 		--rm \
+		--provenance=true
 		--privileged \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \

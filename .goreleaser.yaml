@@ -74,13 +74,36 @@ archives:
         formats: [zip]
 
 dockers_v2:
-  - images:
-      - user/repo
+  - #
+    id: zenbpm
+    dockerfile: "{{ .Env.DOCKERFILE }}"
+    ids:
+      - zenbpm
+    images:
+      - "pbinitiative/zenbpm"
+      - "ghcr.io/pbinitiative/zenbpm"
     tags:
-      - "{{.Version}}"
+      - "v{{ .Version }}"
+      - "{{ if .IsNightly }}nightly{{ end }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+#    extra_files:
+#      - config.yml
+    labels:
+      "org.opencontainers.image.description": "My software"
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+    annotations:
+      "project": "{{.ProjectName}}"
     platforms:
       - linux/amd64
       - linux/arm64
+#    retry:
+#      attempts: 5
+#      delay: 5s
+#      max_delay: 2m
 
 #  - id: zenbpm
 #    images:

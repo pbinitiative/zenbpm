@@ -73,35 +73,32 @@ archives:
       - goos: windows
         formats: [zip]
 
-dockers:
-  - image_templates:
-      - "ghcr.io/pbinitiative/zenbpm:{{ .Tag }}"
-#      - "ghcr.io/pbinitiative/zenbpm:latest"
+dockers_v2:
+  - id: zenbpm
+    images:
+     - ghcr.io/pbinitiative/zenbpm
     dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-    use: buildx
-
-#dockers_v2:
-#  - id: zenbpm
-#    images:
-#     - ghcr.io/pbinitiative/zenbpm
-#    dockerfile: Dockerfile
-#    ids:
-#     - zenbpm
-#    tags:
-#      - latest
-#      - "{{ .Tag }}"
-#    platforms:
-#    - linux/amd64
-#    - linux/arm64
-#    labels:
-#      "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
-#      "org.opencontainers.image.created": "{{.Date}}"
-#      "org.opencontainers.image.name": "{{.ProjectName}}"
-#      "org.opencontainers.image.revision": "{{.FullCommit}}"
-#      "org.opencontainers.image.version": "{{.Version}}"
-#      "org.opencontainers.image.source": "{{.GitURL}}"
+    ids:
+     - zenbpm
+    tags:
+      - latest
+      - "{{ .Tag }}"
+    labels:
+      "org.opencontainers.image.description": "Open-source bpmn engine written in Go."
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+    annotations:
+      "project": "{{.ProjectName}}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    retry:
+      attempts: 5
+      delay: 5s
+      max_delay: 2m
 
 changelog:
   sort: asc

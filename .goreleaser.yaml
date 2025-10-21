@@ -79,7 +79,7 @@ dockers:
 #      - "ghcr.io/pbinitiative/zenbpm:latest"
     dockerfile: Dockerfile
     build_flag_templates:
-      - "--platform=linux/amd64,linux/arm64"
+      - "--platform=linux/amd64"
     use: buildx
 
 #dockers_v2:

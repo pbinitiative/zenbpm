@@ -12,7 +12,6 @@ import (
 )
 
 const countWaitingJobs = `-- name: CountWaitingJobs :one
-
 SELECT
     count(*)
 FROM
@@ -21,7 +20,6 @@ WHERE
     state = 1
 `
 
-// https://github.com/sqlc-dev/sqlc/issues/2452
 func (q *Queries) CountWaitingJobs(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countWaitingJobs)
 	var count int64
@@ -339,6 +337,67 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 	query := findProcessInstanceJobsInState
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findTokenJobsInState = `-- name: FindTokenJobsInState :many
+
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    execution_token = ?1
+    AND state IN (/*SLICE:states*/?)
+`
+
+type FindTokenJobsInStateParams struct {
+	ExecutionTokenKey int64   `json:"execution_token_key"`
+	States            []int64 `json:"states"`
+}
+
+// https://github.com/sqlc-dev/sqlc/issues/2452
+func (q *Queries) FindTokenJobsInState(ctx context.Context, arg FindTokenJobsInStateParams) ([]Job, error) {
+	query := findTokenJobsInState
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ExecutionTokenKey)
 	if len(arg.States) > 0 {
 		for _, v := range arg.States {
 			queryParams = append(queryParams, v)

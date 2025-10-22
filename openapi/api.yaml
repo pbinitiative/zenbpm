@@ -983,6 +983,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-instance/{processInstanceKey}/execution-tokens:
+    get:
+      summary: Get list of execution tokens in process instance
+      operationId: getExecutionTokens
+      tags:
+        - process-instance
+        - execution-token
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "http://localhost:8080/v1/process-instance/123456789/execution-tokens"
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{15,20}$'
+          example: "4503599627370501"
+      responses:
+        200:
+          description: List of execution tokens in process instance
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExecutionToken"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /jobs:
     get:
       operationId: getJobs
@@ -1216,7 +1268,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /migration/start-process-instance:
+  /modify/start-process-instance:
     post:
       operationId: StartProcessInstanceOnElements
       summary: Start a new process instance starting at chosen elements
@@ -1266,6 +1318,188 @@ paths:
       responses:
         201:
           description: Process instance created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstance"
+              example:
+                key: "4503599627370501"
+                processDefinitionKey: "4503599627370498"
+                createdAt: "2025-08-22T14:30:25Z"
+                state: "active"
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /modify/process-instance:
+    post:
+      operationId: ModifyProcessInstance
+      summary: Modify process instance
+      tags:
+        - migration
+        - process-instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/migration/process-instance/modify-executions \
+              -H "Content-Type: application/json" \
+              -d '{
+                "processInstanceKey": "4503599627370498",
+                "variables": {
+                  "customerId": "customer-456",
+                  "amount": 1000,
+                  "applicationDate": "2025-08-22"
+                }
+                "executionTokensToStart": [
+                    "elementId": 101
+                ],
+                "executionTokensToTerminate": [
+                  executionTokenKey: "4503599627370501"
+                ]
+              }'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processInstanceKey
+              properties:
+                processInstanceKey:
+                  type: string
+                  pattern: '^\d{15,20}$'
+                variables:
+                  type: object
+                  description: "Sets process instance variables."
+                executionTokensToStart:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/StartExecutionData"
+                  description: "Starts execution token."
+                executionTokensToTerminate:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TerminateExecutionData"
+                  description: "Terminates execution token."
+            example:
+              processInstanceKey: "4503599627370498"
+              variables:
+                customerId: "customer-456"
+                amount: 1000
+                applicationDate: "2025-08-22"
+              executionTokensToStart:
+                elementId: 101
+                inputVariables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
+              executionTokensToTerminate:
+                executionTokenKey: "4503599627370501"
+      responses:
+        201:
+          description: Process instance modified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processInstance:
+                    $ref: "#/components/schemas/ProcessInstance"
+                  executionTokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExecutionToken"
+              example:
+                key: "4503599627370501"
+                processDefinitionKey: "4503599627370498"
+                createdAt: "2025-08-22T14:30:25Z"
+                state: "active"
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /modify/process-instance/variables:
+    post:
+      operationId: ModifyProcessInstanceVariables
+      summary: Modify process instance variables
+      tags:
+        - migration
+        - process-instance
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X POST http://localhost:8080/v1/migration/process-instance/modify-variables \
+              -H "Content-Type: application/json" \
+              -d '{
+                "processInstanceKey": "4503599627370498",
+                "variables": {
+                  "customerId": "customer-456",
+                  "amount": 1000,
+                  "applicationDate": "2025-08-22"
+                }
+              }'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processInstanceKey
+              properties:
+                processInstanceKey:
+                  type: string
+                  pattern: '^\d{15,20}$'
+                variables:
+                  type: object
+            example:
+              processInstanceKey: "4503599627370498"
+              variables:
+                customerId: "customer-456"
+                amount: 1000
+                applicationDate: "2025-08-22"
+      responses:
+        201:
+          description: Process instance modified
           content:
             application/json:
               schema:
@@ -1609,6 +1843,32 @@ components:
             - terminated
         variables:
           type: object
+    ExecutionToken:
+      type: object
+      required:
+        - key
+        - processInstanceKey
+        - elementInstanceKey
+        - elementId
+        - state
+      properties:
+        key:
+          type: string
+          pattern: '^\d{15,20}$'
+        processInstanceKey:
+          type: string
+          pattern: '^\d{15,20}$'
+        elementInstanceKey:
+          type: string
+          pattern: '^\d{15,20}$'
+        elementId:
+          type: string
+        state:
+          type: string
+          enum:
+            - active
+            - completed
+            - terminated
     JobPage:
       type: object
       allOf:
@@ -1729,6 +1989,27 @@ components:
               items:
                 $ref: "#/components/schemas/FlowElementHistory"
         - $ref: "#/components/schemas/PageMetadata"
+    TerminateExecutionData:
+      type: object
+      required:
+        - executionTokenKey
+      properties:
+        executionTokenKey:
+          type: string
+          pattern: '^\d{15,20}$'
+          description: "Specifies starting execution token to be terminated."
+      example:
+        elementId: "flow-node-1"
+    StartExecutionData:
+      type: object
+      required:
+        - elementId
+      properties:
+        elementId:
+          type: string
+          description: "Specifies starting element of execution."
+      example:
+        elementId: "flow-node-1"
     FlowElementHistory:
       type: object
       required:

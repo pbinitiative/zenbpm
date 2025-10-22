@@ -103,6 +103,47 @@ func (q *Queries) FindIncidents(ctx context.Context, arg FindIncidentsParams) ([
 	return items, nil
 }
 
+const findIncidentsByExecutionTokenKey = `-- name: FindIncidentsByExecutionTokenKey :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token
+FROM
+    incident
+WHERE
+    execution_token = ?1
+`
+
+func (q *Queries) FindIncidentsByExecutionTokenKey(ctx context.Context, executionToken int64) ([]Incident, error) {
+	rows, err := q.db.QueryContext(ctx, findIncidentsByExecutionTokenKey, executionToken)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Incident{}
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Message,
+			&i.CreatedAt,
+			&i.ResolvedAt,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findIncidentsByProcessInstanceKey = `-- name: FindIncidentsByProcessInstanceKey :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token

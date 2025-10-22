@@ -166,14 +166,14 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 
 	totalCount := len(items)
 
-	startIndex := int((page - 1) * size)
-	endIndex := int(startIndex + size)
+	startIndex := (page - 1) * size
+	endIndex := startIndex + size
 	if startIndex >= totalCount {
 		result := public.DecisionDefinitionsPage{
 			Items: []public.DecisionDefinitionSimple{},
 			PageMetadata: public.PageMetadata{
-				Page:       int(page),
-				Size:       int(size),
+				Page:       page,
+				Size:       size,
 				Count:      0,
 				TotalCount: totalCount,
 			},
@@ -190,8 +190,8 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	result := public.DecisionDefinitionsPage{
 		Items: pagedItems,
 		PageMetadata: public.PageMetadata{
-			Page:       int(page),
-			Size:       int(size),
+			Page:       page,
+			Size:       size,
 			Count:      len(pagedItems),
 			TotalCount: totalCount,
 		},
@@ -524,6 +524,39 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}, nil
 }
 
+func (s *Server) GetExecutionTokens(ctx context.Context, request public.GetExecutionTokensRequestObject) (public.GetExecutionTokensResponseObject, error) {
+	key, err := getKeyFromString(request.ProcessInstanceKey)
+	if err != nil {
+		return public.GetExecutionTokens400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	tokens, err := s.node.GetExecutionTokens(ctx, key)
+	if err != nil {
+		return public.GetExecutionTokens502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	respTokens := make([]public.ExecutionToken, 0, len(tokens))
+	for _, token := range tokens {
+		respTokens = append(respTokens, public.ExecutionToken{
+			ElementId:          token.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(token.GetElementInstanceKey(), 10),
+			Key:                strconv.FormatInt(token.GetKey(), 10),
+			ProcessInstanceKey: strconv.FormatInt(token.GetProcessInstanceKey(), 10),
+			State:              public.ExecutionTokenState(runtime.ActivityState(token.GetState()).String()),
+		})
+	}
+
+	return public.GetExecutionTokens200JSONResponse{
+		Items: respTokens,
+	}, nil
+}
+
 func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request public.StartProcessInstanceOnElementsRequestObject) (public.StartProcessInstanceOnElementsResponseObject, error) {
 	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
 	if err != nil {
@@ -833,15 +866,15 @@ func getRestJobState(state runtime.ActivityState) public.JobState {
 func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInstanceState {
 	switch state {
 	case runtime.ActivityStateReady:
-		return public.ProcessInstanceStateActive
+		return public.Active
 	case runtime.ActivityStateActive:
-		return public.ProcessInstanceStateActive
+		return public.Active
 	case runtime.ActivityStateCompleted:
-		return public.ProcessInstanceStateCompleted
+		return public.Completed
 	case runtime.ActivityStateFailed:
-		return public.ProcessInstanceStateActive
+		return public.Active
 	case runtime.ActivityStateTerminated:
-		return public.ProcessInstanceStateTerminated
+		return public.Terminated
 	default:
 		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
 	}
@@ -911,6 +944,119 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 	}
 
 	return public.ResolveIncident201Response{}, nil
+}
+
+func (s *Server) ModifyProcessInstance(ctx context.Context, request public.ModifyProcessInstanceRequestObject) (public.ModifyProcessInstanceResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
+	if err != nil {
+		return public.ModifyProcessInstance400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	variables := make(map[string]interface{})
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+
+	var tokensToStartAtElement []string
+	if request.Body.ExecutionTokensToStart != nil {
+		tokensToStartAtElement = make([]string, 0, len(*request.Body.ExecutionTokensToStart))
+		for _, data := range *request.Body.ExecutionTokensToStart {
+			tokensToStartAtElement = append(tokensToStartAtElement, data.ElementId)
+		}
+	}
+
+	var tokenKeysToTerminate []int64
+	if request.Body.ExecutionTokensToTerminate != nil {
+		tokenKeysToTerminate = make([]int64, 0, len(*request.Body.ExecutionTokensToTerminate))
+		for _, data := range *request.Body.ExecutionTokensToTerminate {
+			executionTokenKey, err := getKeyFromString(data.ExecutionTokenKey)
+			if err != nil {
+				return public.ModifyProcessInstance400JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			tokenKeysToTerminate = append(tokenKeysToTerminate, executionTokenKey)
+		}
+	}
+
+	process, tokens, err := s.node.ModifyProcessInstance(ctx, key, tokenKeysToTerminate, tokensToStartAtElement, variables)
+	if err != nil {
+		return public.ModifyProcessInstance502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &processVars)
+	if err != nil {
+		return public.ModifyProcessInstance500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	respTokens := make([]public.ExecutionToken, 0, len(tokens))
+	for _, token := range tokens {
+		respTokens = append(respTokens, public.ExecutionToken{
+			ElementId:          token.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(token.GetElementInstanceKey(), 10),
+			Key:                strconv.FormatInt(token.GetKey(), 10),
+			ProcessInstanceKey: strconv.FormatInt(token.GetProcessInstanceKey(), 10),
+			State:              public.ExecutionTokenState(runtime.ActivityState(token.GetState()).String()),
+		})
+	}
+
+	return public.ModifyProcessInstance201JSONResponse{
+		ProcessInstance: &public.ProcessInstance{
+			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Key:                  fmt.Sprintf("%d", process.GetKey()),
+			ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+			Variables:            processVars,
+		},
+		ExecutionTokens: &respTokens,
+	}, nil
+}
+
+func (s *Server) ModifyProcessInstanceVariables(ctx context.Context, request public.ModifyProcessInstanceVariablesRequestObject) (public.ModifyProcessInstanceVariablesResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
+	if err != nil {
+		return public.ModifyProcessInstanceVariables400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	variables := make(map[string]interface{})
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+
+	process, err := s.node.ModifyProcessInstanceVariables(ctx, key, variables)
+	if err != nil {
+		return public.ModifyProcessInstanceVariables502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &processVars)
+	if err != nil {
+		return public.ModifyProcessInstanceVariables500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.ModifyProcessInstanceVariables201JSONResponse{
+		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+		Key:                  fmt.Sprintf("%d", process.GetKey()),
+		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+		State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+		Variables:            processVars,
+	}, nil
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {

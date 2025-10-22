@@ -216,9 +216,9 @@ release:
 	 	--rm \
 	 	 --privileged \
 		--env-file .release-env \
-		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-w /go/src//$(PACKAGE_NAME) \
+		-v `pwd`:/go/src/$(PACKAGE_NAME) \
+		-w /go/src/$(PACKAGE_NAME) \
 		-e GITHUB_TOKEN=$(GITHUB_TOKEN) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		release --clean
+		release --clean --verbose

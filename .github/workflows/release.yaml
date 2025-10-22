@@ -58,7 +58,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -68,7 +68,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Set up QEMU
+      - name: set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
@@ -77,7 +77,4 @@ jobs:
         run: |-
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
 
-      - name: Run release
-        run: make release
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - run: make release

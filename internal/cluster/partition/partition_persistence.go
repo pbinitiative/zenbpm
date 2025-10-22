@@ -992,6 +992,62 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer
 
 var _ storage.JobStorageReader = &DB{}
 
+func (rq *DB) FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
+	int64States := make([]int64, len(states))
+	for _, s := range states {
+		int64States = append(int64States, int64(s))
+	}
+	dbJobs, err := rq.Queries.FindTokenJobsInState(ctx, sql.FindTokenJobsInStateParams{
+		ExecutionTokenKey: tokenKey,
+		States:            int64States,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find pending process instance jobs for execution token key %d: %w", tokenKey, err)
+	}
+	res := make([]bpmnruntime.Job, len(dbJobs))
+	tokensToLoad := make([]int64, len(dbJobs))
+	for i, job := range dbJobs {
+		var variables map[string]interface{}
+		err = json.Unmarshal([]byte(job.Variables), &variables)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
+		}
+		res[i] = bpmnruntime.Job{
+			ElementId:          job.ElementID,
+			ElementInstanceKey: job.ElementInstanceKey,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			Key:                job.Key,
+			Type:               job.Type,
+			State:              bpmnruntime.ActivityState(job.State),
+			CreatedAt:          time.UnixMilli(job.CreatedAt),
+			Token: bpmnruntime.ExecutionToken{
+				Key: job.ExecutionToken,
+			},
+			Variables: variables,
+		}
+		tokensToLoad[i] = job.ExecutionToken
+	}
+	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
+				}
+			}
+		}
+	}
+	return res, nil
+}
+
 func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
 	jobs, err := rq.Queries.FindActiveJobsByType(ctx, jobType)
 	if err != nil {
@@ -1531,6 +1587,48 @@ func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyIte
 }
 
 var _ storage.IncidentStorageReader = &DB{}
+
+func (rq *DB) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
+	incidents, err := rq.Queries.FindIncidentsByExecutionTokenKey(ctx, executionTokenKey)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]bpmnruntime.Incident, len(incidents))
+
+	tokensToLoad := make([]int64, len(incidents))
+	for i, incident := range incidents {
+		res[i] = bpmnruntime.Incident{
+			Key:                incident.Key,
+			ElementInstanceKey: incident.ElementInstanceKey,
+			ElementId:          incident.ElementID,
+			ProcessInstanceKey: incident.ProcessInstanceKey,
+			Message:            incident.Message,
+		}
+
+		tokensToLoad[i] = incident.ExecutionToken
+	}
+
+	tokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return res, fmt.Errorf("failed to find job tokens: %w", err)
+	}
+token:
+	for _, token := range tokens {
+		for i := range res {
+			if res[i].Token.Key == token.Key {
+				res[i].Token = bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
+				}
+				continue token
+			}
+		}
+	}
+	return res, nil
+}
 
 func (rq *DB) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
 	return FindIncidentByKey(ctx, rq.Queries, key)

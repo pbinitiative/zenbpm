@@ -34,3 +34,11 @@ FROM
     incident
 WHERE
     process_instance_key = @process_instance_key;
+
+-- name: FindIncidentsByExecutionTokenKey :many
+SELECT
+    *
+FROM
+    incident
+WHERE
+    execution_token = @execution_token;

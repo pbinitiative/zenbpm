@@ -376,6 +376,165 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 	}, nil
 }
 
+func (s *Server) GetExecutionTokens(ctx context.Context, req *proto.GetExecutionTokensRequest) (*proto.GetExecutionTokensResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetExecutionTokensResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	tokens, err := queries.GetTokensForProcessInstance(ctx, req.GetProcessInstanceKey())
+	if err != nil {
+		err := fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey())
+		return &proto.GetExecutionTokensResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	result := make([]*proto.ExecutionToken, len(tokens))
+	for i, job := range tokens {
+		result[i] = &proto.ExecutionToken{
+			Key:                &job.Key,
+			ElementInstanceKey: &job.ElementInstanceKey,
+			ElementId:          &job.ElementID,
+			ProcessInstanceKey: &job.ProcessInstanceKey,
+			State:              &job.State,
+		}
+	}
+	return &proto.GetExecutionTokensResponse{
+		Tokens: result,
+	}, nil
+}
+
+func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyProcessInstanceRequest) (*proto.ModifyProcessInstanceResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.ModifyProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
+		return &proto.ModifyProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	var instance *runtime.ProcessInstance
+	instance, tokens, err := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.TokenKeysToTerminate, req.TokensToStartAtElement, vars)
+	if err != nil {
+		err := fmt.Errorf("failed to modify process instance: %w", err)
+		return &proto.ModifyProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.ModifyProcessInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
+	for _, token := range tokens {
+		respTokens = append(respTokens, &proto.ExecutionToken{
+			Key:                &token.Key,
+			ElementInstanceKey: &token.ElementInstanceKey,
+			ElementId:          &token.ElementId,
+			ProcessInstanceKey: &token.ProcessInstanceKey,
+			State:              ptr.To(int64(token.State)),
+		})
+	}
+
+	return &proto.ModifyProcessInstanceResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+		ExecutionTokens: respTokens,
+	}, nil
+}
+
+func (s *Server) ModifyProcessInstanceVariables(ctx context.Context, req *proto.ModifyProcessInstanceVariablesRequest) (*proto.ModifyProcessInstanceVariablesResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.ModifyProcessInstanceVariablesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
+		return &proto.ModifyProcessInstanceVariablesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	instance, err := engine.ModifyInstanceVariables(ctx, *req.ProcessInstanceKey, vars)
+	if err != nil {
+		err := fmt.Errorf("failed to modify process instance variables: %w", err)
+		return &proto.ModifyProcessInstanceVariablesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.ModifyProcessInstanceVariablesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	return &proto.ModifyProcessInstanceVariablesResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+	}, nil
+}
+
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {

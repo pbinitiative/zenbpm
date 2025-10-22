@@ -62,12 +62,15 @@ service ZenService {
   rpc FindActiveMessage(FindActiveMessageRequest) returns (FindActiveMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
+  rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
+  rpc ModifyProcessInstanceVariables(ModifyProcessInstanceVariablesRequest) returns (ModifyProcessInstanceVariablesResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
+  rpc GetExecutionTokens(GetExecutionTokensRequest) returns (GetExecutionTokensResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
@@ -233,6 +236,14 @@ message ProcessInstance {
   int64 definition_key = 6;
 }
 
+message ExecutionToken {
+  int64 key = 1;
+  int64 elementInstanceKey = 2;
+  string elementId = 3;
+  int64 processInstanceKey = 4;
+  int64 state = 5;
+}
+
 message Job {
   int64 key = 1;
   int64 element_instance_key = 2;
@@ -387,6 +398,29 @@ message StartInstanceOnElementIdsResponse {
   ProcessInstance process = 2;
 }
 
+message ModifyProcessInstanceVariablesRequest {
+  int64 process_instance_key = 1;
+  bytes variables = 2;
+}
+
+message ModifyProcessInstanceVariablesResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
+}
+
+message ModifyProcessInstanceRequest {
+  int64 process_instance_key = 1;
+  repeated int64 tokenKeysToTerminate = 2;
+  repeated string tokensToStartAtElement = 3;
+  bytes variables = 4;
+}
+
+message ModifyProcessInstanceResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
+  repeated ExecutionToken execution_tokens = 3;
+}
+
 message GetProcessInstancesRequest {
   int32 page = 1;
   int32 size = 2;
@@ -438,6 +472,15 @@ message GetIncidentsRequest {
 message GetIncidentsResponse {
   ErrorResult error = 1;
   repeated Incident incidents = 2;
+}
+
+message GetExecutionTokensRequest {
+  int64 process_instance_key = 1;
+}
+
+message GetExecutionTokensResponse {
+  ErrorResult error = 1;
+  repeated ExecutionToken tokens = 2;
 }
 
 message GetJobsRequest {

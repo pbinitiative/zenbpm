@@ -170,7 +170,7 @@ release-dry-run:
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish
 
-.PHONY: release
+#.PHONY: release
 #release:
 #	@if [ ! -f ".release-env" ]; then \
 #		echo "\033[91m.release-env is required for release\033[0m";\
@@ -190,6 +190,7 @@ release-dry-run:
 #			goreleaser release --clean --verbose \
 #		'
 
+.PHONY: release
 release:
 	@if [ ! -f ".release-env" ]; then \
 		echo "\033[91m.release-env is required for release\033[0m";\

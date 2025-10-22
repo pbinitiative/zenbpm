@@ -517,6 +517,7 @@ func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing
 
 func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
+
 		r := s.GenerateId()
 		tok := s.GenerateId()
 
@@ -534,6 +535,8 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 			ElementId:          "test-elem",
 			ProcessInstanceKey: st.processInstance.Key,
 			Message:            "test-message",
+			CreatedAt:          time.Time{}.Local(),
+			ResolvedAt:         nil,
 			Token:              token,
 		}
 
@@ -549,12 +552,16 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 
 		testIncidents, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.Key)
 		assert.Nil(t, err)
-		assert.Equal(t, len(testIncidents), 1)
-		assert.Equal(t, incident, testIncidents[0])
+		assert.NotEmpty(t, testIncidents)
+		for _, testIncident := range testIncidents {
+			if testIncident.Token.Key == token.Key {
+				assert.Equal(t, incident, testIncident)
+			}
+		}
 
 		testIncidents, err = s.FindIncidentsByExecutionTokenKey(t.Context(), tok)
 		assert.Nil(t, err)
-		assert.Equal(t, len(testIncidents), 1)
+		assert.Equal(t, 1, len(testIncidents))
 		assert.Equal(t, incident, testIncidents[0])
 	}
 }

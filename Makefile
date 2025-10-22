@@ -212,9 +212,11 @@ release:
 		echo "\033[91m.release-env is required for release\033[0m";\
 		exit 1;\
 	fi
-	docker run --rm --privileged \
+	docker run \
+	 	--rm \
+	 	 --privileged \
 		--env-file .release-env \
-		-v $(PWD):/go/src/$(PACKAGE_NAME) \
+		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-w /go/src//$(PACKAGE_NAME) \
 		-e GITHUB_TOKEN=$(GITHUB_TOKEN) \

@@ -32,20 +32,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Define BuildKit config
-        run: |
-          cat > ~/buildkitd.toml << 'EOF'
-          debug = true
-          [worker.oci]
-            platforms = ["linux/amd64","linux/arm64"]
-            snapshotter = "native"
-          EOF
-
       - name: setup release environment
         run: |-
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
           echo 'BUILDX_NO_DEFAULT_ATTESTATIONS=1' >> .release-env
-          docker buildx create --name mybuilder --driver docker-container --config ~/buildkitd.toml --use
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

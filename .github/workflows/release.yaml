@@ -7,6 +7,11 @@ on:
 
 jobs:
   release:
+    services:
+      docker:
+        image: docker:dind
+        env:
+          DOCKER_TLS_CERTDIR: ""
     runs-on: ubuntu-latest
     permissions:
       contents: write

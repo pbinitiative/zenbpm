@@ -42,7 +42,8 @@ jobs:
         run: |-
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
           echo 'BUILDX_NO_DEFAULT_ATTESTATIONS=1' >> .release-env
-          echo 'GORELEASER_SKIP_DOCKER_ATTESTATIONS=true' >> .release-env
+          echo 'BUILDX_NO_DEFAULT_LOAD=1' >> .release-env
+          echo 'BUILDX_METADATA_PROVENANCE=0' >> .release-env
 
       - name: release publish
         run: make release

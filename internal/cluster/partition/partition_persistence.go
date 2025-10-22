@@ -1595,7 +1595,11 @@ func (rq *DB) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTok
 	}
 	res := make([]bpmnruntime.Incident, len(incidents))
 
-	tokensToLoad := make([]int64, len(incidents))
+	tokens, err := rq.Queries.GetTokens(ctx, []int64{executionTokenKey})
+	if err != nil {
+		return res, fmt.Errorf("failed to find job tokens: %w", err)
+	}
+
 	for i, incident := range incidents {
 		res[i] = bpmnruntime.Incident{
 			Key:                incident.Key,
@@ -1603,30 +1607,21 @@ func (rq *DB) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTok
 			ElementId:          incident.ElementID,
 			ProcessInstanceKey: incident.ProcessInstanceKey,
 			Message:            incident.Message,
+			CreatedAt:          time.UnixMilli(incident.CreatedAt),
+			Token: bpmnruntime.ExecutionToken{
+				Key:                tokens[0].Key,
+				ElementInstanceKey: tokens[0].ElementInstanceKey,
+				ElementId:          tokens[0].ElementID,
+				ProcessInstanceKey: tokens[0].ProcessInstanceKey,
+				State:              bpmnruntime.TokenState(tokens[0].State),
+			},
 		}
-
-		tokensToLoad[i] = incident.ExecutionToken
-	}
-
-	tokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
-	if err != nil {
-		return res, fmt.Errorf("failed to find job tokens: %w", err)
-	}
-token:
-	for _, token := range tokens {
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-				continue token
-			}
+		if incident.ResolvedAt.Valid {
+			time := time.UnixMilli(incident.ResolvedAt.Int64)
+			res[i].ResolvedAt = &time
 		}
 	}
+
 	return res, nil
 }
 

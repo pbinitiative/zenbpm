@@ -346,6 +346,12 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		assert.NoError(t, err)
 		assert.Equal(t, job, storeJob)
 		assert.NotEmpty(t, job.Type)
+
+		storeJobs, err := s.FindTokenJobsInState(t.Context(), token.Key, []bpmnruntime.ActivityState{bpmnruntime.ActivityStateActive})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(storeJobs))
+		assert.Equal(t, job, storeJobs[0])
+		assert.NotEmpty(t, storeJobs[0].Type)
 	}
 }
 
@@ -537,9 +543,19 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		err = s.SaveToken(t.Context(), token)
 		assert.Nil(t, err)
 
-		incident, err = s.FindIncidentByKey(t.Context(), r)
+		testIncident, err := s.FindIncidentByKey(t.Context(), r)
 		assert.Nil(t, err)
-		assert.Equal(t, incident, incident)
+		assert.Equal(t, incident, testIncident)
+
+		testIncidents, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.Key)
+		assert.Nil(t, err)
+		assert.Equal(t, len(testIncidents), 1)
+		assert.Equal(t, incident, testIncidents[0])
+
+		testIncidents, err = s.FindIncidentsByExecutionTokenKey(t.Context(), tok)
+		assert.Nil(t, err)
+		assert.Equal(t, len(testIncidents), 1)
+		assert.Equal(t, incident, testIncidents[0])
 	}
 }
 

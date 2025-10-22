@@ -11,7 +11,6 @@ import (
 
 type Querier interface {
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
-	// https://github.com/sqlc-dev/sqlc/issues/2452
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
 	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
@@ -24,6 +23,7 @@ type Querier interface {
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
 	FindIncidents(ctx context.Context, arg FindIncidentsParams) ([]Incident, error)
+	FindIncidentsByExecutionTokenKey(ctx context.Context, executionToken int64) ([]Incident, error)
 	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]Incident, error)
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
@@ -50,6 +50,8 @@ type Querier interface {
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error)
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
 	FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error)
+	// https://github.com/sqlc-dev/sqlc/issues/2452
+	FindTokenJobsInState(ctx context.Context, arg FindTokenJobsInStateParams) ([]Job, error)
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error)

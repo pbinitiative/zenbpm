@@ -7,13 +7,6 @@ on:
 
 jobs:
   release:
-    services:
-      docker:
-        image: docker:dind
-        options: >-
-          --storage-driver=overlay2
-        env:
-          DOCKER_TLS_CERTDIR: ""
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -44,8 +37,12 @@ jobs:
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
           echo 'BUILDX_NO_DEFAULT_ATTESTATIONS=1' >> .release-env
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+
+      - name: Configure Docker storage driver
+        run: |
+          echo '{ "storage-driver": "overlay2" }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info | grep "Storage Driver"
 
       - name: release publish
         run: make release

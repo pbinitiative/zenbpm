@@ -36,6 +36,7 @@ jobs:
         run: |-
           echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' > .release-env
           echo 'BUILDX_NO_DEFAULT_ATTESTATIONS=1' >> .release-env
+          echo '{ "features": { "containerd-snapshotter": true } }' > /etc/docker/daemon.json
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

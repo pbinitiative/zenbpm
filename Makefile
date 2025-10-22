@@ -190,18 +190,31 @@ release-dry-run:
 #			goreleaser release --clean --verbose \
 #		'
 
+#.PHONY: release
+#release:
+#	@if [ ! -f ".release-env" ]; then \
+#		echo "\033[91m.release-env is required for release\033[0m";\
+#		exit 1;\
+#	fi
+#	docker run \
+#		--rm \
+#		--privileged \
+#		--env-file .release-env \
+#		-v /var/run/docker.sock:/var/run/docker.sock \
+#		-v `pwd`:/go/src/$(PACKAGE_NAME) \
+#		-w /go/src/$(PACKAGE_NAME) \
+#		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+#		release --clean --verbose
+
 .PHONY: release
 release:
 	@if [ ! -f ".release-env" ]; then \
 		echo "\033[91m.release-env is required for release\033[0m";\
 		exit 1;\
 	fi
-	docker run \
-		--rm \
-		--privileged \
-		--env-file .release-env \
+	docker run --rm --privileged \
+		-v $(PWD):/go/src/myproject \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v `pwd`:/go/src/$(PACKAGE_NAME) \
-		-w /go/src/$(PACKAGE_NAME) \
-		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		release --clean --verbose
+		-w /go/src/myproject \
+		-e GITHUB_TOKEN=$(GITHUB_TOKEN) \
+		ghcr.io/goreleaser/goreleaser-cross:latest release --clean

@@ -10,6 +10,8 @@ jobs:
     services:
       docker:
         image: docker:dind
+        options: >-
+          --storage-driver=overlay2
         env:
           DOCKER_TLS_CERTDIR: ""
     runs-on: ubuntu-latest

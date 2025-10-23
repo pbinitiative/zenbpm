@@ -147,10 +147,10 @@ func (s *Server) TestStopCpuProfile(ctx context.Context, request public.TestStop
 	}, nil
 }
 
-func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetDecisionDefinitionsRequestObject) (public.GetDecisionDefinitionsResponseObject, error) {
-	definitions, err := s.node.GetDecisionDefinitions(ctx)
+func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {
+	definitions, err := s.node.GetDmnResourceDefinitions(ctx)
 	if err != nil {
-		return public.GetDecisionDefinitions502JSONResponse{
+		return public.GetDmnResourceDefinitions502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
@@ -165,12 +165,13 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 		size = int(*request.Params.Size)
 	}
 
-	items := make([]public.DecisionDefinitionSimple, 0)
+	items := make([]public.DmnResourceDefinitionSimple, 0)
 	for _, p := range definitions {
-		processDefinitionSimple := public.DecisionDefinitionSimple{
+		processDefinitionSimple := public.DmnResourceDefinitionSimple{
 			Key:                  fmt.Sprintf("%d", p.GetKey()),
 			Version:              int(p.GetVersion()),
 			DecisionDefinitionId: p.GetDecisionDefinitionId(),
+			ResourceName:         *p.ResourceName,
 		}
 		items = append(items, processDefinitionSimple)
 	}
@@ -180,8 +181,8 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	startIndex := (page - 1) * size
 	endIndex := startIndex + size
 	if startIndex >= totalCount {
-		result := public.DecisionDefinitionsPage{
-			Items: []public.DecisionDefinitionSimple{},
+		result := public.DmnResourceDefinitionsPage{
+			Items: []public.DmnResourceDefinitionSimple{},
 			PageMetadata: public.PageMetadata{
 				Page:       page,
 				Size:       size,
@@ -189,7 +190,7 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 				TotalCount: totalCount,
 			},
 		}
-		return public.GetDecisionDefinitions200JSONResponse(result), nil
+		return public.GetDmnResourceDefinitions200JSONResponse(result), nil
 	}
 
 	if endIndex > totalCount {
@@ -198,7 +199,7 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 
 	pagedItems := items[startIndex:endIndex]
 
-	result := public.DecisionDefinitionsPage{
+	result := public.DmnResourceDefinitionsPage{
 		Items: pagedItems,
 		PageMetadata: public.PageMetadata{
 			Page:       page,
@@ -208,27 +209,28 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 		},
 	}
 
-	return public.GetDecisionDefinitions200JSONResponse(result), nil
+	return public.GetDmnResourceDefinitions200JSONResponse(result), nil
 }
 
-func (s *Server) GetDecisionDefinition(ctx context.Context, request public.GetDecisionDefinitionRequestObject) (public.GetDecisionDefinitionResponseObject, error) {
-	key, err := getKeyFromString(request.DecisionDefinitionKey)
+func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.GetDmnResourceDefinitionRequestObject) (public.GetDmnResourceDefinitionResponseObject, error) {
+	key, err := getKeyFromString(request.DmnResourceDefinitionKey)
 	if err != nil {
-		return public.GetDecisionDefinition400JSONResponse{
+		return public.GetDmnResourceDefinition400JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	definition, err := s.node.GetDecisionDefinition(ctx, key)
+	definition, err := s.node.GetDmnResourceDefinition(ctx, key)
 	if err != nil {
-		return public.GetDecisionDefinition502JSONResponse{
+		return public.GetDmnResourceDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.GetDecisionDefinition200JSONResponse{
-		DecisionDefinitionSimple: public.DecisionDefinitionSimple{
+	return public.GetDmnResourceDefinition200JSONResponse{
+		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
 			DecisionDefinitionId: definition.GetDecisionDefinitionId(),
+			ResourceName:         definition.GetResourceName(),
 			Key:                  fmt.Sprintf("%d", definition.GetKey()),
 			Version:              int(definition.GetVersion()),
 		},
@@ -236,30 +238,30 @@ func (s *Server) GetDecisionDefinition(ctx context.Context, request public.GetDe
 	}, nil
 }
 
-func (s *Server) CreateDecisionDefinition(ctx context.Context, request public.CreateDecisionDefinitionRequestObject) (public.CreateDecisionDefinitionResponseObject, error) {
+func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public.CreateDmnResourceDefinitionRequestObject) (public.CreateDmnResourceDefinitionResponseObject, error) {
 	data, err := io.ReadAll(request.Body)
 	if err != nil {
-		return public.CreateDecisionDefinition400JSONResponse{
+		return public.CreateDmnResourceDefinition400JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	deployResult, err := s.node.DeployDecisionDefinitionToAllPartitions(ctx, data)
+	deployResult, err := s.node.DeployDmnResourceDefinitionToAllPartitions(ctx, data)
 	if err != nil {
-		return public.CreateDecisionDefinition502JSONResponse{
+		return public.CreateDmnResourceDefinition502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
 	if deployResult.IsDuplicate == true {
-		return public.CreateDecisionDefinition409JSONResponse{
+		return public.CreateDmnResourceDefinition409JSONResponse{
 			Code:    "DUPLICATE",
-			Message: fmt.Sprintf("The same decision definition already exists (key: %d)", deployResult.Key),
+			Message: fmt.Sprintf("The same dmn resource definition already exists (key: %d)", deployResult.Key),
 		}, nil
 	}
 
-	return public.CreateDecisionDefinition201JSONResponse{
-		DecisionDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
+	return public.CreateDmnResourceDefinition201JSONResponse{
+		DmnResourceDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
 	}, nil
 }
 
@@ -353,8 +355,8 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			DecisionId:                evaluatedDecision.GetDecisionId(),
 			DecisionName:              evaluatedDecision.GetDecisionName(),
 			DecisionType:              evaluatedDecision.GetDecisionType(),
-			DecisionDefinitionVersion: int(evaluatedDecision.GetDecisionDefinitionVersion()),
-			DecisionDefinitionKey:     fmt.Sprintf("%d", evaluatedDecision.GetDecisionDefinitionKey()),
+			DecisionDefinitionVersion: int(evaluatedDecision.GetDmnResourceDefinitionVersion()),
+			DmnResourceDefinitionKey:  fmt.Sprintf("%d", evaluatedDecision.GetDmnResourceDefinitionKey()),
 			DecisionDefinitionId:      evaluatedDecision.GetDecisionDefinitionId(),
 			MatchedRules:              matchedRules,
 			DecisionOutput:            resultDecisionOutput,

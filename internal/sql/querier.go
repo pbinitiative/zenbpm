@@ -15,6 +15,7 @@ type Querier interface {
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementHistory(ctx context.Context, keys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesBusinessRuleTasks(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
@@ -22,13 +23,14 @@ type Querier interface {
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
-	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
+	FindAllDmnResourceDefinitions(ctx context.Context) ([]DmnResourceDefinition, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
-	FindDecisionByIdAndDecisionDefinitionKey(ctx context.Context, arg FindDecisionByIdAndDecisionDefinitionKeyParams) (Decision, error)
-	FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error)
-	FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error)
-	FindDecisionsById(ctx context.Context, decisionID string) ([]Decision, error)
+	FindBusinessRuleTasksByExecutionTokenIds(ctx context.Context, tokenKeys []int64) ([]BusinessRuleTask, error)
+	FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, arg FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams) (DecisionDefinition, error)
+	FindDecisionDefinitionsById(ctx context.Context, decisionID string) ([]DecisionDefinition, error)
+	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
+	FindDmnResourceDefinitionsById(ctx context.Context, dmnID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
 	FindInactiveInstancesToDelete(ctx context.Context, currunix sql.NullInt64) ([]int64, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
@@ -38,10 +40,10 @@ type Querier interface {
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
 	FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]Job, error)
-	FindLatestDecisionById(ctx context.Context, decisionID string) (Decision, error)
-	FindLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionByIdAndDecisionDefinitionIdParams) (Decision, error)
-	FindLatestDecisionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionByIdAndVersionTagParams) (Decision, error)
-	FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error)
+	FindLatestDecisionDefinitionById(ctx context.Context, decisionID string) (DecisionDefinition, error)
+	FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error)
+	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)
+	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnID string) (DmnResourceDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
@@ -62,8 +64,8 @@ type Querier interface {
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error)
-	GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
+	GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
@@ -73,8 +75,9 @@ type Querier interface {
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
-	SaveDecision(ctx context.Context, arg SaveDecisionParams) error
+	SaveBusinessRuleTask(ctx context.Context, arg SaveBusinessRuleTaskParams) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
+	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error
 	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error

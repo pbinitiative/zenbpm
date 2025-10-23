@@ -78,14 +78,14 @@ Raft consensus and cluster joining settings.
 
 Configuration for caching and storage.
 
-| Field                | Type          | Env Variable                             | Default     | Description                                  |
-|----------------------|---------------|------------------------------------------|-------------|----------------------------------------------|
-| `instanceHistoryTTL` | types.TTL     | `PERSISTENCE_INSTANCE_HISTORY_TTL`       | `0`         | TTL for finished process instances           |
-| `procDefCacheTTL`    | types.TTL     | `PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS` | `24h`       | TTL for cached process definitions           |
-| `procDefCacheSize`   | int           | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions     |
-| `decDefCacheTTL`     | types.TTL     | `PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS`  | `24h`       | TTL for cached decision definitions           |
-| `decDefCacheSize`    | int           | `PERSISTENCE_DEC_DEF_CACHE_SIZE`         | `200`       | Max number of cached decision definitions     |
-| `rqlite`             | `*RqLite`     | —                                        | —           | Configuration for embedded RQLite database   |
+| Field                | Type          | Env Variable                             | Default     | Description                                    |
+|----------------------|---------------|------------------------------------------|-------------|------------------------------------------------|
+| `instanceHistoryTTL` | types.TTL     | `PERSISTENCE_INSTANCE_HISTORY_TTL`       | `0`         | TTL for finished process instances             |
+| `procDefCacheTTL`    | types.TTL     | `PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS` | `24h`       | TTL for cached process definitions             |
+| `procDefCacheSize`   | int           | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions       |
+| `decDefCacheTTL`     | types.TTL     | `PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS`  | `24h`       | TTL for cached dmn resource definitions        |
+| `decDefCacheSize`    | int           | `PERSISTENCE_DEC_DEF_CACHE_SIZE`         | `200`       | Max number of cached dmn resource definitions  |
+| `rqlite`             | `*RqLite`     | —                                        | —           | Configuration for embedded RQLite database     |
 
 ---
 

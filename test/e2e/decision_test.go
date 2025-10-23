@@ -11,8 +11,8 @@ import (
 
 func TestRestApiEvaluateDecision(t *testing.T) {
 	var result public.EvaluatedDRDResult
-	var definition public.DecisionDefinitionSimple
-	err := deployDecisionDefinition(t, "can-autoliquidate-rule.dmn")
+	var definition public.DmnResourceDefinitionSimple
+	err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)
@@ -99,7 +99,7 @@ func evaluateDecision(t testing.TB, bindingType public.EvaluateDecisionJSONBodyB
 		VersionTag:           versionTag,
 	}
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/decisions/%s/evaluate", decisionId)).
+		WithPath(fmt.Sprintf("/v1/decision-definitions/%s/evaluate", decisionId)).
 		WithMethod("POST").
 		WithBody(req).
 		DoOk()

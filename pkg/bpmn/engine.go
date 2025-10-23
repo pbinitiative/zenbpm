@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -774,7 +775,7 @@ func (engine *Engine) createBusinessRuleTask(
 
 	switch element.Implementation.(type) {
 	case *bpmn20.TBusinessRuleTaskLocal:
-		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal))
+		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal), &currentToken)
 	case *bpmn20.TBusinessRuleTaskExternal:
 		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
 	default:
@@ -793,6 +794,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	instance *runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskLocal,
+	token *runtime.ExecutionToken,
 ) (runtime.ActivityState, error) {
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if len(element.GetInputMapping()) > 0 {
@@ -812,6 +814,29 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	if err != nil {
 		instance.State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate business rule %s: %w", element.TTask.Id, err)
+	}
+
+	outputVariables, err := json.Marshal(result.DecisionOutput)
+	if err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to marshal business rule output variables %s: %w", element.TTask.Id, err)
+	}
+	evaluatedDecisions, err := json.Marshal(result.EvaluatedDecisions)
+	if err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to marshal business rule evaluated decisions %s: %w", element.TTask.Id, err)
+	}
+	err = engine.persistence.SaveBusinessRuleTask(ctx, runtime.BusinessRuleTask{
+		Key:                engine.generateKey(),
+		ElementInstanceKey: token.ElementInstanceKey,
+		ElementId:          token.ElementId,
+		ProcessInstanceKey: token.ProcessInstanceKey,
+		DecisionId:         implementation.CalledDecision.DecisionId,
+		CreatedAt:          time.Now(),
+		OutputVariables:    string(outputVariables),
+		EvaluatedDecisions: string(evaluatedDecisions),
+		ExecutionTokenKey:  token.Key,
+	})
+	if err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to save business rule %s: %w", element.TTask.Id, err)
 	}
 
 	if len(element.GetOutputMapping()) > 0 {

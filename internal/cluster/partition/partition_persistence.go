@@ -51,7 +51,7 @@ type DB struct {
 	Partition              uint32
 	tracer                 trace.Tracer
 	pdCache                *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
-	ddCache                *expirable.LRU[int64, dmnruntime.DecisionDefinition]
+	drdCache               *expirable.LRU[int64, dmnruntime.DmnResourceDefinition]
 	client                 *client.ClientManager
 	zenState               func() state.Cluster
 	historyDeleteThreshold int
@@ -92,7 +92,7 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		tracer:                 otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		Partition:              partition,
 		pdCache:                expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Duration(cfg.ProcDefCacheTTL)),
-		ddCache:                expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
+		drdCache:               expirable.NewLRU[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
 		client:                 client,
 		zenState:               zenState,
 		historyDeleteThreshold: 1000,
@@ -130,6 +130,7 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
 	}
+	// TODO: add cleanup for DecisionInstances
 	return err
 }
 
@@ -378,49 +379,49 @@ func (rq *DB) NewBatch() storage.Batch {
 	return batch
 }
 
-var _ storage.DecisionStorageReader = &DB{}
+var _ storage.DecisionDefinitionStorageReader = &DB{}
 
-func (rq *DB) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionById(ctx, decisionId)
+func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	decisionDefinition, err := rq.Queries.FindLatestDecisionDefinitionById(ctx, decisionId)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision by id: %w", err)
+		return res, fmt.Errorf("failed to find latest decision definition by id: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Version:                  decisionDefinition.Version,
+		Id:                       decisionDefinition.DecisionID,
+		VersionTag:               decisionDefinition.VersionTag,
+		DecisionDefinitionId:     decisionDefinition.DecisionDefinitionID,
+		DmnResourceDefinitionKey: decisionDefinition.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
-	dbDecisions, err := rq.Queries.FindDecisionsById(ctx, decisionId)
+func (rq *DB) GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
+	decisionDefinitions, err := rq.Queries.FindDecisionDefinitionsById(ctx, decisionId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find decisions by id: %w", err)
 	}
 
-	res := make([]dmnruntime.Decision, len(dbDecisions))
-	for i, dec := range dbDecisions {
-		res[i] = dmnruntime.Decision{
-			Version:               dec.Version,
-			Id:                    dec.DecisionID,
-			VersionTag:            dec.VersionTag,
-			DecisionDefinitionId:  dec.DecisionDefinitionID,
-			DecisionDefinitionKey: dec.DecisionDefinitionKey,
+	res := make([]dmnruntime.DecisionDefinition, len(decisionDefinitions))
+	for i, dec := range decisionDefinitions {
+		res[i] = dmnruntime.DecisionDefinition{
+			Version:                  dec.Version,
+			Id:                       dec.DecisionID,
+			VersionTag:               dec.VersionTag,
+			DecisionDefinitionId:     dec.DecisionDefinitionID,
+			DmnResourceDefinitionKey: dec.DmnResourceDefinitionKey,
 		}
 	}
 	return res, nil
 }
 
-func (rq *DB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionByIdAndVersionTag(ctx,
-		sql.FindLatestDecisionByIdAndVersionTagParams{
+func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndVersionTag(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndVersionTagParams{
 			DecisionID: decisionId,
 			VersionTag: versionTag,
 		},
@@ -429,21 +430,21 @@ func (rq *DB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId
 		return res, fmt.Errorf("failed to find latest decision by id and version tag: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionByIdAndDecisionDefinitionId(ctx,
-		sql.FindLatestDecisionByIdAndDecisionDefinitionIdParams{
+func (rq *DB) GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams{
 			DecisionID:           decisionId,
 			DecisionDefinitionID: decisionDefinitionId,
 		},
@@ -452,53 +453,53 @@ func (rq *DB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, 
 		return res, fmt.Errorf("failed to find latest decision by id and decisionDefinitionId: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindDecisionByIdAndDecisionDefinitionKey(
+func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, dmnResourceDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(
 		ctx,
-		sql.FindDecisionByIdAndDecisionDefinitionKeyParams{
-			DecisionDefinitionKey: decisionDefinitionKey,
-			DecisionID:            decisionId,
+		sql.FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams{
+			DmnResourceDefinitionKey: dmnResourceDefinitionKey,
+			DecisionID:               decisionId,
 		})
 	if err != nil {
 		return res, fmt.Errorf("failed to find decision by key: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-var _ storage.DecisionStorageWriter = &DB{}
+var _ storage.DecisionDefinitionStorageWriter = &DB{}
 
-func (rq *DB) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
-	return SaveDecisionWith(ctx, rq.Queries, decision)
+func (rq *DB) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	return SaveDecisionDefinitionWith(ctx, rq.Queries, decision)
 }
 
-func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.Decision) error {
-	err := db.SaveDecision(ctx, sql.SaveDecisionParams{
-		Version:               decision.Version,
-		DecisionID:            decision.Id,
-		VersionTag:            decision.VersionTag,
-		DecisionDefinitionID:  decision.DecisionDefinitionId,
-		DecisionDefinitionKey: decision.DecisionDefinitionKey,
+func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.DecisionDefinition) error {
+	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+		Version:                  decision.Version,
+		DecisionID:               decision.Id,
+		VersionTag:               decision.VersionTag,
+		DecisionDefinitionID:     decision.DecisionDefinitionId,
+		DmnResourceDefinitionKey: decision.DmnResourceDefinitionKey,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save decision: %w", err)
@@ -506,14 +507,14 @@ func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.
 	return nil
 }
 
-var _ storage.DecisionDefinitionStorageWriter = &DB{}
+var _ storage.DmnResourceDefinitionStorageWriter = &DB{}
 
-func (rq *DB) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
-	return SaveDecisionDefinitionWith(ctx, rq.Queries, definition)
+func (rq *DB) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	return SaveDmnResourceDefinitionWith(ctx, rq.Queries, definition)
 }
 
-func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DecisionDefinition) error {
-	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DmnResourceDefinition) error {
+	err := db.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
 		DmnID:           definition.Id,
 		Key:             definition.Key,
 		Version:         definition.Version,
@@ -522,21 +523,21 @@ func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, definition
 		DmnResourceName: definition.DmnResourceName,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save decision definition: %w", err)
+		return fmt.Errorf("failed to save dmn resource definition: %w", err)
 	}
 	return nil
 }
 
-var _ storage.DecisionDefinitionStorageReader = &DB{}
+var _ storage.DmnResourceDefinitionStorageReader = &DB{}
 
-func (rq *DB) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
-	var res dmnruntime.DecisionDefinition
-	dbDefinition, err := rq.Queries.FindLatestDecisionDefinitionById(ctx, decisionDefinitionId)
+func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
+	var res dmnruntime.DmnResourceDefinition
+	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, decisionDefinitionId)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision definition: %w", err)
+		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
 
-	dd, ok := rq.ddCache.Get(dbDefinition.Key)
+	dd, ok := rq.drdCache.Get(dbDefinition.Key)
 	if ok {
 		return dd, nil
 	}
@@ -547,7 +548,7 @@ func (rq *DB) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefi
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
-	res = dmnruntime.DecisionDefinition{
+	res = dmnruntime.DmnResourceDefinition{
 		Id:              dbDefinition.DmnID,
 		Version:         dbDefinition.Version,
 		Key:             dbDefinition.Key,
@@ -557,55 +558,55 @@ func (rq *DB) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefi
 		DmnChecksum:     [16]byte(dbDefinition.DmnChecksum),
 	}
 
-	rq.ddCache.Add(dbDefinition.Key, res)
+	rq.drdCache.Add(dbDefinition.Key, res)
 
 	return res, nil
 }
 
-func (rq *DB) FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
-	dd, ok := rq.ddCache.Get(decisionDefinitionKey)
+func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error) {
+	dd, ok := rq.drdCache.Get(dmnResourceDefinitionKey)
 	if ok {
 		return dd, nil
 	}
 
-	var res dmnruntime.DecisionDefinition
-	dbDefinition, err := rq.Queries.FindDecisionDefinitionByKey(ctx, decisionDefinitionKey)
+	var res dmnruntime.DmnResourceDefinition
+	drd, err := rq.Queries.FindDmnResourceDefinitionByKey(ctx, dmnResourceDefinitionKey)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision definition: %w", err)
+		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
 
 	var definitions dmn.TDefinitions
-	err = xml.Unmarshal([]byte(dbDefinition.DmnData), &definitions)
+	err = xml.Unmarshal([]byte(drd.DmnData), &definitions)
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
-	res = dmnruntime.DecisionDefinition{
-		Id:              dbDefinition.DmnID,
-		Version:         dbDefinition.Version,
-		Key:             dbDefinition.Key,
+	res = dmnruntime.DmnResourceDefinition{
+		Id:              drd.DmnID,
+		Version:         drd.Version,
+		Key:             drd.Key,
 		Definitions:     definitions,
-		DmnData:         []byte(dbDefinition.DmnData),
-		DmnResourceName: dbDefinition.DmnResourceName,
-		DmnChecksum:     [16]byte(dbDefinition.DmnChecksum),
+		DmnData:         []byte(drd.DmnData),
+		DmnResourceName: drd.DmnResourceName,
+		DmnChecksum:     [16]byte(drd.DmnChecksum),
 	}
 
-	rq.ddCache.Add(decisionDefinitionKey, res)
+	rq.drdCache.Add(dmnResourceDefinitionKey, res)
 
 	return res, nil
 }
 
-func (rq *DB) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error) {
-	dbDefinitions, err := rq.Queries.FindDecisionDefinitionsById(ctx, decisionDefinitionId)
+func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
+	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, decisionDefinitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find decision definitions by id: %w", err)
+		return nil, fmt.Errorf("failed to find dmn resource definitions by id: %w", err)
 	}
 
-	res := make([]dmnruntime.DecisionDefinition, len(dbDefinitions))
-	for i, def := range dbDefinitions {
-		dd, ok := rq.ddCache.Get(def.Key)
+	res := make([]dmnruntime.DmnResourceDefinition, len(drds))
+	for i, def := range drds {
+		drd, ok := rq.drdCache.Get(def.Key)
 		if ok {
-			res[i] = dd
+			res[i] = drd
 			continue
 		}
 
@@ -614,7 +615,7 @@ func (rq *DB) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitio
 		if err != nil {
 			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 		}
-		res[i] = dmnruntime.DecisionDefinition{
+		res[i] = dmnruntime.DmnResourceDefinition{
 			Id:              def.DmnID,
 			Version:         def.Version,
 			Key:             def.Key,
@@ -624,9 +625,37 @@ func (rq *DB) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitio
 			DmnChecksum:     [16]byte(def.DmnChecksum),
 		}
 
-		rq.ddCache.Add(def.Key, res[i])
+		rq.drdCache.Add(def.Key, res[i])
 	}
 	return res, nil
+}
+
+var _ storage.DecisionInstanceStorageWriter = &DB{}
+
+func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
+	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
+		Key:                result.Key,
+		DecisionID:         result.DecisionId,
+		OutputVariables:    result.OutputVariables,
+		EvaluatedDecisions: result.EvaluatedDecisions,
+		CreatedAt:          result.CreatedAt.UnixMilli(),
+	})
+}
+
+var _ storage.DecisionInstanceStorageReader = &DB{}
+
+func (rq *DB) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error) {
+	result, err := rq.Queries.FindDecisionInstanceByKey(ctx, key)
+	if err != nil {
+		return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision results by execution token ids: %w", err)
+	}
+	return dmnruntime.DecisionInstance{
+		Key:                result.Key,
+		DecisionId:         result.DecisionID,
+		OutputVariables:    result.OutputVariables,
+		EvaluatedDecisions: result.EvaluatedDecisions,
+		CreatedAt:          time.UnixMilli(result.CreatedAt),
+	}, nil
 }
 
 var _ storage.ProcessDefinitionStorageReader = &DB{}

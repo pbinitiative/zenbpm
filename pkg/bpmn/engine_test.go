@@ -475,7 +475,7 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 
 	definition, xmldata, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	assert.NoError(t, err)
-	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
+	_, _, err = bpmnEngine.dmnEngine.SaveDmnResourceDefinition(
 		t.Context(),
 		"",
 		definition,

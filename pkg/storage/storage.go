@@ -35,10 +35,12 @@ type Storage interface {
 }
 
 type DecisionStorage interface {
+	DmnResourceDefinitionStorageReader
+	DmnResourceDefinitionStorageWriter
 	DecisionDefinitionStorageReader
 	DecisionDefinitionStorageWriter
-	DecisionStorageReader
-	DecisionStorageWriter
+	DecisionInstanceStorageReader
+	DecisionInstanceStorageWriter
 
 	GenerateId() int64
 }
@@ -62,36 +64,44 @@ type Batch interface {
 	AddPostFlushAction(ctx context.Context, f func())
 }
 
-type DecisionStorageReader interface {
-	GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
-
-	GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error)
-
-	GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error)
-
-	GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error)
-
-	GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error)
-}
-
-type DecisionStorageWriter interface {
-	SaveDecision(ctx context.Context, decision dmnruntime.Decision) error
-}
-
 type DecisionDefinitionStorageReader interface {
-	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
+	GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error)
 
-	FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
+	GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error)
 
-	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
-	// result array is ordered by version number desc
-	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
+	GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error)
+
+	GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
+
+	GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
 }
 
 type DecisionDefinitionStorageWriter interface {
-	// SaveDecisionDefinition persists a DecisionDefinition
+	SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error
+}
+
+type DmnResourceDefinitionStorageReader interface {
+	FindLatestDmnResourceDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DmnResourceDefinition, error)
+
+	FindDmnResourceDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error)
+
+	// FindDmnResourceDefinitionsById return zero or many registered DmnResourceDefinitions with given ID
+	// result array is ordered by version number desc
+	FindDmnResourceDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error)
+}
+
+type DmnResourceDefinitionStorageWriter interface {
+	// SaveDmnResourceDefinition persists a DmnResourceDefinition
 	// and potentially overwrites prior data stored with the given DecisionKey
-	SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error
+	SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error
+}
+
+type DecisionInstanceStorageWriter interface {
+	SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error
+}
+
+type DecisionInstanceStorageReader interface {
+	FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error)
 }
 
 type ProcessDefinitionStorageReader interface {

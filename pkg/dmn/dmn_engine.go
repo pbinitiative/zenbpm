@@ -3,8 +3,14 @@ package dmn
 import (
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"maps"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/dop251/goja"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
@@ -12,10 +18,6 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
-	"maps"
-	"os"
-	"strings"
-	"time"
 )
 
 type ZenDmnEngine struct {
@@ -67,20 +69,20 @@ func (engine *ZenDmnEngine) ParseDmnFromBytes(resourceName string, xmlData []byt
 	var definition dmn.TDefinitions
 	err := xml.Unmarshal(xmlData, &definition)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse decision definition from bytes: %v, %w", resourceName, err)
+		return nil, fmt.Errorf("failed to parse dmn resource definition from bytes: %v, %w", resourceName, err)
 	}
 	return &definition, nil
 }
 
-func (engine *ZenDmnEngine) SaveDecisionDefinition(
+func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 	ctx context.Context,
 	resourceName string,
 	definition *dmn.TDefinitions,
 	xmlData []byte,
 	key int64,
-) (*runtime.DecisionDefinition, []runtime.Decision, error) {
+) (*runtime.DmnResourceDefinition, []runtime.DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
-	decisionDefinition := runtime.DecisionDefinition{
+	dmnResourceDefinition := runtime.DmnResourceDefinition{
 		Version:         1,
 		Id:              definition.Id,
 		Key:             key,
@@ -89,66 +91,66 @@ func (engine *ZenDmnEngine) SaveDecisionDefinition(
 		DmnChecksum:     md5sum,
 		DmnResourceName: resourceName,
 	}
-	decisions := make([]runtime.Decision, 0)
-	for _, decision := range definition.Decisions {
-		tdecision := runtime.Decision{
-			Version:               1,
-			Id:                    decision.Id,
-			VersionTag:            decision.VersionTag.Value,
-			DecisionDefinitionId:  decisionDefinition.Id,
-			DecisionDefinitionKey: decisionDefinition.Key,
+	decisionDefinitions := make([]runtime.DecisionDefinition, 0)
+	for _, definition := range definition.Decisions {
+		decisionDefinition := runtime.DecisionDefinition{
+			Version:                  1,
+			Id:                       definition.Id,
+			VersionTag:               definition.VersionTag.Value,
+			DecisionDefinitionId:     dmnResourceDefinition.Id,
+			DmnResourceDefinitionKey: dmnResourceDefinition.Key,
 		}
-		decisions = append(decisions, tdecision)
+		decisionDefinitions = append(decisionDefinitions, decisionDefinition)
 	}
-	return engine.saveDecisionDefinition(ctx, decisionDefinition, decisions)
+	return engine.saveDmnResourceDefinition(ctx, dmnResourceDefinition, decisionDefinitions)
 }
 
-func (engine *ZenDmnEngine) saveDecisionDefinition(
+func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 	ctx context.Context,
-	decisionDefinition runtime.DecisionDefinition,
-	decisions []runtime.Decision,
-) (*runtime.DecisionDefinition, []runtime.Decision, error) {
-	decisionDefinitions, err := engine.persistence.FindDecisionDefinitionsById(ctx, decisionDefinition.Id)
+	dmnResourceDefinition runtime.DmnResourceDefinition,
+	decisionDefinitions []runtime.DecisionDefinition,
+) (*runtime.DmnResourceDefinition, []runtime.DecisionDefinition, error) {
+	dmnResourceDefinitions, err := engine.persistence.FindDmnResourceDefinitionsById(ctx, dmnResourceDefinition.Id)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to saveDecisionDefinition decision definition by id %s: %w", decisionDefinition.Id, err)
+		return nil, nil, fmt.Errorf("failed to saveDmnResourceDefinition dmnResourceDefinition by id %s: %w", dmnResourceDefinition.Id, err)
 	}
-	if len(decisionDefinitions) > 0 {
-		latestIndex := len(decisionDefinitions) - 1
-		if decisionDefinitions[latestIndex].DmnChecksum == decisionDefinition.DmnChecksum {
-			return &decisionDefinitions[latestIndex], nil, nil
+	if len(dmnResourceDefinitions) > 0 {
+		latestIndex := len(dmnResourceDefinitions) - 1
+		if dmnResourceDefinitions[latestIndex].DmnChecksum == dmnResourceDefinition.DmnChecksum {
+			return &dmnResourceDefinitions[latestIndex], nil, nil
 		}
-		decisionDefinition.Version = decisionDefinitions[latestIndex].Version + 1
+		dmnResourceDefinition.Version = dmnResourceDefinitions[latestIndex].Version + 1
 	}
-	err = engine.persistence.SaveDecisionDefinition(ctx, decisionDefinition)
+	err = engine.persistence.SaveDmnResourceDefinition(ctx, dmnResourceDefinition)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to save decision definition by id %s: %w", decisionDefinition.Id, err)
+		return nil, nil, fmt.Errorf("failed to save decisionDefinition definition by id %s: %w", dmnResourceDefinition.Id, err)
 	}
 
-	resultDecisions := make([]runtime.Decision, 0)
-	for _, decision := range decisions {
-		tdecisions, err := engine.persistence.GetDecisionsById(ctx, decision.Id)
+	resultDecisions := make([]runtime.DecisionDefinition, 0)
+	for _, decisionDefinition := range decisionDefinitions {
+		decisionDefinitions, err := engine.persistence.GetDecisionDefinitionsById(ctx, decisionDefinition.Id)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to save decision in decision definition %s by id %s: %w", decisionDefinition.Id, decision.Id, err)
+			return nil, nil, fmt.Errorf("failed to save decisionDefinition in dmn resource definition %s by id %s: %w", dmnResourceDefinition.Id, decisionDefinition.Id, err)
 		}
-		if len(tdecisions) > 0 {
-			latestIndex := len(tdecisions) - 1
-			decision.Version = tdecisions[latestIndex].Version + 1
+		if len(decisionDefinitions) > 0 {
+			latestIndex := len(decisionDefinitions) - 1
+			decisionDefinition.Version = decisionDefinitions[latestIndex].Version + 1
 		}
-		err = engine.persistence.SaveDecision(ctx, decision)
+		err = engine.persistence.SaveDecisionDefinition(ctx, decisionDefinition)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to save decision in decision definition %s by id %s: %w", decisionDefinition.Id, decision.Id, err)
+			return nil, nil, fmt.Errorf("failed to save decisionDefinition in decisionDefinition definition %s by id %s: %w", dmnResourceDefinition.Id, decisionDefinition.Id, err)
 		}
-		resultDecisions = append(resultDecisions, decision)
+		resultDecisions = append(resultDecisions, decisionDefinition)
 	}
 
-	return &decisionDefinition, resultDecisions, engine.Validate(ctx, &decisionDefinition)
+	return &dmnResourceDefinition, resultDecisions, engine.Validate(ctx, &dmnResourceDefinition)
 }
 
 func (engine *ZenDmnEngine) generateKey() int64 {
 	return engine.persistence.GenerateId()
 }
 
-func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DecisionDefinition) error {
+func (engine *ZenDmnEngine) Validate(ctx context.Context, dmnDefinition *runtime.DmnResourceDefinition) error {
 	// TODO: Implement validation - Cyclic Requirements, unique ids, etc.
 	return nil
 }
@@ -161,8 +163,8 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 	versionTag string,
 	inputVariableContext map[string]interface{},
 ) (*EvaluatedDRDResult, error) {
-	var decision runtime.Decision
 	var decisionDefinition runtime.DecisionDefinition
+	var dmnResourceDefinition runtime.DmnResourceDefinition
 	var err error
 
 	switch bindingType {
@@ -171,52 +173,52 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		switch len(decisionPath) {
 		case 1:
 			decisionId = decisionPath[0]
-			decision, err = engine.persistence.GetLatestDecisionById(ctx, decisionId)
+			decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionById(ctx, decisionId)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decision %s : %w", decisionId, err)
+				return nil, fmt.Errorf("failed to find decisionDefinition %s : %w", decisionId, err)
 			}
-			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+			dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
-					decision.DecisionDefinitionId,
-					decision.DecisionDefinitionKey,
-					decision.Id,
+				return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
+					decisionDefinition.DecisionDefinitionId,
+					decisionDefinition.DmnResourceDefinitionKey,
+					decisionDefinition.Id,
 					err,
 				)
 			}
 		case 2:
 			decisionDefinitionId := decisionPath[0]
 			decisionId = decisionPath[1]
-			decision, err = engine.persistence.GetLatestDecisionByIdAndDecisionDefinitionId(ctx, decisionId, decisionDefinitionId)
+			decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx, decisionId, decisionDefinitionId)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decision %s stored in decisionDefinition %s : %w", decisionId, decisionDefinitionId, err)
+				return nil, fmt.Errorf("failed to find decisionDefinition %s stored in decisionDefinition %s : %w", decisionId, decisionDefinitionId, err)
 			}
-			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+			dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
-					decision.DecisionDefinitionId,
-					decision.DecisionDefinitionKey,
-					decision.Id,
+				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decisionDefinition %s : %w",
+					decisionDefinition.DecisionDefinitionId,
+					decisionDefinition.DmnResourceDefinitionKey,
+					decisionDefinition.Id,
 					err,
 				)
 			}
 		default:
-			return nil, fmt.Errorf("failed to process decision %s : DecisionId has wrong format", decisionPath)
+			return nil, fmt.Errorf("failed to process decisionDefinition %s : DecisionId has wrong format", decisionPath)
 		}
 	case "deployment":
 		//TODO: Implement binding type deployment
-		return nil, fmt.Errorf("failed to process decision %s : bindingType \"deployment\" unsuported", decisionId)
+		return nil, fmt.Errorf("failed to process decisionDefinition %s : bindingType \"deployment\" unsuported", decisionId)
 	case "versionTag":
-		decision, err = engine.persistence.GetLatestDecisionByIdAndVersionTag(ctx, decisionId, versionTag)
+		decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionByIdAndVersionTag(ctx, decisionId, versionTag)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find decision %s with versionTag %s : %w", decisionId, versionTag, err)
+			return nil, fmt.Errorf("failed to find decisionDefinition %s with versionTag %s : %w", decisionId, versionTag, err)
 		}
-		decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+		dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
-				decision.DecisionDefinitionId,
-				decision.DecisionDefinitionKey,
-				decision.Id,
+			return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
+				decisionDefinition.DecisionDefinitionId,
+				decisionDefinition.DmnResourceDefinitionKey,
+				decisionDefinition.Id,
 				err,
 			)
 		}
@@ -226,8 +228,8 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 
 	result, err := engine.evaluateDRD(
 		ctx,
+		&dmnResourceDefinition,
 		&decisionDefinition,
-		&decision,
 		inputVariableContext,
 	)
 	if err != nil {
@@ -237,13 +239,18 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 	return result, nil
 }
 
-func (engine *ZenDmnEngine) evaluateDRD(ctx context.Context, decisionDefinition *runtime.DecisionDefinition, decision *runtime.Decision, inputVariableContext map[string]interface{}) (*EvaluatedDRDResult, error) {
-	result, dependencies, err := engine.evaluateDecision(ctx, decisionDefinition, decision.Id, inputVariableContext)
+func (engine *ZenDmnEngine) evaluateDRD(
+	ctx context.Context,
+	dmnResourceDefinition *runtime.DmnResourceDefinition,
+	decisionDefinition *runtime.DecisionDefinition,
+	inputVariableContext map[string]interface{},
+) (*EvaluatedDRDResult, error) {
+	result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, decisionDefinition.Id, inputVariableContext)
 	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate Decision %s in DecisionDefinition %s:%d: %w",
-			decision.Id,
+		return nil, fmt.Errorf("failed to evaluate DecisionDefinition %s in DmnResourceDefinition %s:%d: %w",
 			decisionDefinition.Id,
-			decisionDefinition.Key,
+			dmnResourceDefinition.Id,
+			dmnResourceDefinition.Key,
 			err)
 	}
 
@@ -253,15 +260,43 @@ func (engine *ZenDmnEngine) evaluateDRD(ctx context.Context, decisionDefinition 
 		decisionOutput = value
 	}
 
+	// TODO save here to decision_instance
+
+	outputVariables, err := json.Marshal(decisionOutput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal business rule output variables: %w", err)
+	}
+	evaluatedDecisionsJson, err := json.Marshal(evaluatedDecisions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal business rule evaluated decisions: %w", err)
+	}
+	decisionInstanceKey := engine.generateKey()
+	err = engine.persistence.SaveDecisionInstance(ctx, runtime.DecisionInstance{
+		Key:                decisionInstanceKey,
+		DecisionId:         decisionDefinition.Id,
+		CreatedAt:          time.Now(),
+		OutputVariables:    string(outputVariables),
+		EvaluatedDecisions: string(evaluatedDecisionsJson),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to save business rule: %w", err)
+	}
+
 	return &EvaluatedDRDResult{
-		EvaluatedDecisions: evaluatedDecisions,
-		DecisionOutput:     decisionOutput,
+		EvaluatedDecisions:  evaluatedDecisions,
+		DecisionOutput:      decisionOutput,
+		DecisionInstanceKey: decisionInstanceKey,
 	}, nil
 }
 
 // EvaluateDecision TODO: better error report
-func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefinition *runtime.DecisionDefinition, decisionId string, inputVariableContext map[string]interface{}) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
-	foundDecision := findDecision(decisionDefinition, decisionId)
+func (engine *ZenDmnEngine) evaluateDecision(
+	ctx context.Context,
+	dmnResourceDefinition *runtime.DmnResourceDefinition,
+	decisionId string,
+	inputVariableContext map[string]interface{},
+) (EvaluatedDecisionResult, []EvaluatedDecisionResult, error) {
+	foundDecision := findDecisionDefinition(dmnResourceDefinition, decisionId)
 	if foundDecision == nil {
 		return EvaluatedDecisionResult{}, nil, &DecisionNotFoundError{DecisionID: decisionId}
 	}
@@ -279,7 +314,7 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 			requiredDecisionRef := requirement.RequiredResource.(dmn.TRequiredDecision).Href
 
 			requiredDecisionId := strings.TrimPrefix(requiredDecisionRef, "#")
-			result, dependencies, err := engine.evaluateDecision(ctx, decisionDefinition, requiredDecisionId, inputVariableContext)
+			result, dependencies, err := engine.evaluateDecision(ctx, dmnResourceDefinition, requiredDecisionId, inputVariableContext)
 			if err != nil {
 				return result, dependencies, err
 			}
@@ -294,7 +329,7 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 
 			requiredInputId := strings.TrimPrefix(requiredInputRef, "#")
 
-			for _, input := range decisionDefinition.Definitions.InputData {
+			for _, input := range dmnResourceDefinition.Definitions.InputData {
 				if input.Id == requiredInputId {
 					if _, ok := inputVariableContext[input.Name]; !ok {
 						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", input.Name)
@@ -341,9 +376,9 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 		DecisionId:                foundDecision.Id,
 		DecisionName:              foundDecision.Name,
 		DecisionType:              "<literalExpression>",
-		DecisionDefinitionVersion: decisionDefinition.Version,
-		DecisionDefinitionKey:     decisionDefinition.Key,
-		DecisionDefinitionId:      decisionDefinition.Id,
+		DecisionDefinitionVersion: dmnResourceDefinition.Version,
+		DecisionDefinitionKey:     dmnResourceDefinition.Key,
+		DecisionDefinitionId:      dmnResourceDefinition.Id,
 		MatchedRules:              matchedRules,
 		EvaluatedInputs:           evaluatedInputs,
 		DecisionOutput:            decisionOutput,

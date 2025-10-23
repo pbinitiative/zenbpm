@@ -1,14 +1,15 @@
 -- name: SaveDecisionDefinition :exec
-INSERT INTO decision_definition(key, version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name)
-    VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO decision_definition(version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key)
+    VALUES (?, ?, ?, ?, ?);
 
--- name: FindDecisionDefinitionByKey :one
+-- name: FindDecisionDefinitionByIdAndDmnResourceDefinitionKey :one
 SELECT
     *
 FROM
     decision_definition
 WHERE
-    key = @key;
+    dmn_resource_definition_key = @dmn_resource_definition_key
+    and decision_id = @decision_id;
 
 -- name: FindLatestDecisionDefinitionById :one
 SELECT
@@ -16,7 +17,31 @@ SELECT
 FROM
     decision_definition
 WHERE
-    dmn_id = @dmn_id
+    decision_id = @decision_id
+ORDER BY
+    version DESC
+LIMIT 1;
+
+-- name: FindLatestDecisionDefinitionByIdAndVersionTag :one
+SELECT
+    *
+FROM
+    decision_definition
+WHERE
+    decision_id = @decision_id
+    AND version_tag = @version_tag
+ORDER BY
+    version DESC
+LIMIT 1;
+
+-- name: FindLatestDecisionDefinitionByIdAndDecisionDefinitionId :one
+SELECT
+    *
+FROM
+    decision_definition d
+WHERE
+    decision_id = @decision_id
+    AND decision_definition_id = @decision_definition_id
 ORDER BY
     version DESC
 LIMIT 1;
@@ -27,24 +52,6 @@ SELECT
 FROM
     decision_definition
 WHERE
-    dmn_id = @dmn_id
-ORDER BY
-    version ASC;
-
--- name: FindAllDecisionDefinitions :many
-SELECT
-    *
-FROM
-    decision_definition
+    decision_id = @decision_id
 ORDER BY
     version DESC;
-
--- name: GetDecisionDefinitionKeyByChecksum :one
-SELECT
-    key
-FROM
-    decision_definition
-WHERE
-    dmn_checksum = @dmn_checksum
-LIMIT 1;
-

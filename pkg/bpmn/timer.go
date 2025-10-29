@@ -89,7 +89,7 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 		completeTimerSpan.End()
 	}()
-	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
+	inst, err := engine.persistence.GetProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", timer.ProcessInstanceKey), err)
 	}
@@ -173,7 +173,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+		job, err := engine.persistence.GetJobByElementID(ctx, instance.Key, token.ElementId)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
@@ -184,7 +184,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 		}
 		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
 		// cancel all called processes
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		calledProcesses, err := engine.persistence.GetProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}

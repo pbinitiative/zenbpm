@@ -54,7 +54,7 @@ func TestUserTasksCanBeContinue(t *testing.T) {
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	// then

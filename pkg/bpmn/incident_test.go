@@ -29,13 +29,13 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 	assert.Error(t, err)
 
 	// then
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.GetIncidentsByProcessInstanceKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 	assert.Empty(t, incidents[0].ResolvedAt)
 	assert.Equal(t, runtime.TokenStateFailed, incidents[0].Token.State)
 
-	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceRes, err := store.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateFailed, instanceRes.State)
 
@@ -61,7 +61,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.Error(t, err)
 
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.GetIncidentsByProcessInstanceKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 
@@ -73,11 +73,11 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	err = bpmnEngine.ResolveIncident(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 
-	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceRes, err := store.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instanceRes.State)
 
-	incident, err := bpmnEngine.persistence.FindIncidentByKey(t.Context(), incidents[0].Key)
+	incident, err := bpmnEngine.persistence.GetIncidentByKey(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
 

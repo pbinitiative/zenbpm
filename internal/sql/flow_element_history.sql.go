@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const getFlowElementHistory = `-- name: GetFlowElementHistory :many
+const findFlowElementHistory = `-- name: FindFlowElementHistory :many
 SELECT
     "key", element_id, process_instance_key, created_at
 FROM
@@ -18,8 +18,8 @@ WHERE
     process_instance_key = ?1
 `
 
-func (q *Queries) GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error) {
-	rows, err := q.db.QueryContext(ctx, getFlowElementHistory, processInstanceKey)
+func (q *Queries) FindFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error) {
+	rows, err := q.db.QueryContext(ctx, findFlowElementHistory, processInstanceKey)
 	if err != nil {
 		return nil, err
 	}

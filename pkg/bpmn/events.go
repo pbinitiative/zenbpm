@@ -15,7 +15,7 @@ import (
 
 // PublishMessageByName publishes a message by name and correlationKey and also adds variables to the process instance
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
-	subscriptionKey, err := engine.persistence.FindActiveMessageSubscriptionKey(ctx, name, correlationKey)
+	subscriptionKey, err := engine.persistence.GetActiveMessageSubscriptionKey(ctx, name, correlationKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %s", name), err)
 	}
@@ -24,12 +24,12 @@ func (engine *Engine) PublishMessageByName(ctx context.Context, name string, cor
 
 // PublishMessage publishes a message given by subscriptionkey and also adds variables to the process instance, which fetches this event
 func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64, variables map[string]interface{}) error {
-	message, err := engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
+	message, err := engine.persistence.GetMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
 	}
 
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
+	instance, err := engine.persistence.GetProcessInstanceByKey(ctx, message.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("no process instance with key: %d", message.ProcessInstanceKey), err)
 	}
@@ -166,7 +166,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+		job, err := engine.persistence.GetJobByElementID(ctx, instance.Key, token.ElementId)
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
@@ -180,7 +180,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 		}
 		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
 		// cancel all called processes
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		calledProcesses, err := engine.persistence.GetProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}
@@ -206,7 +206,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 
 func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, token *runtime.ExecutionToken) error {
 	// cancel other message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := engine.persistence.GetProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
 	}
@@ -219,7 +219,7 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch sto
 	}
 
 	// cancel other timer subscriptions
-	timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
+	timers, err := engine.persistence.GetTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
 		return fmt.Errorf("failed to find timers for instance %d: %w", instance.Key, err)
 	}
@@ -287,7 +287,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 		batch.SaveTimer(ctx, timer)
 		token = timer.Token
 	}
-	msubs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
+	msubs, err := engine.persistence.GetTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find message subscriptions to cancel for token %+v", token.Key)
 	}
@@ -298,7 +298,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 		sub.State = runtime.ActivityStateTerminated
 		batch.SaveMessageSubscription(ctx, sub)
 	}
-	tsubs, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
+	tsubs, err := engine.persistence.GetTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find timer subscriptions to cancel for token %+v", token.Key)
 	}

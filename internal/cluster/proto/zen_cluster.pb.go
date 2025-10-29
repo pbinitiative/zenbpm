@@ -5982,7 +5982,7 @@ var file_zen_cluster_proto_depIdxs = []int32{
 	62, // 77: cluster.ZenService.GetJobs:input_type -> cluster.GetJobsRequest
 	54, // 78: cluster.ZenService.GetProcessInstance:input_type -> cluster.GetProcessInstanceRequest
 	56, // 79: cluster.ZenService.GetProcessInstanceJobs:input_type -> cluster.GetProcessInstanceJobsRequest
-	58, // 80: cluster.ZenService.GetFlowElementHistory:input_type -> cluster.GetFlowElementHistoryRequest
+	58, // 80: cluster.ZenService.FindFlowElementHistory:input_type -> cluster.GetFlowElementHistoryRequest
 	60, // 81: cluster.ZenService.GetIncidents:input_type -> cluster.GetIncidentsRequest
 	65, // 82: cluster.ZenService.ResolveIncident:input_type -> cluster.ResolveIncidentRequest
 	67, // 83: cluster.ZenService.SubscribeJob:input_type -> cluster.SubscribeJobRequest
@@ -6019,7 +6019,7 @@ var file_zen_cluster_proto_depIdxs = []int32{
 	64, // 114: cluster.ZenService.GetJobs:output_type -> cluster.GetJobsResponse
 	55, // 115: cluster.ZenService.GetProcessInstance:output_type -> cluster.GetProcessInstanceResponse
 	57, // 116: cluster.ZenService.GetProcessInstanceJobs:output_type -> cluster.GetProcessInstanceJobsResponse
-	59, // 117: cluster.ZenService.GetFlowElementHistory:output_type -> cluster.GetFlowElementHistoryResponse
+	59, // 117: cluster.ZenService.FindFlowElementHistory:output_type -> cluster.GetFlowElementHistoryResponse
 	61, // 118: cluster.ZenService.GetIncidents:output_type -> cluster.GetIncidentsResponse
 	66, // 119: cluster.ZenService.ResolveIncident:output_type -> cluster.ResolveIncidentResponse
 	68, // 120: cluster.ZenService.SubscribeJob:output_type -> cluster.SubscribeJobResponse

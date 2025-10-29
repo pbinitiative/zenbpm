@@ -218,7 +218,7 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 		})
 		assert.NoError(t, err)
 
-		pointer, err := db.FindActiveMessageSubscriptionPointer(t.Context(), "test-message", "duplicate_correlation_key_batch")
+		pointer, err := db.GetActiveMessageSubscriptionPointer(t.Context(), "test-message", "duplicate_correlation_key_batch")
 		batch := db.NewBatch()
 		err = batch.SaveMessageSubscription(t.Context(), runtime.MessageSubscription{
 			Key:                  db.GenerateId(),
@@ -296,11 +296,11 @@ func testInstanceParent(t *testing.T, db *DB) {
 	}
 	err = db.SaveProcessInstance(t.Context(), inst2)
 	assert.NoError(t, err)
-	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.Key)
+	dbInst1, err := db.GetProcessInstanceByKey(t.Context(), inst1.Key)
 	assert.NoError(t, err)
 	assert.Nil(t, dbInst1.ParentProcessExecutionToken)
 
-	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.Key)
+	dbInst2, err := db.GetProcessInstanceByKey(t.Context(), inst2.Key)
 	assert.NoError(t, err)
 	assert.NotNil(t, dbInst2.ParentProcessExecutionToken)
 }

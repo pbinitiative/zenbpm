@@ -7,184 +7,21 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 )
 
-const findAllProcessDefinitions = `-- name: FindAllProcessDefinitions :many
+const countProcessDefinitions = `-- name: CountProcessDefinitions :one
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    COUNT(1)
 FROM
     process_definition
-ORDER BY
-    version DESC
 `
 
-func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findAllProcessDefinitions)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessDefinition{}
-	for rows.Next() {
-		var i ProcessDefinition
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.BpmnProcessID,
-			&i.BpmnData,
-			&i.BpmnChecksum,
-			&i.BpmnResourceName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findLatestProcessDefinitionById = `-- name: FindLatestProcessDefinitionById :one
-SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
-FROM
-    process_definition
-WHERE
-    bpmn_process_id = ?1
-ORDER BY
-    version DESC
-LIMIT 1
-`
-
-func (q *Queries) FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findLatestProcessDefinitionById, bpmnProcessID)
-	var i ProcessDefinition
-	err := row.Scan(
-		&i.Key,
-		&i.Version,
-		&i.BpmnProcessID,
-		&i.BpmnData,
-		&i.BpmnChecksum,
-		&i.BpmnResourceName,
-	)
-	return i, err
-}
-
-const findProcessDefinitionByKey = `-- name: FindProcessDefinitionByKey :one
-SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
-FROM
-    process_definition
-WHERE
-    key = ?1
-`
-
-func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findProcessDefinitionByKey, key)
-	var i ProcessDefinition
-	err := row.Scan(
-		&i.Key,
-		&i.Version,
-		&i.BpmnProcessID,
-		&i.BpmnData,
-		&i.BpmnChecksum,
-		&i.BpmnResourceName,
-	)
-	return i, err
-}
-
-const findProcessDefinitions = `-- name: FindProcessDefinitions :many
-SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
-FROM
-    process_definition
-WHERE
-    COALESCE(?1, "key") = "key"
-    AND COALESCE(?2, bpmn_process_id) = bpmn_process_id
-ORDER BY
-    version DESC
-`
-
-type FindProcessDefinitionsParams struct {
-	Key           sql.NullInt64  `json:"key"`
-	BpmnProcessID sql.NullString `json:"bpmn_process_id"`
-}
-
-func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessDefinitions, arg.Key, arg.BpmnProcessID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessDefinition{}
-	for rows.Next() {
-		var i ProcessDefinition
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.BpmnProcessID,
-			&i.BpmnData,
-			&i.BpmnChecksum,
-			&i.BpmnResourceName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findProcessDefinitionsById = `-- name: FindProcessDefinitionsById :many
-SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
-FROM
-    process_definition
-WHERE
-    bpmn_process_id = ?1
-ORDER BY
-    version asc
-`
-
-func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsById, bpmnProcessIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessDefinition{}
-	for rows.Next() {
-		var i ProcessDefinition
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.BpmnProcessID,
-			&i.BpmnData,
-			&i.BpmnChecksum,
-			&i.BpmnResourceName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) CountProcessDefinitions(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countProcessDefinitions)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const findProcessDefinitionsByKeys = `-- name: FindProcessDefinitionsByKeys :many
@@ -236,6 +73,52 @@ func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64
 	return items, nil
 }
 
+const findProcessDefinitionsPage = `-- name: FindProcessDefinitionsPage :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+ORDER BY
+    version DESC
+LIMIT ?2
+OFFSET ?1
+`
+
+type FindProcessDefinitionsPageParams struct {
+	Offset int64 `json:"offset"`
+	Limit  int64 `json:"limit"`
+}
+
+func (q *Queries) FindProcessDefinitionsPage(ctx context.Context, arg FindProcessDefinitionsPageParams) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionsPage, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessDefinition{}
+	for rows.Next() {
+		var i ProcessDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnData,
+			&i.BpmnChecksum,
+			&i.BpmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDefinitionKeyByChecksum = `-- name: GetDefinitionKeyByChecksum :one
 SELECT
     key
@@ -253,38 +136,68 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	return key, err
 }
 
-const getProcessDefinitionsCount = `-- name: GetProcessDefinitionsCount :one
-SELECT
-    COUNT(1)
-FROM
-    process_definition
-`
-
-func (q *Queries) GetProcessDefinitionsCount(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getProcessDefinitionsCount)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getProcessDefinitionsPage = `-- name: GetProcessDefinitionsPage :many
+const getLatestProcessDefinitionById = `-- name: GetLatestProcessDefinitionById :one
 SELECT
     "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
 FROM
     process_definition
+WHERE
+    bpmn_process_id = ?1
 ORDER BY
     version DESC
-LIMIT ?2
-OFFSET ?1
+LIMIT 1
 `
 
-type GetProcessDefinitionsPageParams struct {
-	Offset int64 `json:"offset"`
-	Limit  int64 `json:"limit"`
+func (q *Queries) GetLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error) {
+	row := q.db.QueryRowContext(ctx, getLatestProcessDefinitionById, bpmnProcessID)
+	var i ProcessDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.BpmnProcessID,
+		&i.BpmnData,
+		&i.BpmnChecksum,
+		&i.BpmnResourceName,
+	)
+	return i, err
 }
 
-func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, getProcessDefinitionsPage, arg.Offset, arg.Limit)
+const getProcessDefinitionByKey = `-- name: GetProcessDefinitionByKey :one
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error) {
+	row := q.db.QueryRowContext(ctx, getProcessDefinitionByKey, key)
+	var i ProcessDefinition
+	err := row.Scan(
+		&i.Key,
+		&i.Version,
+		&i.BpmnProcessID,
+		&i.BpmnData,
+		&i.BpmnChecksum,
+		&i.BpmnResourceName,
+	)
+	return i, err
+}
+
+const getProcessDefinitionsById = `-- name: GetProcessDefinitionsById :many
+SELECT
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+FROM
+    process_definition
+WHERE
+    bpmn_process_id = ?1
+ORDER BY
+    version asc
+`
+
+func (q *Queries) GetProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, getProcessDefinitionsById, bpmnProcessIds)
 	if err != nil {
 		return nil, err
 	}

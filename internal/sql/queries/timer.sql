@@ -24,7 +24,7 @@ WHERE
     element_instance_key = @element_instance_key
     AND state = @state;
 
--- name: FindTokenTimers :many
+-- name: GetTokenTimers :many
 SELECT
     *
 FROM
@@ -33,7 +33,7 @@ WHERE
     execution_token = @execution_token
     AND state = @state;
 
--- name: FindProcessInstanceTimersInState :many
+-- name: GetProcessInstanceTimersInState :many
 SELECT
     *
 FROM
@@ -42,7 +42,7 @@ WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
 
--- name: FindTimersInStateTillDueAt :many
+-- name: GetTimersInStateTillDueAt :many
 SELECT
     *
 FROM

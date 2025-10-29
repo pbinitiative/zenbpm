@@ -50,7 +50,7 @@ func (engine *Engine) load(xmlData []byte, resourceName string, key int64) (*run
 		BpmnResourceName: resourceName,
 		BpmnChecksum:     md5sum,
 	}
-	processes, err := engine.persistence.FindProcessDefinitionsById(context.TODO(), definitions.Process.Id)
+	processes, err := engine.persistence.GetProcessDefinitionsById(context.TODO(), definitions.Process.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load processes by id %s: %w", definitions.Process.Id, err)
 	}

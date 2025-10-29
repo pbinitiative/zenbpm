@@ -50,7 +50,7 @@ func TestSaveProcessDefinition(s Storage, t *testing.T) func(t *testing.T) {
 		err := s.SaveProcessDefinition(ctx, def)
 		assert.Nil(t, err)
 
-		definition, err := s.FindProcessDefinitionByKey(ctx, r)
+		definition, err := s.GetProcessDefinitionByKey(ctx, r)
 		assert.Nil(t, err)
 		assert.Equal(t, r, definition.Key, "Process key is as expected")
 	}

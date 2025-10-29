@@ -11,40 +11,6 @@ import (
 	"strings"
 )
 
-const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
-SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
-FROM
-    message_subscription
-WHERE
-    correlation_key = ?1
-    AND name = ?2
-    AND state = ?3
-`
-
-type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
-	CorrelationKey string `json:"correlation_key"`
-	Name           string `json:"name"`
-	State          int64  `json:"state"`
-}
-
-func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
-	row := q.db.QueryRowContext(ctx, findMessageSubscriptionByNameAndCorrelationKeyAndState, arg.CorrelationKey, arg.Name, arg.State)
-	var i MessageSubscription
-	err := row.Scan(
-		&i.Key,
-		&i.ElementID,
-		&i.ProcessDefinitionKey,
-		&i.ProcessInstanceKey,
-		&i.Name,
-		&i.State,
-		&i.CreatedAt,
-		&i.CorrelationKey,
-		&i.ExecutionToken,
-	)
-	return i, err
-}
-
 const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
@@ -110,103 +76,7 @@ func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageS
 	return items, nil
 }
 
-const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many
-SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
-FROM
-    message_subscription
-WHERE
-    process_instance_key = ?1
-    AND state = ?2
-`
-
-type FindProcessInstanceMessageSubscriptionsParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int64 `json:"state"`
-}
-
-func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessInstanceMessageSubscriptions, arg.ProcessInstanceKey, arg.State)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageSubscription{}
-	for rows.Next() {
-		var i MessageSubscription
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementID,
-			&i.ProcessDefinitionKey,
-			&i.ProcessInstanceKey,
-			&i.Name,
-			&i.State,
-			&i.CreatedAt,
-			&i.CorrelationKey,
-			&i.ExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findTokenMessageSubscriptions = `-- name: FindTokenMessageSubscriptions :many
-SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
-FROM
-    message_subscription
-WHERE
-    execution_token = ?1
-    AND state = ?2
-`
-
-type FindTokenMessageSubscriptionsParams struct {
-	ExecutionToken int64 `json:"execution_token"`
-	State          int64 `json:"state"`
-}
-
-func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error) {
-	rows, err := q.db.QueryContext(ctx, findTokenMessageSubscriptions, arg.ExecutionToken, arg.State)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageSubscription{}
-	for rows.Next() {
-		var i MessageSubscription
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementID,
-			&i.ProcessDefinitionKey,
-			&i.ProcessInstanceKey,
-			&i.Name,
-			&i.State,
-			&i.CreatedAt,
-			&i.CorrelationKey,
-			&i.ExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getMessageSubscriptionById = `-- name: GetMessageSubscriptionById :one
+const getMessageSubscriptionByKey = `-- name: GetMessageSubscriptionByKey :one
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
@@ -216,13 +86,13 @@ WHERE
     AND state = ?2
 `
 
-type GetMessageSubscriptionByIdParams struct {
+type GetMessageSubscriptionByKeyParams struct {
 	Key   int64 `json:"key"`
 	State int64 `json:"state"`
 }
 
-func (q *Queries) GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error) {
-	row := q.db.QueryRowContext(ctx, getMessageSubscriptionById, arg.Key, arg.State)
+func (q *Queries) GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, getMessageSubscriptionByKey, arg.Key, arg.State)
 	var i MessageSubscription
 	err := row.Scan(
 		&i.Key,
@@ -236,6 +106,136 @@ func (q *Queries) GetMessageSubscriptionById(ctx context.Context, arg GetMessage
 		&i.ExecutionToken,
 	)
 	return i, err
+}
+
+const getMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: GetMessageSubscriptionByNameAndCorrelationKeyAndState :one
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    correlation_key = ?1
+    AND name = ?2
+    AND state = ?3
+`
+
+type GetMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
+	CorrelationKey string `json:"correlation_key"`
+	Name           string `json:"name"`
+	State          int64  `json:"state"`
+}
+
+func (q *Queries) GetMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg GetMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, getMessageSubscriptionByNameAndCorrelationKeyAndState, arg.CorrelationKey, arg.Name, arg.State)
+	var i MessageSubscription
+	err := row.Scan(
+		&i.Key,
+		&i.ElementID,
+		&i.ProcessDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.Name,
+		&i.State,
+		&i.CreatedAt,
+		&i.CorrelationKey,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
+const getProcessInstanceMessageSubscriptions = `-- name: GetProcessInstanceMessageSubscriptions :many
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    process_instance_key = ?1
+    AND state = ?2
+`
+
+type GetProcessInstanceMessageSubscriptionsParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	State              int64 `json:"state"`
+}
+
+func (q *Queries) GetProcessInstanceMessageSubscriptions(ctx context.Context, arg GetProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error) {
+	rows, err := q.db.QueryContext(ctx, getProcessInstanceMessageSubscriptions, arg.ProcessInstanceKey, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessageSubscription{}
+	for rows.Next() {
+		var i MessageSubscription
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.Name,
+			&i.State,
+			&i.CreatedAt,
+			&i.CorrelationKey,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTokenMessageSubscriptions = `-- name: GetTokenMessageSubscriptions :many
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
+FROM
+    message_subscription
+WHERE
+    execution_token = ?1
+    AND state = ?2
+`
+
+type GetTokenMessageSubscriptionsParams struct {
+	ExecutionToken int64 `json:"execution_token"`
+	State          int64 `json:"state"`
+}
+
+func (q *Queries) GetTokenMessageSubscriptions(ctx context.Context, arg GetTokenMessageSubscriptionsParams) ([]MessageSubscription, error) {
+	rows, err := q.db.QueryContext(ctx, getTokenMessageSubscriptions, arg.ExecutionToken, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessageSubscription{}
+	for rows.Next() {
+		var i MessageSubscription
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.Name,
+			&i.State,
+			&i.CreatedAt,
+			&i.CorrelationKey,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const saveMessageSubscription = `-- name: SaveMessageSubscription :exec

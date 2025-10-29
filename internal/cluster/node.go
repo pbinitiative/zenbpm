@@ -266,7 +266,7 @@ func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (prot
 	if err != nil {
 		return proto.DecisionDefinition{}, fmt.Errorf("failed to get decision definition: %w", err)
 	}
-	def, err := db.Queries.FindDecisionDefinitionByKey(ctx, key)
+	def, err := db.Queries.GetDecisionDefinitionByKey(ctx, key)
 	if err != nil {
 		return proto.DecisionDefinition{}, fmt.Errorf("failed to read process decision from database: %w", err)
 	}
@@ -455,7 +455,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	if partitionNode == nil {
 		return fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey)
 	}
-	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
+	msPointer, err := partitionNode.DB.GetActiveMessageSubscriptionPointer(
 		ctx,
 		name,
 		correlationKey,
@@ -497,14 +497,14 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
 	}
-	definitions, err := db.Queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
+	definitions, err := db.Queries.FindProcessDefinitionsPage(ctx, sql.FindProcessDefinitionsPageParams{
 		Offset: int64((page - 1) * size),
 		Limit:  int64(size),
 	})
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
 	}
-	totalCount, err := db.Queries.GetProcessDefinitionsCount(ctx)
+	totalCount, err := db.Queries.CountProcessDefinitions(ctx)
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get count of process definitions from database: %w", err)
 	}
@@ -530,7 +530,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
 	}
-	def, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
+	def, err := db.Queries.GetLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
@@ -548,7 +548,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
 	}
-	def, err := db.Queries.FindProcessDefinitionByKey(ctx, key)
+	def, err := db.Queries.GetProcessDefinitionByKey(ctx, key)
 	if err != nil {
 		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
 	}
@@ -866,7 +866,7 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		idsToSkip = []int64{0}
 	}
 	for _, db := range databases {
-		jobs, err := db.Queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
+		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
 			Limit:   count,

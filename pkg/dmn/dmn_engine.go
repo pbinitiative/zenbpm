@@ -97,7 +97,7 @@ func (engine *ZenDmnEngine) saveDecisionDefinition(
 	decisionDefinition runtime.DecisionDefinition,
 	decisions []runtime.Decision,
 ) (*runtime.DecisionDefinition, []runtime.Decision, error) {
-	decisionDefinitions, err := engine.persistence.FindDecisionDefinitionsById(ctx, decisionDefinition.Id)
+	decisionDefinitions, err := engine.persistence.GetDecisionDefinitionsById(ctx, decisionDefinition.Id)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to saveDecisionDefinition decision definition by id %s: %w", decisionDefinition.Id, err)
 	}
@@ -164,7 +164,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			if err != nil {
 				return nil, fmt.Errorf("failed to find decision %s : %w", decisionId, err)
 			}
-			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+			decisionDefinition, err = engine.persistence.GetDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 			if err != nil {
 				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 					decision.DecisionDefinitionId,
@@ -180,7 +180,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			if err != nil {
 				return nil, fmt.Errorf("failed to find decision %s stored in decisionDefinition %s : %w", decisionId, decisionDefinitionId, err)
 			}
-			decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+			decisionDefinition, err = engine.persistence.GetDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 			if err != nil {
 				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 					decision.DecisionDefinitionId,
@@ -200,7 +200,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		if err != nil {
 			return nil, fmt.Errorf("failed to find decision %s with versionTag %s : %w", decisionId, versionTag, err)
 		}
-		decisionDefinition, err = engine.persistence.FindDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
+		decisionDefinition, err = engine.persistence.GetDecisionDefinitionByKey(ctx, decision.DecisionDefinitionKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decision %s : %w",
 				decision.DecisionDefinitionId,

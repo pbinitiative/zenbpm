@@ -10,31 +10,6 @@ import (
 	"database/sql"
 )
 
-const findIncidentByKey = `-- name: FindIncidentByKey :one
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token
-FROM
-    incident
-WHERE
-    key = ?1
-`
-
-func (q *Queries) FindIncidentByKey(ctx context.Context, key int64) (Incident, error) {
-	row := q.db.QueryRowContext(ctx, findIncidentByKey, key)
-	var i Incident
-	err := row.Scan(
-		&i.Key,
-		&i.ElementInstanceKey,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.Message,
-		&i.CreatedAt,
-		&i.ResolvedAt,
-		&i.ExecutionToken,
-	)
-	return i, err
-}
-
 const findIncidents = `-- name: FindIncidents :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token
@@ -93,6 +68,72 @@ WHERE
 
 func (q *Queries) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]Incident, error) {
 	rows, err := q.db.QueryContext(ctx, findIncidentsByProcessInstanceKey, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Incident{}
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Message,
+			&i.CreatedAt,
+			&i.ResolvedAt,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getIncidentByKey = `-- name: GetIncidentByKey :one
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token
+FROM
+    incident
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetIncidentByKey(ctx context.Context, key int64) (Incident, error) {
+	row := q.db.QueryRowContext(ctx, getIncidentByKey, key)
+	var i Incident
+	err := row.Scan(
+		&i.Key,
+		&i.ElementInstanceKey,
+		&i.ElementID,
+		&i.ProcessInstanceKey,
+		&i.Message,
+		&i.CreatedAt,
+		&i.ResolvedAt,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
+const getIncidentsByProcessInstanceKey = `-- name: GetIncidentsByProcessInstanceKey :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token
+FROM
+    incident
+WHERE
+    process_instance_key = ?1
+`
+
+func (q *Queries) GetIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]Incident, error) {
+	rows, err := q.db.QueryContext(ctx, getIncidentsByProcessInstanceKey, processInstanceKey)
 	if err != nil {
 		return nil, err
 	}

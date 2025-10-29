@@ -6,7 +6,7 @@ ON CONFLICT
        process_instance_key = excluded.process_instance_key,
        element_id = excluded.element_id;
 
--- name: GetFlowElementHistory :many
+-- name: FindFlowElementHistory :many
 SELECT
     *
 FROM

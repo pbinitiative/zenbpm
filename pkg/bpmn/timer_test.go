@@ -106,7 +106,7 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
-	timers, err := bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now().Add(2*time.Second))
+	timers, err := bpmnEngine.persistence.GetTimersTo(t.Context(), time.Now().Add(2*time.Second))
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(timers))
 
@@ -114,11 +114,11 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 	// then
-	timers, err = bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now())
+	timers, err = bpmnEngine.persistence.GetTimersTo(t.Context(), time.Now())
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(timers))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 

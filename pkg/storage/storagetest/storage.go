@@ -120,7 +120,7 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 		err := s.SaveProcessDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
-		definition, err := s.FindProcessDefinitionByKey(t.Context(), r)
+		definition, err := s.GetProcessDefinitionByKey(t.Context(), r)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 	}
@@ -136,15 +136,15 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		err := s.SaveProcessDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
-		definition, err := s.FindLatestProcessDefinitionById(t.Context(), def.BpmnProcessId)
+		definition, err := s.GetLatestProcessDefinitionById(t.Context(), def.BpmnProcessId)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 
-		definition, err = s.FindProcessDefinitionByKey(t.Context(), def.Key)
+		definition, err = s.GetProcessDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 
-		definitions, err := s.FindProcessDefinitionsById(t.Context(), def.BpmnProcessId)
+		definitions, err := s.GetProcessDefinitionsById(t.Context(), def.BpmnProcessId)
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
@@ -214,7 +214,7 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		err := s.SaveProcessInstance(t.Context(), inst)
 		assert.NoError(t, err)
 
-		instance, err := s.FindProcessInstanceByKey(t.Context(), inst.Key)
+		instance, err := s.GetProcessInstanceByKey(t.Context(), inst.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, inst.Key, instance.Key)
 		assert.Equal(t, inst.CreatedAt.Truncate(time.Millisecond), instance.CreatedAt.Truncate(time.Millisecond))
@@ -293,11 +293,11 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		err = s.SaveTimer(t.Context(), timer)
 		assert.NoError(t, err)
 
-		timers, err := s.FindTimersTo(t.Context(), timer.DueAt.Add(1*time.Second))
+		timers, err := s.GetTimersTo(t.Context(), timer.DueAt.Add(1*time.Second))
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 
-		timers, err = s.FindTokenActiveTimerSubscriptions(t.Context(), timer.Token.Key)
+		timers, err = s.GetTokenActiveTimerSubscriptions(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
 	}
@@ -338,11 +338,11 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		jobs, err := s.FindPendingProcessInstanceJobs(t.Context(), st.processInstance.Key)
+		jobs, err := s.GetPendingProcessInstanceJobs(t.Context(), st.processInstance.Key)
 		assert.NoError(t, err)
 		assert.Contains(t, jobs, job)
 
-		storeJob, err := s.FindJobByJobKey(t.Context(), job.Key)
+		storeJob, err := s.GetJobByJobKey(t.Context(), job.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, job, storeJob)
 		assert.NotEmpty(t, job.Type)
@@ -410,11 +410,11 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 		err := s.SaveMessageSubscription(t.Context(), messageSub)
 		assert.NoError(t, err)
 
-		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(t.Context(), st.processInstance.Key, bpmnruntime.ActivityStateActive)
+		messageSubs, err := s.GetProcessInstanceMessageSubscriptions(t.Context(), st.processInstance.Key, bpmnruntime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 
-		messageSubs, err = s.FindTokenMessageSubscriptions(t.Context(), token.Key, bpmnruntime.ActivityStateActive)
+		messageSubs, err = s.GetTokenMessageSubscriptions(t.Context(), token.Key, bpmnruntime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 	}
@@ -537,7 +537,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		err = s.SaveToken(t.Context(), token)
 		assert.Nil(t, err)
 
-		incident, err = s.FindIncidentByKey(t.Context(), r)
+		incident, err = s.GetIncidentByKey(t.Context(), r)
 		assert.Nil(t, err)
 		assert.Equal(t, incident, incident)
 	}
@@ -552,7 +552,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, 
 		assert.NoError(t, err)
 
 		//run
-		definition, err := s.FindDecisionDefinitionByKey(t.Context(), def.Key)
+		definition, err := s.GetDecisionDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, def.Key, definition.Key)
 	}
@@ -572,11 +572,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.
 		assert.NoError(t, err)
 
 		//run
-		definition, err := s.FindLatestDecisionDefinitionById(t.Context(), def.Id)
-		assert.NoError(t, err)
-		assert.Equal(t, r, definition.Key)
-
-		definition, err = s.FindDecisionDefinitionByKey(t.Context(), def.Key)
+		definition, err := s.GetDecisionDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 	}
@@ -596,7 +592,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storag
 		assert.NoError(t, err)
 
 		//run
-		definitions, err := s.FindDecisionDefinitionsById(t.Context(), def.Id)
+		definitions, err := s.GetDecisionDefinitionsById(t.Context(), def.Id)
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, def.Key)

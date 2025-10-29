@@ -50,7 +50,7 @@ const (
 	ZenService_GetJobs_FullMethodName                        = "/cluster.ZenService/GetJobs"
 	ZenService_GetProcessInstance_FullMethodName             = "/cluster.ZenService/GetProcessInstance"
 	ZenService_GetProcessInstanceJobs_FullMethodName         = "/cluster.ZenService/GetProcessInstanceJobs"
-	ZenService_GetFlowElementHistory_FullMethodName          = "/cluster.ZenService/GetFlowElementHistory"
+	ZenService_GetFlowElementHistory_FullMethodName          = "/cluster.ZenService/FindFlowElementHistory"
 	ZenService_GetIncidents_FullMethodName                   = "/cluster.ZenService/GetIncidents"
 	ZenService_ResolveIncident_FullMethodName                = "/cluster.ZenService/ResolveIncident"
 	ZenService_SubscribeJob_FullMethodName                   = "/cluster.ZenService/SubscribeJob"
@@ -668,7 +668,7 @@ func (UnimplementedZenServiceServer) GetProcessInstanceJobs(context.Context, *Ge
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstanceJobs not implemented")
 }
 func (UnimplementedZenServiceServer) GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetFlowElementHistory not implemented")
+	return nil, status.Errorf(codes.Unimplemented, "method FindFlowElementHistory not implemented")
 }
 func (UnimplementedZenServiceServer) GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIncidents not implemented")
@@ -1481,7 +1481,7 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_GetProcessInstanceJobs_Handler,
 		},
 		{
-			MethodName: "GetFlowElementHistory",
+			MethodName: "FindFlowElementHistory",
 			Handler:    _ZenService_GetFlowElementHistory_Handler,
 		},
 		{

@@ -38,7 +38,7 @@ func TestAJobCanFailAndMovesProcessToFailedState(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.GetIncidentsByProcessInstanceKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 
@@ -98,7 +98,7 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	assert.True(t, instance.GetVariable(varHasReachedMaxAttempts).(bool))
@@ -456,7 +456,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	assert.NotZero(t, userToken, "expected to find token from user-task-2 job")
 	assert.NotEqual(t, foundUserJob.ElementId, userToken.ElementId)
 
-	*pi, err = engineStorage.FindProcessInstanceByKey(t.Context(), pi.Key)
+	*pi, err = engineStorage.GetProcessInstanceByKey(t.Context(), pi.Key)
 	assert.NoError(t, err)
 
 	// id from input should not exist in instance scope
@@ -500,7 +500,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	assert.Equal(t, foundServiceJob.State, runtime.ActivityStateFailed)
 
 	var incidents []runtime.Incident
-	incidents, err = engineStorage.FindIncidentsByProcessInstanceKey(t.Context(), pi.Key)
+	incidents, err = engineStorage.GetIncidentsByProcessInstanceKey(t.Context(), pi.Key)
 	assert.NoError(t, err)
 	assert.Len(t, incidents, 1)
 	assert.Contains(t, incidents[0].Message, "testing fail job")

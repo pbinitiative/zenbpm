@@ -99,7 +99,7 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 // CreateInstanceById creates a new instance for a process with given process ID and uses latest version (if available)
 // Might return BpmnEngineError, when no process with given ID was found
 func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
+	processDefinition, err := engine.persistence.GetLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
 	}
@@ -115,7 +115,7 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 // CreateInstanceByKey creates a new instance for a process with given process definition key
 // Might return BpmnEngineError, when no process with given ID was found
 func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
+	processDefinition, err := engine.persistence.GetProcessDefinitionByKey(ctx, definitionKey)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err)
 	}
@@ -136,7 +136,7 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 
 func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
 
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
+	instance, err := engine.persistence.GetProcessInstanceByKey(ctx, instanceKey)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
 	}
@@ -160,7 +160,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch storage.Batch) error {
 
 	// Cancel all message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.GetInstanceKey(), runtime.ActivityStateActive)
+	subscriptions, err := engine.persistence.GetProcessInstanceMessageSubscriptions(ctx, instance.GetInstanceKey(), runtime.ActivityStateActive)
 	if err != nil {
 		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
 	}
@@ -174,7 +174,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	// Cancel all timer subscriptions
-	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.Key, runtime.TimerStateCreated)
+	timers, err := engine.persistence.GetProcessInstanceTimers(ctx, instance.Key, runtime.TimerStateCreated)
 	if err != nil {
 		return fmt.Errorf("failed to find timers for instance %d: %w", instance.Key, err)
 	}
@@ -187,7 +187,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	// Cancell all jobs
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.Key)
+	jobs, err := engine.persistence.GetPendingProcessInstanceJobs(ctx, instance.Key)
 	if err != nil {
 		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.Key, err)
 	}
@@ -202,7 +202,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 
 	// Cancel all incidents
 
-	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.Key)
+	incidents, err := engine.persistence.GetIncidentsByProcessInstanceKey(ctx, instance.Key)
 	if err != nil {
 		return fmt.Errorf("failed to find incidents for instance %d: %w", instance.Key, err)
 	}
@@ -223,7 +223,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	for _, token := range tokens {
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		calledProcesses, err := engine.persistence.GetProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
 		}
@@ -303,7 +303,7 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 }
 
 func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
+	processDefinition, err := engine.persistence.GetProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
 	}
@@ -369,13 +369,7 @@ func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefini
 // FindProcessInstance searches for a given processInstanceKey
 // and returns the corresponding processInstanceInfo, or otherwise nil
 func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
-	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
-}
-
-// FindProcessesById returns all registered processes with given ID
-// result array is ordered by version number, from 1 (first) and largest version (last)
-func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
-	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
+	return engine.persistence.GetProcessInstanceByKey(context.TODO(), processInstanceKey)
 }
 
 // Start will start the process engine instance.
@@ -385,7 +379,7 @@ func (engine *Engine) Start() error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
-	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.FindTimersTo, 10*time.Second)
+	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.GetTimersTo, 10*time.Second)
 	engine.timerManager.start()
 	tokens, err := engine.persistence.GetRunningTokens(ctx)
 	if err != nil {
@@ -401,7 +395,7 @@ func (engine *Engine) Start() error {
 			val.tokens = append(val.tokens, token)
 			instancesToStart[token.ProcessInstanceKey] = val
 		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			instance, err := engine.persistence.GetProcessInstanceByKey(ctx, token.ProcessInstanceKey)
 			if err != nil {
 				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
 			}
@@ -1024,14 +1018,14 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 func (engine *Engine) handleEndEvent(instance *runtime.ProcessInstance) error {
 	activeSubscriptions := false
 	// FIXME: check if this is correct to seems wrong i need to check if there are any tokens in this process not only messages subscriptions but elements also
-	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(context.TODO(), instance.Key, runtime.ActivityStateActive)
+	activeSubs, err := engine.persistence.GetProcessInstanceMessageSubscriptions(context.TODO(), instance.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load active subscriptions"), err)
 	}
 	if len(activeSubs) > 0 {
 		activeSubscriptions = true
 	}
-	readySubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(context.TODO(), instance.Key, runtime.ActivityStateReady)
+	readySubs, err := engine.persistence.GetProcessInstanceMessageSubscriptions(context.TODO(), instance.Key, runtime.ActivityStateReady)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load ready subscriptions"), err)
 	}
@@ -1039,7 +1033,7 @@ func (engine *Engine) handleEndEvent(instance *runtime.ProcessInstance) error {
 		activeSubscriptions = true
 	}
 
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(context.TODO(), instance.Key)
+	jobs, err := engine.persistence.GetPendingProcessInstanceJobs(context.TODO(), instance.Key)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load pending process instance jobs for key: %d", instance.Key), err)
 	}

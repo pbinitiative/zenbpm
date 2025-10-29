@@ -14,7 +14,7 @@ WHERE
     COALESCE(sqlc.narg('process_instance_key'), process_instance_key) = process_instance_key
     AND COALESCE(sqlc.narg('element_instance_key'), "element_instance_key") = "element_instance_key";
 
--- name: FindIncidentByKey :one
+-- name: GetIncidentByKey :one
 SELECT
     *
 FROM
@@ -22,8 +22,15 @@ FROM
 WHERE
     key = @key;
 
-
 -- name: FindIncidentsByProcessInstanceKey :many
+SELECT
+    *
+FROM
+    incident
+WHERE
+    process_instance_key = @process_instance_key;
+
+-- name: GetIncidentsByProcessInstanceKey :many
 SELECT
     *
 FROM

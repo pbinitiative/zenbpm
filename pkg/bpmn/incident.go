@@ -46,7 +46,7 @@ func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err e
 		resoveIncidentSpan.End()
 	}()
 
-	incident, err := engine.persistence.FindIncidentByKey(ctx, key)
+	incident, err := engine.persistence.GetIncidentByKey(ctx, key)
 	if err != nil {
 		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
 	}
@@ -61,12 +61,12 @@ func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err e
 		return runtime.Incident{}, runtime.ProcessInstance{}, errors.New("incident already resolved")
 	}
 
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
+	instance, err := engine.persistence.GetProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
 	}
 
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
+	jobs, err := engine.persistence.GetPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
 	}

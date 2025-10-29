@@ -43,7 +43,7 @@ func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T)
 	}
 
 	// then
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi.Key)
+	instance, err := bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), pi.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
@@ -89,16 +89,16 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 		}
 	}
 
-	*pi1, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi1.Key)
+	*pi1, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), pi1.Key)
 	assert.NoError(t, err)
-	*pi2, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi2.Key)
+	*pi2, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), pi2.Key)
 	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, runtime.ActivityStateCompleted, pi1.GetState())
 	assert.Equal(t, runtime.ActivityStateFailed, pi2.GetState())
 
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), pi2.Key)
+	incidents, err := bpmnEngine.persistence.GetIncidentsByProcessInstanceKey(t.Context(), pi2.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 
@@ -112,7 +112,7 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 		}
 	}
 
-	*pi2, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi2.Key)
+	*pi2, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), pi2.Key)
 	assert.NoError(t, err)
 
 	// then
@@ -146,7 +146,7 @@ func TestHavingIntermediateCatchEventAndServiceTaskInParallelTheProcessStateIsMa
 
 	assert.Equal(t, "task-2,task-1", cp.CallPath)
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 }
@@ -174,7 +174,7 @@ func TestMultipleIntermediateCatchEventsPossible(t *testing.T) {
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	// then
@@ -211,7 +211,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndMergedCOMPLETED(t *testin
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	// then
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
@@ -267,7 +267,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(
 		assert.NoError(t, err)
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	// then
@@ -319,7 +319,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayCOMPLETED
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	// then
@@ -341,7 +341,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayACTIVE(t 
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	// then
@@ -393,7 +393,7 @@ func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 	// then
 	assert.Equal(t, "task-b", cp.CallPath)
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
@@ -416,7 +416,7 @@ func TestIntermediateMessageCatchEventPublishesVariablesIntoInstance(t *testing.
 	}
 
 	// then
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
@@ -439,10 +439,10 @@ func TestIntermediateMessageCatchEventOutputMappingFailed(t *testing.T) {
 	}
 
 	// then
-	message, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateFailed)
+	message, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateFailed)
 	assert.NoError(t, err)
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	assert.Equal(t, instance.GetState(), runtime.ActivityStateFailed)
@@ -469,7 +469,7 @@ func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
@@ -483,11 +483,11 @@ func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err = bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 
@@ -508,7 +508,7 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
@@ -522,11 +522,11 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err = bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.GetState())
 
@@ -547,7 +547,7 @@ func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subscriptions))
 
@@ -560,7 +560,7 @@ func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err = bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions))
 
@@ -568,7 +568,7 @@ func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
 

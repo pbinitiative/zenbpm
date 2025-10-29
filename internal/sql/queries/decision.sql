@@ -11,7 +11,7 @@ WHERE
     decision_definition_key = @decision_definition_key
     and decision_id = @decision_id;
 
--- name: FindLatestDecisionById :one
+-- name: GetLatestDecisionById :one
 SELECT
     *
 FROM
@@ -22,7 +22,7 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindLatestDecisionByIdAndVersionTag :one
+-- name: GetLatestDecisionByIdAndVersionTag :one
 SELECT
     *
 FROM
@@ -34,7 +34,7 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindLatestDecisionByIdAndDecisionDefinitionId :one
+-- name: GetLatestDecisionByIdAndDecisionDefinitionId :one
 SELECT
     *
 FROM
@@ -46,7 +46,7 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindDecisionsById :many
+-- name: GetDecisionsById :many
 SELECT
     *
 FROM

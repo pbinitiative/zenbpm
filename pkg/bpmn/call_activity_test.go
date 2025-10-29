@@ -78,7 +78,7 @@ func TestCallActivityStartsAndCompletesAfterFinishingtheJob(t *testing.T) {
 	}
 
 	var job runtime.Job
-	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), foundInstance.Key)
+	jobs, err := bpmnEngine.persistence.GetPendingProcessInstanceJobs(t.Context(), foundInstance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs), "There should be one job")
 	job = jobs[0]
@@ -136,15 +136,15 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState(), "Parent instance should be completed")
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), foundChildInstance.Key)
+	*instance, err = bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), foundChildInstance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateTerminated, instance.GetState(), "Child instance should be terminated")
 

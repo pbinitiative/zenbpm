@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
+const getMessageSubscriptionPointer = `-- name: GetMessageSubscriptionPointer :one
 SELECT
     name, correlation_key, state, created_at, message_subscription_key, execution_token_key
 FROM
@@ -20,14 +20,14 @@ WHERE
     AND state = ?3
 `
 
-type FindMessageSubscriptionPointerParams struct {
+type GetMessageSubscriptionPointerParams struct {
 	CorrelationKey string `json:"correlation_key"`
 	Name           string `json:"name"`
 	FilterState    int64  `json:"filter_state"`
 }
 
-func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error) {
-	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.CorrelationKey, arg.Name, arg.FilterState)
+func (q *Queries) GetMessageSubscriptionPointer(ctx context.Context, arg GetMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error) {
+	row := q.db.QueryRowContext(ctx, getMessageSubscriptionPointer, arg.CorrelationKey, arg.Name, arg.FilterState)
 	var i MessageSubscriptionPointer
 	err := row.Scan(
 		&i.Name,

@@ -6,7 +6,7 @@ ON CONFLICT
         state = excluded.state,
         variables = excluded.variables;
 
--- name: FindJobByKey :one
+-- name: GetJobByKey :one
 SELECT
     *
 FROM
@@ -14,7 +14,7 @@ FROM
 WHERE
     key = sqlc.arg('key');
 
--- name: FindActiveJobsByType :many
+-- name: GetActiveJobsByType :many
 SELECT
     *
 FROM
@@ -23,7 +23,7 @@ WHERE
     type = @type
     AND state = 1;
 
--- name: FindJobByElementId :one
+-- name: GetJobByElementId :one
 SELECT
     *
 FROM
@@ -32,7 +32,7 @@ WHERE
     element_id = @element_id
     AND process_instance_key = @process_instance_key;
 
--- name: FindJobByJobKey :one
+-- name: GetJobByJobKey :one
 SELECT
     *
 FROM
@@ -48,7 +48,7 @@ FROM
 WHERE
     process_instance_key = @process_instance_key;
 
--- name: FindProcessInstanceJobsInState :many
+-- name: GetProcessInstanceJobsInState :many
 SELECT
     *
 FROM
@@ -74,7 +74,7 @@ WHERE
     AND COALESCE(sqlc.narg('state'), state) = state
 LIMIT @size offset @offset;
 
--- name: FindWaitingJobs :many
+-- name: GetWaitingJobs :many
 SELECT
     *
 FROM

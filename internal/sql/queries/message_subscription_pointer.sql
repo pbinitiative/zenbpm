@@ -8,7 +8,7 @@ INSERT INTO message_subscription_pointer(state, created_at, name, correlation_ke
 						message_subscription_key = excluded.message_subscription_key,
 						execution_token_key = excluded.execution_token_key;
 
--- name: FindMessageSubscriptionPointer :one
+-- name: GetMessageSubscriptionPointer :one
 SELECT
     *
 FROM

@@ -2,26 +2,7 @@
 INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
     VALUES (?, ?, ?, ?, ?, ?);
 
--- name: FindProcessDefinitions :many
-SELECT
-    *
-FROM
-    process_definition
-WHERE
-    COALESCE(sqlc.narg('key'), "key") = "key"
-    AND COALESCE(sqlc.narg('bpmn_process_id'), bpmn_process_id) = bpmn_process_id
-ORDER BY
-    version DESC;
-
--- name: FindAllProcessDefinitions :many
-SELECT
-    *
-FROM
-    process_definition
-ORDER BY
-    version DESC;
-
--- name: GetProcessDefinitionsPage :many
+-- name: FindProcessDefinitionsPage :many
 SELECT
     *
 FROM
@@ -31,13 +12,13 @@ ORDER BY
 LIMIT @limit
 OFFSET @offset;
 
--- name: GetProcessDefinitionsCount :one
+-- name: CountProcessDefinitions :one
 SELECT
     COUNT(1)
 FROM
     process_definition;
 
--- name: FindProcessDefinitionByKey :one
+-- name: GetProcessDefinitionByKey :one
 SELECT
     *
 FROM
@@ -45,7 +26,7 @@ FROM
 WHERE
     key = @key;
 
--- name: FindLatestProcessDefinitionById :one
+-- name: GetLatestProcessDefinitionById :one
 SELECT
     *
 FROM
@@ -56,7 +37,7 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindProcessDefinitionsById :many
+-- name: GetProcessDefinitionsById :many
 SELECT
     *
 FROM

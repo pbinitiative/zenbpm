@@ -6,17 +6,6 @@ ON CONFLICT (key)
         state = excluded.state,
         variables = excluded.variables;
 
--- name: FindProcessInstances :many
-SELECT
-    *
-FROM
-    process_instance
-WHERE
-    COALESCE(sqlc.narg('key'), "key") = "key"
-    AND COALESCE(sqlc.narg('process_definition_key'), process_definition_key) = process_definition_key
-ORDER BY
-    created_at DESC;
-
 -- name: FindProcessInstancesPage :many
 SELECT
     *
@@ -28,7 +17,7 @@ ORDER BY
     created_at DESC
 LIMIT @size OFFSET @offst;
 
--- name: FindProcessByParentExecutionToken :many
+-- name: GetProcessByParentExecutionToken :many
 SELECT
     *
 FROM

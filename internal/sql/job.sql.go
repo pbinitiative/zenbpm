@@ -29,49 +29,6 @@ func (q *Queries) CountWaitingJobs(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-const findActiveJobsByType = `-- name: FindActiveJobsByType :many
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
-FROM
-    job
-WHERE
-    type = ?1
-    AND state = 1
-`
-
-func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findActiveJobsByType, type_)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Job{}
-	for rows.Next() {
-		var i Job
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.Variables,
-			&i.ExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const findAllJobs = `-- name: FindAllJobs :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
@@ -116,90 +73,6 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 		return nil, err
 	}
 	return items, nil
-}
-
-const findJobByElementId = `-- name: FindJobByElementId :one
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
-FROM
-    job
-WHERE
-    element_id = ?1
-    AND process_instance_key = ?2
-`
-
-type FindJobByElementIdParams struct {
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-}
-
-func (q *Queries) FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error) {
-	row := q.db.QueryRowContext(ctx, findJobByElementId, arg.ElementID, arg.ProcessInstanceKey)
-	var i Job
-	err := row.Scan(
-		&i.Key,
-		&i.ElementInstanceKey,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.Type,
-		&i.State,
-		&i.CreatedAt,
-		&i.Variables,
-		&i.ExecutionToken,
-	)
-	return i, err
-}
-
-const findJobByJobKey = `-- name: FindJobByJobKey :one
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
-FROM
-    job
-WHERE
-    key = ?1
-`
-
-func (q *Queries) FindJobByJobKey(ctx context.Context, key int64) (Job, error) {
-	row := q.db.QueryRowContext(ctx, findJobByJobKey, key)
-	var i Job
-	err := row.Scan(
-		&i.Key,
-		&i.ElementInstanceKey,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.Type,
-		&i.State,
-		&i.CreatedAt,
-		&i.Variables,
-		&i.ExecutionToken,
-	)
-	return i, err
-}
-
-const findJobByKey = `-- name: FindJobByKey :one
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
-FROM
-    job
-WHERE
-    key = ?1
-`
-
-func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
-	row := q.db.QueryRowContext(ctx, findJobByKey, key)
-	var i Job
-	err := row.Scan(
-		&i.Key,
-		&i.ElementInstanceKey,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.Type,
-		&i.State,
-		&i.CreatedAt,
-		&i.Variables,
-		&i.ExecutionToken,
-	)
-	return i, err
 }
 
 const findJobsFilter = `-- name: FindJobsFilter :many
@@ -300,7 +173,134 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, processInstanceKe
 	return items, nil
 }
 
-const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
+const getActiveJobsByType = `-- name: GetActiveJobsByType :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    type = ?1
+    AND state = 1
+`
+
+func (q *Queries) GetActiveJobsByType(ctx context.Context, type_ string) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, getActiveJobsByType, type_)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getJobByElementId = `-- name: GetJobByElementId :one
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    element_id = ?1
+    AND process_instance_key = ?2
+`
+
+type GetJobByElementIdParams struct {
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+}
+
+func (q *Queries) GetJobByElementId(ctx context.Context, arg GetJobByElementIdParams) (Job, error) {
+	row := q.db.QueryRowContext(ctx, getJobByElementId, arg.ElementID, arg.ProcessInstanceKey)
+	var i Job
+	err := row.Scan(
+		&i.Key,
+		&i.ElementInstanceKey,
+		&i.ElementID,
+		&i.ProcessInstanceKey,
+		&i.Type,
+		&i.State,
+		&i.CreatedAt,
+		&i.Variables,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
+const getJobByJobKey = `-- name: GetJobByJobKey :one
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetJobByJobKey(ctx context.Context, key int64) (Job, error) {
+	row := q.db.QueryRowContext(ctx, getJobByJobKey, key)
+	var i Job
+	err := row.Scan(
+		&i.Key,
+		&i.ElementInstanceKey,
+		&i.ElementID,
+		&i.ProcessInstanceKey,
+		&i.Type,
+		&i.State,
+		&i.CreatedAt,
+		&i.Variables,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
+const getJobByKey = `-- name: GetJobByKey :one
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+FROM
+    job
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetJobByKey(ctx context.Context, key int64) (Job, error) {
+	row := q.db.QueryRowContext(ctx, getJobByKey, key)
+	var i Job
+	err := row.Scan(
+		&i.Key,
+		&i.ElementInstanceKey,
+		&i.ElementID,
+		&i.ProcessInstanceKey,
+		&i.Type,
+		&i.State,
+		&i.CreatedAt,
+		&i.Variables,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
+const getProcessInstanceJobsInState = `-- name: GetProcessInstanceJobsInState :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
 FROM
@@ -310,13 +310,13 @@ WHERE
     AND state IN (/*SLICE:states*/?)
 `
 
-type FindProcessInstanceJobsInStateParams struct {
+type GetProcessInstanceJobsInStateParams struct {
 	ProcessInstanceKey int64   `json:"process_instance_key"`
 	States             []int64 `json:"states"`
 }
 
-func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error) {
-	query := findProcessInstanceJobsInState
+func (q *Queries) GetProcessInstanceJobsInState(ctx context.Context, arg GetProcessInstanceJobsInStateParams) ([]Job, error) {
+	query := getProcessInstanceJobsInState
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.ProcessInstanceKey)
 	if len(arg.States) > 0 {
@@ -359,7 +359,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 	return items, nil
 }
 
-const findWaitingJobs = `-- name: FindWaitingJobs :many
+const getWaitingJobs = `-- name: GetWaitingJobs :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
 FROM
@@ -373,14 +373,14 @@ ORDER BY
 LIMIT ?
 `
 
-type FindWaitingJobsParams struct {
+type GetWaitingJobsParams struct {
 	KeySkip []int64  `json:"key_skip"`
 	Type    []string `json:"type"`
 	Limit   int64    `json:"limit"`
 }
 
-func (q *Queries) FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error) {
-	query := findWaitingJobs
+func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error) {
+	query := getWaitingJobs
 	var queryParams []interface{}
 	if len(arg.KeySkip) > 0 {
 		for _, v := range arg.KeySkip {

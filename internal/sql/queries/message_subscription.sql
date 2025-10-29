@@ -17,7 +17,7 @@ WHERE
     AND COALESCE(sqlc.narg('element_id'), element_id) = element_id
     AND state IN sqlc.slice('states');
 
--- name: FindTokenMessageSubscriptions :many
+-- name: GetTokenMessageSubscriptions :many
 SELECT
     *
 FROM
@@ -26,7 +26,7 @@ WHERE
     execution_token = @execution_token
     AND state = @state;
 
--- name: FindProcessInstanceMessageSubscriptions :many
+-- name: GetProcessInstanceMessageSubscriptions :many
 SELECT
     *
 FROM
@@ -35,7 +35,7 @@ WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
     
--- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
+-- name: GetMessageSubscriptionByNameAndCorrelationKeyAndState :one
 SELECT
     *
 FROM
@@ -45,7 +45,7 @@ WHERE
     AND name = @name
     AND state = @state;
 
--- name: GetMessageSubscriptionById :one
+-- name: GetMessageSubscriptionByKey :one
 SELECT
     *
 FROM

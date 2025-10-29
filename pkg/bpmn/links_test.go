@@ -39,7 +39,7 @@ func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.Equal(t, "", cp.CallPath)
 
-	instanceDb, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceDb, err := bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateFailed, instanceDb.State)
 }

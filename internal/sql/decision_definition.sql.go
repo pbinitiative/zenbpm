@@ -48,7 +48,7 @@ func (q *Queries) FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDef
 	return items, nil
 }
 
-const findDecisionDefinitionByKey = `-- name: FindDecisionDefinitionByKey :one
+const getDecisionDefinitionByKey = `-- name: GetDecisionDefinitionByKey :one
 SELECT
     "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
 FROM
@@ -57,75 +57,8 @@ WHERE
     key = ?1
 `
 
-func (q *Queries) FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findDecisionDefinitionByKey, key)
-	var i DecisionDefinition
-	err := row.Scan(
-		&i.Key,
-		&i.Version,
-		&i.DmnID,
-		&i.DmnData,
-		&i.DmnChecksum,
-		&i.DmnResourceName,
-	)
-	return i, err
-}
-
-const findDecisionDefinitionsById = `-- name: FindDecisionDefinitionsById :many
-SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
-FROM
-    decision_definition
-WHERE
-    dmn_id = ?1
-ORDER BY
-    version ASC
-`
-
-func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findDecisionDefinitionsById, dmnID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DecisionDefinition{}
-	for rows.Next() {
-		var i DecisionDefinition
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.DmnID,
-			&i.DmnData,
-			&i.DmnChecksum,
-			&i.DmnResourceName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findLatestDecisionDefinitionById = `-- name: FindLatestDecisionDefinitionById :one
-SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
-FROM
-    decision_definition
-WHERE
-    dmn_id = ?1
-ORDER BY
-    version DESC
-LIMIT 1
-`
-
-func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionById, dmnID)
+func (q *Queries) GetDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, getDecisionDefinitionByKey, key)
 	var i DecisionDefinition
 	err := row.Scan(
 		&i.Key,
@@ -153,6 +86,47 @@ func (q *Queries) GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChe
 	var key int64
 	err := row.Scan(&key)
 	return key, err
+}
+
+const getDecisionDefinitionsById = `-- name: GetDecisionDefinitionsById :many
+SELECT
+    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+FROM
+    decision_definition
+WHERE
+    dmn_id = ?1
+ORDER BY
+    version ASC
+`
+
+func (q *Queries) GetDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, getDecisionDefinitionsById, dmnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DecisionDefinition{}
+	for rows.Next() {
+		var i DecisionDefinition
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.DmnID,
+			&i.DmnData,
+			&i.DmnChecksum,
+			&i.DmnResourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec

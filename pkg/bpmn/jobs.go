@@ -126,7 +126,7 @@ func (engine *Engine) completeJob(
 	tokens []runtime.ExecutionToken,
 	retErr error,
 ) {
-	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	job, err := engine.persistence.GetJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
 	}
@@ -149,7 +149,7 @@ func (engine *Engine) completeJob(
 		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
 	)
 
-	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	inst, err := engine.persistence.GetProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
 	}
@@ -215,7 +215,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 	tokens []runtime.ExecutionToken,
 	retErr error,
 ) {
-	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	job, err := engine.persistence.GetJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
 	}
@@ -238,7 +238,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
 	)
 
-	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+	inst, err := engine.persistence.GetProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
 	}
@@ -268,7 +268,7 @@ func (engine *Engine) failJob(ctx context.Context, jobKey int64, message string,
 }
 
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {
-	jobs, err := engine.persistence.FindActiveJobsByType(ctx, jobType)
+	jobs, err := engine.persistence.GetActiveJobsByType(ctx, jobType)
 	if err != nil {
 		return nil, errors.Join(newEngineErrorf("failed to find active jobs by type"), err)
 	}
@@ -276,7 +276,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 	activatedJobs := make([]ActivatedJob, 0)
 	for _, job := range jobs {
 
-		processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
+		processInstance, err := engine.persistence.GetProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.Key, err)
 		}

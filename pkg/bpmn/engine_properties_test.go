@@ -22,7 +22,7 @@ func TestFindProcessInstanceComfortFunctionReturnsNilIfNoInstanceFound(t *testin
 func TestFindProcessesByIdComfortFunctionReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
-	instanceInfos, err := bpmnEngine.FindProcessesById("unknown-id")
+	instanceInfos, err := bpmnEngine.persistence.GetProcessDefinitionsById(t.Context(), "unknown-id")
 
 	assert.Empty(t, instanceInfos)
 	assert.Nil(t, err)
@@ -45,7 +45,7 @@ func TestFindProcessesByIdResultIsOrderedByVersion(t *testing.T) {
 	assert.Nil(t, err)
 
 	// when
-	infos, err := bpmnEngine.FindProcessesById("Simple_Task_Process")
+	infos, err := bpmnEngine.persistence.GetProcessDefinitionsById(t.Context(), "Simple_Task_Process")
 	assert.Nil(t, err)
 
 	// then

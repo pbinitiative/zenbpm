@@ -37,7 +37,7 @@ func (q *Queries) FindDecisionByIdAndDecisionDefinitionKey(ctx context.Context, 
 	return i, err
 }
 
-const findDecisionsById = `-- name: FindDecisionsById :many
+const getDecisionsById = `-- name: GetDecisionsById :many
 SELECT
     version, decision_id, version_tag, decision_definition_id, decision_definition_key
 FROM
@@ -48,8 +48,8 @@ ORDER BY
     version desc
 `
 
-func (q *Queries) FindDecisionsById(ctx context.Context, decisionID string) ([]Decision, error) {
-	rows, err := q.db.QueryContext(ctx, findDecisionsById, decisionID)
+func (q *Queries) GetDecisionsById(ctx context.Context, decisionID string) ([]Decision, error) {
+	rows, err := q.db.QueryContext(ctx, getDecisionsById, decisionID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (q *Queries) FindDecisionsById(ctx context.Context, decisionID string) ([]D
 	return items, nil
 }
 
-const findLatestDecisionById = `-- name: FindLatestDecisionById :one
+const getLatestDecisionById = `-- name: GetLatestDecisionById :one
 SELECT
     version, decision_id, version_tag, decision_definition_id, decision_definition_key
 FROM
@@ -89,8 +89,8 @@ ORDER BY
 LIMIT 1
 `
 
-func (q *Queries) FindLatestDecisionById(ctx context.Context, decisionID string) (Decision, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionById, decisionID)
+func (q *Queries) GetLatestDecisionById(ctx context.Context, decisionID string) (Decision, error) {
+	row := q.db.QueryRowContext(ctx, getLatestDecisionById, decisionID)
 	var i Decision
 	err := row.Scan(
 		&i.Version,
@@ -102,7 +102,7 @@ func (q *Queries) FindLatestDecisionById(ctx context.Context, decisionID string)
 	return i, err
 }
 
-const findLatestDecisionByIdAndDecisionDefinitionId = `-- name: FindLatestDecisionByIdAndDecisionDefinitionId :one
+const getLatestDecisionByIdAndDecisionDefinitionId = `-- name: GetLatestDecisionByIdAndDecisionDefinitionId :one
 SELECT
     version, decision_id, version_tag, decision_definition_id, decision_definition_key
 FROM
@@ -115,13 +115,13 @@ ORDER BY
 LIMIT 1
 `
 
-type FindLatestDecisionByIdAndDecisionDefinitionIdParams struct {
+type GetLatestDecisionByIdAndDecisionDefinitionIdParams struct {
 	DecisionID           string `json:"decision_id"`
 	DecisionDefinitionID string `json:"decision_definition_id"`
 }
 
-func (q *Queries) FindLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionByIdAndDecisionDefinitionIdParams) (Decision, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DecisionDefinitionID)
+func (q *Queries) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, arg GetLatestDecisionByIdAndDecisionDefinitionIdParams) (Decision, error) {
+	row := q.db.QueryRowContext(ctx, getLatestDecisionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DecisionDefinitionID)
 	var i Decision
 	err := row.Scan(
 		&i.Version,
@@ -133,7 +133,7 @@ func (q *Queries) FindLatestDecisionByIdAndDecisionDefinitionId(ctx context.Cont
 	return i, err
 }
 
-const findLatestDecisionByIdAndVersionTag = `-- name: FindLatestDecisionByIdAndVersionTag :one
+const getLatestDecisionByIdAndVersionTag = `-- name: GetLatestDecisionByIdAndVersionTag :one
 SELECT
     version, decision_id, version_tag, decision_definition_id, decision_definition_key
 FROM
@@ -146,13 +146,13 @@ ORDER BY
 LIMIT 1
 `
 
-type FindLatestDecisionByIdAndVersionTagParams struct {
+type GetLatestDecisionByIdAndVersionTagParams struct {
 	DecisionID string `json:"decision_id"`
 	VersionTag string `json:"version_tag"`
 }
 
-func (q *Queries) FindLatestDecisionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionByIdAndVersionTagParams) (Decision, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionByIdAndVersionTag, arg.DecisionID, arg.VersionTag)
+func (q *Queries) GetLatestDecisionByIdAndVersionTag(ctx context.Context, arg GetLatestDecisionByIdAndVersionTagParams) (Decision, error) {
+	row := q.db.QueryRowContext(ctx, getLatestDecisionByIdAndVersionTag, arg.DecisionID, arg.VersionTag)
 	var i Decision
 	err := row.Scan(
 		&i.Version,

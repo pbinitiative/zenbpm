@@ -642,7 +642,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			},
 		}, err
 	}
-	flowElements, err := queries.GetFlowElementHistory(ctx, req.GetProcessInstanceKey())
+	flowElements, err := queries.FindFlowElementHistory(ctx, req.GetProcessInstanceKey())
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetFlowElementHistoryResponse{
@@ -888,7 +888,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 			},
 		}, err
 	}
-	subs, err := queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
+	subs, err := queries.GetTokenMessageSubscriptions(ctx, sql.GetTokenMessageSubscriptionsParams{
 		ExecutionToken: req.GetExecutionTokenKey(),
 		State:          int64(runtime.ActivityStateActive),
 	})

@@ -321,17 +321,17 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// then
 
 	// All message subscriptions should be canceled
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.GetProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions), "expected 0 message subscriptions, but found %d", len(subscriptions))
 
 	// All timers should be canceled
-	timers, err := bpmnEngine.persistence.FindProcessInstanceTimers(t.Context(), instance.Key, runtime.TimerStateCreated)
+	timers, err := bpmnEngine.persistence.GetProcessInstanceTimers(t.Context(), instance.Key, runtime.TimerStateCreated)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(timers), "expected 0 timers, but found %d", len(timers))
 
 	// All jobs should be canceled
-	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), instance.Key)
+	jobs, err := bpmnEngine.persistence.GetPendingProcessInstanceJobs(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs), "expected 0 jobs, but found %d", len(jobs))
 
@@ -343,7 +343,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, token := range tokens {
-		cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), token.Key)
+		cps, err := bpmnEngine.persistence.GetProcessInstanceByParentExecutionTokenKey(t.Context(), token.Key)
 		assert.NoError(t, err)
 
 		for _, cp := range cps {
@@ -352,7 +352,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	}
 
 	// Cancel process instance
-	pi, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	pi, err := bpmnEngine.persistence.GetProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateTerminated, pi.State, "expected canceled state for process instance, but found %s", pi.State)
 

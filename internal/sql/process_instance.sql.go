@@ -26,92 +26,6 @@ func (q *Queries) CountActiveProcessInstances(ctx context.Context) (int64, error
 	return count, err
 }
 
-const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
-SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
-FROM
-    process_instance
-WHERE
-    parent_process_execution_token = ?1
-`
-
-func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessByParentExecutionToken, parentProcessExecutionToken)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessInstance{}
-	for rows.Next() {
-		var i ProcessInstance
-		if err := rows.Scan(
-			&i.Key,
-			&i.ProcessDefinitionKey,
-			&i.CreatedAt,
-			&i.State,
-			&i.Variables,
-			&i.ParentProcessExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findProcessInstances = `-- name: FindProcessInstances :many
-SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
-FROM
-    process_instance
-WHERE
-    COALESCE(?1, "key") = "key"
-    AND COALESCE(?2, process_definition_key) = process_definition_key
-ORDER BY
-    created_at DESC
-`
-
-type FindProcessInstancesParams struct {
-	Key                  sql.NullInt64 `json:"key"`
-	ProcessDefinitionKey sql.NullInt64 `json:"process_definition_key"`
-}
-
-func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInstancesParams) ([]ProcessInstance, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessInstances, arg.Key, arg.ProcessDefinitionKey)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessInstance{}
-	for rows.Next() {
-		var i ProcessInstance
-		if err := rows.Scan(
-			&i.Key,
-			&i.ProcessDefinitionKey,
-			&i.CreatedAt,
-			&i.State,
-			&i.Variables,
-			&i.ParentProcessExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
     "key", process_definition_key, created_at, state, variables, parent_process_execution_token
@@ -132,6 +46,45 @@ type FindProcessInstancesPageParams struct {
 
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage, arg.ProcessDefinitionKey, arg.Offst, arg.Size)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessInstance{}
+	for rows.Next() {
+		var i ProcessInstance
+		if err := rows.Scan(
+			&i.Key,
+			&i.ProcessDefinitionKey,
+			&i.CreatedAt,
+			&i.State,
+			&i.Variables,
+			&i.ParentProcessExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProcessByParentExecutionToken = `-- name: GetProcessByParentExecutionToken :many
+SELECT
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+FROM
+    process_instance
+WHERE
+    parent_process_execution_token = ?1
+`
+
+func (q *Queries) GetProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error) {
+	rows, err := q.db.QueryContext(ctx, getProcessByParentExecutionToken, parentProcessExecutionToken)
 	if err != nil {
 		return nil, err
 	}

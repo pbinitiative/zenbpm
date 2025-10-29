@@ -21,7 +21,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 		return runtime.ActivityStateFailed, nil
 	}
 
-	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
+	processDefinition, err := engine.persistence.GetLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
 		return runtime.ActivityStateFailed, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
 	}
@@ -51,7 +51,7 @@ func propagateVariablesBackToParent(instance *runtime.ProcessInstance, calledPro
 
 func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
 
-	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	ppi, err := engine.persistence.GetProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey), err)
 	}
@@ -73,7 +73,7 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	}
 
 	// unblock token of the parent
-	ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	ppi, err = engine.persistence.GetProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
 	}

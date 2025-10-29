@@ -79,13 +79,11 @@ type DecisionStorageWriter interface {
 }
 
 type DecisionDefinitionStorageReader interface {
-	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
-
-	FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
+	GetDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
 
 	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
 	// result array is ordered by version number desc
-	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
+	GetDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
 }
 
 type DecisionDefinitionStorageWriter interface {
@@ -95,13 +93,13 @@ type DecisionDefinitionStorageWriter interface {
 }
 
 type ProcessDefinitionStorageReader interface {
-	FindLatestProcessDefinitionById(ctx context.Context, ProcessDefinitionId string) (bpmnruntime.ProcessDefinition, error)
+	GetLatestProcessDefinitionById(ctx context.Context, ProcessDefinitionId string) (bpmnruntime.ProcessDefinition, error)
 
-	FindProcessDefinitionByKey(ctx context.Context, ProcessDefinitionKey int64) (bpmnruntime.ProcessDefinition, error)
+	GetProcessDefinitionByKey(ctx context.Context, ProcessDefinitionKey int64) (bpmnruntime.ProcessDefinition, error)
 
-	// FindProcessDefinitionsById return zero or many registered processes with given ID
+	// GetProcessDefinitionsByKey return zero or many registered processes with given ID
 	// result array is ordered by version number, from 1 (first) and largest version (last)
-	FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
+	GetProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
 }
 
 type ProcessDefinitionStorageWriter interface {
@@ -111,8 +109,8 @@ type ProcessDefinitionStorageWriter interface {
 }
 
 type ProcessInstanceStorageReader interface {
-	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
-	FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
+	GetProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
+	GetProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
 }
 
 type ProcessInstanceStorageWriter interface {
@@ -123,11 +121,11 @@ type ProcessInstanceStorageWriter interface {
 
 type TimerStorageReader interface {
 	// FindTimersTo returns a list of timers that have dueDate before end and are in CREATED state
-	FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
+	GetTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
 
-	FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+	GetProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
 
-	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
+	GetTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 
 type TimerStorageWriter interface {
@@ -138,13 +136,13 @@ type TimerStorageWriter interface {
 
 type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
-	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
+	GetPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
-	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
+	GetJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
 
-	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
+	GetJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
 
-	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
+	GetActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
 }
 
 type JobStorageWriter interface {
@@ -154,14 +152,14 @@ type JobStorageWriter interface {
 }
 
 type MessageStorageReader interface {
-	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+	GetMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
-	FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
+	GetActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
 
-	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
-	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
+	// GetProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
+	GetProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 
-	FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
+	GetTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 }
 
 type MessageStorageWriter interface {
@@ -185,8 +183,8 @@ type FlowElementHistoryWriter interface {
 }
 
 type IncidentStorageReader interface {
-	FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error)
-	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error)
+	GetIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error)
+	GetIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error)
 }
 
 type IncidentStorageWriter interface {

@@ -23,6 +23,14 @@ SELECT
     *
 FROM
     execution_token
+WHERE process_instance_key = @process_instance_key
+    AND state IN (sqlc.slice('states'));
+
+-- name: GetAllTokensForProcessInstance :many
+SELECT
+    *
+FROM
+    execution_token
 WHERE process_instance_key = @process_instance_key;
 
 -- name: GetTokens :many

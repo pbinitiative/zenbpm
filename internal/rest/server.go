@@ -524,39 +524,6 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}, nil
 }
 
-func (s *Server) GetExecutionTokens(ctx context.Context, request public.GetExecutionTokensRequestObject) (public.GetExecutionTokensResponseObject, error) {
-	key, err := getKeyFromString(request.ProcessInstanceKey)
-	if err != nil {
-		return public.GetExecutionTokens400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-
-	tokens, err := s.node.GetExecutionTokens(ctx, key)
-	if err != nil {
-		return public.GetExecutionTokens502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-
-	respTokens := make([]public.ExecutionToken, 0, len(tokens))
-	for _, token := range tokens {
-		respTokens = append(respTokens, public.ExecutionToken{
-			ElementId:          token.GetElementId(),
-			ElementInstanceKey: strconv.FormatInt(token.GetElementInstanceKey(), 10),
-			Key:                strconv.FormatInt(token.GetKey(), 10),
-			ProcessInstanceKey: strconv.FormatInt(token.GetProcessInstanceKey(), 10),
-			State:              public.ExecutionTokenState(runtime.ActivityState(token.GetState()).String()),
-		})
-	}
-
-	return public.GetExecutionTokens200JSONResponse{
-		Items: respTokens,
-	}, nil
-}
-
 func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request public.StartProcessInstanceOnElementsRequestObject) (public.StartProcessInstanceOnElementsResponseObject, error) {
 	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
 	if err != nil {
@@ -665,7 +632,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			Message: err.Error(),
 		}, nil
 	}
-	instance, err := s.node.GetProcessInstance(ctx, instanceKey)
+	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, instanceKey)
 	if err != nil {
 		return public.GetProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -680,18 +647,25 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			Message: err.Error(),
 		}, nil
 	}
-	return public.GetProcessInstance200JSONResponse{
-		CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
-		Key:                  fmt.Sprintf("%d", instance.GetKey()),
-		ProcessDefinitionKey: fmt.Sprintf("%d", instance.GetDefinitionKey()),
-		State:                getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
-		Variables:            vars,
-	}, nil
-}
 
-func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	// TODO: we currently do not store activities
-	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
+	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
+	for _, elementInstance := range activeElementInstances {
+		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
+			ElementId:          elementInstance.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+		})
+	}
+
+	return &public.GetProcessInstance200JSONResponse{
+		ActiveElementInstances: respActiveElementInstances,
+		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
+		Key:                    fmt.Sprintf("%d", instance.GetKey()),
+		ProcessDefinitionKey:   fmt.Sprintf("%d", instance.GetDefinitionKey()),
+		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+		Variables:              vars,
+	}, nil
 }
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
@@ -866,15 +840,15 @@ func getRestJobState(state runtime.ActivityState) public.JobState {
 func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInstanceState {
 	switch state {
 	case runtime.ActivityStateReady:
-		return public.Active
+		return public.ProcessInstanceStateActive
 	case runtime.ActivityStateActive:
-		return public.Active
+		return public.ProcessInstanceStateActive
 	case runtime.ActivityStateCompleted:
-		return public.Completed
+		return public.ProcessInstanceStateCompleted
 	case runtime.ActivityStateFailed:
-		return public.Active
+		return public.ProcessInstanceStateActive
 	case runtime.ActivityStateTerminated:
-		return public.Terminated
+		return public.ProcessInstanceStateTerminated
 	default:
 		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
 	}
@@ -959,30 +933,30 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 		variables = *request.Body.Variables
 	}
 
-	var tokensToStartAtElement []string
-	if request.Body.ExecutionTokensToStart != nil {
-		tokensToStartAtElement = make([]string, 0, len(*request.Body.ExecutionTokensToStart))
-		for _, data := range *request.Body.ExecutionTokensToStart {
-			tokensToStartAtElement = append(tokensToStartAtElement, data.ElementId)
+	var elementInstancesToStart []string
+	if request.Body.ElementInstancesToStart != nil {
+		elementInstancesToStart = make([]string, 0, len(*request.Body.ElementInstancesToStart))
+		for _, data := range *request.Body.ElementInstancesToStart {
+			elementInstancesToStart = append(elementInstancesToStart, data.ElementId)
 		}
 	}
 
-	var tokenKeysToTerminate []int64
-	if request.Body.ExecutionTokensToTerminate != nil {
-		tokenKeysToTerminate = make([]int64, 0, len(*request.Body.ExecutionTokensToTerminate))
-		for _, data := range *request.Body.ExecutionTokensToTerminate {
-			executionTokenKey, err := getKeyFromString(data.ExecutionTokenKey)
+	var elementInstancesToTerminate []int64
+	if request.Body.ElementInstancesToTerminate != nil {
+		elementInstancesToTerminate = make([]int64, 0, len(*request.Body.ElementInstancesToTerminate))
+		for _, data := range *request.Body.ElementInstancesToTerminate {
+			executionTokenKey, err := getKeyFromString(data.ElementInstanceKey)
 			if err != nil {
 				return public.ModifyProcessInstance400JSONResponse{
 					Code:    "TODO",
 					Message: err.Error(),
 				}, nil
 			}
-			tokenKeysToTerminate = append(tokenKeysToTerminate, executionTokenKey)
+			elementInstancesToTerminate = append(elementInstancesToTerminate, executionTokenKey)
 		}
 	}
 
-	process, tokens, err := s.node.ModifyProcessInstance(ctx, key, tokenKeysToTerminate, tokensToStartAtElement, variables)
+	process, activeElementInstances, err := s.node.ModifyProcessInstance(ctx, key, elementInstancesToTerminate, elementInstancesToStart, variables)
 	if err != nil {
 		return public.ModifyProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -999,14 +973,13 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 		}, nil
 	}
 
-	respTokens := make([]public.ExecutionToken, 0, len(tokens))
-	for _, token := range tokens {
-		respTokens = append(respTokens, public.ExecutionToken{
-			ElementId:          token.GetElementId(),
-			ElementInstanceKey: strconv.FormatInt(token.GetElementInstanceKey(), 10),
-			Key:                strconv.FormatInt(token.GetKey(), 10),
-			ProcessInstanceKey: strconv.FormatInt(token.GetProcessInstanceKey(), 10),
-			State:              public.ExecutionTokenState(runtime.ActivityState(token.GetState()).String()),
+	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
+	for _, elementInstance := range activeElementInstances {
+		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
+			ElementId:          elementInstance.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			State:              runtime.ActivityState(elementInstance.GetState()).String(),
 		})
 	}
 
@@ -1018,7 +991,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
 			Variables:            processVars,
 		},
-		ExecutionTokens: &respTokens,
+		ActiveElementInstances: &respActiveElementInstances,
 	}, nil
 }
 

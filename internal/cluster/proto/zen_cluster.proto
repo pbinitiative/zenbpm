@@ -232,16 +232,17 @@ message ProcessInstance {
   string process_id = 2;
   bytes variables = 3;
   int64 state = 4;
-  int64 createdAt = 5;
+  int64 created_at = 5;
   int64 definition_key = 6;
 }
 
 message ExecutionToken {
   int64 key = 1;
-  int64 elementInstanceKey = 2;
-  string elementId = 3;
-  int64 processInstanceKey = 4;
-  int64 state = 5;
+  int64 element_instance_key = 2;
+  string element_id = 3;
+  int64 process_instance_key = 4;
+  int64 created_at = 5;
+  int64 state = 6;
 }
 
 message Job {
@@ -410,8 +411,8 @@ message ModifyProcessInstanceVariablesResponse {
 
 message ModifyProcessInstanceRequest {
   int64 process_instance_key = 1;
-  repeated int64 tokenKeysToTerminate = 2;
-  repeated string tokensToStartAtElement = 3;
+  repeated int64 element_instance_ids_to_terminate = 2;
+  repeated string element_ids_to_start_instance = 3;
   bytes variables = 4;
 }
 
@@ -445,6 +446,7 @@ message GetProcessInstanceRequest {
 message GetProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance processes = 2;
+  repeated ExecutionToken execution_tokens = 3;
 }
 
 message GetProcessInstanceJobsRequest {

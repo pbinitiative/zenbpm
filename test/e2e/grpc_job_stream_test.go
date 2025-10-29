@@ -187,7 +187,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		return instance.State == public.Completed
+		return instance.State == public.ProcessInstanceStateCompleted
 	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
 
 }

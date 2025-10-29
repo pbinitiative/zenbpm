@@ -522,7 +522,17 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 var _ storage.TokenStorageReader = &Storage{}
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
-func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	res := make([]bpmnruntime.ExecutionToken, 0)
+	for _, tok := range mem.ExecutionTokens {
+		if tok.ProcessInstanceKey == processInstanceKey && (tok.State == bpmnruntime.TokenStateWaiting || tok.State == bpmnruntime.TokenStateFailed || tok.State == bpmnruntime.TokenStateRunning) {
+			res = append(res, tok)
+		}
+	}
+	return res, nil
+}
+
+func (mem *Storage) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	res := make([]bpmnruntime.ExecutionToken, 0)
 	for _, tok := range mem.ExecutionTokens {
 		if tok.ProcessInstanceKey == processInstanceKey {

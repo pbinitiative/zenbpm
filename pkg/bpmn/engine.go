@@ -217,7 +217,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 
 	// Cancel all called processes
 
-	tokens, err := engine.persistence.GetTokensForProcessInstance(ctx, instance.Key)
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.Key)
 	if err != nil {
 		return fmt.Errorf("failed to find tokens for instance %d: %w", instance.Key, err)
 	}
@@ -254,22 +254,22 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 func (engine *Engine) terminateExecutionTokens(
 	ctx context.Context,
 	batch storage.Batch,
-	tokensKeysToTerminate []int64,
+	elementInstanceKeysToTerminate []int64,
 	processInstanceKey int64,
 ) ([]runtime.ExecutionToken, error) {
-	activeTokens, err := engine.persistence.GetTokensForProcessInstance(ctx, processInstanceKey)
+	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
 	}
 
 	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
-		for _, tokenToTerminate := range tokensKeysToTerminate {
-			if activeToken.Key == tokenToTerminate {
+		for _, elementInstanceKey := range elementInstanceKeysToTerminate {
+			if activeToken.ElementInstanceKey == elementInstanceKey {
 				// Cancel all message subscriptions
-				subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, tokenToTerminate, runtime.ActivityStateActive)
+				subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, activeToken.Key, runtime.ActivityStateActive)
 				if err != nil {
-					return nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", tokenToTerminate, err)
+					return nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, sub := range subscriptions {
 					sub.State = runtime.ActivityStateTerminated
@@ -280,9 +280,9 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel all timer subscriptions
-				timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, tokenToTerminate)
+				timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, activeToken.Key)
 				if err != nil {
-					return nil, fmt.Errorf("failed to find timers for execution token %d: %w", tokenToTerminate, err)
+					return nil, fmt.Errorf("failed to find timers for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, timer := range timers {
 					timer.TimerState = runtime.TimerStateCancelled
@@ -293,9 +293,9 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel all jobs
-				jobs, err := engine.persistence.FindTokenJobsInState(ctx, tokenToTerminate, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
+				jobs, err := engine.persistence.FindTokenJobsInState(ctx, activeToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
 				if err != nil {
-					return nil, fmt.Errorf("failed to find jobs for execution token %d: %w", tokenToTerminate, err)
+					return nil, fmt.Errorf("failed to find jobs for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, job := range jobs {
 					job.State = runtime.ActivityStateTerminated
@@ -306,9 +306,9 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel all incidents
-				incidents, err := engine.persistence.FindIncidentsByExecutionTokenKey(ctx, tokenToTerminate)
+				incidents, err := engine.persistence.FindIncidentsByExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
-					return nil, fmt.Errorf("failed to find incidents for execution token %d: %w", tokenToTerminate, err)
+					return nil, fmt.Errorf("failed to find incidents for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, incident := range incidents {
 					incident.ResolvedAt = ptr.To(time.Now())
@@ -319,14 +319,14 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel called processes
-				calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, tokenToTerminate)
+				calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
-					return nil, fmt.Errorf("failed to find called process for token %d: %w", tokenToTerminate, err)
+					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
 				for _, calledProcess := range calledProcesses {
 					err = engine.cancelInstance(ctx, calledProcess, batch)
 					if err != nil {
-						return nil, fmt.Errorf("failed to cancel called process for token %d: %w", tokenToTerminate, err)
+						return nil, fmt.Errorf("failed to cancel called process for token %d: %w", activeToken.Key, err)
 					}
 				}
 
@@ -354,6 +354,7 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch storage.Ba
 			ElementId:          flowNode.GetId(),
 			ProcessInstanceKey: processInstance.Key,
 			State:              runtime.TokenStateRunning,
+			CreatedAt:          time.Now(),
 		}
 		executionTokens = append(executionTokens, executionToken)
 		err := batch.SaveToken(ctx, executionToken)
@@ -397,7 +398,7 @@ func (engine *Engine) ModifyInstanceVariables(ctx context.Context, processInstan
 	return &processInstance, nil
 }
 
-func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, executionTokensToTerminate []int64, elementIdsToStartExecution []string, variableContext map[string]interface{}) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	processInstance := runtime.ProcessInstance{
 		Key: processInstanceKey,
 	}
@@ -423,14 +424,14 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	batch := engine.persistence.NewBatch()
 
-	activeTokensLeft, err := engine.terminateExecutionTokens(ctx, batch, executionTokensToTerminate, processInstanceKey)
+	activeTokensLeft, err := engine.terminateExecutionTokens(ctx, batch, elementInstanceIdsToTerminate, processInstanceKey)
 	if err != nil {
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
 		return &processInstance, nil, err
 	}
 
-	startedTokens, err := engine.startExecutionTokens(ctx, batch, elementIdsToStartExecution, &processInstance)
+	startedTokens, err := engine.startExecutionTokens(ctx, batch, elementIdsToStartInstance, &processInstance)
 	if err != nil {
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
@@ -1069,7 +1070,7 @@ func (engine *Engine) createExternalBusinessRuleTask(
 func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: this implementation is wrong does not count with multiple gateways activated at the same time
 	incoming := element.GetIncomingAssociation()
-	instanceTokens, err := engine.persistence.GetTokensForProcessInstance(ctx, instance.Key)
+	instanceTokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, instance.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current tokens for process instance: %w", err)
 	}
@@ -1081,10 +1082,12 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.B
 	}
 	completedGatewayTokens := []runtime.ExecutionToken{}
 	for _, token := range gatewayTokens {
+		//TODO: should probably be WAITING not COMPLETED
 		if token.State == runtime.TokenStateCompleted {
 			completedGatewayTokens = append(completedGatewayTokens, token)
 		}
 	}
+	//TODO: should probably be WAITING not COMPLETED
 	currentToken.State = runtime.TokenStateCompleted
 	if len(completedGatewayTokens) != len(incoming)-1 {
 		// we are still waiting for additional tokens to arrive
@@ -1093,6 +1096,7 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.B
 
 	outgoing := element.GetOutgoingAssociation()
 	resTokens := make([]runtime.ExecutionToken, len(outgoing)+1)
+	//TODO: should probably be WAITING not COMPLETED
 	currentToken.State = runtime.TokenStateCompleted
 	resTokens[0] = currentToken
 	for i, flow := range outgoing {

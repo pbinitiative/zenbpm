@@ -30,6 +30,44 @@ func (q *Queries) DeleteProcessInstancesTokens(ctx context.Context, keys []int64
 	return err
 }
 
+const getAllTokensForProcessInstance = `-- name: GetAllTokensForProcessInstance :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, state, created_at
+FROM
+    execution_token
+WHERE process_instance_key = ?1
+`
+
+func (q *Queries) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error) {
+	rows, err := q.db.QueryContext(ctx, getAllTokensForProcessInstance, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionToken{}
+	for rows.Next() {
+		var i ExecutionToken
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTokens = `-- name: GetTokens :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at
@@ -85,10 +123,27 @@ SELECT
 FROM
     execution_token
 WHERE process_instance_key = ?1
+    AND state IN (/*SLICE:states*/?)
 `
 
-func (q *Queries) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error) {
-	rows, err := q.db.QueryContext(ctx, getTokensForProcessInstance, processInstanceKey)
+type GetTokensForProcessInstanceParams struct {
+	ProcessInstanceKey int64   `json:"process_instance_key"`
+	States             []int64 `json:"states"`
+}
+
+func (q *Queries) GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error) {
+	query := getTokensForProcessInstance
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProcessInstanceKey)
+	if len(arg.States) > 0 {
+		for _, v := range arg.States {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

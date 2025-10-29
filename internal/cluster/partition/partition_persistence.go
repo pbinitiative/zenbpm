@@ -1529,17 +1529,14 @@ func GetActiveTokens(ctx context.Context, db *sql.Queries, partitionId uint32) (
 			ElementId:          tok.ElementID,
 			ProcessInstanceKey: tok.ProcessInstanceKey,
 			State:              bpmnruntime.TokenState(tok.State),
+			CreatedAt:          time.UnixMilli(tok.CreatedAt),
 		}
 	}
 	return res, err
 }
 
-func (rq *DB) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
-	return GetTokensForProcessInstance(ctx, rq.Queries, rq.Partition, processInstanceKey)
-}
-
-func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
-	tokens, err := db.GetTokensForProcessInstance(ctx, processInstanceKey)
+func (rq *DB) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	tokens, err := rq.Queries.GetAllTokensForProcessInstance(ctx, processInstanceKey)
 	res := make([]bpmnruntime.ExecutionToken, len(tokens))
 	for i, tok := range tokens {
 		res[i] = bpmnruntime.ExecutionToken{
@@ -1548,6 +1545,30 @@ func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partition
 			ElementId:          tok.ElementID,
 			ProcessInstanceKey: tok.ProcessInstanceKey,
 			State:              bpmnruntime.TokenState(tok.State),
+			CreatedAt:          time.UnixMilli(tok.CreatedAt),
+		}
+	}
+	return res, err
+}
+
+func (rq *DB) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	return GetTokensForProcessInstance(ctx, rq.Queries, rq.Partition, processInstanceKey, []int64{int64(bpmnruntime.TokenStateWaiting), int64(bpmnruntime.TokenStateRunning), int64(bpmnruntime.TokenStateFailed)})
+}
+
+func GetTokensForProcessInstance(ctx context.Context, db *sql.Queries, partitionId uint32, processInstanceKey int64, states []int64) ([]bpmnruntime.ExecutionToken, error) {
+	tokens, err := db.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
+		ProcessInstanceKey: processInstanceKey,
+		States:             states,
+	})
+	res := make([]bpmnruntime.ExecutionToken, len(tokens))
+	for i, tok := range tokens {
+		res[i] = bpmnruntime.ExecutionToken{
+			Key:                tok.Key,
+			ElementInstanceKey: tok.ElementInstanceKey,
+			ElementId:          tok.ElementID,
+			ProcessInstanceKey: tok.ProcessInstanceKey,
+			State:              bpmnruntime.TokenState(tok.State),
+			CreatedAt:          time.UnixMilli(tok.CreatedAt),
 		}
 	}
 	return res, err

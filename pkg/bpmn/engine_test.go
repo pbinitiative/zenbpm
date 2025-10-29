@@ -84,7 +84,7 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	idH := bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
 	defer bpmnEngine.RemoveHandler(idH)
 
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), pi.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), pi.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), pi, tokens)
 	assert.NoError(t, err)
@@ -339,7 +339,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// TODO: would need different test
 
 	// All called processes should be terminated
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	for _, token := range tokens {
@@ -375,7 +375,7 @@ func TestModifyProcessInstance(t *testing.T) {
 
 	var executionTokens []runtime.ExecutionToken
 	assert.Eventually(t, func() bool {
-		executionTokens, err = bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+		executionTokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 		assert.NoError(t, err)
 		if executionTokens != nil && len(executionTokens) == 1 {
 			return true
@@ -391,12 +391,12 @@ func TestModifyProcessInstance(t *testing.T) {
 	}
 	assert.NotEqual(t, "", mainToken.Key)
 
-	executionTokensToTerminate := make([]int64, 0, 1)
-	executionTokensToTerminate = append(executionTokensToTerminate, mainToken.Key)
-	executionTokensToStart := make([]string, 0, 1)
-	executionTokensToStart = append(executionTokensToStart, "userTask")
+	elementInstancesToTerminate := make([]int64, 0, 1)
+	elementInstancesToTerminate = append(elementInstancesToTerminate, mainToken.ElementInstanceKey)
+	elementIdsToStartInstance := make([]string, 0, 1)
+	elementIdsToStartInstance = append(elementIdsToStartInstance, "userTask")
 
-	modifiedInstance, runningTokens, err := bpmnEngine.ModifyInstance(t.Context(), instance.GetInstanceKey(), executionTokensToTerminate, executionTokensToStart, map[string]any{
+	modifiedInstance, runningTokens, err := bpmnEngine.ModifyInstance(t.Context(), instance.GetInstanceKey(), elementInstancesToTerminate, elementIdsToStartInstance, map[string]any{
 		"order": map[string]any{"name": "test-order-name"}})
 	if err != nil {
 		return

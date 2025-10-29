@@ -140,6 +140,8 @@ type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
+	FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error)
+
 	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
 
 	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
@@ -172,8 +174,8 @@ type MessageStorageWriter interface {
 
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
-	// TODO: update this so it doesn't have to return all the tokens
-	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {
@@ -187,6 +189,7 @@ type FlowElementHistoryWriter interface {
 type IncidentStorageReader interface {
 	FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error)
 	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error)
+	FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error)
 }
 
 type IncidentStorageWriter interface {

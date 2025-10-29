@@ -346,6 +346,12 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		assert.NoError(t, err)
 		assert.Equal(t, job, storeJob)
 		assert.NotEmpty(t, job.Type)
+
+		storeJobs, err := s.FindTokenJobsInState(t.Context(), token.Key, []bpmnruntime.ActivityState{bpmnruntime.ActivityStateActive})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(storeJobs))
+		assert.Equal(t, job, storeJobs[0])
+		assert.NotEmpty(t, storeJobs[0].Type)
 	}
 }
 
@@ -442,7 +448,6 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
-
 		token1 := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
@@ -450,13 +455,33 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 			ProcessInstanceKey: st.processInstance.Key,
 			State:              bpmnruntime.TokenStateRunning,
 		}
-
 		err := s.SaveToken(t.Context(), token1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
+
+		r = s.GenerateId()
+		token2 := bpmnruntime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              bpmnruntime.TokenStateCompleted,
+		}
+		err = s.SaveToken(t.Context(), token2)
+		assert.NoError(t, err)
+
+		r = s.GenerateId()
+		token3 := bpmnruntime.ExecutionToken{
+			Key:                r,
+			ElementInstanceKey: r,
+			ElementId:          "test-elem",
+			ProcessInstanceKey: st.processInstance.Key,
+			State:              bpmnruntime.TokenStateWaiting,
+		}
+		err = s.SaveToken(t.Context(), token3)
+		assert.NoError(t, err)
 
 		tokens, err := s.GetRunningTokens(t.Context())
-		assert.Nil(t, err)
-
+		assert.NoError(t, err)
 		matched := false
 		for _, tok := range tokens {
 			if tok.ElementInstanceKey == token1.ElementInstanceKey {
@@ -465,6 +490,26 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 			}
 		}
 		assert.True(t, matched, "expected to find created token among active tokens for partition")
+
+		tokens, err = s.GetAllTokensForProcessInstance(t.Context(), st.processInstance.Key)
+		assert.NoError(t, err)
+		matchedTwice := 0
+		for _, tok := range tokens {
+			if tok.ElementInstanceKey == token1.ElementInstanceKey || tok.ElementInstanceKey == token2.ElementInstanceKey {
+				matchedTwice++
+			}
+		}
+		assert.Equal(t, 2, matchedTwice, "expected to find created tokens among tokens for partition")
+
+		tokens, err = s.GetActiveTokensForProcessInstance(t.Context(), st.processInstance.Key)
+		assert.NoError(t, err)
+		matchedTwice = 0
+		for _, tok := range tokens {
+			if tok.ElementInstanceKey == token1.ElementInstanceKey || tok.ElementInstanceKey == token3.ElementInstanceKey {
+				matchedTwice++
+			}
+		}
+		assert.Equal(t, 2, matchedTwice, "expected to find created tokens among tokens for partition")
 	}
 }
 
@@ -511,6 +556,7 @@ func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing
 
 func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
+
 		r := s.GenerateId()
 		tok := s.GenerateId()
 
@@ -528,6 +574,8 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 			ElementId:          "test-elem",
 			ProcessInstanceKey: st.processInstance.Key,
 			Message:            "test-message",
+			CreatedAt:          time.Time{}.Local(),
+			ResolvedAt:         nil,
 			Token:              token,
 		}
 
@@ -537,9 +585,23 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		err = s.SaveToken(t.Context(), token)
 		assert.Nil(t, err)
 
-		incident, err = s.FindIncidentByKey(t.Context(), r)
+		testIncident, err := s.FindIncidentByKey(t.Context(), r)
 		assert.Nil(t, err)
-		assert.Equal(t, incident, incident)
+		assert.Equal(t, incident, testIncident)
+
+		testIncidents, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.Key)
+		assert.Nil(t, err)
+		assert.NotEmpty(t, testIncidents)
+		for _, testIncident := range testIncidents {
+			if testIncident.Token.Key == token.Key {
+				assert.Equal(t, incident, testIncident)
+			}
+		}
+
+		testIncidents, err = s.FindIncidentsByExecutionTokenKey(t.Context(), tok)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(testIncidents))
+		assert.Equal(t, incident, testIncidents[0])
 	}
 }
 

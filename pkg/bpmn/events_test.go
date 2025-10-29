@@ -131,7 +131,7 @@ func TestHavingIntermediateCatchEventAndServiceTaskInParallelTheProcessStateIsMa
 	defer bpmnEngine.RemoveHandler(t2H)
 	instance, _ := bpmnEngine.CreateInstance(t.Context(), process, nil)
 
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)

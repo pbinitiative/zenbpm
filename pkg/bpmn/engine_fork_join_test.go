@@ -1,9 +1,8 @@
 package bpmn
 
 import (
-	"testing"
-
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestForkUncontrolledJoin(t *testing.T) {
@@ -43,7 +42,6 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
-
 	// then
 	assert.Equal(t, "id-a-1,id-a-2,id-b-1", cp.CallPath)
 }

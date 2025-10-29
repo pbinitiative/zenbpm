@@ -76,33 +76,34 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 	})
 
 	t.Run("modify process instance tokens", func(t *testing.T) {
-		executionTokens, err := getExecutionTokens(t, instance.Key)
+		processInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
-		assert.NotEmpty(t, executionTokens)
-		assert.Equal(t, 1, len(executionTokens))
-		assert.NotEmpty(t, executionTokens[0].Key)
+		assert.NotEmpty(t, processInstance.ActiveElementInstances)
+		assert.Equal(t, 1, len(processInstance.ActiveElementInstances))
+		assert.NotEmpty(t, processInstance.ActiveElementInstances[0].ElementInstanceKey)
 
-		executionTokensToTerminate := make([]public.TerminateExecutionData, 0, 1)
-		executionTokensToTerminate = append(executionTokensToTerminate, public.TerminateExecutionData{
-			ExecutionTokenKey: executionTokens[0].Key,
+		ElementInstancesToTerminate := make([]public.TerminateElementInstanceData, 0, 1)
+		ElementInstancesToTerminate = append(ElementInstancesToTerminate, public.TerminateElementInstanceData{
+			ElementInstanceKey: processInstance.ActiveElementInstances[0].ElementInstanceKey,
 		})
-		executionTokensToStart := make([]public.StartExecutionData, 0, 1)
-		executionTokensToStart = append(executionTokensToStart, public.StartExecutionData{
+		ElementInstancesToStart := make([]public.StartElementInstanceData, 0, 1)
+		ElementInstancesToStart = append(ElementInstancesToStart, public.StartElementInstanceData{
 			ElementId: "user-task-2",
 		})
 
-		instance, tokens, err := modifyProcessInstanceTokens(t, instance.Key, executionTokensToTerminate, executionTokensToStart, map[string]any{
+		instance, activeElementInstances, err := modifyProcessInstanceTokens(t, instance.Key, ElementInstancesToTerminate, ElementInstancesToStart, map[string]any{
 			"order": map[string]any{"name": "test-order-name"},
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
 		assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.Variables["order"])
 		assert.Equal(t, float64(123), instance.Variables["testVar"])
-		assert.NotEmpty(t, tokens)
-		assert.Equal(t, 1, len(tokens))
-		assert.NotEmpty(t, tokens[0].Key)
-		assert.Equal(t, tokens[0].ElementId, "user-task-2")
-		assert.Equal(t, tokens[0].ProcessInstanceKey, instance.Key)
+		assert.NotEmpty(t, activeElementInstances)
+		assert.Equal(t, 1, len(activeElementInstances))
+		assert.NotEmpty(t, activeElementInstances[0].ElementInstanceKey)
+		assert.Equal(t, activeElementInstances[0].ElementId, "user-task-2")
+		assert.NotEmpty(t, activeElementInstances[0].State)
+		assert.NotEmpty(t, activeElementInstances[0].CreatedAt)
 
 		instance, err = getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
@@ -161,12 +162,12 @@ func startProcessInstanceOnElements(t testing.TB, processDefinitionKey string, s
 	return instance, nil
 }
 
-func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, executionTokensToTerminate []public.TerminateExecutionData, executionTokensToStart []public.StartExecutionData, variables map[string]any) (public.ProcessInstance, []public.ExecutionToken, error) {
+func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
 	req := public.ModifyProcessInstanceJSONBody{
-		ExecutionTokensToStart:     &executionTokensToStart,
-		ExecutionTokensToTerminate: &executionTokensToTerminate,
-		ProcessInstanceKey:         processInstanceKey,
-		Variables:                  &variables,
+		ElementInstancesToStart:     &ElementInstancesToStart,
+		ElementInstancesToTerminate: &ElementInstancesToTerminate,
+		ProcessInstanceKey:          processInstanceKey,
+		Variables:                   &variables,
 	}
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/modify/process-instance").
@@ -174,32 +175,15 @@ func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, execut
 		WithBody(req).
 		DoOk()
 	if err != nil {
-		return public.ProcessInstance{}, []public.ExecutionToken{}, fmt.Errorf("failed to modify process instance: %w", err)
+		return public.ProcessInstance{}, []public.ElementInstance{}, fmt.Errorf("failed to modify process instance: %w", err)
 	}
 	unmarshalledResp := public.ModifyProcessInstance201JSONResponse{}
 
 	err = json.Unmarshal(resp, &unmarshalledResp)
 	if err != nil {
-		return public.ProcessInstance{}, []public.ExecutionToken{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
+		return public.ProcessInstance{}, []public.ElementInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
 	}
-	return *unmarshalledResp.ProcessInstance, *unmarshalledResp.ExecutionTokens, nil
-}
-
-func getExecutionTokens(t testing.TB, processInstanceKey string) ([]public.ExecutionToken, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instance/%s/execution-tokens", processInstanceKey)).
-		WithMethod("GET").
-		DoOk()
-	if err != nil {
-		return []public.ExecutionToken{}, fmt.Errorf("failed to get execution tokens in process instance: %w", err)
-	}
-
-	unmarshalledResp := public.GetExecutionTokens200JSONResponse{}
-	err = json.Unmarshal(resp, &unmarshalledResp)
-	if err != nil {
-		return []public.ExecutionToken{}, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-	return unmarshalledResp.Items, nil
+	return *unmarshalledResp.ProcessInstance, *unmarshalledResp.ActiveElementInstances, nil
 }
 
 func modifyProcessInstanceVariables(t testing.TB, processInstanceKey string, variables map[string]any) (public.ProcessInstance, error) {

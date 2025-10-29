@@ -174,8 +174,8 @@ type MessageStorageWriter interface {
 
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
-	// TODO: update this so it doesn't have to return all the tokens
-	GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {

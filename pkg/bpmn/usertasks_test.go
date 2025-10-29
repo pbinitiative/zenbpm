@@ -42,14 +42,14 @@ func TestUserTasksCanBeContinue(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)
 
 	//when
 	userConfirm = true
-	tokens, err = bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)

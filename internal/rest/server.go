@@ -815,6 +815,87 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	return jobsPage, nil
 }
 
+func (s *Server) GetUserTasks(ctx context.Context, request public.GetUserTasksRequestObject) (public.GetUserTasksResponseObject, error) {
+	userTaskType := "user-task-type"
+	page := int32(1)
+	var variableFilters []byte
+	var err error
+	if request.Body.VariableFilters != nil {
+		variableFilters, err = json.Marshal(request.Body.VariableFilters)
+		if err != nil {
+			variableFilters = nil
+			log.Debugf(ctx, "failed to marshal variable filters: %v, error: %v", request.Body.VariableFilters, err)
+		}
+	}
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	size := int32(100)
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	var reqState *runtime.ActivityState
+	if request.Params.State != nil {
+		switch *request.Params.State {
+		case public.JobStateActive:
+			reqState = ptr.To(runtime.ActivityStateActive)
+		case public.JobStateCompleted:
+			reqState = ptr.To(runtime.ActivityStateCompleted)
+		case public.JobStateTerminated:
+			reqState = ptr.To(runtime.ActivityStateActive)
+		default:
+			panic("unexpected public.JobState")
+		}
+	}
+	jobs, err := s.node.GetFilteredJobs(ctx, page, size, &userTaskType, reqState, variableFilters)
+	if err != nil {
+		return public.GetUserTasks502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobsPage := public.GetUserTasks200JSONResponse{
+		Partitions: make([]public.PartitionJobs, len(jobs)),
+		PartitionedPageMetadata: public.PartitionedPageMetadata{
+			Page: int(page),
+			Size: int(size),
+		},
+	}
+
+	count := 0
+	for i, partitionJobs := range jobs {
+		jobsPage.Partitions[i] = public.PartitionJobs{
+			Items:     make([]public.Job, len(partitionJobs.GetJobs())),
+			Partition: int(partitionJobs.GetPartitionId()),
+		}
+		count += len(partitionJobs.GetJobs())
+		for k, job := range partitionJobs.GetJobs() {
+			vars := map[string]any{}
+			err = json.Unmarshal(job.GetVariables(), &vars)
+			if err != nil {
+				return public.GetUserTasks500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+
+			jobsPage.Partitions[i].Items[k] = public.Job{
+				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+				Key:                fmt.Sprintf("%d", job.GetKey()),
+				State:              getRestJobState(runtime.ActivityState(job.GetState())),
+				Variables:          vars,
+				ElementId:          job.GetElementId(),
+				ProcessInstanceKey: fmt.Sprintf("%d", job.GetProcessInstanceKey()),
+				Type:               job.GetType(),
+			}
+		}
+	}
+	jobsPage.Count = count
+	return jobsPage, nil
+}
+
 func getRestJobState(state runtime.ActivityState) public.JobState {
 	switch state {
 	case runtime.ActivityStateActive:

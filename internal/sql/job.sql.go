@@ -222,6 +222,90 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 	return i, err
 }
 
+const findJobsAdvancedFilter = `-- name: FindJobsAdvancedFilter :many
+WITH filter_json AS (
+    SELECT json(?7) as data
+)
+SELECT
+    job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.variables, job.execution_token
+FROM
+    job
+        CROSS JOIN
+    filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')) AS filter
+WHERE
+    COALESCE(?1, job.type) = job.type
+  AND (?2 IS NULL OR state = ?2)
+  AND (?3 IS NULL OR created_at >= ?3)
+  AND (?4 IS NULL OR created_at <= ?4)
+  AND (
+    CASE json_extract(filter.value, '$.operation')
+        WHEN '=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) = json_extract(filter.value, '$.value')
+        WHEN '!=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) != json_extract(filter.value, '$.value')
+        WHEN '>' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) > CAST(json_extract(filter.value, '$.value') AS REAL)
+        WHEN '<' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) < CAST(json_extract(filter.value, '$.value') AS REAL)
+        WHEN '>=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) >= CAST(json_extract(filter.value, '$.value') AS REAL)
+        WHEN '<=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) <= CAST(json_extract(filter.value, '$.value') AS REAL)
+        WHEN 'LIKE' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) LIKE json_extract(filter.value, '$.value')
+        ELSE 1
+        END
+    )
+GROUP BY job.key
+HAVING COUNT(*) = (SELECT COUNT(*) FROM filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')))
+ORDER BY created_at DESC
+LIMIT ?6 OFFSET ?5
+`
+
+type FindJobsAdvancedFilterParams struct {
+	Type          sql.NullString `json:"type"`
+	State         interface{}    `json:"state"`
+	CreatedAfter  interface{}    `json:"created_after"`
+	CreatedBefore interface{}    `json:"created_before"`
+	Offset        int64          `json:"offset"`
+	Size          int64          `json:"size"`
+	FiltersJson   interface{}    `json:"filters_json"`
+}
+
+func (q *Queries) FindJobsAdvancedFilter(ctx context.Context, arg FindJobsAdvancedFilterParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, findJobsAdvancedFilter,
+		arg.Type,
+		arg.State,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.Offset,
+		arg.Size,
+		arg.FiltersJson,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findJobsFilter = `-- name: FindJobsFilter :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token

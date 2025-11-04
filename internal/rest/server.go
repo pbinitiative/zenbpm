@@ -490,13 +490,14 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}
 	var ttl *types.TTL
 	if request.Body.HistoryTimeToLive != nil {
-		*ttl, err = types.ParseTTL(*request.Body.HistoryTimeToLive)
+		parsedTTL, err := types.ParseTTL(*request.Body.HistoryTimeToLive)
 		if err != nil {
 			return public.CreateProcessInstance400JSONResponse{
 				Code:    "TODO",
 				Message: fmt.Sprintf("Failed to parse historyTimeToLive: %s", err),
 			}, nil
 		}
+		ttl = &parsedTTL
 	}
 	process, err := s.node.CreateInstance(ctx, key, variables, ttl)
 	if err != nil {

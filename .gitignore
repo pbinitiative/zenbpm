@@ -19,3 +19,4 @@ cover.out
 docs/docusaurus/
 dist/
 .release-env
+.env

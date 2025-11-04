@@ -1,0 +1,24 @@
+FROM golang:1.25 AS builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+
+RUN go mod download
+
+COPY . .
+# CGO is automatically enabled in the standard golang image
+RUN go build -o zenbpm cmd/zenbpm/main.go
+
+
+FROM ubuntu:24.04
+
+COPY --from=builder /build/zenbpm /usr/bin/zenbpm
+
+COPY --from=builder /build/conf/zenbpm/conf-dev.yaml /conf-dev.yaml
+
+ENV PROFILE=DEV
+
+ENV CONFIG_FILE=/conf-dev.yaml
+
+ENTRYPOINT ["/usr/bin/zenbpm"]

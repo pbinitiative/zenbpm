@@ -630,7 +630,7 @@ func (node *ZenNode) CreateInstance(
 	}
 	if timeToLive == nil {
 		if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
-			*timeToLive = node.controller.Config.Persistence.InstanceHistoryTTL
+			timeToLive = &node.controller.Config.Persistence.InstanceHistoryTTL
 		}
 	}
 	resp, err := client.CreateInstance(ctx, &proto.CreateInstanceRequest{

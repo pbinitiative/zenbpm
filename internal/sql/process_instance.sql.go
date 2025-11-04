@@ -8,6 +8,7 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const countActiveProcessInstances = `-- name: CountActiveProcessInstances :one
@@ -26,9 +27,99 @@ func (q *Queries) CountActiveProcessInstances(ctx context.Context) (int64, error
 	return count, err
 }
 
+const deleteProcessInstances = `-- name: DeleteProcessInstances :exec
+DELETE FROM process_instance
+WHERE key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstances(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstances
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
+const findActiveInstances = `-- name: FindActiveInstances :many
+SELECT
+    key
+FROM
+    process_instance
+WHERE
+    state IN (1, 8)
+`
+
+func (q *Queries) FindActiveInstances(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findActiveInstances)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var key int64
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findInactiveInstancesToDelete = `-- name: FindInactiveInstancesToDelete :many
+SELECT
+    pi.key
+FROM
+    process_instance AS pi
+    LEFT JOIN execution_token AS et ON pi.parent_process_execution_token = et.key
+    LEFT JOIN process_instance AS parent_pi ON et.process_instance_key = parent_pi.key
+WHERE
+    pi.state IN (4, 6, 9)
+    AND (pi.parent_process_execution_token IS NULL
+        OR parent_pi.state IN (4, 6, 9))
+    AND (pi.history_delete_sec IS NULL
+        OR pi.history_delete_sec < ?1)
+`
+
+func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, currunix sql.NullInt64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findInactiveInstancesToDelete, currunix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var key int64
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -51,6 +142,8 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.HistoryTtlSec,
+			&i.HistoryDeleteSec,
 		); err != nil {
 			return nil, err
 		}
@@ -67,7 +160,7 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 
 const findProcessInstances = `-- name: FindProcessInstances :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -98,6 +191,8 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.HistoryTtlSec,
+			&i.HistoryDeleteSec,
 		); err != nil {
 			return nil, err
 		}
@@ -114,7 +209,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -146,6 +241,8 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.HistoryTtlSec,
+			&i.HistoryDeleteSec,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +259,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -179,6 +276,8 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.State,
 		&i.Variables,
 		&i.ParentProcessExecutionToken,
+		&i.HistoryTtlSec,
+		&i.HistoryDeleteSec,
 	)
 	return i, err
 }
@@ -210,5 +309,34 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.Variables,
 		arg.ParentProcessExecutionToken,
 	)
+	return err
+}
+
+const setProcessInstanceTTL = `-- name: SetProcessInstanceTTL :exec
+UPDATE
+    process_instance
+SET
+    history_ttl_sec = CASE WHEN CAST(?1 AS integer) IS NOT NULL THEN
+        ?1
+    ELSE
+        history_ttl_sec
+    END,
+    history_delete_sec = CASE WHEN CAST(?2 AS integer) IS NOT NULL THEN
+        ?2
+    ELSE
+        history_delete_sec
+    END
+WHERE
+    key = ?3
+`
+
+type SetProcessInstanceTTLParams struct {
+	HistoryTTLSec    sql.NullInt64 `json:"historyTTLSec"`
+	HistoryDeleteSec sql.NullInt64 `json:"historyDeleteSec"`
+	Key              int64         `json:"key"`
+}
+
+func (q *Queries) SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error {
+	_, err := q.db.ExecContext(ctx, setProcessInstanceTTL, arg.HistoryTTLSec, arg.HistoryDeleteSec, arg.Key)
 	return err
 }

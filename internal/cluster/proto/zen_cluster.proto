@@ -367,7 +367,8 @@ message CreateInstanceRequest {
     int64 definition_key = 1;
     string latest_process_id = 2;
   }
-  bytes variables = 4;
+  bytes variables = 3;
+  int64 historyTTL = 4;
 }
 
 message CreateInstanceResponse {

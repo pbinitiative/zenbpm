@@ -62,9 +62,9 @@ Settings related to **clustering**, **internal communication**, and **Raft** con
 
 Raft consensus and cluster joining settings.
 
-| Field                    | Type          | Env Variable                          | Default            | Description                                              |
-|--------------------------|---------------|----------------------------------------|---------------------|----------------------------------------------------------|
-| `dir`                    | string        | `CLUSTER_RAFT_DIR`                    | `zen_bpm_node_data` | Path to local node data                                  |
+| Field                    | Type          | Env Variable                         | Default             | Description                                              |
+|--------------------------|---------------|--------------------------------------|---------------------|----------------------------------------------------------|
+| `dir`                    | string        | `CLUSTER_RAFT_DIR`                   | `zen_bpm_node_data` | Path to local node data                                  |
 | `nonVoter`               | bool          | `CLUSTER_RAFT_NON_VOTER`             | `false`             | Set node as non-voting member                            |
 | `joinAttempts`           | int           | `CLUSTER_RAFT_JOIN_ATTEMPTS`         | `5`                 | Number of join attempts                                  |
 | `joinInterval`           | duration      | `CLUSTER_RAFT_JOIN_INTERVAL`         | `2s`                | Time interval between join attempts                      |
@@ -78,11 +78,14 @@ Raft consensus and cluster joining settings.
 
 Configuration for caching and storage.
 
-| Field              | Type          | Env Variable                             | Default     | Description                                  |
-|--------------------|---------------|-------------------------------------------|-------------|----------------------------------------------|
-| `procDefCacheTTL`  | time.Duration | `PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS` | `24h`       | TTL for cached process definitions           |
-| `procDefCacheSize` | int           | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions     |
-| `rqlite`           | `*RqLite`     | —                                         | —           | Configuration for embedded RQLite database   |
+| Field                | Type          | Env Variable                             | Default     | Description                                  |
+|----------------------|---------------|------------------------------------------|-------------|----------------------------------------------|
+| `instanceHistoryTTL` | types.TTL     | `PERSISTENCE_INSTANCE_HISTORY_TTL`       | `0`         | TTL for finished process instances           |
+| `procDefCacheTTL`    | types.TTL     | `PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS` | `24h`       | TTL for cached process definitions           |
+| `procDefCacheSize`   | int           | `PERSISTENCE_PROC_DEF_CACHE_SIZE`        | `200`       | Max number of cached process definitions     |
+| `decDefCacheTTL`     | types.TTL     | `PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS`  | `24h`       | TTL for cached decision definitions           |
+| `decDefCacheSize`    | int           | `PERSISTENCE_DEC_DEF_CACHE_SIZE`         | `200`       | Max number of cached decision definitions     |
+| `rqlite`             | `*RqLite`     | —                                        | —           | Configuration for embedded RQLite database   |
 
 ---
 

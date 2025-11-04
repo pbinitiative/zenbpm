@@ -9,6 +9,7 @@ import (
 type RunningInstance struct {
 	instance *runtime.ProcessInstance
 	mu       *sync.Mutex
+	waiters  int64
 }
 
 type RunningInstancesCache struct {
@@ -25,21 +26,28 @@ func newRunningInstanceCache() *RunningInstancesCache {
 
 func (c *RunningInstancesCache) lockInstance(instance *runtime.ProcessInstance) {
 	c.mu.Lock()
-	if ins, ok := c.processInstances[instance.Key]; ok {
-		ins.mu.Lock()
-	} else {
-		c.processInstances[instance.Key] = &RunningInstance{
+	ri, ok := c.processInstances[instance.Key]
+	if !ok {
+		ri = &RunningInstance{
 			instance: instance,
 			mu:       &sync.Mutex{},
+			waiters:  0,
 		}
-		c.processInstances[instance.Key].mu.Lock()
+		c.processInstances[instance.Key] = ri
 	}
+	ri.waiters++
 	c.mu.Unlock()
+
+	ri.mu.Lock()
 }
 
 func (c *RunningInstancesCache) unlockInstance(instance *runtime.ProcessInstance) {
 	c.mu.Lock()
-	c.processInstances[instance.Key].mu.Unlock()
-	delete(c.processInstances, instance.Key)
+	ri := c.processInstances[instance.Key]
+	ri.mu.Unlock()
+	ri.waiters--
+	if ri.waiters == 0 {
+		delete(c.processInstances, instance.Key)
+	}
 	c.mu.Unlock()
 }

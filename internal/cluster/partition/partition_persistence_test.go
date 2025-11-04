@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
+	ssql "database/sql"
+
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRqLiteStorage(t *testing.T) {
+func prepareTestSetup(t *testing.T) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
 	ctx := context.Background()
 	mux, muxLn, err := network.NewNodeMux("")
 	if err != nil {
@@ -40,7 +44,7 @@ func TestRqLiteStorage(t *testing.T) {
 	)
 	conf := config.Persistence{
 		RqLite:           &c,
-		ProcDefCacheTTL:  24 * time.Hour,
+		ProcDefCacheTTL:  types.TTL(24 * time.Hour),
 		ProcDefCacheSize: 200,
 	}
 
@@ -96,7 +100,6 @@ func TestRqLiteStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create partition node: %s", err)
 	}
-	defer partition.Stop()
 	migrations, err := sql.GetMigrations()
 	if err != nil {
 		t.Fatalf("failed to get migrations: %s", err)
@@ -122,6 +125,12 @@ func TestRqLiteStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to run migrations: %s", err)
 	}
+	return partition, conf, clientMgr, tStore, ts
+}
+
+func TestRqLiteStorage(t *testing.T) {
+	partition, conf, clientMgr, tStore, ts := prepareTestSetup(t)
+	defer partition.Stop()
 
 	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-rq-lite-db"), conf, clientMgr, tStore.ClusterState)
 	assert.NoError(t, err)
@@ -135,6 +144,233 @@ func TestRqLiteStorage(t *testing.T) {
 	}
 	testInstanceParent(t, db)
 	testMessageCorrelation(t, db, ts)
+}
+
+func TestDataCleanup(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t)
+	defer partition.Stop()
+
+	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-data-cleanup"), conf, clientMgr, tStore.ClusterState)
+	assert.NoError(t, err)
+
+	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
+
+	r := db.GenerateId()
+	pd := runtime.ProcessDefinition{
+		BpmnProcessId:    fmt.Sprintf("id-%d", r),
+		Version:          1,
+		Key:              r,
+		BpmnData:         fmt.Sprintf(data, r),
+		BpmnChecksum:     [16]byte{1},
+		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+	}
+	err = db.SaveProcessDefinition(t.Context(), pd)
+	assert.NoError(t, err)
+
+	createTestData := func(ctx context.Context, idArr *[]int64) {
+		r := db.GenerateId()
+		*idArr = append(*idArr, r)
+		inst1 := runtime.ProcessInstance{
+			Definition:                  &pd,
+			Key:                         r,
+			VariableHolder:              runtime.VariableHolder{},
+			CreatedAt:                   time.Now(),
+			State:                       runtime.ActivityStateReady,
+			ParentProcessExecutionToken: nil,
+		}
+		err = db.SaveProcessInstance(ctx, inst1)
+		assert.NoError(t, err)
+		inst1.State = runtime.ActivityStateActive
+		err = db.SaveProcessInstance(ctx, inst1)
+		assert.NoError(t, err)
+
+		token := runtime.ExecutionToken{
+			Key:                r + 50,
+			ElementInstanceKey: r + 60,
+			ElementId:          "test-64654",
+			ProcessInstanceKey: inst1.Key,
+			State:              runtime.TokenStateRunning,
+		}
+		err = db.SaveToken(t.Context(), token)
+		assert.NoError(t, err)
+
+		messageSub := runtime.MessageSubscription{
+			Key:                  r + 70,
+			ElementId:            "message-sub",
+			ProcessDefinitionKey: pd.Key,
+			ProcessInstanceKey:   inst1.Key,
+			Name:                 "name",
+			CorrelationKey:       "cor-1",
+			State:                runtime.ActivityStateActive,
+			CreatedAt:            time.Now(),
+			Token:                token,
+		}
+		err = db.SaveMessageSubscription(ctx, messageSub)
+		assert.NoError(t, err)
+
+		incident := runtime.Incident{
+			Key:                r + 100,
+			ElementInstanceKey: r + 101,
+			ElementId:          "something-465",
+			ProcessInstanceKey: inst1.Key,
+			Message:            "something went wrong",
+			CreatedAt:          time.Now(),
+			Token:              token,
+		}
+		err = db.SaveIncident(ctx, incident)
+		assert.NoError(t, err)
+
+		r2 := db.GenerateId()
+		*idArr = append(*idArr, r2)
+		inst2 := runtime.ProcessInstance{
+			Definition:                  &pd,
+			Key:                         r2,
+			VariableHolder:              runtime.VariableHolder{},
+			CreatedAt:                   time.Now(),
+			State:                       runtime.ActivityStateReady,
+			ParentProcessExecutionToken: &token,
+		}
+		err = db.SaveProcessInstance(ctx, inst2)
+		assert.NoError(t, err)
+		inst2.State = runtime.ActivityStateActive
+		err = db.SaveProcessInstance(ctx, inst2)
+		assert.NoError(t, err)
+		inst2.State = runtime.ActivityStateCompleted
+		err = db.SaveProcessInstance(ctx, inst2)
+		assert.NoError(t, err)
+
+		timer := runtime.Timer{
+			ElementId:            "timer-elem",
+			Key:                  r2 + 80,
+			ElementInstanceKey:   r2 + 81,
+			ProcessDefinitionKey: pd.Key,
+			ProcessInstanceKey:   inst2.Key,
+			TimerState:           runtime.TimerStateCreated,
+			CreatedAt:            time.Now(),
+			DueAt:                time.Now().Add(1 * time.Hour),
+			Duration:             1 * time.Hour,
+			Token:                token,
+		}
+		err = db.SaveTimer(ctx, timer)
+		assert.NoError(t, err)
+
+		job := runtime.Job{
+			ElementId:          "job-123",
+			ElementInstanceKey: r2 + 91,
+			ProcessInstanceKey: inst2.Key,
+			Key:                r2 + 90,
+			State:              runtime.ActivityStateActive,
+			Type:               "test-job",
+			Variables:          map[string]any{"foo": "bar"},
+			CreatedAt:          time.Now(),
+			Token:              token,
+		}
+		err = db.SaveJob(ctx, job)
+		assert.NoError(t, err)
+
+		flowHist := runtime.FlowElementHistoryItem{
+			Key:                job.Key,
+			ProcessInstanceKey: inst2.Key,
+			ElementId:          "job-123",
+			CreatedAt:          job.CreatedAt,
+		}
+		err = db.SaveFlowElementHistory(ctx, flowHist)
+		assert.NoError(t, err)
+	}
+
+	idsToBeDeleted := []int64{}
+	idsToKeep := []int64{}
+	for i := range db.historyDeleteThreshold {
+		ctx := t.Context()
+		if i < db.historyDeleteThreshold/2 {
+			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(1*time.Hour))
+			createTestData(ctx, &idsToKeep)
+		} else {
+			createTestData(ctx, &idsToBeDeleted)
+		}
+	}
+
+	nowSeconds := ssql.NullInt64{
+		Int64: time.Now().Unix(),
+		Valid: true,
+	}
+	inactiveIds, err := db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(inactiveIds))
+	activeBeforeCleanup, err := db.Queries.FindActiveInstances(t.Context())
+	assert.NoError(t, err)
+
+	err = db.dataCleanup(time.Now())
+	assert.NoError(t, err)
+
+	activeAfterCleanup, err := db.Queries.FindActiveInstances(t.Context())
+	assert.NoError(t, err)
+	assert.Equal(t, activeBeforeCleanup, activeAfterCleanup)
+
+	createTestData(t.Context(), &idsToBeDeleted)
+
+	idsToComplete := append(idsToBeDeleted, idsToKeep...)
+	for _, id := range idsToComplete {
+		pi, err := db.FindProcessInstanceByKey(t.Context(), id)
+		assert.NoError(t, err)
+		pi.State = runtime.ActivityStateCompleted
+		err = db.SaveProcessInstance(t.Context(), pi)
+		assert.NoError(t, err)
+	}
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, inactiveIds, idsToBeDeleted)
+
+	err = db.dataCleanup(time.Now())
+	assert.NoError(t, err)
+
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	assert.NoError(t, err)
+	assert.Empty(t, inactiveIds)
+	count := queryCount(t, db, "select count(*) from process_instance")
+	assert.Equal(t, int64(db.historyDeleteThreshold), count)
+	count = queryCount(t, db, "select count(*) from message_subscription")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	count = queryCount(t, db, "select count(*) from timer")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	count = queryCount(t, db, "select count(*) from job")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	count = queryCount(t, db, "select count(*) from execution_token")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	count = queryCount(t, db, "select count(*) from flow_element_history")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	count = queryCount(t, db, "select count(*) from incident")
+	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+
+	db.historyDeleteThreshold = 1
+	err = db.dataCleanup(time.Now().Add(2 * time.Hour))
+	assert.NoError(t, err)
+
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	assert.NoError(t, err)
+	assert.Empty(t, inactiveIds)
+	count = queryCount(t, db, "select count(*) from process_instance")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from message_subscription")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from timer")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from job")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from execution_token")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from flow_element_history")
+	assert.Empty(t, count)
+	count = queryCount(t, db, "select count(*) from incident")
+	assert.Empty(t, count)
+}
+
+func queryCount(t *testing.T, db *DB, query string) int64 {
+	row := db.QueryRowContext(t.Context(), query)
+	var count int64
+	err := row.Scan(&count)
+	assert.NoError(t, err)
+	return count
 }
 
 func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {

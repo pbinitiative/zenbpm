@@ -31,7 +31,7 @@ type Controller struct {
 	partitionsMu            sync.RWMutex
 	store                   ControlledStore
 	client                  *client.ClientManager
-	config                  config.Cluster
+	Config                  config.Cluster
 	persistenceConfig       config.Persistence
 	mux                     *tcp.Mux
 	logger                  hclog.Logger
@@ -41,7 +41,7 @@ type Controller struct {
 
 func NewController(mux *tcp.Mux, conf config.Cluster) (*Controller, error) {
 	c := Controller{
-		config:                  conf,
+		Config:                  conf,
 		mux:                     mux,
 		partitions:              make(map[uint32]*partition.ZenPartitionNode),
 		logger:                  hclog.Default().Named("zen-controller"),
@@ -64,10 +64,10 @@ type ControlledStore interface {
 func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) error {
 	c.store = s
 	c.client = clientMgr
-	persistenceConfig := c.config.Persistence
+	persistenceConfig := c.Config.Persistence
 
-	if c.config.Persistence.RqLite == nil {
-		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.config.Raft.JoinAddresses)
+	if c.Config.Persistence.RqLite == nil {
+		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses)
 		persistenceConfig.RqLite = &defaultConfig
 	}
 	err := persistenceConfig.RqLite.Validate()
@@ -258,7 +258,7 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	}
 	partitionConf := c.persistenceConfig
 	partitionConf.RqLite.NodeID = fmt.Sprintf("zen-%s-partition-%d", c.store.ID(), partitionId)
-	partitionConf.RqLite.DataPath = filepath.Join(c.config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
+	partitionConf.RqLite.DataPath = filepath.Join(c.Config.Raft.Dir, fmt.Sprintf("partition-%d", partitionId))
 	partitionNode, err := partition.StartZenPartitionNode(context.Background(), c.mux, c.persistenceConfig, c.client, partitionId, partition.PartitionChangesCallbacks{
 		AddNewNode: func(s raft.Server) error {
 			return c.partitionAddNewNode(s, partitionId)

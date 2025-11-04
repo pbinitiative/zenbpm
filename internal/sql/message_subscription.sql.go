@@ -11,6 +11,26 @@ import (
 	"strings"
 )
 
+const deleteProcessInstancesMessageSubscriptions = `-- name: DeleteProcessInstancesMessageSubscriptions :exec
+DELETE FROM message_subscription
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstancesMessageSubscriptions
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token

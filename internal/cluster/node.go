@@ -22,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/server"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
+	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -608,7 +609,12 @@ func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte,
 	return resp.Pprof, nil
 }
 
-func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey int64, variables map[string]any) (*proto.ProcessInstance, error) {
+func (node *ZenNode) CreateInstance(
+	ctx context.Context,
+	processDefinitionKey int64,
+	variables map[string]any,
+	timeToLive *types.TTL,
+) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
 	if err != nil {
@@ -622,11 +628,17 @@ func (node *ZenNode) CreateInstance(ctx context.Context, processDefinitionKey in
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal variables to create process instance: %w", err)
 	}
+	if timeToLive == nil {
+		if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
+			*timeToLive = node.controller.Config.Persistence.InstanceHistoryTTL
+		}
+	}
 	resp, err := client.CreateInstance(ctx, &proto.CreateInstanceRequest{
 		StartBy: &proto.CreateInstanceRequest_DefinitionKey{
 			DefinitionKey: processDefinitionKey,
 		},
-		Variables: vars,
+		Variables:  vars,
+		HistoryTTL: (*int64)(timeToLive),
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to create process instance")

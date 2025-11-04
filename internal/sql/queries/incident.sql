@@ -5,6 +5,10 @@ ON CONFLICT
     DO UPDATE SET
         resolved_at = excluded.resolved_at;
 
+-- name: DeleteProcessInstancesIncidents :exec
+DELETE FROM incident
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: FindIncidents :many
 SELECT
     *

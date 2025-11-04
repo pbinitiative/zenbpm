@@ -6,6 +6,10 @@ ON CONFLICT
        process_instance_key = excluded.process_instance_key,
        element_id = excluded.element_id;
 
+-- name: DeleteFlowElementHistory :exec
+DELETE FROM flow_element_history
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: GetFlowElementHistory :many
 SELECT
     *

@@ -1,5 +1,7 @@
 package bpmn20
 
+import "github.com/pbinitiative/zenbpm/internal/cluster/types"
+
 type TFlowElementsContainer struct {
 	StartEvents            []TStartEvent             `xml:"startEvent"`
 	EndEvents              []TEndEvent               `xml:"endEvent"`
@@ -21,10 +23,12 @@ type TFlowElementsContainer struct {
 type TProcess struct {
 	TCallableElement
 	TFlowElementsContainer
-	ProcessType                  string `xml:"processType,attr"`
-	IsClosed                     bool   `xml:"isClosed,attr"`
-	IsExecutable                 bool   `xml:"isExecutable,attr"`
-	DefinitionalCollaborationRef string `xml:"definitionalCollaborationRef,attr"`
+	ProcessType  string `xml:"processType,attr"`
+	IsClosed     bool   `xml:"isClosed,attr"`
+	IsExecutable bool   `xml:"isExecutable,attr"`
+	// Specifies after how much time the process should be deleted after it is completed
+	HistoryTimeToLive            types.TTL `xml:"historyTimeToLive,attr"`
+	DefinitionalCollaborationRef string    `xml:"definitionalCollaborationRef,attr"`
 }
 
 func (p *TProcess) GetInternalTaskById(id string) InternalTask {

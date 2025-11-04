@@ -10,6 +10,26 @@ import (
 	"strings"
 )
 
+const deleteProcessInstancesTokens = `-- name: DeleteProcessInstancesTokens :exec
+DELETE FROM execution_token
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstancesTokens
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const getTokens = `-- name: GetTokens :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, state, created_at

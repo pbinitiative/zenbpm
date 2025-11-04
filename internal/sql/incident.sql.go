@@ -8,7 +8,28 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
+
+const deleteProcessInstancesIncidents = `-- name: DeleteProcessInstancesIncidents :exec
+DELETE FROM incident
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstancesIncidents
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
 
 const findIncidentByKey = `-- name: FindIncidentByKey :one
 SELECT

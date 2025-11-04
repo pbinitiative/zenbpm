@@ -5,6 +5,10 @@ ON CONFLICT
     DO UPDATE SET
         state = excluded.state;
 
+-- name: DeleteProcessInstancesTimers :exec
+DELETE FROM timer
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: FindTimers :many
 SELECT
     *

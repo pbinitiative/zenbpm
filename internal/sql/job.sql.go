@@ -29,6 +29,26 @@ func (q *Queries) CountWaitingJobs(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const deleteProcessInstancesJobs = `-- name: DeleteProcessInstancesJobs :exec
+DELETE FROM job
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstancesJobs
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token

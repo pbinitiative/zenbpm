@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	grpccode "google.golang.org/grpc/codes"
@@ -43,21 +44,40 @@ import (
 )
 
 type DB struct {
-	Store     *store.Store
-	Queries   *sql.Queries
-	logger    hclog.Logger
-	node      *snowflake.Node
-	Partition uint32
-	tracer    trace.Tracer
-	pdCache   *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
-	ddCache   *expirable.LRU[int64, dmnruntime.DecisionDefinition]
-	client    *client.ClientManager
-	zenState  func() state.Cluster
+	Store                  *store.Store
+	Queries                *sql.Queries
+	logger                 hclog.Logger
+	node                   *snowflake.Node
+	Partition              uint32
+	tracer                 trace.Tracer
+	pdCache                *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
+	ddCache                *expirable.LRU[int64, dmnruntime.DecisionDefinition]
+	client                 *client.ClientManager
+	zenState               func() state.Cluster
+	historyDeleteThreshold int
 }
 
 // GenerateId implements storage.Storage.
 func (rq *DB) GenerateId() int64 {
 	return rq.node.Generate().Int64()
+}
+
+type Querier interface {
+	getQueries() *sql.Queries
+	getReadDB() *DB
+	getLogger() hclog.Logger
+}
+
+func (d *DB) getQueries() *sql.Queries {
+	return d.Queries
+}
+
+func (d *DB) getReadDB() *DB {
+	return d
+}
+
+func (d *DB) getLogger() hclog.Logger {
+	return d.logger
 }
 
 func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence, client *client.ClientManager, zenState func() state.Cluster) (*DB, error) {
@@ -66,19 +86,53 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
 	}
 	db := &DB{
-		Store:     store,
-		logger:    logger,
-		node:      node,
-		tracer:    otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
-		Partition: partition,
-		pdCache:   expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, cfg.ProcDefCacheTTL),
-		ddCache:   expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, cfg.DecDefCacheTTL),
-		client:    client,
-		zenState:  zenState,
+		Store:                  store,
+		logger:                 logger,
+		node:                   node,
+		tracer:                 otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
+		Partition:              partition,
+		pdCache:                expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Duration(cfg.ProcDefCacheTTL)),
+		ddCache:                expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
+		client:                 client,
+		zenState:               zenState,
+		historyDeleteThreshold: 1000,
 	}
 	queries := sql.New(db)
 	db.Queries = queries
+
+	go db.scheduleDataCleanup()
 	return db, nil
+}
+
+func (rq *DB) scheduleDataCleanup() {
+	t := time.NewTicker(30 * time.Second)
+	for range t.C {
+		err := rq.dataCleanup(time.Now())
+		if err != nil {
+			rq.logger.Error(fmt.Sprintf("Error while performing data cleanup: %s", err))
+		}
+	}
+}
+
+func (rq *DB) dataCleanup(currTime time.Time) error {
+	ctx := context.Background()
+	processes, _ := rq.Queries.FindInactiveInstancesToDelete(ctx, ssql.NullInt64{
+		Int64: currTime.Unix(),
+		Valid: true,
+	})
+	fmt.Println("inactive instances", len(processes))
+	var err error
+	if len(processes) > rq.historyDeleteThreshold {
+		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
+	}
+	return err
 }
 
 func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
@@ -780,15 +834,15 @@ func (rq *DB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, 
 var _ storage.ProcessInstanceStorageWriter = &DB{}
 
 func (rq *DB) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return SaveProcessInstanceWith(ctx, rq.Queries, processInstance)
+	return SaveProcessInstanceWith(ctx, rq, processInstance)
 }
 
-func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstance bpmnruntime.ProcessInstance) error {
+func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bpmnruntime.ProcessInstance) error {
 	varStr, err := json.Marshal(processInstance.VariableHolder.Variables())
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
-	err = db.SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
+	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
 		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
@@ -801,6 +855,37 @@ func SaveProcessInstanceWith(ctx context.Context, db *sql.Queries, processInstan
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
+	}
+	if processInstance.State == bpmnruntime.ActivityStateReady {
+		historyTTL, found := appcontext.HistoryTTLFromContext(ctx)
+		if !found {
+			return nil
+		}
+		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
+			HistoryTTLSec: ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())},
+			Key:           processInstance.Key,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.Key, err)
+		}
+	}
+	if processInstance.State == bpmnruntime.ActivityStateCompleted ||
+		processInstance.State == bpmnruntime.ActivityStateTerminated {
+		pi, err := db.getReadDB().Queries.GetProcessInstance(ctx, processInstance.Key)
+		if err != nil {
+			return fmt.Errorf("failed to read process instance for history processing: %w", err)
+		}
+		if !pi.HistoryTtlSec.Valid {
+			return nil
+		}
+		toDeleteTime := time.Now().Add(time.Duration(pi.HistoryTtlSec.Int64) * time.Second)
+		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
+			HistoryDeleteSec: ssql.NullInt64{Valid: true, Int64: toDeleteTime.Unix()},
+			Key:              processInstance.Key,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to set process instance deletion mark: %w", err)
+		}
 	}
 	return nil
 }
@@ -1565,6 +1650,18 @@ type DBBatch struct {
 	logger           hclog.Logger
 }
 
+func (d *DBBatch) getQueries() *sql.Queries {
+	return d.queries
+}
+
+func (d *DBBatch) getReadDB() *DB {
+	return d.db
+}
+
+func (d *DBBatch) getLogger() hclog.Logger {
+	return d.logger
+}
+
 func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
 	stmt := rq.db.generateStatement(sql, args...)
 	rq.stmtToRun = append(rq.stmtToRun, stmt)
@@ -1606,10 +1703,21 @@ func (b *DBBatch) Flush(ctx context.Context) error {
 	defer func() {
 		execSpan.End()
 	}()
-	_, err := b.db.ExecuteStatements(ctx, b.stmtToRun)
+	resp, err := b.db.ExecuteStatements(ctx, b.stmtToRun)
+	_ = resp
 	if err != nil {
 		b.logger.Error(fmt.Sprintf("failed to flush statements: %s", err))
 		return err
+	}
+	var stmtErr error
+	for i, res := range resp {
+		if res.GetError() != "" {
+			stmtErr = errors.Join(fmt.Errorf("statement %d error: %s", i, res.GetError()))
+		}
+	}
+	if stmtErr != nil {
+		b.logger.Error(fmt.Sprintf("failed to flush - statements error: %s", stmtErr))
+		return stmtErr
 	}
 	for _, action := range b.postFlushActions {
 		action()
@@ -1626,7 +1734,7 @@ func (b *DBBatch) SaveProcessDefinition(ctx context.Context, definition bpmnrunt
 var _ storage.ProcessInstanceStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	return SaveProcessInstanceWith(ctx, b.queries, processInstance)
+	return SaveProcessInstanceWith(ctx, b, processInstance)
 }
 
 var _ storage.TimerStorageWriter = &DBBatch{}

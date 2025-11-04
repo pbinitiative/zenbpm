@@ -7,6 +7,10 @@ ON CONFLICT
         element_instance_key = excluded.element_instance_key,
         element_id = excluded.element_id;
 
+-- name: DeleteProcessInstancesTokens :exec
+DELETE FROM execution_token
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: GetTokensInState :many
 SELECT
     *

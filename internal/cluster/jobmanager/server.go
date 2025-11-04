@@ -127,6 +127,7 @@ func (s *jobServer) distributeJobs() {
 		for i := len(s.distributedJobs) - 1; i >= 0; i-- {
 			job := s.distributedJobs[i]
 			if job.sentTime.Add(jobLockDuration).Before(now) {
+				// fmt.Println("releasing job", job)
 				s.distributedJobs = append(s.distributedJobs[:i], s.distributedJobs[i+1:]...)
 				continue
 			}
@@ -148,6 +149,10 @@ func (s *jobServer) distributeJobs() {
 		}
 		jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, int64(jobsToLoad))
 		// jobs, err := s.loader.LoadJobsToDistribute(jobTypes, currentKeys, s.partitionJobLoadCount)
+		// fmt.Println("jobTypes", jobTypes)
+		// fmt.Println("distributed", len(s.distributedJobs))
+		// fmt.Println("jobsToLoad", jobsToLoad)
+		// fmt.Println("jobs", len(jobs))
 		if err != nil {
 			s.logger.Error("Failed to load new batch of jobs to distribute", "err", err)
 			// give it some time not to overwhelm the node we might not be a leader anymore

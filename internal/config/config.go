@@ -11,6 +11,7 @@ import (
 
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
+	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 )
 
 // TODO: add support for discovery modes
@@ -76,11 +77,12 @@ type Tracing struct {
 }
 
 type Persistence struct {
-	ProcDefCacheTTL  time.Duration `yaml:"procDefCacheTTL" env:"PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
-	ProcDefCacheSize int           `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
-	DecDefCacheTTL   time.Duration `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
-	DecDefCacheSize  int           `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
-	RqLite           *RqLite       `yaml:"rqlite" json:"rqlite"`
+	InstanceHistoryTTL types.TTL `yaml:"instanceHistoryTTL" env:"PERSISTENCE_INSTANCE_HISTORY_TTL"`
+	ProcDefCacheTTL    types.TTL `yaml:"procDefCacheTTL" env:"PERSISTENCE_PROC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
+	ProcDefCacheSize   int       `yaml:"procDefCacheSize" env:"PERSISTENCE_PROC_DEF_CACHE_SIZE" env-default:"200"`
+	DecDefCacheTTL     types.TTL `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
+	DecDefCacheSize    int       `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
+	RqLite             *RqLite   `yaml:"rqlite" json:"rqlite"`
 }
 
 // validate checks the configuration for internal consistency, and activates

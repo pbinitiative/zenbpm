@@ -6,6 +6,10 @@ ON CONFLICT
         state = excluded.state,
         variables = excluded.variables;
 
+-- name: DeleteProcessInstancesJobs :exec
+DELETE FROM job
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: FindJobByKey :one
 SELECT
     *

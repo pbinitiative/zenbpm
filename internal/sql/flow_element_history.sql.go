@@ -7,7 +7,28 @@ package sql
 
 import (
 	"context"
+	"strings"
 )
+
+const deleteFlowElementHistory = `-- name: DeleteFlowElementHistory :exec
+DELETE FROM flow_element_history
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteFlowElementHistory(ctx context.Context, keys []int64) error {
+	query := deleteFlowElementHistory
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
 
 const getFlowElementHistory = `-- name: GetFlowElementHistory :many
 SELECT

@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS process_instance(
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     variables text NOT NULL, -- serialized json variables of the process instance
     parent_process_execution_token integer, -- key of the execution_token of the parent process
+    history_ttl_sec integer, -- seconds after completion for data to be deleted
+    history_delete_sec integer, -- unix millis when the data should be deleted
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- process definition that describes this process instance
 );
 
@@ -34,11 +36,12 @@ CREATE TABLE IF NOT EXISTS message_subscription_pointer(
     created_at integer NOT NULL, -- unix millis of when the pointer of the message subscription was created
     message_subscription_key integer NOT NULL, -- key of the message_subscription which this points to
     execution_token_key integer NOT NULL, -- key of the execution_token that created message_subscription
-    PRIMARY KEY (name,correlation_key)
+    PRIMARY KEY (name, correlation_key)
 );
-CREATE UNIQUE INDEX unique_name_correlation_key_waiting
-ON message_subscription_pointer (name, correlation_key)
-WHERE state = 1;
+
+CREATE UNIQUE INDEX unique_name_correlation_key_waiting ON message_subscription_pointer(name, correlation_key)
+WHERE
+    state = 1;
 
 -- table that holds message subscriptions on process instances
 CREATE TABLE IF NOT EXISTS message_subscription(
@@ -127,11 +130,11 @@ CREATE TABLE IF NOT EXISTS decision_definition(
 
 -- table that holds information about all the decision
 CREATE TABLE IF NOT EXISTS decision(
-    version INTEGER NOT NULL, -- int64 version of the decision
-    decision_id TEXT NOT NULL, -- id of the decision from xml
-    version_tag TEXT NOT NULL, -- string version tag of the decision (user defined)
-    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml definition
-    decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
+    version integer NOT NULL, -- int64 version of the decision
+    decision_id text NOT NULL, -- id of the decision from xml
+    version_tag text NOT NULL, -- string version tag of the decision (user defined)
+    decision_definition_id text NOT NULL, -- id of the decision definition from xml definition
+    decision_definition_key integer NOT NULL, -- int64 reference to decision definition
     FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key) -- reference to decision definition
 );
 

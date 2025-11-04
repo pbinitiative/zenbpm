@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
@@ -487,7 +488,17 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.node.CreateInstance(ctx, key, variables)
+	var ttl *types.TTL
+	if request.Body.HistoryTimeToLive != nil {
+		*ttl, err = types.ParseTTL(*request.Body.HistoryTimeToLive)
+		if err != nil {
+			return public.CreateProcessInstance400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("Failed to parse historyTimeToLive: %s", err),
+			}, nil
+		}
+	}
+	process, err := s.node.CreateInstance(ctx, key, variables, ttl)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",

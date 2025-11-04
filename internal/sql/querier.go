@@ -13,6 +13,14 @@ type Querier interface {
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
 	// https://github.com/sqlc-dev/sqlc/issues/2452
 	CountWaitingJobs(ctx context.Context) (int64, error)
+	DeleteFlowElementHistory(ctx context.Context, keys []int64) error
+	DeleteProcessInstances(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
+	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
 	FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
@@ -22,6 +30,7 @@ type Querier interface {
 	FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error)
 	FindDecisionsById(ctx context.Context, decisionID string) ([]Decision, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
+	FindInactiveInstancesToDelete(ctx context.Context, currunix sql.NullInt64) ([]int64, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
 	FindIncidents(ctx context.Context, arg FindIncidentsParams) ([]Incident, error)
 	FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]Incident, error)
@@ -76,6 +85,7 @@ type Querier interface {
 	SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error
 	SaveTimer(ctx context.Context, arg SaveTimerParams) error
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
+	SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error
 }
 
 var _ Querier = (*Queries)(nil)

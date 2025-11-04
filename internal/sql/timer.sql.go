@@ -11,6 +11,26 @@ import (
 	"strings"
 )
 
+const deleteProcessInstancesTimers = `-- name: DeleteProcessInstancesTimers :exec
+DELETE FROM timer
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error {
+	query := deleteProcessInstancesTimers
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const findElementTimers = `-- name: FindElementTimers :many
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token

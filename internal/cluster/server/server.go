@@ -13,12 +13,14 @@ import (
 	"slices"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	protoc "github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -276,6 +278,9 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 				Message: ptr.To(err.Error()),
 			},
 		}, err
+	}
+	if req.HistoryTTL != nil {
+		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
 	}
 	var instance *runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {

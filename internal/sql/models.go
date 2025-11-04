@@ -106,6 +106,8 @@ type ProcessInstance struct {
 	State                       int64         `json:"state"`
 	Variables                   string        `json:"variables"`
 	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
+	HistoryTtlSec               sql.NullInt64 `json:"history_ttl_sec"`
+	HistoryDeleteSec            sql.NullInt64 `json:"history_delete_sec"`
 }
 
 type Timer struct {

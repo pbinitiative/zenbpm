@@ -120,7 +120,6 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		Int64: currTime.Unix(),
 		Valid: true,
 	})
-	fmt.Println("inactive instances", len(processes))
 	var err error
 	if len(processes) > rq.historyDeleteThreshold {
 		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
@@ -129,7 +128,6 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
 	}
 	return err

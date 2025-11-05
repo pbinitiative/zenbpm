@@ -252,11 +252,23 @@ Currently supported activity types with multi instance:
 
 - ServiceTask
 
-  ![Multi instance service task usage example](./assets/bpmn/multi_instance_sercice_task.png)
+  ![Multi instance service task usage example](./assets/bpmn/multi_instance_service_task.png)
+
 - CallActivity
 
   ![Multi instance call activity usage example](./assets/bpmn/multi_instance_call_activity.png)
 
+- BusinessRuleTask
+
+  ![Multi instance business rule task usage example](./assets/bpmn/multi_instance_business_rule.png)
+
+- UserTask
+
+  ![Multi instance user task usage example](./assets/bpmn/multi_instance_user_task.png)
+
+- SendTask
+
+  ![Multi instance send task usage example](./assets/bpmn/multi_instance_send_task.png)
 
 :::note[Future plans]
 

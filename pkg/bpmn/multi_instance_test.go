@@ -10,6 +10,8 @@ package bpmn
 import (
 	"fmt"
 	"math/rand"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -161,4 +163,53 @@ func Test_multi_instance_call_activity(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, currentPi.GetState(), "Process should be completed")
 	assert.Equal(t, 3, len(currentPi.VariableHolder.GetVariable("outArray").([]interface{})), "3 jobs should be completed")
+}
+func Test_multi_instance_business_rule_task(t *testing.T) {
+	// given
+	dmnDefinition, dmnXmlData, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-cases", "size-decision.dmn"))
+	assert.NoError(t, err)
+	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
+		t.Context(),
+		"",
+		*dmnDefinition,
+		dmnXmlData,
+		bpmnEngine.dmnEngine.GenerateKey(),
+	)
+	assert.NoError(t, err)
+	process, err := bpmnEngine.LoadFromFile("./test-cases/multi-instance-business-rule-task.bpmn")
+	assert.NoError(t, err)
+
+	// when
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["inputCollection"] = []interface{}{5, 10, 15}
+	pi, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
+	assert.NoError(t, err)
+
+	// then
+	assert.Eventually(t, func() bool {
+		return pi.GetState() == runtime.ActivityStateCompleted
+	}, 2*time.Second, 100*time.Millisecond, "Process should be completed")
+	assert.Equal(t, 3, len(pi.VariableHolder.GetVariable("outArray").([]interface{})))
+	outArray := pi.VariableHolder.GetVariable("outArray").([]interface{})
+	fmt.Println(outArray)
+	assert.Equal(t, slices.Contains(outArray, "small"), true)
+	assert.Equal(t, slices.Contains(outArray, "ten"), true)
+	assert.Equal(t, slices.Contains(outArray, "big"), true)
+}
+func Test_multi_instance_user_task(t *testing.T) {
+
+	// given
+	process, err := bpmnEngine.LoadFromFile("./test-cases/multi-instance-user-task.bpmn")
+	assert.NoError(t, err)
+	cp := CallPath{}
+	h := bpmnEngine.NewTaskHandler().Id("user-task").Handler(cp.TaskHandler)
+	defer bpmnEngine.RemoveHandler(h)
+
+	// when
+	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, len(instance.VariableHolder.GetVariable("__outputCollection_user-task").([]interface{})), 3)
+	assert.Equal(t, "user-task,user-task,user-task", cp.CallPath)
 }

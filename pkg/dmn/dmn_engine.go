@@ -133,7 +133,7 @@ func (engine *ZenDmnEngine) saveDecisionDefinition(
 	return &decisionDefinition, resultDecisions, engine.Validate(ctx, &decisionDefinition)
 }
 
-func (engine *ZenDmnEngine) generateKey() int64 {
+func (engine *ZenDmnEngine) GenerateKey() int64 {
 	return engine.persistence.GenerateId()
 }
 

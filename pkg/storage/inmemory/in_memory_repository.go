@@ -28,7 +28,7 @@ type Storage struct {
 	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
 	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
 	Incidents            map[int64]bpmnruntime.Incident
-	mu                   sync.Mutex
+	mu                   sync.RWMutex
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -98,6 +98,9 @@ func (mem *Storage) NewBatch() storage.Batch {
 var _ storage.DecisionStorageReader = &Storage{}
 
 func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.Decision, 0)
 	for _, dec := range mem.Decision[decisionId] {
 		res = append(res, dec)
@@ -113,6 +116,9 @@ func (mem *Storage) GetLatestDecisionById(ctx context.Context, decisionId string
 }
 
 func (mem *Storage) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.Decision, 0)
 	for _, dec := range mem.Decision[decisionId] {
 		res = append(res, dec)
@@ -121,6 +127,9 @@ func (mem *Storage) GetDecisionsById(ctx context.Context, decisionId string) ([]
 }
 
 func (mem *Storage) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.Decision, 0)
 	for _, dec := range mem.Decision[decisionId] {
 		if dec.VersionTag != versionTag {
@@ -139,6 +148,9 @@ func (mem *Storage) GetLatestDecisionByIdAndVersionTag(ctx context.Context, deci
 }
 
 func (mem *Storage) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.Decision, 0)
 	for _, dec := range mem.Decision[decisionId] {
 		if dec.DecisionDefinitionId != decisionDefinitionId {
@@ -157,12 +169,18 @@ func (mem *Storage) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Con
 }
 
 func (mem *Storage) GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	return mem.Decision[decisionId][decisionDefinitionKey], nil
 }
 
 var _ storage.DecisionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.Decision[decision.Id] = make(map[int64]dmnruntime.Decision)
 	mem.Decision[decision.Id][decision.DecisionDefinitionKey] = decision
 	return nil
@@ -171,6 +189,9 @@ func (mem *Storage) SaveDecision(ctx context.Context, decision dmnruntime.Decisi
 var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.DecisionDefinitions[definition.Key] = definition
 	return nil
 }
@@ -180,6 +201,9 @@ var _ storage.DecisionStorageWriter = &Storage{}
 var _ storage.DecisionDefinitionStorageReader = &Storage{}
 
 func (mem *Storage) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.DecisionDefinition, 0)
 	for _, def := range mem.DecisionDefinitions {
 		if def.Id != decisionDefinitionId {
@@ -198,6 +222,9 @@ func (mem *Storage) FindLatestDecisionDefinitionById(ctx context.Context, decisi
 }
 
 func (mem *Storage) FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res, ok := mem.DecisionDefinitions[decisionDefinitionKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -206,6 +233,9 @@ func (mem *Storage) FindDecisionDefinitionByKey(ctx context.Context, decisionDef
 }
 
 func (mem *Storage) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]dmnruntime.DecisionDefinition, 0)
 	for _, def := range mem.DecisionDefinitions {
 		if def.Id != decisionDefinitionId {
@@ -223,6 +253,9 @@ func (mem *Storage) FindDecisionDefinitionsById(ctx context.Context, decisionDef
 var _ storage.ProcessDefinitionStorageReader = &Storage{}
 
 func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, processDefinitionId string) (bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	var res bpmnruntime.ProcessDefinition
 	found := false
 	for _, def := range mem.ProcessDefinitions {
@@ -242,6 +275,9 @@ func (mem *Storage) FindLatestProcessDefinitionById(ctx context.Context, process
 }
 
 func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefinitionKey int64) (bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res, ok := mem.ProcessDefinitions[processDefinitionKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -250,6 +286,9 @@ func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefin
 }
 
 func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.ProcessDefinition, 0)
 	for _, def := range mem.ProcessDefinitions {
 		if def.BpmnProcessId != processId {
@@ -267,6 +306,9 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.ProcessDefinitions[definition.Key] = definition
 	return nil
 }
@@ -274,6 +316,9 @@ func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnru
 var _ storage.ProcessInstanceStorageReader = &Storage{}
 
 func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res, ok := mem.ProcessInstances[processInstanceKey]
 	if !ok {
 		return res, storage.ErrNotFound
@@ -282,6 +327,9 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 }
 
 func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.ProcessInstance, 0)
 	for _, processInstance := range mem.ProcessInstances {
 		if processInstance.ParentProcessExecutionToken != nil && processInstance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
@@ -304,6 +352,9 @@ func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpm
 var _ storage.TimerStorageReader = &Storage{}
 
 func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
 		if timer.TimerState != bpmnruntime.TimerStateCreated {
@@ -318,6 +369,9 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 }
 
 func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
 		if timer.ProcessInstanceKey != processInstanceKey {
@@ -332,6 +386,9 @@ func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstan
 }
 
 func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
 		if timer.DueAt.After(end) {
@@ -348,6 +405,9 @@ func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnrunt
 var _ storage.TimerStorageWriter = &Storage{}
 
 func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.Timers[timer.GetKey()] = timer
 	return nil
 }
@@ -355,6 +415,9 @@ func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) erro
 var _ storage.JobStorageReader = &Storage{}
 
 func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
 		if job.Type != jobType || job.State != bpmnruntime.ActivityStateActive {
@@ -366,6 +429,9 @@ func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([
 }
 
 func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	var res bpmnruntime.Job
 	for _, job := range mem.Jobs {
 		if job.ProcessInstanceKey != processInstanceKey {
@@ -380,6 +446,9 @@ func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey i
 }
 
 func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	var res bpmnruntime.Job
 	res, ok := mem.Jobs[jobKey]
 	if !ok {
@@ -389,6 +458,9 @@ func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 }
 
 func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
 		if job.ProcessInstanceKey != processInstanceKey {
@@ -405,6 +477,9 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 var _ storage.JobStorageWriter = &Storage{}
 
 func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.Jobs[job.GetKey()] = job
 	return nil
 }
@@ -412,6 +487,9 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 var _ storage.MessageStorageReader = &Storage{}
 
 func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	var res bpmnruntime.MessageSubscription
 	res, ok := mem.MessageSubscriptions[key]
 	if !ok {
@@ -425,6 +503,9 @@ func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, 
 
 // FindTokenMessageSubscriptions implements storage.Storage.
 func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.Token.Key == tokenKey {
@@ -435,6 +516,9 @@ func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 }
 
 func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.ProcessInstanceKey != processInstanceKey {
@@ -449,6 +533,9 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 }
 
 func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.GetState() != bpmnruntime.ActivityStateActive {
@@ -465,6 +552,9 @@ func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name s
 }
 
 func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	var res bpmnruntime.Incident
 	res, ok := mem.Incidents[key]
 	if !ok {
@@ -474,6 +564,9 @@ func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnrunti
 }
 
 func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.Incident, 0)
 	for _, inc := range mem.Incidents {
 		if inc.ProcessInstanceKey != processInstanceKey {
@@ -487,6 +580,9 @@ func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, proce
 var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	for _, message := range mem.MessageSubscriptions {
 		if subscription.Key == message.Key {
 			break
@@ -503,6 +599,9 @@ var _ storage.TokenStorageReader = &Storage{}
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
 func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	res := make([]bpmnruntime.ExecutionToken, 0)
 	for _, tok := range mem.ExecutionTokens {
 		if tok.ProcessInstanceKey == processInstanceKey {
@@ -514,6 +613,9 @@ func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInst
 
 // GetActiveTokensForPartition implements storage.Storage.
 func (mem *Storage) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
 	activeTokens := make([]bpmnruntime.ExecutionToken, 0)
 	for _, token := range mem.ExecutionTokens {
 		if token.State == bpmnruntime.TokenStateRunning {
@@ -527,16 +629,25 @@ var _ storage.TokenStorageWriter = &Storage{}
 
 // SaveToken implements storage.Storage.
 func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.ExecutionTokens[token.Key] = token
 	return nil
 }
 
 func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.FlowElementHistory[historyItem.Key] = historyItem
 	return nil
 }
 
 func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
 	mem.Incidents[incident.Key] = incident
 	return nil
 }

@@ -402,6 +402,7 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch st
 			currentToken.State = runtime.TokenStateWaiting
 			return []runtime.ExecutionToken{currentToken}, nil
 		case runtime.ActivityStateCompleted:
+
 			tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ite, currentToken)
 			if err != nil {
 				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageThrowEvent flow transition %d: %w", currentToken.ElementInstanceKey, err)

@@ -23,49 +23,35 @@ func (engine *Engine) initMultiInstances(
 	vhs, err := engine.prepareVariableHoldersForParallelMultiInstance(instance, activityElement)
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
-		return fmt.Errorf("failed to prepare variable holders fr multi-instance: %w", err)
+		return fmt.Errorf("failed to prepare variable holders for multi-instance: %w", err)
 	}
 	if mi.IsSequential {
 		// TODO: serial
 	}
 
 	var lastTransitionToken runtime.ExecutionToken
-	var lastTokenSet bool
 
 	for _, variableHolder := range vhs {
 		instanceCopy := *instance
-		instanceCopy.VariableHolder = variableHolder
-		activityResult, err = engine.activityElementExecutor(ctx, batch, &instanceCopy, *currentToken, activity)
+		instanceCopy.VariableHolder = runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variableHolder.Variables())
+		activityResult, err = engine.executeActivityElement(ctx, batch, &instanceCopy, *currentToken, activity)
 		if err != nil {
 			return err
 		}
-		if activityResult == runtime.ActivityStateActive {
-			// an external worker will complete the job later
-			continue
-		}
 		if activityResult == runtime.ActivityStateCompleted {
 			// internal task is completed synchronously => trigger multi-instance completion
-			tokens, err := engine.handleSimpleTransition(ctx, batch, &instanceCopy, activity.Element(), *currentToken)
+			tokens, err := engine.handleActivityCompletion(ctx, batch, &instanceCopy, activity.Element(), *currentToken, true)
 			if err != nil {
 				return err
 			}
-			if len(tokens) > 0 {
+			if len(tokens) > 0 && tokens[0].State == runtime.TokenStateRunning && tokens[0].ElementId != activity.Element().GetId() {
 				lastTransitionToken = tokens[0]
-				lastTokenSet = true
 			}
 		}
 	}
 
 	currentToken.State = runtime.TokenStateWaiting
-
-	// initialize and persist the output collection for the multi-instance
-	instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), make([]interface{}, 0, len(vhs)))
-	if err := batch.SaveProcessInstance(ctx, *instance); err != nil {
-		return fmt.Errorf("failed to persist initialized output collection for multi-instance: %w", err)
-	}
-
-	// In case of internal completions, propagate the updated token back
-	if lastTokenSet && lastTransitionToken.State == runtime.TokenStateRunning && lastTransitionToken.ElementId != activity.Element().GetId() {
+	if lastTransitionToken.Key != 0 {
 		*currentToken = lastTransitionToken
 	}
 	return nil
@@ -82,7 +68,7 @@ func (engine *Engine) prepareVariableHoldersForParallelMultiInstance(instance *r
 	inputCollection, ok := inputCollectionObject.([]interface{})
 	if !ok {
 		instance.State = runtime.ActivityStateFailed
-		return []runtime.VariableHolder{}, errors.Join(newEngineErrorf("inputCollection is not a collection"), err)
+		return []runtime.VariableHolder{}, newEngineErrorf("inputCollection expression '%s' does not evaluate to a collection", inColExpr)
 	}
 
 	total := len(inputCollection)
@@ -118,11 +104,18 @@ func (engine *Engine) handleMultiInstanceCompletion(
 		isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
 		if isMultiInstance {
 			outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
-			originalInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
-			if err != nil {
-				return false, fmt.Errorf("failed to find process instance with key: %d", instance.Key)
+
+			// TODO: filter variables which are not outputCollection
+
+			var outputCollection []interface{}
+			var ok bool
+			var isNested bool
+			if parent := instance.VariableHolder.GetParent(); parent != nil {
+				isNested = true
+				outputCollection, ok = parent.GetVariable(outColName).([]interface{})
+			} else {
+				outputCollection, ok = instance.VariableHolder.GetVariable(outColName).([]interface{})
 			}
-			outputCollection, ok := originalInstance.GetVariable(outColName).([]interface{})
 			if !ok {
 				return false, errors.New("outputCollection is not a collection on multi-instance flow")
 			}
@@ -138,19 +131,14 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				outputCollection = append(outputCollection, true)
 			}
 
-			originalInstance.VariableHolder.SetVariable(outColName, outputCollection)
-
-			// for call activity we need to update outputCollection in the working process instance
-			instance.VariableHolder = originalInstance.VariableHolder
-
-			inputCollectionObject := instance.VariableHolder.GetVariable(mi.GetInputCollectionName(activityElement.TBaseElement))
-			inputCollection, ok := inputCollectionObject.([]interface{})
-			if !ok {
-				return false, errors.New("inputCollection is not a collection")
+			if isNested {
+				instance.VariableHolder.GetParent().SetVariable(outColName, outputCollection)
+			} else {
+				instance.VariableHolder.SetVariable(outColName, outputCollection)
 			}
 
-			// persistently store the outputCollection
-			err = batch.SaveProcessInstance(ctx, originalInstance)
+			// persistently store the outputCollection for asynchronous multi-instance completion
+			err = batch.SaveProcessInstance(ctx, *instance)
 			if err != nil {
 				return false, fmt.Errorf("failed to save updated parent process instance: %w", err)
 			}
@@ -183,22 +171,20 @@ func (engine *Engine) handleMultiInstanceCompletion(
 				}
 			}
 
-			// TODO: implement completion condition
-			if len(outputCollection) != len(inputCollection) {
+			finished, err := engine.isMultiInstanceFinished(instance, element)
+			if err != nil {
+				return false, err
+			}
+			if !finished {
 				return false, nil
 			}
 
-			// clear an output collection if it was not defined and a default name was used instead
-			batch.AddPreFlushAction(ctx, func() error {
+			batch.AddPostFlushAction(ctx, func() {
 				if mi.LoopCharacteristics.OutputCollection == "" {
-					originalInstance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
+					// clear an output collection if it was not defined and a default name was used instead
+					instance.VariableHolder.SetVariable(mi.GetOutCollectionName(activityElement.TBaseElement), nil)
 				}
-				originalInstance.VariableHolder.SetVariable(mi.GetInputCollectionName(activityElement.TBaseElement), nil)
-				if err := batch.SaveProcessInstance(ctx, originalInstance); err != nil {
-					engine.logger.Error(fmt.Sprintf("failed to save process instance after clearing default outputCollection: %e", err))
-					return err
-				}
-				return nil
+				instance.VariableHolder.SetVariable(mi.GetInputCollectionName(activityElement.TBaseElement), nil)
 			})
 		}
 	}
@@ -218,6 +204,8 @@ func (engine *Engine) castToTActivity(element bpmn20.FlowNode) *bpmn20.TActivity
 		activityElement = &e.TTask.TActivity
 	case *bpmn20.TCallActivity:
 		activityElement = &e.TActivity
+	default:
+		panic(fmt.Sprintf("unsupported activity type %T", element))
 	}
 	return activityElement
 }
@@ -225,7 +213,7 @@ func (engine *Engine) castToTActivity(element bpmn20.FlowNode) *bpmn20.TActivity
 func (engine *Engine) isBoundaryEventMultiInstance(instance *runtime.ProcessInstance, listener *bpmn20.TBoundaryEvent) bool {
 	element := instance.Definition.Definitions.Process.GetFlowNodeById(listener.AttachedToRef)
 	activityElement := engine.castToTActivity(element)
-	return activityElement != nil && activityElement.MultiInstanceLoopCharacteristics.LoopCharacteristics.InputCollection != ""
+	return activityElement.MultiInstanceLoopCharacteristics.LoopCharacteristics.InputCollection != ""
 }
 
 func (engine *Engine) terminateMultiInstanceJobs(
@@ -245,24 +233,30 @@ func (engine *Engine) terminateMultiInstanceJobs(
 			job.State = runtime.ActivityStateTerminated
 			err = batch.SaveJob(ctx, job)
 			if err != nil {
-				return fmt.Errorf("failed to terminate muli-instance job %d: %w", job.Key, err)
+				return fmt.Errorf("failed to terminate multi-instance job %d: %w", job.Key, err)
 			}
 		}
 	}
 	return nil
 }
 
-func (engine *Engine) shouldCallActivityContinue(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
+func (engine *Engine) isMultiInstanceFinished(instance *runtime.ProcessInstance, element bpmn20.FlowNode) (bool, error) {
 	activityElement := engine.castToTActivity(element)
 	mi := activityElement.MultiInstanceLoopCharacteristics
 	if mi.LoopCharacteristics.InputCollection == "" {
 		return true, nil
 	}
 
+	var outputCollection []interface{}
 	outColName := mi.GetOutCollectionName(activityElement.TBaseElement)
-	outputCollection, ok := instance.GetVariable(outColName).([]interface{})
+	var ok bool
+	if parent := instance.VariableHolder.GetParent(); parent != nil {
+		outputCollection, ok = parent.GetVariable(outColName).([]interface{})
+	} else {
+		outputCollection, ok = instance.VariableHolder.GetVariable(outColName).([]interface{})
+	}
 	if !ok {
-		return false, errors.New("outputCollection is not a collection")
+		return false, errors.New("outputCollection is not a collection on multi-instance flow")
 	}
 
 	// TODO: implement completion condition

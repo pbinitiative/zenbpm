@@ -699,21 +699,28 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	var activityResult runtime.ActivityState
 	var err error
 
-	switch element := activity.Element().(type) {
-	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
-	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
-	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
-	default:
-		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	activityElement := engine.castToTActivity(element)
+
+	mi := activityElement.MultiInstanceLoopCharacteristics
+	isMultiInstance := mi.LoopCharacteristics.InputCollection != ""
+
+	// multi-instance
+	if isMultiInstance {
+		err = engine.initMultiInstances(ctx, instance, activityElement, &currentToken, batch, activity)
+		if err != nil {
+			return []runtime.ExecutionToken{currentToken}, err
+		}
+
+		// Create boundary event subscriptions for the multi-instance activity
+		err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+		if err != nil {
+			return nil, fmt.Errorf("failed to process boundary events for multi-instance %s %d: %w", element.GetType(), activity.GetKey(), err)
+		}
+
+		return []runtime.ExecutionToken{currentToken}, nil
 	}
+
+	activityResult, err = engine.executeActivityElement(ctx, batch, instance, currentToken, activity)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), err)
@@ -730,7 +737,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		}
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleActivityCompletion(ctx, batch, instance, activity.Element(), currentToken, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -760,6 +767,33 @@ func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch
 	}
 
 	return nil
+}
+
+func (engine *Engine) executeActivityElement(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	currentToken runtime.ExecutionToken,
+	activity runtime.Activity,
+) (runtime.ActivityState, error) {
+	var activityResult runtime.ActivityState
+	var err error
+	switch element := activity.Element().(type) {
+	case *bpmn20.TServiceTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TSendTask:
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TUserTask:
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+	case *bpmn20.TCallActivity:
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+		// we created process instance and its running in separate goroutine
+	case *bpmn20.TBusinessRuleTask:
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+	default:
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+	}
+	return activityResult, err
 }
 
 func (engine *Engine) createBusinessRuleTask(
@@ -973,6 +1007,7 @@ func (engine *Engine) handleSimpleTransition(
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
+
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions
@@ -1003,6 +1038,35 @@ func (engine *Engine) handleSimpleTransition(
 		}
 	}
 	return resTokens, nil
+}
+
+func (engine *Engine) handleActivityCompletion(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	currentToken runtime.ExecutionToken,
+	cancelBoundaryEventsSubscriptions bool,
+) ([]runtime.ExecutionToken, error) {
+	var token = []runtime.ExecutionToken{currentToken}
+
+	// TODO: determine better way to decide whether to cancel boundary events subscriptions
+	if cancelBoundaryEventsSubscriptions {
+		err := engine.cancelBoundarySubscriptions(ctx, batch, instance, &currentToken)
+		if err != nil {
+			return token, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.Key, err)
+		}
+	}
+
+	finished, err := engine.handleMultiInstanceCompletion(ctx, batch, instance, element)
+	if err != nil {
+		return token, fmt.Errorf("failed to handle multi-instance transition: %w", err)
+	}
+	if !finished {
+		return token, nil
+	}
+
+	return engine.handleSimpleTransition(ctx, batch, instance, element, currentToken)
 }
 
 func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

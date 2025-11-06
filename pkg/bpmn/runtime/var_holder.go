@@ -43,6 +43,10 @@ func (vh *VariableHolder) GetVariable(key string) interface{} {
 	return nil
 }
 
+func (vh *VariableHolder) GetParent() *VariableHolder {
+	return vh.parent
+}
+
 func (vh *VariableHolder) SetVariable(key string, val interface{}) {
 	vh.variables[key] = val
 }

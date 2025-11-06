@@ -1,4 +1,4 @@
-package client
+package zenclient
 
 import (
 	"log/slog"

@@ -485,7 +485,7 @@ paths:
                   type: object
                 historyTimeToLive:
                   type: string
-                  description: Duration for which process instance data are kept in storage after the process instance ends. If ommited the default will be picked up from engine configuration. (1d8h, 1M5d8h)
+                  description: Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
                   example: 30d
             example:
               processDefinitionKey: "4503599627370498"

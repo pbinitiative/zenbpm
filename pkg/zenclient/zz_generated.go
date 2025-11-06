@@ -420,7 +420,7 @@ type GetProcessInstancesParams struct {
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
-	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If ommited the default will be picked up from engine configuration. (1d8h, 1M5d8h)
+	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
 	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`

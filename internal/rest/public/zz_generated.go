@@ -362,7 +362,7 @@ type GetProcessInstancesParams struct {
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
-	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If ommited the default will be picked up from engine configuration. (1d8h, 1M5d8h)
+	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
 	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
@@ -2894,21 +2894,21 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

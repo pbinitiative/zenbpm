@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/client"
-	"github.com/pbinitiative/zenbpm/pkg/client/proto"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -47,12 +47,12 @@ func TestGrpcJobStream(t *testing.T) {
 	assert.NoError(t, err)
 	defer conn.Close()
 
-	zenClient := client.NewGrpc(conn)
+	zenClient := zenclient.NewGrpc(conn)
 
 	count := 0
 	completed := 0
 	start := time.Now()
-	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
 		count++
 		return map[string]any{
@@ -61,7 +61,7 @@ func TestGrpcJobStream(t *testing.T) {
 	}, randomID)
 	assert.NoError(t, err)
 
-	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, completeType, job.GetType())
 		completed++
 		return map[string]any{
@@ -104,12 +104,12 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
 	defer conn.Close()
-	zenClient := client.NewGrpc(conn)
+	zenClient := zenclient.NewGrpc(conn)
 
 	fmt.Println("registering worker")
-	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
-		return nil, &client.WorkerError{
+		return nil, &zenclient.WorkerError{
 			Err:       fmt.Errorf("job fail test"),
 			ErrorCode: "fail-test",
 			Variables: nil,
@@ -138,9 +138,9 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	assert.NoError(t, err)
 
 	defer conn.Close()
-	zenClient = client.NewGrpc(conn)
+	zenClient = zenclient.NewGrpc(conn)
 
-	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
 		return map[string]any{
 			"testVar": 456,
@@ -149,7 +149,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	assert.NoError(t, err)
 
 	completeType := fmt.Sprintf("%s-complete", randomID)
-	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *client.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, completeType, job.Type)
 		return map[string]any{
 			"testVar": 456,

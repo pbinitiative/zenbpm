@@ -1,0 +1,7 @@
+package: zenclient
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true
+output: zz_generated.go

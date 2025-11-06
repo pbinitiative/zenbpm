@@ -1,4 +1,4 @@
-package client
+package zenclient
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/pbinitiative/zenbpm/pkg/client/proto"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

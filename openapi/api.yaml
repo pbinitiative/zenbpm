@@ -1122,6 +1122,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /user-tasks:
+    post:
+      operationId: getUserTasks
+      tags:
+        - user-task
+      summary: Get list of user tasks on partitions
+      x-code-samples:
+        - lang: curl
+          source: |
+            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/JobState"
+          example: "active"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 10
+          example: 10
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              properties:
+                variableFilters:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/VariableFilter"
+      responses:
+        200:
+          description: List of jobs on partitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPartitionPage"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370540"
+                        elementId: "Task_ProcessPayment"
+                        type: "service-task"
+                        processInstanceKey: "4503599627370501"
+                        state: "active"
+                        createdAt: "2025-08-22T15:10:26Z"
+                        variables:
+                          paymentDetails:
+                            amount: 1000
+                            currency: "USD"
+                            method: "credit-card"
+                  - partition: 2
+                    items:
+                      - key: "9007199254740995"
+                        elementId: "Task_SendNotification"
+                        type: "service-task"
+                        processInstanceKey: "9007199254740992"
+                        state: "active"
+                        createdAt: "2025-08-22T15:46:33Z"
+                        variables:
+                          notificationType: "email"
+                          recipient: "customer@example.com"
+                page: 1
+                size: 10
+                count: 2
+                totalCount: 2
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /messages:
     post:
       operationId: publishMessage
@@ -1680,6 +1773,23 @@ components:
         - completed
         - terminated
         - failed
+    VariableFilter:
+      type: object
+      required:
+        - name
+        - operation
+        - value
+      properties:
+        name:
+          type: string
+        operation:
+          type: string
+          enum: [ "=", "!=", ">", ">=", "<", "<=", "like" ]
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
     ActivityPage:
       type: object
       allOf:

@@ -32,6 +32,17 @@ const (
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
 )
 
+// Defines values for VariableFilterOperation.
+const (
+	Empty            VariableFilterOperation = "!="
+	Equal            VariableFilterOperation = "="
+	GreaterThan      VariableFilterOperation = ">"
+	GreaterThanEqual VariableFilterOperation = ">="
+	LessThan         VariableFilterOperation = "<"
+	LessThanEqual    VariableFilterOperation = "<="
+	Like             VariableFilterOperation = "like"
+)
+
 // Defines values for EvaluateDecisionJSONBodyBindingType.
 const (
 	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
@@ -343,6 +354,30 @@ type ProcessInstancePage struct {
 	TotalCount int `json:"totalCount"`
 }
 
+// VariableFilter defines model for VariableFilter.
+type VariableFilter struct {
+	Name      string                  `json:"name"`
+	Operation VariableFilterOperation `json:"operation"`
+	Value     VariableFilter_Value    `json:"value"`
+}
+
+// VariableFilterOperation defines model for VariableFilter.Operation.
+type VariableFilterOperation string
+
+// VariableFilterValue0 defines model for .
+type VariableFilterValue0 = string
+
+// VariableFilterValue1 defines model for .
+type VariableFilterValue1 = float32
+
+// VariableFilterValue2 defines model for .
+type VariableFilterValue2 = bool
+
+// VariableFilter_Value defines model for VariableFilter.Value.
+type VariableFilter_Value struct {
+	union json.RawMessage
+}
+
 // GetDecisionDefinitionsParams defines parameters for GetDecisionDefinitions.
 type GetDecisionDefinitionsParams struct {
 	// Page Page number (1-based indexing)
@@ -462,6 +497,18 @@ type GetProcessInstanceJobsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// GetUserTasksJSONBody defines parameters for GetUserTasks.
+type GetUserTasksJSONBody struct {
+	VariableFilters *[]VariableFilter `json:"variableFilters,omitempty"`
+}
+
+// GetUserTasksParams defines parameters for GetUserTasks.
+type GetUserTasksParams struct {
+	State *JobState `form:"state,omitempty" json:"state,omitempty"`
+	Page  *int32    `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32    `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
@@ -476,6 +523,97 @@ type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElement
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// GetUserTasksJSONRequestBody defines body for GetUserTasks for application/json ContentType.
+type GetUserTasksJSONRequestBody GetUserTasksJSONBody
+
+// AsVariableFilterValue0 returns the union data inside the VariableFilter_Value as a VariableFilterValue0
+func (t VariableFilter_Value) AsVariableFilterValue0() (VariableFilterValue0, error) {
+	var body VariableFilterValue0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVariableFilterValue0 overwrites any union data inside the VariableFilter_Value as the provided VariableFilterValue0
+func (t *VariableFilter_Value) FromVariableFilterValue0(v VariableFilterValue0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVariableFilterValue0 performs a merge with any union data inside the VariableFilter_Value, using the provided VariableFilterValue0
+func (t *VariableFilter_Value) MergeVariableFilterValue0(v VariableFilterValue0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVariableFilterValue1 returns the union data inside the VariableFilter_Value as a VariableFilterValue1
+func (t VariableFilter_Value) AsVariableFilterValue1() (VariableFilterValue1, error) {
+	var body VariableFilterValue1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVariableFilterValue1 overwrites any union data inside the VariableFilter_Value as the provided VariableFilterValue1
+func (t *VariableFilter_Value) FromVariableFilterValue1(v VariableFilterValue1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVariableFilterValue1 performs a merge with any union data inside the VariableFilter_Value, using the provided VariableFilterValue1
+func (t *VariableFilter_Value) MergeVariableFilterValue1(v VariableFilterValue1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVariableFilterValue2 returns the union data inside the VariableFilter_Value as a VariableFilterValue2
+func (t VariableFilter_Value) AsVariableFilterValue2() (VariableFilterValue2, error) {
+	var body VariableFilterValue2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVariableFilterValue2 overwrites any union data inside the VariableFilter_Value as the provided VariableFilterValue2
+func (t *VariableFilter_Value) FromVariableFilterValue2(v VariableFilterValue2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVariableFilterValue2 performs a merge with any union data inside the VariableFilter_Value, using the provided VariableFilterValue2
+func (t *VariableFilter_Value) MergeVariableFilterValue2(v VariableFilterValue2) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t VariableFilter_Value) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *VariableFilter_Value) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -622,6 +760,11 @@ type ClientInterface interface {
 
 	// TestStopCpuProfile request
 	TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUserTasksWithBody request with any body
+	GetUserTasksWithBody(ctx context.Context, params *GetUserTasksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	GetUserTasks(ctx context.Context, params *GetUserTasksParams, body GetUserTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -926,6 +1069,30 @@ func (c *Client) TestStartCpuProfile(ctx context.Context, nodeId string, reqEdit
 
 func (c *Client) TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestStopCpuProfileRequest(c.Server, nodeId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetUserTasksWithBody(ctx context.Context, params *GetUserTasksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserTasksRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetUserTasks(ctx context.Context, params *GetUserTasksParams, body GetUserTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserTasksRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1997,6 +2164,100 @@ func NewTestStopCpuProfileRequest(server string, nodeId string) (*http.Request, 
 	return req, nil
 }
 
+// NewGetUserTasksRequest calls the generic GetUserTasks builder with application/json body
+func NewGetUserTasksRequest(server string, params *GetUserTasksParams, body GetUserTasksJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewGetUserTasksRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewGetUserTasksRequestWithBody generates requests for GetUserTasks with any type of body
+func NewGetUserTasksRequestWithBody(server string, params *GetUserTasksParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/user-tasks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -2112,6 +2373,11 @@ type ClientWithResponsesInterface interface {
 
 	// TestStopCpuProfileWithResponse request
 	TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error)
+
+	// GetUserTasksWithBodyWithResponse request with any body
+	GetUserTasksWithBodyWithResponse(ctx context.Context, params *GetUserTasksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error)
+
+	GetUserTasksWithResponse(ctx context.Context, params *GetUserTasksParams, body GetUserTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error)
 }
 
 type GetDecisionDefinitionsResponse struct {
@@ -2620,6 +2886,30 @@ func (r TestStopCpuProfileResponse) StatusCode() int {
 	return 0
 }
 
+type GetUserTasksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JobPartitionPage
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUserTasksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUserTasksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // GetDecisionDefinitionsWithResponse request returning *GetDecisionDefinitionsResponse
 func (c *ClientWithResponses) GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error) {
 	rsp, err := c.GetDecisionDefinitions(ctx, params, reqEditors...)
@@ -2847,6 +3137,23 @@ func (c *ClientWithResponses) TestStopCpuProfileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseTestStopCpuProfileResponse(rsp)
+}
+
+// GetUserTasksWithBodyWithResponse request with arbitrary body returning *GetUserTasksResponse
+func (c *ClientWithResponses) GetUserTasksWithBodyWithResponse(ctx context.Context, params *GetUserTasksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error) {
+	rsp, err := c.GetUserTasksWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUserTasksResponse(rsp)
+}
+
+func (c *ClientWithResponses) GetUserTasksWithResponse(ctx context.Context, params *GetUserTasksParams, body GetUserTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error) {
+	rsp, err := c.GetUserTasks(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUserTasksResponse(rsp)
 }
 
 // ParseGetDecisionDefinitionsResponse parses an HTTP response from a GetDecisionDefinitionsWithResponse call
@@ -3661,6 +3968,46 @@ func ParseTestStopCpuProfileResponse(rsp *http.Response) (*TestStopCpuProfileRes
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetUserTasksResponse parses an HTTP response from a GetUserTasksWithResponse call
+func ParseGetUserTasksResponse(rsp *http.Response) (*GetUserTasksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUserTasksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JobPartitionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

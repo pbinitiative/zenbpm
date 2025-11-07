@@ -102,31 +102,33 @@ WHERE
 -- name: FindJobsAdvancedFilter :many
 WITH filter_json AS (
     SELECT json(@filters_json) as data
+),
+     filters AS (
+         SELECT json_extract(value, '$.name') AS name,
+                json_extract(value, '$.operation') AS op,
+                json_extract(value, '$.value') AS val
+         FROM filter_json, json_each(json_extract(filter_json.data, '$.filters'))
+     )
+SELECT j.*
+FROM job j
+WHERE COALESCE(sqlc.narg('type'), j.type) = j.type
+  AND (@state IS NULL OR j.state = @state)
+  AND (@created_after IS NULL OR j.created_at >= @created_after)
+  AND (@created_before IS NULL OR j.created_at <= @created_before)
+  AND NOT EXISTS (
+    SELECT 1 FROM filters f
+    WHERE NOT (
+        CASE f.op
+            WHEN '='  THEN json_extract(j.variables, '$.' || f.name) = f.val
+            WHEN '!=' THEN json_extract(j.variables, '$.' || f.name) != f.val
+            WHEN '>'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) > CAST(f.val AS REAL)
+            WHEN '<'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) < CAST(f.val AS REAL)
+            WHEN '>=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) >= CAST(f.val AS REAL)
+            WHEN '<=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) <= CAST(f.val AS REAL)
+            WHEN 'LIKE' THEN json_extract(j.variables, '$.' || f.name) LIKE f.val
+            ELSE 1
+            END
+        )
 )
-SELECT
-    job.*
-FROM
-    job
-        CROSS JOIN
-    filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')) AS filter
-WHERE
-    COALESCE(sqlc.narg('type'), job.type) = job.type
-  AND (@state IS NULL OR state = @state)
-  AND (@created_after IS NULL OR created_at >= @created_after)
-  AND (@created_before IS NULL OR created_at <= @created_before)
-  AND (
-    CASE json_extract(filter.value, '$.operation')
-        WHEN '=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) = json_extract(filter.value, '$.value')
-        WHEN '!=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) != json_extract(filter.value, '$.value')
-        WHEN '>' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) > CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '<' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) < CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '>=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) >= CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '<=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) <= CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN 'LIKE' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) LIKE json_extract(filter.value, '$.value')
-        ELSE 1
-        END
-    )
-GROUP BY job.key
-HAVING COUNT(*) = (SELECT COUNT(*) FROM filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')))
-ORDER BY created_at DESC
+ORDER BY j.created_at DESC
 LIMIT @size OFFSET @offset;

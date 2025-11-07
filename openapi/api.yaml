@@ -1153,6 +1153,16 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
       requestBody:
         required: false
         content:

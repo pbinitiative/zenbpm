@@ -742,12 +742,14 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 			}, err
 		}
 		var variableFilters string
-		if req.VariableFilters == nil || len(req.VariableFilters) <= 2 {
-			variableFilters = `{"filters":[{}]}`
+		if req.VariableFilters == nil || len(req.VariableFilters) < 2 {
+			variableFilters = `{"filters":[]}`
 		} else {
 			variableFilters = fmt.Sprintf(`{"filters":%v}`, string(req.VariableFilters))
 		}
 
+		// TODO implement createdBefore and createdAfter variables pass
+		startTime := time.Now()
 		jobs, err := queries.FindJobsAdvancedFilter(ctx, sql.FindJobsAdvancedFilterParams{
 			Type: ssql.NullString{
 				String: ptr.Deref(req.JobType, ""),
@@ -758,12 +760,12 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 				Valid: req.State != nil,
 			},
 			CreatedAfter: ssql.NullInt64{
-				Int64: 0,
-				Valid: false,
+				Int64: req.GetCreatedAfter(),
+				Valid: req.GetCreatedAfter() != 0,
 			},
 			CreatedBefore: ssql.NullInt64{
-				Int64: 0,
-				Valid: false,
+				Int64: req.GetCreatedBefore(),
+				Valid: req.GetCreatedBefore() != 0,
 			},
 			FiltersJson: variableFilters,
 			Offset:      int64(req.GetSize()) * int64(req.GetPage()-1),
@@ -779,6 +781,8 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 				},
 			}, err
 		}
+		finished := time.Since(startTime)
+		fmt.Println(finished)
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{

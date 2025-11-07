@@ -848,7 +848,7 @@ func (s *Server) GetUserTasks(ctx context.Context, request public.GetUserTasksRe
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetFilteredJobs(ctx, page, size, &userTaskType, reqState, variableFilters)
+	jobs, err := s.node.GetFilteredJobs(ctx, page, size, &userTaskType, reqState, request.Params.CreatedBefore.UnixMilli(), request.Params.CreatedAfter.UnixMilli(), variableFilters)
 	if err != nil {
 		return public.GetUserTasks502JSONResponse{
 			Code:    "TODO",

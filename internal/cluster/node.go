@@ -690,7 +690,7 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 	return result, nil
 }
 
-func (node *ZenNode) GetFilteredJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, variableFilters []byte) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetFilteredJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, createdBefore int64, createdAfter int64, variableFilters []byte) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -714,6 +714,8 @@ func (node *ZenNode) GetFilteredJobs(ctx context.Context, page int32, size int32
 			Partitions:      []uint32{partitionID},
 			JobType:         jobType,
 			State:           reqState,
+			CreatedBefore:   &createdBefore,
+			CreatedAfter:    &createdAfter,
 			VariableFilters: variableFilters,
 		})
 		if err != nil || resp.Error != nil {

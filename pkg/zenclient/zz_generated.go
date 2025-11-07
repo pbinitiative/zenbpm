@@ -504,9 +504,11 @@ type GetUserTasksJSONBody struct {
 
 // GetUserTasksParams defines parameters for GetUserTasks.
 type GetUserTasksParams struct {
-	State *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page  *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size  *int32    `form:"size,omitempty" json:"size,omitempty"`
+	State         *JobState  `form:"state,omitempty" json:"state,omitempty"`
+	Page          *int32     `form:"page,omitempty" json:"page,omitempty"`
+	Size          *int32     `form:"size,omitempty" json:"size,omitempty"`
+	CreatedBefore *time.Time `form:"createdBefore,omitempty" json:"createdBefore,omitempty"`
+	CreatedAfter  *time.Time `form:"createdAfter,omitempty" json:"createdAfter,omitempty"`
 }
 
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
@@ -2232,6 +2234,38 @@ func NewGetUserTasksRequestWithBody(server string, params *GetUserTasksParams, c
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdBefore", runtime.ParamLocationQuery, *params.CreatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdAfter", runtime.ParamLocationQuery, *params.CreatedAfter); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

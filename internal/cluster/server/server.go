@@ -742,12 +742,14 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 			}, err
 		}
 		var variableFilters string
-		if req.VariableFilters == nil || len(req.VariableFilters) <= 2 {
-			variableFilters = `{"filters":[{}]}`
+		if req.VariableFilters == nil || len(req.VariableFilters) < 2 {
+			variableFilters = `{"filters":[]}`
 		} else {
 			variableFilters = fmt.Sprintf(`{"filters":%v}`, string(req.VariableFilters))
 		}
 
+		// TODO implement createdBefore and createdAfter variables pass
+		startTime := time.Now()
 		jobs, err := queries.FindJobsAdvancedFilter(ctx, sql.FindJobsAdvancedFilterParams{
 			Type: ssql.NullString{
 				String: ptr.Deref(req.JobType, ""),
@@ -779,6 +781,8 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 				},
 			}, err
 		}
+		finished := time.Since(startTime)
+		fmt.Println(finished)
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{

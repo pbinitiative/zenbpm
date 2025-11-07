@@ -225,33 +225,35 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 const findJobsAdvancedFilter = `-- name: FindJobsAdvancedFilter :many
 WITH filter_json AS (
     SELECT json(?7) as data
+),
+     filters AS (
+         SELECT json_extract(value, '$.name') AS name,
+                json_extract(value, '$.operation') AS op,
+                json_extract(value, '$.value') AS val
+         FROM filter_json, json_each(json_extract(filter_json.data, '$.filters'))
+     )
+SELECT j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.variables, j.execution_token
+FROM job j
+WHERE COALESCE(?1, j.type) = j.type
+  AND (?2 IS NULL OR j.state = ?2)
+  AND (?3 IS NULL OR j.created_at >= ?3)
+  AND (?4 IS NULL OR j.created_at <= ?4)
+  AND NOT EXISTS (
+    SELECT 1 FROM filters f
+    WHERE NOT (
+        CASE f.op
+            WHEN '='  THEN json_extract(j.variables, '$.' || f.name) = f.val
+            WHEN '!=' THEN json_extract(j.variables, '$.' || f.name) != f.val
+            WHEN '>'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) > CAST(f.val AS REAL)
+            WHEN '<'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) < CAST(f.val AS REAL)
+            WHEN '>=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) >= CAST(f.val AS REAL)
+            WHEN '<=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) <= CAST(f.val AS REAL)
+            WHEN 'LIKE' THEN json_extract(j.variables, '$.' || f.name) LIKE f.val
+            ELSE 1
+            END
+        )
 )
-SELECT
-    job."key", job.element_instance_key, job.element_id, job.process_instance_key, job.type, job.state, job.created_at, job.variables, job.execution_token
-FROM
-    job
-        CROSS JOIN
-    filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')) AS filter
-WHERE
-    COALESCE(?1, job.type) = job.type
-  AND (?2 IS NULL OR state = ?2)
-  AND (?3 IS NULL OR created_at >= ?3)
-  AND (?4 IS NULL OR created_at <= ?4)
-  AND (
-    CASE json_extract(filter.value, '$.operation')
-        WHEN '=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) = json_extract(filter.value, '$.value')
-        WHEN '!=' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) != json_extract(filter.value, '$.value')
-        WHEN '>' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) > CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '<' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) < CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '>=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) >= CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN '<=' THEN CAST(json_extract(variables, '$.' || json_extract(filter.value, '$.name')) AS REAL) <= CAST(json_extract(filter.value, '$.value') AS REAL)
-        WHEN 'LIKE' THEN json_extract(variables, '$.' || json_extract(filter.value, '$.name')) LIKE json_extract(filter.value, '$.value')
-        ELSE 1
-        END
-    )
-GROUP BY job.key
-HAVING COUNT(*) = (SELECT COUNT(*) FROM filter_json, json_each(COALESCE(json_extract(filter_json.data, '$.filters'), '[]')))
-ORDER BY created_at DESC
+ORDER BY j.created_at DESC
 LIMIT ?6 OFFSET ?5
 `
 

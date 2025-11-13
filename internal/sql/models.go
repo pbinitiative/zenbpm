@@ -8,15 +8,27 @@ import (
 	"database/sql"
 )
 
-type Decision struct {
-	Version               int64  `json:"version"`
-	DecisionID            string `json:"decision_id"`
-	VersionTag            string `json:"version_tag"`
-	DecisionDefinitionID  string `json:"decision_definition_id"`
-	DecisionDefinitionKey int64  `json:"decision_definition_key"`
+type BusinessRuleTask struct {
+	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	DecisionID         string `json:"decision_id"`
+	CreatedAt          int64  `json:"created_at"`
+	OutputVariables    string `json:"output_variables"`
+	EvaluatedDecisions string `json:"evaluated_decisions"`
+	ExecutionTokenKey  int64  `json:"execution_token_key"`
 }
 
 type DecisionDefinition struct {
+	Version                  int64  `json:"version"`
+	DecisionID               string `json:"decision_id"`
+	VersionTag               string `json:"version_tag"`
+	DecisionDefinitionID     string `json:"decision_definition_id"`
+	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
+}
+
+type DmnResourceDefinition struct {
 	Key             int64  `json:"key"`
 	Version         int64  `json:"version"`
 	DmnID           string `json:"dmn_id"`

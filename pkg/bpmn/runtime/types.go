@@ -285,3 +285,15 @@ type Incident struct {
 	ResolvedAt         *time.Time
 	Token              ExecutionToken
 }
+
+type BusinessRuleTask struct {
+	Key                int64     // int64 id of the decision result
+	ElementInstanceKey int64     // int64 id of the element instance
+	ElementId          string    // id of the element instance
+	ProcessInstanceKey int64     // int64 reference to process instance
+	DecisionId         string    // id of the decision from xml
+	CreatedAt          time.Time // time of creation
+	OutputVariables    string    // serialized json output variables
+	EvaluatedDecisions string    // serialized json evaluated decisions
+	ExecutionTokenKey  int64     // key of the execution token that executed the decision
+}

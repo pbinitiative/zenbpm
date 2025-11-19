@@ -2,7 +2,7 @@ package dmn
 
 type EvaluatedDRDResult struct {
 	EvaluatedDecisions []EvaluatedDecisionResult
-	DecisionOutput     map[string]interface{}
+	DecisionOutput     interface{}
 }
 
 type EvaluatedDecisionResult struct {

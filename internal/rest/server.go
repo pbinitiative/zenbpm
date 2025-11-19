@@ -272,7 +272,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		}, nil
 	}
 
-	decisionOutput := make(map[string]any)
+	var decisionOutput any
 	err = json.Unmarshal(result.GetDecisionOutput(), &decisionOutput)
 	if err != nil {
 		return public.EvaluateDecision500JSONResponse{
@@ -327,7 +327,6 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 				InputId:         evaluatedInput.GetInputId(),
 				InputName:       evaluatedInput.GetInputName(),
 				InputExpression: evaluatedInput.GetInputExpression(),
-				InputValue:      make(map[string]any),
 			}
 			err = json.Unmarshal(evaluatedInput.GetInputValue(), &resultEvaluatedInput.InputValue)
 			if err != nil {

@@ -815,9 +815,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 
 	if len(element.GetOutputMapping()) > 0 {
-		for key, value := range result.DecisionOutput {
-			variableHolder.SetVariable(key, value)
-		}
+		variableHolder.SetVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+
 		if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
@@ -825,15 +824,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	if len(result.DecisionOutput) == 1 {
-		var propagateValue any
-		for _, value := range result.DecisionOutput {
-			propagateValue = value
-		}
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, propagateValue)
-	} else {
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
-	}
+	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+
 	return runtime.ActivityStateCompleted, nil
 }
 

@@ -453,25 +453,23 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 			matchedRules = append(matchedRules, &resultMatchedRule)
 		}
 
-		resultDecisionOutput, err := json.Marshal(result.DecisionOutput)
+		evaluatedDecisionOutput, err := json.Marshal(evaluatedDecision.DecisionOutput)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal decision output: %w", err)
 		}
 
 		evaluatedInputs := make([]*proto.EvaluatedInput, 0, len(evaluatedDecision.EvaluatedInputs))
 		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
+			marshaledInputValue, err := json.Marshal(evaluatedInput.InputValue)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal evaluated input %s : %w", evaluatedInput.InputValue, err)
+			}
+
 			resultEvaluatedInput := proto.EvaluatedInput{
 				InputId:         &evaluatedInput.InputId,
 				InputName:       &evaluatedInput.InputName,
 				InputExpression: &evaluatedInput.InputExpression,
-				InputValue:      nil,
-			}
-
-			inputValue := make(map[string]interface{})
-			inputValue[evaluatedInput.InputExpression] = evaluatedInput.InputValue
-			resultEvaluatedInput.InputValue, err = json.Marshal(inputValue)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal evaluatedInput.InputValue: %w", err)
+				InputValue:      marshaledInputValue,
 			}
 			evaluatedInputs = append(evaluatedInputs, &resultEvaluatedInput)
 		}
@@ -484,7 +482,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 			DecisionDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
 			DecisionDefinitionId:      &evaluatedDecision.DecisionDefinitionId,
 			MatchedRules:              matchedRules,
-			DecisionOutput:            resultDecisionOutput,
+			DecisionOutput:            evaluatedDecisionOutput,
 			EvaluatedInputs:           evaluatedInputs,
 		})
 	}
@@ -519,7 +517,7 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 				return nil, err
 			}
 		}
-		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", *definition, req.GetData(), req.GetKey())
+		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", definition, req.GetData(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy decision definition: %w", err)
 			return &proto.DeployDecisionDefinitionResponse{

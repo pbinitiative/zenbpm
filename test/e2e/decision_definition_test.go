@@ -78,7 +78,7 @@ func deployDecisionDefinition(t testing.TB, filename string) error {
 	if err != nil {
 		return err
 	}
-	wd = strings.ReplaceAll(wd, "/test/e2e", "")
+	wd = strings.ReplaceAll(wd, filepath.Join("test", "e2e"), "")
 	loc := filepath.Join(wd, "pkg", "dmn", "test-data", "bulk-evaluation-test", filename)
 	file, err := os.ReadFile(loc)
 	if err != nil {

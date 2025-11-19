@@ -1432,8 +1432,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput:
-          type: object
+        decisionOutput: {}
     EvaluatedDecisionResult:
       type: object
       required:
@@ -1499,8 +1498,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue:
-          type: object
+        inputValue: {}
     EvaluatedDecisionOutput:
       type: object
       required:

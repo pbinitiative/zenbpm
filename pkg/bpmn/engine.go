@@ -1007,15 +1007,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	if len(result.DecisionOutput) == 1 {
-		var propagateValue any
-		for _, value := range result.DecisionOutput {
-			propagateValue = value
-		}
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, propagateValue)
-	} else {
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
-	}
+	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+
 	return runtime.ActivityStateCompleted, nil
 }
 

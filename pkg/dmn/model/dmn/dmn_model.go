@@ -1,21 +1,32 @@
 package dmn
 
+import (
+	"encoding/xml"
+)
+
 type TDefinitions struct {
-	Id              string      `xml:"id,attr"`
-	Name            string      `xml:"name,attr"`
-	Namespace       string      `xml:"namespace,attr"`
-	Exporter        string      `xml:"exporter,attr"`
-	ExporterVersion string      `xml:"exporterVersion,attr"`
-	Decisions       []TDecision `xml:"decision"`
-	DMNDI           TDMNDI      `xml:"dmndi:DMNDI"`
+	Id              string       `xml:"id,attr"`
+	Name            string       `xml:"name,attr"`
+	Namespace       string       `xml:"namespace,attr"`
+	Exporter        string       `xml:"exporter,attr"`
+	ExporterVersion string       `xml:"exporterVersion,attr"`
+	Decisions       []TDecision  `xml:"decision"`
+	InputData       []TInputData `xml:"inputData"`
+	DMNDI           TDMNDI       `xml:"dmndi:DMNDI"`
+}
+
+type TInputData struct {
+	Id       string    `xml:"id,attr"`
+	Name     string    `xml:"name,attr"`
+	Variable TVariable `xml:"variable"`
 }
 
 type TDecision struct {
 	Id                     string                    `xml:"id,attr"`
 	Name                   string                    `xml:"name,attr"`
-	DecisionTable          TDecisionTable            `xml:"decisionTable"`
+	DecisionTable          *TDecisionTable           `xml:"decisionTable,omitempty"`
 	Variable               TVariable                 `xml:"variable"`
-	LiteralExpression      TLiteralExpression        `xml:"literalExpression"`
+	LiteralExpression      *TLiteralExpression       `xml:"literalExpression,omitempty"`
 	VersionTag             VersionTag                `xml:"extensionElements>versionTag"`
 	InformationRequirement []TInformationRequirement `xml:"informationRequirement"`
 }
@@ -96,16 +107,54 @@ type TVariable struct {
 }
 
 type TLiteralExpression struct {
-	Id string `xml:"id,attr"`
+	Id                 string `xml:"id,attr"`
+	ExpressionLanguage string `xml:"expressionLanguage,attr"`
+	Text               Text   `xml:"text"`
+}
+
+type Text struct {
+	Text string `xml:",chardata"`
 }
 
 type TInformationRequirement struct {
-	Id               string            `xml:"id,attr"`
-	RequiredDecision TRequiredDecision `xml:"requiredDecision"`
+	Id               string `xml:"id,attr"`
+	RequiredResource TRequiredResource
+}
+
+type TRequiredResource interface {
+	requirement()
 }
 
 type TRequiredDecision struct {
 	Href string `xml:"href,attr"`
+}
+
+func (TRequiredDecision) requirement() {}
+
+type TRequiredInput struct {
+	Href string `xml:"href,attr"`
+}
+
+func (TRequiredInput) requirement() {}
+
+func (requirement *TInformationRequirement) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	tempStruct := struct {
+		Id               string            `xml:"id,attr"`
+		RequiredDecision TRequiredDecision `xml:"requiredDecision"`
+		RequiredInput    TRequiredInput    `xml:"requiredInput"`
+	}{}
+	err := d.DecodeElement(&tempStruct, &start)
+	if err != nil {
+		return err
+	}
+	requirement.Id = tempStruct.Id
+	switch {
+	case tempStruct.RequiredDecision.Href != "":
+		requirement.RequiredResource = tempStruct.RequiredDecision
+	case tempStruct.RequiredInput.Href != "":
+		requirement.RequiredResource = tempStruct.RequiredInput
+	}
+	return nil
 }
 
 type TypeRef string

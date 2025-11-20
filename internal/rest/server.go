@@ -767,7 +767,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState)
+	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState, request.Params.CreatedBefore.UnixMilli(), request.Params.CreatedAfter.UnixMilli())
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -817,83 +817,23 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 
 func (s *Server) GetUserTasks(ctx context.Context, request public.GetUserTasksRequestObject) (public.GetUserTasksResponseObject, error) {
 	userTaskType := "user-task-type"
-	page := int32(1)
-	var variableFilters []byte
-	var err error
-	if request.Body.VariableFilters != nil {
-		variableFilters, err = json.Marshal(request.Body.VariableFilters)
-		if err != nil {
-			variableFilters = nil
-			log.Debugf(ctx, "failed to marshal variable filters: %v, error: %v", request.Body.VariableFilters, err)
-		}
-	}
-	if request.Params.Page != nil {
-		page = *request.Params.Page
-	}
-	size := int32(100)
-	if request.Params.Size != nil {
-		size = *request.Params.Size
-	}
-
-	var reqState *runtime.ActivityState
-	if request.Params.State != nil {
-		switch *request.Params.State {
-		case public.JobStateActive:
-			reqState = ptr.To(runtime.ActivityStateActive)
-		case public.JobStateCompleted:
-			reqState = ptr.To(runtime.ActivityStateCompleted)
-		case public.JobStateTerminated:
-			reqState = ptr.To(runtime.ActivityStateActive)
-		default:
-			panic("unexpected public.JobState")
-		}
-	}
-	jobs, err := s.node.GetFilteredJobs(ctx, page, size, &userTaskType, reqState, request.Params.CreatedBefore.UnixMilli(), request.Params.CreatedAfter.UnixMilli(), variableFilters)
+	jobsPage, err := s.GetJobs(ctx, public.GetJobsRequestObject{
+		Params: public.GetJobsParams{
+			JobType:       &userTaskType,
+			State:         request.Params.State,
+			Page:          request.Params.Page,
+			Size:          request.Params.Size,
+			CreatedBefore: request.Params.CreatedBefore,
+			CreatedAfter:  request.Params.CreatedAfter,
+		},
+	})
 	if err != nil {
-		return public.GetUserTasks502JSONResponse{
+		return public.GetUserTasks500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-
-	jobsPage := public.GetUserTasks200JSONResponse{
-		Partitions: make([]public.PartitionJobs, len(jobs)),
-		PartitionedPageMetadata: public.PartitionedPageMetadata{
-			Page: int(page),
-			Size: int(size),
-		},
-	}
-
-	count := 0
-	for i, partitionJobs := range jobs {
-		jobsPage.Partitions[i] = public.PartitionJobs{
-			Items:     make([]public.Job, len(partitionJobs.GetJobs())),
-			Partition: int(partitionJobs.GetPartitionId()),
-		}
-		count += len(partitionJobs.GetJobs())
-		for k, job := range partitionJobs.GetJobs() {
-			vars := map[string]any{}
-			err = json.Unmarshal(job.GetVariables(), &vars)
-			if err != nil {
-				return public.GetUserTasks500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-
-			jobsPage.Partitions[i].Items[k] = public.Job{
-				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
-				Key:                fmt.Sprintf("%d", job.GetKey()),
-				State:              getRestJobState(runtime.ActivityState(job.GetState())),
-				Variables:          vars,
-				ElementId:          job.GetElementId(),
-				ProcessInstanceKey: fmt.Sprintf("%d", job.GetProcessInstanceKey()),
-				Type:               job.GetType(),
-			}
-		}
-	}
-	jobsPage.Count = count
-	return jobsPage, nil
+	return public.GetUserTasks200JSONResponse(jobsPage.(public.GetJobs200JSONResponse)), nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

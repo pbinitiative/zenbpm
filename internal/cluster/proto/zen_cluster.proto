@@ -64,7 +64,6 @@ service ZenService {
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
-  rpc GetFilteredJobs(GetJobFilterRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -447,6 +446,8 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  int64 createdBefore = 6;
+  int64 createdAfter = 7;
 }
 
 message PartitionedJobs {
@@ -457,17 +458,6 @@ message PartitionedJobs {
 message GetJobsResponse {
   ErrorResult error = 1;
   repeated PartitionedJobs partitions = 2;
-}
-
-message GetJobFilterRequest {
-  int32 page = 1;
-  int32 size = 2;
-  repeated uint32 partitions = 3;
-  string jobType = 4;
-  int64 state = 5;
-  int64 createdBefore = 6;
-  int64 createdAfter = 7;
-  bytes variableFilters =8;
 }
 
 message ResolveIncidentRequest {

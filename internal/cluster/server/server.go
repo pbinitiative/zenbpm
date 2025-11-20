@@ -685,72 +685,6 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 			}, err
 		}
 		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			Type: ssql.NullString{
-				String: ptr.Deref(req.JobType, ""),
-				Valid:  req.JobType != nil,
-			},
-		})
-		if err != nil {
-			err := fmt.Errorf("failed to find jobs with filter %+v", req)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
-		}
-		partitionJobs := make([]*proto.Job, len(jobs))
-		for i, job := range jobs {
-			partitionJobs[i] = &proto.Job{
-				Key:                &job.Key,
-				Variables:          []byte(job.Variables),
-				State:              ptr.To(int64(job.State)),
-				CreatedAt:          &job.CreatedAt,
-				ElementInstanceKey: &job.ElementInstanceKey,
-				ElementId:          &job.ElementID,
-				ProcessInstanceKey: &job.ProcessInstanceKey,
-				Type:               &job.Type,
-			}
-		}
-		resp = append(resp, &proto.PartitionedJobs{
-			PartitionId: &partitionId,
-			Jobs:        partitionJobs,
-		})
-	}
-	return &proto.GetJobsResponse{
-		Partitions: resp,
-	}, nil
-}
-
-func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterRequest) (*proto.GetJobsResponse, error) {
-	resp := make([]*proto.PartitionedJobs, 0, len(req.Partitions))
-	for _, partitionId := range req.Partitions {
-		queries := s.controller.PartitionQueries(ctx, partitionId)
-		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
-		}
-		var variableFilters string
-		if req.VariableFilters == nil || len(req.VariableFilters) < 2 {
-			variableFilters = `{"filters":[]}`
-		} else {
-			variableFilters = fmt.Sprintf(`{"filters":%v}`, string(req.VariableFilters))
-		}
-
-		// TODO implement createdBefore and createdAfter variables pass
-		startTime := time.Now()
-		jobs, err := queries.FindJobsAdvancedFilter(ctx, sql.FindJobsAdvancedFilterParams{
 			Type: ssql.NullString{
 				String: ptr.Deref(req.JobType, ""),
 				Valid:  req.JobType != nil,
@@ -767,11 +701,9 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 				Int64: req.GetCreatedBefore(),
 				Valid: req.GetCreatedBefore() != 0,
 			},
-			FiltersJson: variableFilters,
-			Offset:      int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:        int64(req.GetSize()),
+			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:   int64(req.GetSize()),
 		})
-
 		if err != nil {
 			err := fmt.Errorf("failed to find jobs with filter %+v", req)
 			return &proto.GetJobsResponse{
@@ -781,8 +713,6 @@ func (s *Server) GetFilteredJobs(ctx context.Context, req *proto.GetJobFilterReq
 				},
 			}, err
 		}
-		finished := time.Since(startTime)
-		fmt.Println(finished)
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{

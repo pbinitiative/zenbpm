@@ -1020,6 +1020,16 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         200:
           description: List of jobs on partitions
@@ -1123,15 +1133,11 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /user-tasks:
-    post:
+    get:
       operationId: getUserTasks
       tags:
         - user-task
       summary: Get list of user tasks on partitions
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
       parameters:
         - name: state
           in: query
@@ -1163,18 +1169,6 @@ paths:
           schema:
             type: string
             format: date-time
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              properties:
-                variableFilters:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/VariableFilter"
       responses:
         200:
           description: List of jobs on partitions
@@ -1783,23 +1777,6 @@ components:
         - completed
         - terminated
         - failed
-    VariableFilter:
-      type: object
-      required:
-        - name
-        - operation
-        - value
-      properties:
-        name:
-          type: string
-        operation:
-          type: string
-          enum: [ "=", "!=", ">", ">=", "<", "<=", "like" ]
-        value:
-          oneOf:
-            - type: string
-            - type: number
-            - type: boolean
     ActivityPage:
       type: object
       allOf:

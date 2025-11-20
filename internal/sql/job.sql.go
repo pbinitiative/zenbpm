@@ -222,92 +222,6 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 	return i, err
 }
 
-const findJobsAdvancedFilter = `-- name: FindJobsAdvancedFilter :many
-WITH filter_json AS (
-    SELECT json(?7) as data
-),
-     filters AS (
-         SELECT json_extract(value, '$.name') AS name,
-                json_extract(value, '$.operation') AS op,
-                json_extract(value, '$.value') AS val
-         FROM filter_json, json_each(json_extract(filter_json.data, '$.filters'))
-     )
-SELECT j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.variables, j.execution_token
-FROM job j
-WHERE COALESCE(?1, j.type) = j.type
-  AND (?2 IS NULL OR j.state = ?2)
-  AND (?3 IS NULL OR j.created_at >= ?3)
-  AND (?4 IS NULL OR j.created_at <= ?4)
-  AND NOT EXISTS (
-    SELECT 1 FROM filters f
-    WHERE NOT (
-        CASE f.op
-            WHEN '='  THEN json_extract(j.variables, '$.' || f.name) = f.val
-            WHEN '!=' THEN json_extract(j.variables, '$.' || f.name) != f.val
-            WHEN '>'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) > CAST(f.val AS REAL)
-            WHEN '<'  THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) < CAST(f.val AS REAL)
-            WHEN '>=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) >= CAST(f.val AS REAL)
-            WHEN '<=' THEN CAST(json_extract(j.variables, '$.' || f.name) AS REAL) <= CAST(f.val AS REAL)
-            WHEN 'LIKE' THEN json_extract(j.variables, '$.' || f.name) LIKE f.val
-            ELSE 1
-            END
-        )
-)
-ORDER BY j.created_at DESC
-LIMIT ?6 OFFSET ?5
-`
-
-type FindJobsAdvancedFilterParams struct {
-	Type          sql.NullString `json:"type"`
-	State         interface{}    `json:"state"`
-	CreatedAfter  interface{}    `json:"created_after"`
-	CreatedBefore interface{}    `json:"created_before"`
-	Offset        int64          `json:"offset"`
-	Size          int64          `json:"size"`
-	FiltersJson   interface{}    `json:"filters_json"`
-}
-
-func (q *Queries) FindJobsAdvancedFilter(ctx context.Context, arg FindJobsAdvancedFilterParams) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findJobsAdvancedFilter,
-		arg.Type,
-		arg.State,
-		arg.CreatedAfter,
-		arg.CreatedBefore,
-		arg.Offset,
-		arg.Size,
-		arg.FiltersJson,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Job{}
-	for rows.Next() {
-		var i Job
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.Variables,
-			&i.ExecutionToken,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const findJobsFilter = `-- name: FindJobsFilter :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
@@ -315,21 +229,27 @@ FROM
     job
 WHERE
     COALESCE(?1, type) = type
-    AND COALESCE(?2, state) = state
-LIMIT ?4 offset ?3
+  AND COALESCE(?2, state) = state
+  AND (?3 IS NULL OR created_at >= ?3)
+  AND (?4 IS NULL OR created_at <= ?4)
+LIMIT ?6 offset ?5
 `
 
 type FindJobsFilterParams struct {
-	Type   sql.NullString `json:"type"`
-	State  sql.NullInt64  `json:"state"`
-	Offset int64          `json:"offset"`
-	Size   int64          `json:"size"`
+	Type          sql.NullString `json:"type"`
+	State         sql.NullInt64  `json:"state"`
+	CreatedAfter  interface{}    `json:"created_after"`
+	CreatedBefore interface{}    `json:"created_before"`
+	Offset        int64          `json:"offset"`
+	Size          int64          `json:"size"`
 }
 
 func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]Job, error) {
 	rows, err := q.db.QueryContext(ctx, findJobsFilter,
 		arg.Type,
 		arg.State,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
 		arg.Offset,
 		arg.Size,
 	)

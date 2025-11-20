@@ -37,7 +37,6 @@ type Querier interface {
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
-	FindJobsAdvancedFilter(ctx context.Context, arg FindJobsAdvancedFilterParams) ([]Job, error)
 	FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]Job, error)
 	FindLatestDecisionById(ctx context.Context, decisionID string) (Decision, error)
 	FindLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionByIdAndDecisionDefinitionIdParams) (Decision, error)

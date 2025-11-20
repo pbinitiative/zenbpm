@@ -652,7 +652,7 @@ func (node *ZenNode) CreateInstance(
 }
 
 // GetJobs will contact follower nodes and return jobs in partitions they are following
-func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, createdBefore int64, createdAfter int64) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -671,52 +671,13 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 			reqState = ptr.To(int64(*jobState))
 		}
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
-			Page:       &page,
-			Size:       &size,
-			Partitions: []uint32{partitionID},
-			JobType:    jobType,
-			State:      reqState,
-		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", e, err)
-			} else if resp.Error != nil {
-				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-			}
-		}
-		result = append(result, resp.Partitions...)
-	}
-	return result, nil
-}
-
-func (node *ZenNode) GetFilteredJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, createdBefore int64, createdAfter int64, variableFilters []byte) ([]*proto.PartitionedJobs, error) {
-	state := node.store.ClusterState()
-	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
-
-	for partitionID := range state.Partitions {
-		// TODO: we can smack these into goroutines
-		follower, err := state.GetPartitionFollower(partitionID)
-		if err != nil {
-			return result, fmt.Errorf("failed to read follower node to get jobs: %w", err)
-		}
-		client, err := node.client.For(follower.Addr)
-		if err != nil {
-			return result, fmt.Errorf("failed to get client to get jobs: %w", err)
-		}
-		var reqState *int64
-		if jobState != nil {
-			reqState = ptr.To(int64(*jobState))
-		}
-		resp, err := client.GetFilteredJobs(ctx, &proto.GetJobFilterRequest{
-			Page:            &page,
-			Size:            &size,
-			Partitions:      []uint32{partitionID},
-			JobType:         jobType,
-			State:           reqState,
-			CreatedBefore:   &createdBefore,
-			CreatedAfter:    &createdAfter,
-			VariableFilters: variableFilters,
+			Page:          &page,
+			Size:          &size,
+			Partitions:    []uint32{partitionID},
+			JobType:       jobType,
+			State:         reqState,
+			CreatedBefore: &createdBefore,
+			CreatedAfter:  &createdAfter,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)

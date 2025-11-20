@@ -685,16 +685,24 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 			}, err
 		}
 		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
 			Type: ssql.NullString{
 				String: ptr.Deref(req.JobType, ""),
 				Valid:  req.JobType != nil,
 			},
+			State: ssql.NullInt64{
+				Int64: ptr.Deref(req.State, 0),
+				Valid: req.State != nil,
+			},
+			CreatedAfter: ssql.NullInt64{
+				Int64: req.GetCreatedAfter(),
+				Valid: req.GetCreatedAfter() != 0,
+			},
+			CreatedBefore: ssql.NullInt64{
+				Int64: req.GetCreatedBefore(),
+				Valid: req.GetCreatedBefore() != 0,
+			},
+			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:   int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find jobs with filter %+v", req)

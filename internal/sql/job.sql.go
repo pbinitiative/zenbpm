@@ -229,21 +229,27 @@ FROM
     job
 WHERE
     COALESCE(?1, type) = type
-    AND COALESCE(?2, state) = state
-LIMIT ?4 offset ?3
+  AND COALESCE(?2, state) = state
+  AND (?3 IS NULL OR created_at >= ?3)
+  AND (?4 IS NULL OR created_at <= ?4)
+LIMIT ?6 offset ?5
 `
 
 type FindJobsFilterParams struct {
-	Type   sql.NullString `json:"type"`
-	State  sql.NullInt64  `json:"state"`
-	Offset int64          `json:"offset"`
-	Size   int64          `json:"size"`
+	Type          sql.NullString `json:"type"`
+	State         sql.NullInt64  `json:"state"`
+	CreatedAfter  interface{}    `json:"created_after"`
+	CreatedBefore interface{}    `json:"created_before"`
+	Offset        int64          `json:"offset"`
+	Size          int64          `json:"size"`
 }
 
 func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]Job, error) {
 	rows, err := q.db.QueryContext(ctx, findJobsFilter,
 		arg.Type,
 		arg.State,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
 		arg.Offset,
 		arg.Size,
 	)

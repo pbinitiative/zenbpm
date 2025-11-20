@@ -75,7 +75,9 @@ FROM
     job
 WHERE
     COALESCE(sqlc.narg('type'), type) = type
-    AND COALESCE(sqlc.narg('state'), state) = state
+  AND COALESCE(sqlc.narg('state'), state) = state
+  AND (@created_after IS NULL OR created_at >= @created_after)
+  AND (@created_before IS NULL OR created_at <= @created_before)
 LIMIT @size offset @offset;
 
 -- name: FindWaitingJobs :many

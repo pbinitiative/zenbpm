@@ -446,6 +446,8 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  int64 createdBefore = 6;
+  int64 createdAfter = 7;
 }
 
 message PartitionedJobs {

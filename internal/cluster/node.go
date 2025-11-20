@@ -652,7 +652,7 @@ func (node *ZenNode) CreateInstance(
 }
 
 // GetJobs will contact follower nodes and return jobs in partitions they are following
-func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, createdBefore int64, createdAfter int64) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -671,11 +671,13 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 			reqState = ptr.To(int64(*jobState))
 		}
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
-			Page:       &page,
-			Size:       &size,
-			Partitions: []uint32{partitionID},
-			JobType:    jobType,
-			State:      reqState,
+			Page:          &page,
+			Size:          &size,
+			Partitions:    []uint32{partitionID},
+			JobType:       jobType,
+			State:         reqState,
+			CreatedBefore: &createdBefore,
+			CreatedAfter:  &createdAfter,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)

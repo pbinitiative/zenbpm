@@ -369,10 +369,12 @@ type EvaluateDecisionJSONBodyBindingType string
 
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
-	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
-	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+	JobType       *string    `form:"jobType,omitempty" json:"jobType,omitempty"`
+	State         *JobState  `form:"state,omitempty" json:"state,omitempty"`
+	Page          *int32     `form:"page,omitempty" json:"page,omitempty"`
+	Size          *int32     `form:"size,omitempty" json:"size,omitempty"`
+	CreatedBefore *time.Time `form:"createdBefore,omitempty" json:"createdBefore,omitempty"`
+	CreatedAfter  *time.Time `form:"createdAfter,omitempty" json:"createdAfter,omitempty"`
 }
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
@@ -460,6 +462,15 @@ type GetProcessInstanceJobsParams struct {
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetUserTasksParams defines parameters for GetUserTasks.
+type GetUserTasksParams struct {
+	State         *JobState  `form:"state,omitempty" json:"state,omitempty"`
+	Page          *int32     `form:"page,omitempty" json:"page,omitempty"`
+	Size          *int32     `form:"size,omitempty" json:"size,omitempty"`
+	CreatedBefore *time.Time `form:"createdBefore,omitempty" json:"createdBefore,omitempty"`
+	CreatedAfter  *time.Time `form:"createdAfter,omitempty" json:"createdAfter,omitempty"`
 }
 
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
@@ -622,6 +633,9 @@ type ClientInterface interface {
 
 	// TestStopCpuProfile request
 	TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUserTasks request
+	GetUserTasks(ctx context.Context, params *GetUserTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -936,6 +950,18 @@ func (c *Client) TestStopCpuProfile(ctx context.Context, nodeId string, reqEdito
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetUserTasks(ctx context.Context, params *GetUserTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserTasksRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetDecisionDefinitionsRequest generates requests for GetDecisionDefinitions
 func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefinitionsParams) (*http.Request, error) {
 	var err error
@@ -1218,6 +1244,38 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdBefore", runtime.ParamLocationQuery, *params.CreatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdAfter", runtime.ParamLocationQuery, *params.CreatedAfter); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -1997,6 +2055,119 @@ func NewTestStopCpuProfileRequest(server string, nodeId string) (*http.Request, 
 	return req, nil
 }
 
+// NewGetUserTasksRequest generates requests for GetUserTasks
+func NewGetUserTasksRequest(server string, params *GetUserTasksParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/user-tasks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdBefore", runtime.ParamLocationQuery, *params.CreatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdAfter", runtime.ParamLocationQuery, *params.CreatedAfter); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -2112,6 +2283,9 @@ type ClientWithResponsesInterface interface {
 
 	// TestStopCpuProfileWithResponse request
 	TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error)
+
+	// GetUserTasksWithResponse request
+	GetUserTasksWithResponse(ctx context.Context, params *GetUserTasksParams, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error)
 }
 
 type GetDecisionDefinitionsResponse struct {
@@ -2620,6 +2794,30 @@ func (r TestStopCpuProfileResponse) StatusCode() int {
 	return 0
 }
 
+type GetUserTasksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JobPartitionPage
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUserTasksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUserTasksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // GetDecisionDefinitionsWithResponse request returning *GetDecisionDefinitionsResponse
 func (c *ClientWithResponses) GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error) {
 	rsp, err := c.GetDecisionDefinitions(ctx, params, reqEditors...)
@@ -2847,6 +3045,15 @@ func (c *ClientWithResponses) TestStopCpuProfileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseTestStopCpuProfileResponse(rsp)
+}
+
+// GetUserTasksWithResponse request returning *GetUserTasksResponse
+func (c *ClientWithResponses) GetUserTasksWithResponse(ctx context.Context, params *GetUserTasksParams, reqEditors ...RequestEditorFn) (*GetUserTasksResponse, error) {
+	rsp, err := c.GetUserTasks(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUserTasksResponse(rsp)
 }
 
 // ParseGetDecisionDefinitionsResponse parses an HTTP response from a GetDecisionDefinitionsWithResponse call
@@ -3661,6 +3868,46 @@ func ParseTestStopCpuProfileResponse(rsp *http.Response) (*TestStopCpuProfileRes
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetUserTasksResponse parses an HTTP response from a GetUserTasksWithResponse call
+func ParseGetUserTasksResponse(rsp *http.Response) (*GetUserTasksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUserTasksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JobPartitionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

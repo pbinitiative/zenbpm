@@ -767,7 +767,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState)
+	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState, request.Params.CreatedBefore.UnixMilli(), request.Params.CreatedAfter.UnixMilli())
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -813,6 +813,27 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	}
 	jobsPage.Count = count
 	return jobsPage, nil
+}
+
+func (s *Server) GetUserTasks(ctx context.Context, request public.GetUserTasksRequestObject) (public.GetUserTasksResponseObject, error) {
+	userTaskType := "user-task-type"
+	jobsPage, err := s.GetJobs(ctx, public.GetJobsRequestObject{
+		Params: public.GetJobsParams{
+			JobType:       &userTaskType,
+			State:         request.Params.State,
+			Page:          request.Params.Page,
+			Size:          request.Params.Size,
+			CreatedBefore: request.Params.CreatedBefore,
+			CreatedAfter:  request.Params.CreatedAfter,
+		},
+	})
+	if err != nil {
+		return public.GetUserTasks500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.GetUserTasks200JSONResponse(jobsPage.(public.GetJobs200JSONResponse)), nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

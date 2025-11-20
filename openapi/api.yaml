@@ -1020,6 +1020,16 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         200:
           description: List of jobs on partitions
@@ -1117,6 +1127,93 @@ paths:
                 $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /user-tasks:
+    get:
+      operationId: getUserTasks
+      tags:
+        - user-task
+      summary: Get list of user tasks on partitions
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/JobState"
+          example: "active"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 10
+          example: 10
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        200:
+          description: List of jobs on partitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPartitionPage"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370540"
+                        elementId: "Task_ProcessPayment"
+                        type: "service-task"
+                        processInstanceKey: "4503599627370501"
+                        state: "active"
+                        createdAt: "2025-08-22T15:10:26Z"
+                        variables:
+                          paymentDetails:
+                            amount: 1000
+                            currency: "USD"
+                            method: "credit-card"
+                  - partition: 2
+                    items:
+                      - key: "9007199254740995"
+                        elementId: "Task_SendNotification"
+                        type: "service-task"
+                        processInstanceKey: "9007199254740992"
+                        state: "active"
+                        createdAt: "2025-08-22T15:46:33Z"
+                        variables:
+                          notificationType: "email"
+                          recipient: "customer@example.com"
+                page: 1
+                size: 10
+                count: 2
+                totalCount: 2
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
           content:
             application/json:
               schema:

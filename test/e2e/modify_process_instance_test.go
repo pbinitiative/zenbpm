@@ -75,7 +75,7 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 		assert.NotEmpty(t, instance.Key)
 	})
 
-	t.Run("modify process instance tokens", func(t *testing.T) {
+	t.Run("modify process instance", func(t *testing.T) {
 		processInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstance.ActiveElementInstances)
@@ -120,22 +120,6 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 			assert.Equal(t, instance.Key, job.ProcessInstanceKey)
 			assert.NotEmpty(t, job.Key)
 		}
-	})
-
-	t.Run("modify process instance variables", func(t *testing.T) {
-		instance, err := modifyProcessInstanceVariables(t, instance.Key, map[string]any{
-			"order": map[string]any{"name": "edited-variable-name"},
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
-		assert.Equal(t, map[string]any{"name": "edited-variable-name"}, instance.Variables["order"])
-		assert.Equal(t, float64(123), instance.Variables["testVar"])
-
-		instance, err = getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
-		assert.Equal(t, map[string]any{"name": "edited-variable-name"}, instance.Variables["order"])
-		assert.Equal(t, float64(123), instance.Variables["testVar"])
 	})
 }
 
@@ -184,26 +168,4 @@ func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, Elemen
 		return public.ProcessInstance{}, []public.ElementInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
 	}
 	return *unmarshalledResp.ProcessInstance, *unmarshalledResp.ActiveElementInstances, nil
-}
-
-func modifyProcessInstanceVariables(t testing.TB, processInstanceKey string, variables map[string]any) (public.ProcessInstance, error) {
-	req := public.ModifyProcessInstanceVariablesJSONBody{
-		ProcessInstanceKey: processInstanceKey,
-		Variables:          &variables,
-	}
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/modify/process-instance/variables").
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to modify process instance variables: %w", err)
-	}
-	instance := public.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return instance, nil
 }

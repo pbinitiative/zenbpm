@@ -47,14 +47,12 @@ const (
 	ZenService_CreateInstance_FullMethodName                 = "/cluster.ZenService/CreateInstance"
 	ZenService_StartProcessInstanceOnElements_FullMethodName = "/cluster.ZenService/StartProcessInstanceOnElements"
 	ZenService_ModifyProcessInstance_FullMethodName          = "/cluster.ZenService/ModifyProcessInstance"
-	ZenService_ModifyProcessInstanceVariables_FullMethodName = "/cluster.ZenService/ModifyProcessInstanceVariables"
 	ZenService_GetProcessInstances_FullMethodName            = "/cluster.ZenService/GetProcessInstances"
 	ZenService_GetJobs_FullMethodName                        = "/cluster.ZenService/GetJobs"
 	ZenService_GetProcessInstance_FullMethodName             = "/cluster.ZenService/GetProcessInstance"
 	ZenService_GetProcessInstanceJobs_FullMethodName         = "/cluster.ZenService/GetProcessInstanceJobs"
 	ZenService_GetFlowElementHistory_FullMethodName          = "/cluster.ZenService/GetFlowElementHistory"
 	ZenService_GetIncidents_FullMethodName                   = "/cluster.ZenService/GetIncidents"
-	ZenService_GetExecutionTokens_FullMethodName             = "/cluster.ZenService/GetExecutionTokens"
 	ZenService_ResolveIncident_FullMethodName                = "/cluster.ZenService/ResolveIncident"
 	ZenService_SubscribeJob_FullMethodName                   = "/cluster.ZenService/SubscribeJob"
 	ZenService_CompleteJob_FullMethodName                    = "/cluster.ZenService/CompleteJob"
@@ -108,14 +106,12 @@ type ZenServiceClient interface {
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	StartProcessInstanceOnElements(ctx context.Context, in *StartInstanceOnElementIdsRequest, opts ...grpc.CallOption) (*StartInstanceOnElementIdsResponse, error)
 	ModifyProcessInstance(ctx context.Context, in *ModifyProcessInstanceRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceResponse, error)
-	ModifyProcessInstanceVariables(ctx context.Context, in *ModifyProcessInstanceVariablesRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceVariablesResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
 	GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(ctx context.Context, in *GetProcessInstanceJobsRequest, opts ...grpc.CallOption) (*GetProcessInstanceJobsResponse, error)
 	GetFlowElementHistory(ctx context.Context, in *GetFlowElementHistoryRequest, opts ...grpc.CallOption) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(ctx context.Context, in *GetIncidentsRequest, opts ...grpc.CallOption) (*GetIncidentsResponse, error)
-	GetExecutionTokens(ctx context.Context, in *GetExecutionTokensRequest, opts ...grpc.CallOption) (*GetExecutionTokensResponse, error)
 	ResolveIncident(ctx context.Context, in *ResolveIncidentRequest, opts ...grpc.CallOption) (*ResolveIncidentResponse, error)
 	// Subscribes client to receive jobs of type
 	SubscribeJob(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SubscribeJobRequest, SubscribeJobResponse], error)
@@ -412,16 +408,6 @@ func (c *zenServiceClient) ModifyProcessInstance(ctx context.Context, in *Modify
 	return out, nil
 }
 
-func (c *zenServiceClient) ModifyProcessInstanceVariables(ctx context.Context, in *ModifyProcessInstanceVariablesRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceVariablesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ModifyProcessInstanceVariablesResponse)
-	err := c.cc.Invoke(ctx, ZenService_ModifyProcessInstanceVariables_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *zenServiceClient) GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProcessInstancesResponse)
@@ -476,16 +462,6 @@ func (c *zenServiceClient) GetIncidents(ctx context.Context, in *GetIncidentsReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetIncidentsResponse)
 	err := c.cc.Invoke(ctx, ZenService_GetIncidents_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *zenServiceClient) GetExecutionTokens(ctx context.Context, in *GetExecutionTokensRequest, opts ...grpc.CallOption) (*GetExecutionTokensResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetExecutionTokensResponse)
-	err := c.cc.Invoke(ctx, ZenService_GetExecutionTokens_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -591,14 +567,12 @@ type ZenServiceServer interface {
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	StartProcessInstanceOnElements(context.Context, *StartInstanceOnElementIdsRequest) (*StartInstanceOnElementIdsResponse, error)
 	ModifyProcessInstance(context.Context, *ModifyProcessInstanceRequest) (*ModifyProcessInstanceResponse, error)
-	ModifyProcessInstanceVariables(context.Context, *ModifyProcessInstanceVariablesRequest) (*ModifyProcessInstanceVariablesResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
 	GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
 	GetProcessInstanceJobs(context.Context, *GetProcessInstanceJobsRequest) (*GetProcessInstanceJobsResponse, error)
 	GetFlowElementHistory(context.Context, *GetFlowElementHistoryRequest) (*GetFlowElementHistoryResponse, error)
 	GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error)
-	GetExecutionTokens(context.Context, *GetExecutionTokensRequest) (*GetExecutionTokensResponse, error)
 	ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error)
 	// Subscribes client to receive jobs of type
 	SubscribeJob(grpc.BidiStreamingServer[SubscribeJobRequest, SubscribeJobResponse]) error
@@ -697,9 +671,6 @@ func (UnimplementedZenServiceServer) StartProcessInstanceOnElements(context.Cont
 func (UnimplementedZenServiceServer) ModifyProcessInstance(context.Context, *ModifyProcessInstanceRequest) (*ModifyProcessInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ModifyProcessInstance not implemented")
 }
-func (UnimplementedZenServiceServer) ModifyProcessInstanceVariables(context.Context, *ModifyProcessInstanceVariablesRequest) (*ModifyProcessInstanceVariablesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ModifyProcessInstanceVariables not implemented")
-}
 func (UnimplementedZenServiceServer) GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstances not implemented")
 }
@@ -717,9 +688,6 @@ func (UnimplementedZenServiceServer) GetFlowElementHistory(context.Context, *Get
 }
 func (UnimplementedZenServiceServer) GetIncidents(context.Context, *GetIncidentsRequest) (*GetIncidentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIncidents not implemented")
-}
-func (UnimplementedZenServiceServer) GetExecutionTokens(context.Context, *GetExecutionTokensRequest) (*GetExecutionTokensResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionTokens not implemented")
 }
 func (UnimplementedZenServiceServer) ResolveIncident(context.Context, *ResolveIncidentRequest) (*ResolveIncidentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveIncident not implemented")
@@ -1236,24 +1204,6 @@ func _ZenService_ModifyProcessInstance_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_ModifyProcessInstanceVariables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ModifyProcessInstanceVariablesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ZenServiceServer).ModifyProcessInstanceVariables(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ZenService_ModifyProcessInstanceVariables_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).ModifyProcessInstanceVariables(ctx, req.(*ModifyProcessInstanceVariablesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ZenService_GetProcessInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProcessInstancesRequest)
 	if err := dec(in); err != nil {
@@ -1358,24 +1308,6 @@ func _ZenService_GetIncidents_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).GetIncidents(ctx, req.(*GetIncidentsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ZenService_GetExecutionTokens_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetExecutionTokensRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ZenServiceServer).GetExecutionTokens(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ZenService_GetExecutionTokens_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).GetExecutionTokens(ctx, req.(*GetExecutionTokensRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1571,10 +1503,6 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_ModifyProcessInstance_Handler,
 		},
 		{
-			MethodName: "ModifyProcessInstanceVariables",
-			Handler:    _ZenService_ModifyProcessInstanceVariables_Handler,
-		},
-		{
 			MethodName: "GetProcessInstances",
 			Handler:    _ZenService_GetProcessInstances_Handler,
 		},
@@ -1597,10 +1525,6 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetIncidents",
 			Handler:    _ZenService_GetIncidents_Handler,
-		},
-		{
-			MethodName: "GetExecutionTokens",
-			Handler:    _ZenService_GetExecutionTokens_Handler,
 		},
 		{
 			MethodName: "ResolveIncident",

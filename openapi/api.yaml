@@ -1159,19 +1159,6 @@ paths:
       tags:
         - migration
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/migration/start-process-instance \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processDefinitionKey": "123456789",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000
-                }
-                "startingElementIds": ["flowNode-1","flowNode-2"],
-              }'
       requestBody:
         required: true
         content:
@@ -1206,15 +1193,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstance"
-              example:
-                key: "4503599627370501"
-                processDefinitionKey: "4503599627370498"
-                createdAt: "2025-08-22T14:30:25Z"
-                state: "active"
-                variables:
-                  customerId: "customer-456"
-                  amount: 1000
-                  applicationDate: "2025-08-22"
         400:
           description: Bad request
           content:
@@ -1241,25 +1219,6 @@ paths:
       tags:
         - migration
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/migration/process-instance/modify-executions \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processInstanceKey": "4503599627370498",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000,
-                  "applicationDate": "2025-08-22"
-                }
-                "executionTokensToStart": [
-                    "elementId": 101
-                ],
-                "executionTokensToTerminate": [
-                  executionTokenKey: "4503599627370501"
-                ]
-              }'
       requestBody:
         required: true
         content:
@@ -1285,20 +1244,6 @@ paths:
                   items:
                     $ref: "#/components/schemas/TerminateElementInstanceData"
                   description: "Terminates execution token."
-            example:
-              processInstanceKey: "4503599627370498"
-              variables:
-                customerId: "customer-456"
-                amount: 1000
-                applicationDate: "2025-08-22"
-              executionTokensToStart:
-                elementId: 101
-                inputVariables:
-                  customerId: "customer-456"
-                  amount: 1000
-                  applicationDate: "2025-08-22"
-              executionTokensToTerminate:
-                executionTokenKey: "4503599627370501"
       responses:
         201:
           description: Process instance modified
@@ -1313,15 +1258,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ElementInstance"
-              example:
-                key: "4503599627370501"
-                processDefinitionKey: "4503599627370498"
-                createdAt: "2025-08-22T14:30:25Z"
-                state: "active"
-                variables:
-                  customerId: "customer-456"
-                  amount: 1000
-                  applicationDate: "2025-08-22"
         400:
           description: Bad request
           content:
@@ -1348,19 +1284,6 @@ paths:
       tags:
         - migration
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/migration/process-instance/modify-variables \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processInstanceKey": "4503599627370498",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000,
-                  "applicationDate": "2025-08-22"
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1388,15 +1311,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstance"
-              example:
-                key: "4503599627370501"
-                processDefinitionKey: "4503599627370498"
-                createdAt: "2025-08-22T14:30:25Z"
-                state: "active"
-                variables:
-                  customerId: "customer-456"
-                  amount: 1000
-                  applicationDate: "2025-08-22"
         400:
           description: Bad request
           content:

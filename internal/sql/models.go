@@ -35,7 +35,7 @@ type ExecutionToken struct {
 }
 
 type FlowElementHistory struct {
-	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
 	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 	CreatedAt          int64  `json:"created_at"`
@@ -67,6 +67,7 @@ type Job struct {
 type MessageSubscription struct {
 	Key                  int64  `json:"key"`
 	ElementID            string `json:"element_id"`
+	ElementInstanceKey   int64  `json:"element_instance_key"`
 	ProcessDefinitionKey int64  `json:"process_definition_key"`
 	ProcessInstanceKey   int64  `json:"process_instance_key"`
 	Name                 string `json:"name"`

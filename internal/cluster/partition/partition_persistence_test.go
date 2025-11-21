@@ -269,7 +269,7 @@ func TestDataCleanup(t *testing.T) {
 		assert.NoError(t, err)
 
 		flowHist := runtime.FlowElementHistoryItem{
-			Key:                job.Key,
+			ElementInstanceKey: job.Key,
 			ProcessInstanceKey: inst2.Key,
 			ElementId:          "job-123",
 			CreatedAt:          job.CreatedAt,

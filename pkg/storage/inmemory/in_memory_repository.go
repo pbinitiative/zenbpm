@@ -524,7 +524,7 @@ func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionTo
 }
 
 func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	mem.FlowElementHistory[historyItem.Key] = historyItem
+	mem.FlowElementHistory[historyItem.ElementInstanceKey] = historyItem
 	return nil
 }
 

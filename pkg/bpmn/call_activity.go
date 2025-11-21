@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -40,7 +39,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 
 func propagateVariablesBackToParent(instance *runtime.ProcessInstance, calledProcessInstance runtime.ProcessInstance, element *bpmn20.TCallActivity) error {
 	// map the variables back to the parent
-	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, calledProcessInstance.VariableHolder.Variables())
+	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, calledProcessInstance.VariableHolder.LocalVariables())
 
 	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
 		instance.State = runtime.ActivityStateFailed

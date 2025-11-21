@@ -42,11 +42,11 @@ func (pi *ProcessInstance) GetInstanceKey() int64 {
 }
 
 func (pi *ProcessInstance) GetVariable(key string) interface{} {
-	return pi.VariableHolder.GetVariable(key)
+	return pi.VariableHolder.GetLocalVariable(key)
 }
 
 func (pi *ProcessInstance) SetVariable(key string, value interface{}) {
-	pi.VariableHolder.SetVariable(key, value)
+	pi.VariableHolder.SetLocalVariable(key, value)
 }
 
 func (pi *ProcessInstance) GetCreatedAt() time.Time {

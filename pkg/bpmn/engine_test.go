@@ -119,7 +119,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	v := engineStorage.ProcessInstances[instance.Key]
 	// then
 	assert.NotNil(t, v, "Process isntance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
+	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
@@ -403,7 +403,7 @@ func TestModifyProcessInstance(t *testing.T) {
 	}
 	assert.NoError(t, err)
 	assert.Equal(t, definition.Key, modifiedInstance.Definition.Key)
-	assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.VariableHolder.Variables()["order"])
+	assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.VariableHolder.LocalVariables()["order"])
 	assert.NotEmpty(t, runningTokens)
 	assert.Equal(t, 1, len(runningTokens))
 	assert.NotEmpty(t, runningTokens[0].Key)
@@ -413,7 +413,7 @@ func TestModifyProcessInstance(t *testing.T) {
 	instanceCheck, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	assert.Equal(t, definition.Key, instanceCheck.Definition.Key)
-	assert.Equal(t, map[string]any{"name": "test-order-name"}, instanceCheck.VariableHolder.Variables()["order"])
+	assert.Equal(t, map[string]any{"name": "test-order-name"}, instanceCheck.VariableHolder.LocalVariables()["order"])
 
 	// All message subscriptions should be canceled
 	subscriptions, err := bpmnEngine.persistence.FindTokenMessageSubscriptions(t.Context(), mainToken.Key, runtime.ActivityStateActive)
@@ -487,11 +487,11 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	//run
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.NotEmpty(t, instance.VariableHolder.Variables())
-	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable"])
-	assert.Equal(t, false, instance.VariableHolder.Variables()["OutputTestResultVariable"])
-	assert.Nil(t, instance.VariableHolder.Variables()["testResultVariable2"])
-	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable3"])
+	assert.NotEmpty(t, instance.VariableHolder.LocalVariables())
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable"])
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["OutputTestResultVariable"])
+	assert.Nil(t, instance.VariableHolder.LocalVariables()["testResultVariable2"])
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable3"])
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }

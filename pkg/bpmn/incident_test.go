@@ -67,7 +67,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 
 	// now fix the variable
 	pi := store.ProcessInstances[instance.Key]
-	pi.VariableHolder.SetVariable("price", 50)
+	pi.VariableHolder.SetLocalVariable("price", 50)
 
 	// then
 	err = bpmnEngine.ResolveIncident(t.Context(), incidents[0].Key)

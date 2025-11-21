@@ -351,7 +351,7 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 
 	correlationKey := message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		correlationKeyResult, err := evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.Variables())
+		correlationKeyResult, err := evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.LocalVariables())
 		if err != nil {
 			token.State = runtime.TokenStateFailed
 			return runtime.MessageSubscription{}, fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)

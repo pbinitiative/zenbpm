@@ -30,7 +30,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		Key:                engine.generateKey(),
 		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
-		Variables:          jobVarHolder.Variables(),
+		Variables:          jobVarHolder.LocalVariables(),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}

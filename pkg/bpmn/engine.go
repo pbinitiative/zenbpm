@@ -412,7 +412,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	activeTokens := append(activeTokensLeft, startedTokens...)
 
 	for key, value := range variableContext {
-		processInstance.VariableHolder.SetVariable(key, value)
+		processInstance.VariableHolder.SetLocalVariable(key, value)
 	}
 	err = batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
@@ -991,7 +991,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		implementation.CalledDecision.BindingType,
 		implementation.CalledDecision.DecisionId,
 		implementation.CalledDecision.VersionTag,
-		variableHolder.Variables(),
+		variableHolder.LocalVariables(),
 	)
 	if err != nil {
 		instance.State = runtime.ActivityStateFailed
@@ -1000,7 +1000,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 
 	if len(element.GetOutputMapping()) > 0 {
 		for key, value := range result.DecisionOutput {
-			variableHolder.SetVariable(key, value)
+			variableHolder.SetLocalVariable(key, value)
 		}
 		if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
 			instance.State = runtime.ActivityStateFailed
@@ -1117,7 +1117,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage
 func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
-	activatedFlows, err := exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.Variables())
+	activatedFlows, err := exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
 	if err != nil {
 		instance.State = runtime.ActivityStateFailed
 		return nil, fmt.Errorf("failed to filter outgoing associations from ExclusiveGateway: %w", err)
@@ -1132,7 +1132,7 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runt
 func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
-	activatedFlows, err := inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.Variables())
+	activatedFlows, err := inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
 	if err != nil {
 		instance.State = runtime.ActivityStateFailed
 		return nil, fmt.Errorf("failed to filter outgoing associations from InclusiveGateway: %w", err)

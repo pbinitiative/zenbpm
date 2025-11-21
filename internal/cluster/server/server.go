@@ -298,7 +298,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.CreateInstanceResponse{
@@ -354,7 +354,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		}, err
 	}
 
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.StartInstanceOnElementIdsResponse{
@@ -409,7 +409,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.ModifyProcessInstanceResponse{
@@ -680,7 +680,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		})
 	}
 
-	vars, err := json.Marshal(instance.VariableHolder.Variables())
+	vars, err := json.Marshal(instance.VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{

@@ -46,7 +46,7 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 	assert.NoError(t, err)
 	// then
 	assert.NotNil(t, v, "Process instance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
+	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }
 
@@ -96,7 +96,7 @@ func TestCallActivityStartsAndCompletesAfterFinishingtheJob(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, v, "Process instance needs to be present")
 	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.State.String())
-	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
+	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
 }
 
 func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {

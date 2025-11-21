@@ -24,6 +24,18 @@ func evaluateExpression(expression string, variableContext map[string]interface{
 	return res, err
 }
 
+func evaluateMappings(variables map[string]interface{}, mappings []extensions.TIoMapping) (map[string]interface{}, error) {
+	resultVariables := make(map[string]interface{}, len(mappings))
+	for _, mapping := range mappings {
+		evalResult, err := evaluateExpression(mapping.Source, variables)
+		if err != nil {
+			return nil, err
+		}
+		resultVariables[mapping.Target] = evalResult
+	}
+	return resultVariables, nil
+}
+
 func evaluateLocalVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping) error {
 	return mapVariables(varHolder, mappings, func(key string, value interface{}) {
 		varHolder.SetVariable(key, value)
@@ -39,15 +51,4 @@ func propagateProcessInstanceVariables(varHolder *runtime.VariableHolder, mappin
 	return mapVariables(varHolder, mappings, func(key string, value interface{}) {
 		varHolder.PropagateVariable(key, value)
 	})
-}
-
-func mapVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping, setVarFunc func(key string, value interface{})) error {
-	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, varHolder.Variables())
-		if err != nil {
-			return err
-		}
-		setVarFunc(mapping.Target, evalResult)
-	}
-	return nil
 }

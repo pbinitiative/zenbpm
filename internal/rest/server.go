@@ -995,43 +995,6 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 	}, nil
 }
 
-func (s *Server) ModifyProcessInstanceVariables(ctx context.Context, request public.ModifyProcessInstanceVariablesRequestObject) (public.ModifyProcessInstanceVariablesResponseObject, error) {
-	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
-	if err != nil {
-		return public.ModifyProcessInstanceVariables400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	variables := make(map[string]interface{})
-	if request.Body.Variables != nil {
-		variables = *request.Body.Variables
-	}
-
-	process, err := s.node.ModifyProcessInstanceVariables(ctx, key, variables)
-	if err != nil {
-		return public.ModifyProcessInstanceVariables502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	processVars := make(map[string]any)
-	err = json.Unmarshal(process.GetVariables(), &processVars)
-	if err != nil {
-		return public.ModifyProcessInstanceVariables500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	return public.ModifyProcessInstanceVariables201JSONResponse{
-		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-		Key:                  fmt.Sprintf("%d", process.GetKey()),
-		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
-		State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
-		Variables:            processVars,
-	}, nil
-}
-
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {
 	w.WriteHeader(status)
 	body, err := json.Marshal(resp)

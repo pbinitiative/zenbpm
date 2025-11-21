@@ -366,38 +366,6 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch storage.Ba
 	return executionTokens, nil
 }
 
-func (engine *Engine) ModifyInstanceVariables(ctx context.Context, processInstanceKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processInstance := runtime.ProcessInstance{
-		Key: processInstanceKey,
-	}
-	engine.runningInstances.lockInstance(&processInstance)
-	defer engine.runningInstances.unlockInstance(&processInstance)
-
-	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.Key, err)
-	}
-
-	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance-variables:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
-	))
-	defer createSpan.End()
-
-	for key, value := range variableContext {
-		processInstance.VariableHolder.SetVariable(key, value)
-	}
-	err = engine.persistence.SaveProcessInstance(ctx, processInstance)
-	if err != nil {
-		createSpan.RecordError(err)
-		createSpan.SetStatus(codes.Error, err.Error())
-		return &processInstance, err
-	}
-
-	return &processInstance, nil
-}
-
 func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	processInstance := runtime.ProcessInstance{
 		Key: processInstanceKey,
@@ -424,11 +392,14 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	batch := engine.persistence.NewBatch()
 
-	activeTokensLeft, err := engine.terminateExecutionTokens(ctx, batch, elementInstanceIdsToTerminate, processInstanceKey)
-	if err != nil {
-		createSpan.RecordError(err)
-		createSpan.SetStatus(codes.Error, err.Error())
-		return &processInstance, nil, err
+	var activeTokensLeft []runtime.ExecutionToken
+	if len(elementInstanceIdsToTerminate) > 0 {
+		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, batch, elementInstanceIdsToTerminate, processInstanceKey)
+		if err != nil {
+			createSpan.RecordError(err)
+			createSpan.SetStatus(codes.Error, err.Error())
+			return &processInstance, nil, err
+		}
 	}
 
 	startedTokens, err := engine.startExecutionTokens(ctx, batch, elementIdsToStartInstance, &processInstance)

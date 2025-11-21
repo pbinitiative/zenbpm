@@ -63,14 +63,12 @@ service ZenService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
-  rpc ModifyProcessInstanceVariables(ModifyProcessInstanceVariablesRequest) returns (ModifyProcessInstanceVariablesResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
-  rpc GetExecutionTokens(GetExecutionTokensRequest) returns (GetExecutionTokensResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
@@ -399,16 +397,6 @@ message StartInstanceOnElementIdsResponse {
   ProcessInstance process = 2;
 }
 
-message ModifyProcessInstanceVariablesRequest {
-  int64 process_instance_key = 1;
-  bytes variables = 2;
-}
-
-message ModifyProcessInstanceVariablesResponse {
-  ErrorResult error = 1;
-  ProcessInstance process = 2;
-}
-
 message ModifyProcessInstanceRequest {
   int64 process_instance_key = 1;
   repeated int64 element_instance_ids_to_terminate = 2;
@@ -474,15 +462,6 @@ message GetIncidentsRequest {
 message GetIncidentsResponse {
   ErrorResult error = 1;
   repeated Incident incidents = 2;
-}
-
-message GetExecutionTokensRequest {
-  int64 process_instance_key = 1;
-}
-
-message GetExecutionTokensResponse {
-  ErrorResult error = 1;
-  repeated ExecutionToken tokens = 2;
 }
 
 message GetJobsRequest {

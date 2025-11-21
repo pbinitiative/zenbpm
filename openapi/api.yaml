@@ -1277,59 +1277,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /modify/process-instance/variables:
-    post:
-      operationId: ModifyProcessInstanceVariables
-      summary: Modify process instance variables
-      tags:
-        - migration
-        - process-instance
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - processInstanceKey
-              properties:
-                processInstanceKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
-                variables:
-                  type: object
-            example:
-              processInstanceKey: "4503599627370498"
-              variables:
-                customerId: "customer-456"
-                amount: 1000
-                applicationDate: "2025-08-22"
-      responses:
-        201:
-          description: Process instance modified
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProcessInstance"
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        500:
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /tests/{nodeId}/start-cpu-profile:
     post:
       operationId: testStartCpuProfile

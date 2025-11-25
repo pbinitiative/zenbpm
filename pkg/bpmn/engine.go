@@ -277,13 +277,18 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
 		var be bpmn20.FlowNode = &startEvent
-		executionTokens = append(executionTokens, runtime.ExecutionToken{
+		token := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          be.GetId(),
 			ProcessInstanceKey: processInstance.Key,
 			State:              runtime.TokenStateRunning,
-		})
+		}
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		executionTokens = append(executionTokens, token)
 	}
 
 	err = batch.Flush(ctx)

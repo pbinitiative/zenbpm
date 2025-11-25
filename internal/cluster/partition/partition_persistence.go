@@ -836,7 +836,7 @@ func (rq *DB) SaveProcessInstance(ctx context.Context, processInstance bpmnrunti
 }
 
 func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bpmnruntime.ProcessInstance) error {
-	varStr, err := json.Marshal(processInstance.VariableHolder.Variables())
+	varStr, err := json.Marshal(processInstance.VariableHolder.LocalVariables())
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}

@@ -1253,7 +1253,7 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 	ptrPartitionId := zenState.GetPartitionIdFromString(pointer.CorrelationKey)
 	upsertPointer := func() error {
 		err := rq.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
-			State:                  int64(pointer.State),
+			State:                  pointer.State,
 			CreatedAt:              pointer.CreatedAt,
 			Name:                   pointer.Name,
 			CorrelationKey:         pointer.CorrelationKey,
@@ -1270,10 +1270,13 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 		oldPointer, err := rq.Queries.FindMessageSubscriptionPointer(ctx, sql.FindMessageSubscriptionPointerParams{
 			CorrelationKey: pointer.CorrelationKey,
 			Name:           pointer.Name,
-			FilterState:    int64(bpmnruntime.ActivityStateActive),
+			FilterState:    int64(bpmnruntime.ActivityStateActive), //TODO: tu nemoze by stav musime najst pointer a podla toho v akom je stave a co s nim robime vyhodnotit situaciu
 		})
 		// if pointer does not exist create it
 		if errors.Is(err, sql.ErrNoRows) {
+			return upsertPointer()
+		}
+		if pointer.State != int64(bpmnruntime.ActivityStateActive) {
 			return upsertPointer()
 		}
 

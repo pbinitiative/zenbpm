@@ -13,6 +13,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
+// TODO: THIS METHOD SHOULD NOT BE IN ENGINE
 // PublishMessageByName publishes a message by name and correlationKey and also adds variables to the process instance
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
 	subscriptionKey, err := engine.persistence.FindActiveMessageSubscriptionKey(ctx, name, correlationKey)
@@ -32,6 +33,15 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("no process instance with key: %d", message.ProcessInstanceKey), err)
+	}
+
+	engine.runningInstances.lockInstance(&instance)
+	defer engine.runningInstances.unlockInstance(&instance)
+
+	//we have to search again to see if the message subscription is still active
+	message, err = engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
 	}
 
 	batch := engine.persistence.NewBatch()

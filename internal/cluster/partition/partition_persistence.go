@@ -1323,11 +1323,13 @@ func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64,
 
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
+			ElementInstanceKey:   mes.ElementInstanceKey,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token:                token,
@@ -1336,7 +1338,7 @@ func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64,
 	return res, nil
 }
 
-// TODO rename Id to Key
+// TODO rename Id to ElementInstanceKey
 func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscriptionKey int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	var res bpmnruntime.MessageSubscription
 	dbMessage, err := rq.Queries.GetMessageSubscriptionById(ctx, sql.GetMessageSubscriptionByIdParams{
@@ -1347,11 +1349,13 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 		return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, err)
 	}
 	res = bpmnruntime.MessageSubscription{
-		ElementId:            dbMessage.ElementID,
 		Key:                  dbMessage.Key,
+		ElementId:            dbMessage.ElementID,
+		ElementInstanceKey:   dbMessage.ElementInstanceKey,
 		ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
 		ProcessInstanceKey:   dbMessage.ProcessInstanceKey,
 		Name:                 dbMessage.Name,
+		CorrelationKey:       dbMessage.CorrelationKey,
 		State:                bpmnruntime.ActivityState(dbMessage.State),
 		CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 		Token: bpmnruntime.ExecutionToken{
@@ -1387,11 +1391,13 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
+			ElementInstanceKey:   mes.ElementInstanceKey,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token: bpmnruntime.ExecutionToken{
@@ -1443,13 +1449,14 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.GetKey(),
 		ElementID:            subscription.ElementId,
+		ElementInstanceKey:   subscription.ElementInstanceKey,
 		ProcessDefinitionKey: subscription.ProcessDefinitionKey,
 		ProcessInstanceKey:   subscription.ProcessInstanceKey,
 		Name:                 subscription.Name,
 		State:                int64(subscription.GetState()),
 		CreatedAt:            subscription.CreatedAt.UnixMilli(),
-		ExecutionToken:       subscription.Token.Key,
 		CorrelationKey:       subscription.CorrelationKey,
+		ExecutionToken:       subscription.Token.Key,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save message subscription %d: %w", subscription.GetKey(), err)
@@ -1522,7 +1529,7 @@ func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyIte
 	return db.SaveFlowElementHistory(
 		ctx,
 		sql.SaveFlowElementHistoryParams{
-			Key:                historyItem.Key,
+			ElementInstanceKey: historyItem.ElementInstanceKey,
 			ElementID:          historyItem.ElementId,
 			ProcessInstanceKey: historyItem.ProcessInstanceKey,
 			CreatedAt:          historyItem.CreatedAt.UnixMilli(),

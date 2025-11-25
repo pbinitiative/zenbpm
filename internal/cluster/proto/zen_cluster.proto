@@ -245,7 +245,7 @@ message Job {
 }
 
 message FlowElement {
-  int64 key = 1;
+  int64 element_instance_key = 1;
   string element_id = 2;
   int64 process_instance_key = 3;
   int64 created_at = 4;

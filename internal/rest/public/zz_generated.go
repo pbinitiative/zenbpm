@@ -350,7 +350,7 @@ type GetProcessDefinitionsParams struct {
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
-	// ProcessDefinitionKey Key of the process definition
+	// ProcessDefinitionKey ElementInstanceKey of the process definition
 	ProcessDefinitionKey string `form:"processDefinitionKey" json:"processDefinitionKey"`
 
 	// Page Page number (1-based indexing)

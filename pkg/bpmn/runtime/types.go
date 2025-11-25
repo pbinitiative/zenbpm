@@ -121,6 +121,7 @@ const (
 type MessageSubscription struct {
 	Key                  int64
 	ElementId            string
+	ElementInstanceKey   int64
 	ProcessDefinitionKey int64
 	ProcessInstanceKey   int64
 	Name                 string
@@ -268,7 +269,7 @@ type ExecutionToken struct {
 }
 
 type FlowElementHistoryItem struct {
-	Key                int64
+	ElementInstanceKey int64
 	ProcessInstanceKey int64
 	ElementId          string
 	CreatedAt          time.Time

@@ -32,7 +32,7 @@ func (q *Queries) DeleteFlowElementHistory(ctx context.Context, keys []int64) er
 
 const getFlowElementHistory = `-- name: GetFlowElementHistory :many
 SELECT
-    "key", element_id, process_instance_key, created_at
+    element_instance_key, element_id, process_instance_key, created_at
 FROM
     flow_element_history
 WHERE
@@ -49,7 +49,7 @@ func (q *Queries) GetFlowElementHistory(ctx context.Context, processInstanceKey 
 	for rows.Next() {
 		var i FlowElementHistory
 		if err := rows.Scan(
-			&i.Key,
+			&i.ElementInstanceKey,
 			&i.ElementID,
 			&i.ProcessInstanceKey,
 			&i.CreatedAt,
@@ -68,7 +68,7 @@ func (q *Queries) GetFlowElementHistory(ctx context.Context, processInstanceKey 
 }
 
 const saveFlowElementHistory = `-- name: SaveFlowElementHistory :exec
-INSERT INTO flow_element_history(key, element_id, process_instance_key, created_at)
+INSERT INTO flow_element_history(element_instance_key, element_id, process_instance_key, created_at)
     VALUES (?, ? ,? ,?)
 ON CONFLICT
     DO UPDATE SET
@@ -77,7 +77,7 @@ ON CONFLICT
 `
 
 type SaveFlowElementHistoryParams struct {
-	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
 	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
 	CreatedAt          int64  `json:"created_at"`
@@ -85,7 +85,7 @@ type SaveFlowElementHistoryParams struct {
 
 func (q *Queries) SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error {
 	_, err := q.db.ExecContext(ctx, saveFlowElementHistory,
-		arg.Key,
+		arg.ElementInstanceKey,
 		arg.ElementID,
 		arg.ProcessInstanceKey,
 		arg.CreatedAt,

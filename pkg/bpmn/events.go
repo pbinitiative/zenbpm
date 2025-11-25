@@ -367,6 +367,7 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 	ms := runtime.MessageSubscription{
 		Key:                  engine.generateKey(),
 		ElementId:            element.GetId(),
+		ElementInstanceKey:   token.ElementInstanceKey,
 		ProcessDefinitionKey: instance.Definition.Key,
 		ProcessInstanceKey:   instance.GetInstanceKey(),
 		Name:                 message.Name,

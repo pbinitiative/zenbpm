@@ -660,7 +660,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 	result := make([]*proto.FlowElement, len(flowElements))
 	for i, flowElement := range flowElements {
 		result[i] = &proto.FlowElement{
-			Key:                &flowElement.Key,
+			ElementInstanceKey: &flowElement.ElementInstanceKey,
 			ElementId:          &flowElement.ElementID,
 			ProcessInstanceKey: &flowElement.ProcessInstanceKey,
 			CreatedAt:          &flowElement.CreatedAt,

@@ -624,7 +624,7 @@ func (engine *Engine) processFlowNode(
 
 	err = batch.SaveFlowElementHistory(ctx,
 		runtime.FlowElementHistoryItem{
-			Key:                engine.generateKey(),
+			ElementInstanceKey: currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.GetInstanceKey(),
 			ElementId:          activity.element.GetId(),
 			CreatedAt:          time.Now(),
@@ -992,7 +992,7 @@ func (engine *Engine) handleSimpleTransition(
 
 		err := batch.SaveFlowElementHistory(ctx,
 			runtime.FlowElementHistoryItem{
-				Key:                engine.generateKey(),
+				ElementInstanceKey: engine.generateKey(),
 				ProcessInstanceKey: instance.GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),

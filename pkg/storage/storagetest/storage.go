@@ -473,7 +473,7 @@ func (st *StorageTester) TestSaveFlowElementHistoryWriter(s storage.Storage, t *
 		r := s.GenerateId()
 
 		historyItem := bpmnruntime.FlowElementHistoryItem{
-			Key:                r,
+			ElementInstanceKey: r,
 			ProcessInstanceKey: r,
 			ElementId:          "test-elem",
 			CreatedAt:          time.Now().Truncate(time.Millisecond),

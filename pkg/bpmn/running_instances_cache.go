@@ -1,9 +1,8 @@
 package bpmn
 
 import (
-	"sync"
-
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"sync"
 )
 
 type RunningInstance struct {

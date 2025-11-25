@@ -266,6 +266,7 @@ type ExecutionToken struct {
 	ElementId          string
 	ProcessInstanceKey int64
 	State              TokenState
+	CreatedAt          time.Time
 }
 
 type FlowElementHistoryItem struct {

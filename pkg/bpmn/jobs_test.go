@@ -397,7 +397,7 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(bh)
 	b2h := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(b2h)
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 	bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NotNil(t, instance)

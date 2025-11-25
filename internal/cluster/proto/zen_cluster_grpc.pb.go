@@ -46,6 +46,7 @@ const (
 	ZenService_FindActiveMessage_FullMethodName              = "/cluster.ZenService/FindActiveMessage"
 	ZenService_CreateInstance_FullMethodName                 = "/cluster.ZenService/CreateInstance"
 	ZenService_StartProcessInstanceOnElements_FullMethodName = "/cluster.ZenService/StartProcessInstanceOnElements"
+	ZenService_ModifyProcessInstance_FullMethodName          = "/cluster.ZenService/ModifyProcessInstance"
 	ZenService_GetProcessInstances_FullMethodName            = "/cluster.ZenService/GetProcessInstances"
 	ZenService_GetJobs_FullMethodName                        = "/cluster.ZenService/GetJobs"
 	ZenService_GetProcessInstance_FullMethodName             = "/cluster.ZenService/GetProcessInstance"
@@ -104,6 +105,7 @@ type ZenServiceClient interface {
 	FindActiveMessage(ctx context.Context, in *FindActiveMessageRequest, opts ...grpc.CallOption) (*FindActiveMessageResponse, error)
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	StartProcessInstanceOnElements(ctx context.Context, in *StartInstanceOnElementIdsRequest, opts ...grpc.CallOption) (*StartInstanceOnElementIdsResponse, error)
+	ModifyProcessInstance(ctx context.Context, in *ModifyProcessInstanceRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
 	GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
@@ -396,6 +398,16 @@ func (c *zenServiceClient) StartProcessInstanceOnElements(ctx context.Context, i
 	return out, nil
 }
 
+func (c *zenServiceClient) ModifyProcessInstance(ctx context.Context, in *ModifyProcessInstanceRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModifyProcessInstanceResponse)
+	err := c.cc.Invoke(ctx, ZenService_ModifyProcessInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProcessInstancesResponse)
@@ -554,6 +566,7 @@ type ZenServiceServer interface {
 	FindActiveMessage(context.Context, *FindActiveMessageRequest) (*FindActiveMessageResponse, error)
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	StartProcessInstanceOnElements(context.Context, *StartInstanceOnElementIdsRequest) (*StartInstanceOnElementIdsResponse, error)
+	ModifyProcessInstance(context.Context, *ModifyProcessInstanceRequest) (*ModifyProcessInstanceResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
 	GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
@@ -654,6 +667,9 @@ func (UnimplementedZenServiceServer) CreateInstance(context.Context, *CreateInst
 }
 func (UnimplementedZenServiceServer) StartProcessInstanceOnElements(context.Context, *StartInstanceOnElementIdsRequest) (*StartInstanceOnElementIdsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartProcessInstanceOnElements not implemented")
+}
+func (UnimplementedZenServiceServer) ModifyProcessInstance(context.Context, *ModifyProcessInstanceRequest) (*ModifyProcessInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ModifyProcessInstance not implemented")
 }
 func (UnimplementedZenServiceServer) GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstances not implemented")
@@ -1170,6 +1186,24 @@ func _ZenService_StartProcessInstanceOnElements_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_ModifyProcessInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModifyProcessInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).ModifyProcessInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_ModifyProcessInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).ModifyProcessInstance(ctx, req.(*ModifyProcessInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_GetProcessInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProcessInstancesRequest)
 	if err := dec(in); err != nil {
@@ -1463,6 +1497,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StartProcessInstanceOnElements",
 			Handler:    _ZenService_StartProcessInstanceOnElements_Handler,
+		},
+		{
+			MethodName: "ModifyProcessInstance",
+			Handler:    _ZenService_ModifyProcessInstance_Handler,
 		},
 		{
 			MethodName: "GetProcessInstances",

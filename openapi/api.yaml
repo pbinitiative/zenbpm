@@ -659,6 +659,7 @@ paths:
                   applicationDate: "2025-08-22"
                   taskAssignee: "john.doe"
                   currentStatus: "Application review"
+
         400:
           description: Bad request
           content:
@@ -764,71 +765,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  /process-instances/{processInstanceKey}/activities:
-    get:
-      operationId: getActivities
-      tags:
-        - process-instance
-      summary: Get list of activities for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/activities?page=1&size=10"
-      parameters:
-        - name: processInstanceKey
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
-        - name: page
-          in: query
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            default: 1
-          description: Page number (1-based indexing)
-          example: 1
-        - name: size
-          in: query
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            maximum: 100
-            default: 10
-          description: Number of items per page (max 100)
-          example: 10
-      responses:
-        200:
-          description: List of activities
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ActivityPage"
-              example:
-                items:
-                  - key: "4503599627370520"
-                    processInstanceKey: "4503599627370501"
-                    processDefinitionKey: "4503599627370498"
-                    createdAt: "2025-08-22T14:30:26Z"
-                    state: "completed"
-                    elementId: "StartEvent_1"
-                    bpmnElementType: "startEvent"
-                  - key: "4503599627370521"
-                    processInstanceKey: "4503599627370501"
-                    processDefinitionKey: "4503599627370498"
-                    createdAt: "2025-08-22T14:30:27Z"
-                    state: "active"
-                    elementId: "Task_CheckApplication"
-                    bpmnElementType: "userTask"
-                page: 1
-                size: 10
-                count: 2
-                totalCount: 2
 
   /process-instances/{processInstanceKey}/history:
     get:
@@ -1216,26 +1152,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /migration/start-process-instance:
+  /modify/start-process-instance:
     post:
       operationId: StartProcessInstanceOnElements
       summary: Start a new process instance starting at chosen elements
       tags:
         - migration
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/migration/start-process-instance \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processDefinitionKey": "123456789",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000
-                }
-                "startingElementIds": ["flowNode-1","flowNode-2"],
-              }'
       requestBody:
         required: true
         content:
@@ -1270,15 +1193,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessInstance"
-              example:
-                key: "4503599627370501"
-                processDefinitionKey: "4503599627370498"
-                createdAt: "2025-08-22T14:30:25Z"
-                state: "active"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /modify/process-instance:
+    post:
+      operationId: ModifyProcessInstance
+      summary: Modify process instance
+      tags:
+        - migration
+        - process-instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processInstanceKey
+              properties:
+                processInstanceKey:
+                  type: string
+                  pattern: '^\d{15,20}$'
                 variables:
-                  customerId: "customer-456"
-                  amount: 1000
-                  applicationDate: "2025-08-22"
+                  type: object
+                  description: "Sets process instance variables."
+                elementInstancesToStart:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/StartElementInstanceData"
+                  description: "Starts execution token."
+                elementInstancesToTerminate:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TerminateElementInstanceData"
+                  description: "Terminates execution token."
+      responses:
+        201:
+          description: Process instance modified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processInstance:
+                    $ref: "#/components/schemas/ProcessInstance"
+                  activeElementInstances:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ElementInstance"
         400:
           description: Bad request
           content:
@@ -1591,6 +1570,7 @@ components:
         - createdAt
         - state
         - variables
+        - activeElementInstances
       properties:
         key:
           type: string
@@ -1609,6 +1589,10 @@ components:
             - terminated
         variables:
           type: object
+        activeElementInstances:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElementInstance"
     JobPage:
       type: object
       allOf:
@@ -1680,34 +1664,15 @@ components:
         - completed
         - terminated
         - failed
-    ActivityPage:
-      type: object
-      allOf:
-        - type: object
-          properties:
-            items:
-              type: array
-              items:
-                $ref: "#/components/schemas/Activity"
-        - $ref: "#/components/schemas/PageMetadata"
-    Activity:
+    ElementInstance:
       type: object
       required:
-        - key
-        - processInstanceKey
-        - processDefinitionKey
+        - elementInstanceKey
         - createdAt
         - state
         - elementId
-        - bpmnElementType
       properties:
-        key:
-          type: string
-          pattern: '^\d{15,20}$'
-        processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
-        processDefinitionKey:
+        elementInstanceKey:
           type: string
           pattern: '^\d{15,20}$'
         createdAt:
@@ -1716,8 +1681,6 @@ components:
         state:
           type: string
         elementId:
-          type: string
-        bpmnElementType:
           type: string
     FlowElementHistoryPage:
       type: object
@@ -1729,6 +1692,26 @@ components:
               items:
                 $ref: "#/components/schemas/FlowElementHistory"
         - $ref: "#/components/schemas/PageMetadata"
+    TerminateElementInstanceData:
+      type: object
+      required:
+        - elementInstanceKey
+      properties:
+        elementInstanceKey:
+          type: string
+          pattern: '^\d{15,20}$'
+      example:
+        elementId: "flow-node-1"
+    StartElementInstanceData:
+      type: object
+      required:
+        - elementId
+      properties:
+        elementId:
+          type: string
+          description: "Element instance is created at this element."
+      example:
+        elementId: "flow-node-1"
     FlowElementHistory:
       type: object
       required:

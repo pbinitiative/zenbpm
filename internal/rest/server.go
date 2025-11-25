@@ -166,14 +166,14 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 
 	totalCount := len(items)
 
-	startIndex := int((page - 1) * size)
-	endIndex := int(startIndex + size)
+	startIndex := (page - 1) * size
+	endIndex := startIndex + size
 	if startIndex >= totalCount {
 		result := public.DecisionDefinitionsPage{
 			Items: []public.DecisionDefinitionSimple{},
 			PageMetadata: public.PageMetadata{
-				Page:       int(page),
-				Size:       int(size),
+				Page:       page,
+				Size:       size,
 				Count:      0,
 				TotalCount: totalCount,
 			},
@@ -190,8 +190,8 @@ func (s *Server) GetDecisionDefinitions(ctx context.Context, request public.GetD
 	result := public.DecisionDefinitionsPage{
 		Items: pagedItems,
 		PageMetadata: public.PageMetadata{
-			Page:       int(page),
-			Size:       int(size),
+			Page:       page,
+			Size:       size,
 			Count:      len(pagedItems),
 			TotalCount: totalCount,
 		},
@@ -632,7 +632,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			Message: err.Error(),
 		}, nil
 	}
-	instance, err := s.node.GetProcessInstance(ctx, instanceKey)
+	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, instanceKey)
 	if err != nil {
 		return public.GetProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -647,18 +647,25 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			Message: err.Error(),
 		}, nil
 	}
-	return public.GetProcessInstance200JSONResponse{
-		CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
-		Key:                  fmt.Sprintf("%d", instance.GetKey()),
-		ProcessDefinitionKey: fmt.Sprintf("%d", instance.GetDefinitionKey()),
-		State:                getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
-		Variables:            vars,
-	}, nil
-}
 
-func (s *Server) GetActivities(ctx context.Context, request public.GetActivitiesRequestObject) (public.GetActivitiesResponseObject, error) {
-	// TODO: we currently do not store activities
-	return public.GetActivities200JSONResponse(public.ActivityPage{}), nil
+	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
+	for _, elementInstance := range activeElementInstances {
+		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
+			ElementId:          elementInstance.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+		})
+	}
+
+	return &public.GetProcessInstance200JSONResponse{
+		ActiveElementInstances: respActiveElementInstances,
+		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
+		Key:                    fmt.Sprintf("%d", instance.GetKey()),
+		ProcessDefinitionKey:   fmt.Sprintf("%d", instance.GetDefinitionKey()),
+		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+		Variables:              vars,
+	}, nil
 }
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
@@ -911,6 +918,81 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 	}
 
 	return public.ResolveIncident201Response{}, nil
+}
+
+func (s *Server) ModifyProcessInstance(ctx context.Context, request public.ModifyProcessInstanceRequestObject) (public.ModifyProcessInstanceResponseObject, error) {
+	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
+	if err != nil {
+		return public.ModifyProcessInstance400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	variables := make(map[string]interface{})
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+
+	var elementInstancesToStart []string
+	if request.Body.ElementInstancesToStart != nil {
+		elementInstancesToStart = make([]string, 0, len(*request.Body.ElementInstancesToStart))
+		for _, data := range *request.Body.ElementInstancesToStart {
+			elementInstancesToStart = append(elementInstancesToStart, data.ElementId)
+		}
+	}
+
+	var elementInstancesToTerminate []int64
+	if request.Body.ElementInstancesToTerminate != nil {
+		elementInstancesToTerminate = make([]int64, 0, len(*request.Body.ElementInstancesToTerminate))
+		for _, data := range *request.Body.ElementInstancesToTerminate {
+			executionTokenKey, err := getKeyFromString(data.ElementInstanceKey)
+			if err != nil {
+				return public.ModifyProcessInstance400JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			elementInstancesToTerminate = append(elementInstancesToTerminate, executionTokenKey)
+		}
+	}
+
+	process, activeElementInstances, err := s.node.ModifyProcessInstance(ctx, key, elementInstancesToTerminate, elementInstancesToStart, variables)
+	if err != nil {
+		return public.ModifyProcessInstance502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	processVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &processVars)
+	if err != nil {
+		return public.ModifyProcessInstance500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
+	for _, elementInstance := range activeElementInstances {
+		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
+			ElementId:          elementInstance.GetElementId(),
+			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+		})
+	}
+
+	return public.ModifyProcessInstance201JSONResponse{
+		ProcessInstance: &public.ProcessInstance{
+			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Key:                  fmt.Sprintf("%d", process.GetKey()),
+			ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+			Variables:            processVars,
+		},
+		ActiveElementInstances: &respActiveElementInstances,
+	}, nil
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, resp interface{}) {

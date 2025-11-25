@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -13,12 +12,9 @@ import (
 func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-	if err := evaluateLocalVariables(&variableHolder, element.GetInputMapping()); err != nil {
+	if err := variableHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.State = runtime.ActivityStateFailed
-		if err != nil {
-			return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
-		}
-		return runtime.ActivityStateFailed, nil
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
 
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
@@ -36,17 +32,6 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 		}()
 	})
 	return runtime.ActivityStateActive, nil
-}
-
-func propagateVariablesBackToParent(instance *runtime.ProcessInstance, calledProcessInstance runtime.ProcessInstance, element *bpmn20.TCallActivity) error {
-	// map the variables back to the parent
-	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, calledProcessInstance.VariableHolder.Variables())
-
-	if err := propagateProcessInstanceVariables(&variableHolder, element.GetOutputMapping()); err != nil {
-		instance.State = runtime.ActivityStateFailed
-		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
-	}
-	return nil
 }
 
 func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
@@ -67,9 +52,12 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 		// handle the case where element is not a *bpmn20.TCallActivity
 		return errors.New("element is not a *bpmn20.TCallActivity")
 	}
-	err = propagateVariablesBackToParent(parentInstance, instance, callActivity)
-	if err != nil {
-		return fmt.Errorf("failed to propagate variables to parent: %w", err)
+
+	variableHolder := runtime.NewVariableHolder(&parentInstance.VariableHolder, instance.VariableHolder.LocalVariables())
+
+	if err := variableHolder.PropagateLocalVariables(callActivity.GetOutputMapping(), engine.evaluateExpression); err != nil {
+		instance.State = runtime.ActivityStateFailed
+		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 	}
 
 	// unblock token of the parent

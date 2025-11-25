@@ -22,7 +22,7 @@ func (engine *Engine) PublishMessageByName(ctx context.Context, name string, cor
 	return engine.PublishMessage(ctx, subscriptionKey, variables)
 }
 
-// PublishMessage publishes a message given by subscriptionkey and also adds variables to the process instance, which fetches this event
+// PublishMessage publishes a message given by subscription key and also adds variables to the process instance, which fetches this event
 func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64, variables map[string]interface{}) error {
 	message, err := engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
@@ -91,9 +91,8 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storag
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
 	}
 
-	vars := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
-	err = propagateProcessInstanceVariables(&vars, listener.Output)
-	if err != nil {
+	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+	if err = variableHolder.PropagateLocalVariables(listener.Output, engine.evaluateExpression); err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.Key, err)
 	}
 	err = batch.SaveProcessInstance(ctx, *instance)
@@ -154,9 +153,8 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
 	}
 
-	vars := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
-	err = propagateProcessInstanceVariables(&vars, listener.Output)
-	if err != nil {
+	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+	if err = variableHolder.PropagateLocalVariables(listener.Output, engine.evaluateExpression); err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.Key, err)
 	}
 	err = batch.SaveProcessInstance(ctx, *instance)
@@ -271,12 +269,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", message.Key, err)
 		}
 		token = message.Token
-		vars := runtime.NewVariableHolder(&instance.VariableHolder, variables)
-		err = propagateProcessInstanceVariables(&vars, catchEvent.Output)
-		if err != nil {
+		variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+		if err = variableHolder.PropagateLocalVariables(catchEvent.Output, engine.evaluateExpression); err != nil {
 			return nil, err
 		}
-		instance.VariableHolder = vars
 		err = batch.SaveProcessInstance(ctx, *instance)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
@@ -351,7 +347,7 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 
 	correlationKey := message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		correlationKeyResult, err := evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.Variables())
+		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.LocalVariables())
 		if err != nil {
 			token.State = runtime.TokenStateFailed
 			return runtime.MessageSubscription{}, fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)

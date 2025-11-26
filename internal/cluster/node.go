@@ -699,7 +699,7 @@ func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionK
 		// TODO: we can smack these into goroutines
 		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
-			return result, fmt.Errorf("failed to follower node to get process instances: %w", err)
+			return result, fmt.Errorf("failed to get follower node to get process instances: %w", err)
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
@@ -731,7 +731,7 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+		return nil, fmt.Errorf("failed to get follower node to get process instance: %w", err)
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -758,7 +758,7 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+		return nil, fmt.Errorf("failed to get follower node to get process instance: %w", err)
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -785,7 +785,7 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceK
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+		return nil, fmt.Errorf("failed to get follower node to get process instance: %w", err)
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -811,7 +811,7 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to follower node to get process instance: %w", err)
+		return nil, fmt.Errorf("failed to get follower node to get process instance: %w", err)
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {

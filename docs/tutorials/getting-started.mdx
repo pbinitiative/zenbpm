@@ -23,27 +23,15 @@ The easiest way to get started with ZenBPM is to use Docker.
 
 1. Pull the ZenBPM Docker image:
 
-:::note docker image is not published yet
 ```bash
-docker pull zenbpm/zenbpm:latest
-```
-Instead, create a docker image from a Dockerfile
-```bash
-git clone git@github.com:pbinitiative/zenbpm.git
-cd zenbpm
-docker build -t zenbpm .
+docker pull ghcr.io/pbinitiative/zenbpm:latest
 ```
 :::
 
 2. Run the ZenBPM container:
 
-:::note docker image is not published yet
 ```bash
-docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm/zenbpm:latest
-```
-Instead, run the newly built image
-```bash
-docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm ghcr.io/pbinitiative/zenbpm:latest
 ```
 :::
 

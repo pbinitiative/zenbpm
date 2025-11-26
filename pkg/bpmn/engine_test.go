@@ -478,7 +478,7 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
 		t.Context(),
 		"",
-		*definition,
+		definition,
 		xmldata,
 		bpmnEngine.generateKey(),
 	)

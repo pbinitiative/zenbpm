@@ -106,6 +106,7 @@ release:
   github:
     owner: pbinitiative
     name: zenbpm
+  make_latest: true
   prerelease: auto
   draft: false
   header: |

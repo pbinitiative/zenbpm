@@ -1,6 +1,7 @@
 @node=node-1
 @host=http://localhost:8080
-@definition_key=1955877026946613248
+@definition_key=1991421078827696128
+@instance_key=1991466343932629000
 ### GetProcessDefinitions
 GET {{host}}/v1/process-definitions
 Accept: application/json
@@ -16,6 +17,7 @@ POST {{host}}/v1/process-instances
 Content-Type: application/json
 
 {
+  "historyTimeToLive": "1d8h",
   "processDefinitionKey": "{{definition_key}}",
 	"variables":{
 	  "name": "Test name"
@@ -24,6 +26,12 @@ Content-Type: application/json
 
 ### GetProcessInstances
 GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
+
+### GetProcessInstance
+GET {{host}}/v1/process-instances/{{instance_key}}
+
+### GetProcessInstanceJobs
+GET {{host}}/v1/process-instances/{{instance_key}}/jobs
 
 ### ActivateJob
 @job_type=input-task-1

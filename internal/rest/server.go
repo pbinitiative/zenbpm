@@ -373,12 +373,6 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			Message: err.Error(),
 		}, nil
 	}
-	if deployResult.IsDuplicate == true {
-		return public.CreateProcessDefinition409JSONResponse{
-			Code:    "DUPLICATE",
-			Message: fmt.Sprintf("The same process definition already exists (key: %d)", deployResult.Key),
-		}, nil
-	}
 
 	return public.CreateProcessDefinition201JSONResponse{
 		ProcessDefinitionKey: fmt.Sprintf("%d", deployResult.Key),

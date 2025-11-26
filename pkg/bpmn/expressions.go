@@ -4,11 +4,9 @@ import (
 	"strings"
 
 	"github.com/pbinitiative/feel"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
-func evaluateExpression(expression string, variableContext map[string]interface{}) (interface{}, error) {
+func (engine *Engine) evaluateExpression(expression string, variableContext map[string]interface{}) (interface{}, error) {
 	expression = strings.TrimSpace(expression)
 	expression = strings.TrimPrefix(expression, "=") // FIXME: this is just for convenience, but should be removed
 	res, err := feel.EvalStringWithScope(expression, variableContext)
@@ -22,32 +20,4 @@ func evaluateExpression(expression string, variableContext map[string]interface{
 		}
 	}
 	return res, err
-}
-
-func evaluateLocalVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping) error {
-	return mapVariables(varHolder, mappings, func(key string, value interface{}) {
-		varHolder.SetVariable(key, value)
-	})
-}
-
-func propagateProcessInstanceVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping) error {
-	if len(mappings) == 0 {
-		for k, v := range varHolder.Variables() {
-			varHolder.PropagateVariable(k, v)
-		}
-	}
-	return mapVariables(varHolder, mappings, func(key string, value interface{}) {
-		varHolder.PropagateVariable(key, value)
-	})
-}
-
-func mapVariables(varHolder *runtime.VariableHolder, mappings []extensions.TIoMapping, setVarFunc func(key string, value interface{})) error {
-	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, varHolder.Variables())
-		if err != nil {
-			return err
-		}
-		setVarFunc(mapping.Target, evalResult)
-	}
-	return nil
 }

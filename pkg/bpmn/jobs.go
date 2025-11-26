@@ -20,7 +20,7 @@ import (
 
 func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (state runtime.ActivityState, retErr error) {
 	jobVarHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-	if err := evaluateLocalVariables(&jobVarHolder, element.GetInputMapping()); err != nil {
+	if err := jobVarHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
 	job := runtime.Job{
@@ -30,7 +30,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		Key:                engine.generateKey(),
 		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
-		Variables:          jobVarHolder.Variables(),
+		Variables:          jobVarHolder.LocalVariables(),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}
@@ -85,8 +85,7 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 			instance.State = runtime.ActivityStateFailed
 
 		case runtime.ActivityStateCompleting:
-			err = propagateProcessInstanceVariables(&jobVarHolder, element.GetOutputMapping())
-			if err != nil {
+			if err = jobVarHolder.PropagateLocalVariables(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
 				engine.handleIncident(ctx, job.Token, newEngineErrorf("failing internal job with message: %s", err), internalCompleteSpan)
 				job.State = runtime.ActivityStateFailed
 				instance.State = runtime.ActivityStateFailed
@@ -155,13 +154,13 @@ func (engine *Engine) completeJob(
 	}
 	instance = &inst
 
-	variableHolder := runtime.NewVariableHolderForPropagation(&instance.VariableHolder, variables)
+	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
 	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 	}
 
-	if err = propagateProcessInstanceVariables(&variableHolder, task.GetOutputMapping()); err != nil {
+	if err = variableHolder.PropagateLocalVariables(task.GetOutputMapping(), engine.evaluateExpression); err != nil {
 		job.State = runtime.ActivityStateFailed
 		instance.State = runtime.ActivityStateFailed
 	}
@@ -286,7 +285,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 		if task == nil {
 			return nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 		}
-		if err := evaluateLocalVariables(&variableHolder, task.GetInputMapping()); err != nil {
+		if err := variableHolder.EvaluateAndSetInputMappings(task.GetInputMapping(), engine.evaluateExpression); err != nil {
 			job.State = runtime.ActivityStateFailed
 			perr := engine.persistence.SaveJob(ctx, job)
 			if perr != nil {

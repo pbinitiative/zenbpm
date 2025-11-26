@@ -19,14 +19,14 @@ import (
 // evaluates to true, a runtime exception occurs.
 // A converging Exclusive Gateway is used to merge alternative paths. Each incoming Sequence Flow token is routed
 // to the outgoing Sequence Flow without synchronization.
-func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+func (engine *Engine) exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
 	var ret []bpmn20.SequenceFlow
 	flowIds := strings.Builder{}
 	for _, flow := range flows {
 		expression := flow.GetConditionExpression()
 		if expression != "" {
 			flowIds.WriteString(fmt.Sprintf("[id='%s',name='%s']", flow.GetId(), flow.GetName()))
-			out, err := evaluateExpression(expression, variableContext)
+			out, err := engine.evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
 					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.GetId(), flow.GetName()),
@@ -61,12 +61,12 @@ func exclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, default
 // condition Expression does not exclude the evaluation of other condition Expressions. All Sequence Flows with
 // a true evaluation will be traversed by a token. Since each path is considered to be independent, all combinations of the
 // paths MAY be taken, from zero to all.
-func inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
+func (engine *Engine) inclusivelyFilterByConditionExpression(flows []bpmn20.SequenceFlow, defaultFlow bpmn20.SequenceFlow, variableContext map[string]interface{}) ([]bpmn20.SequenceFlow, error) {
 	var ret []bpmn20.SequenceFlow
 	for _, flow := range flows {
 		expression := flow.GetConditionExpression()
 		if expression != "" {
-			out, err := evaluateExpression(expression, variableContext)
+			out, err := engine.evaluateExpression(expression, variableContext)
 			if err != nil {
 				return nil, &ExpressionEvaluationError{
 					Msg: fmt.Sprintf("Error evaluating expression in flow element id='%s' name='%s'", flow.GetId(), flow.GetName()),

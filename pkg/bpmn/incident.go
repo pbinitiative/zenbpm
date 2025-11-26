@@ -32,7 +32,10 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 		return err
 	}
 
-	engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{incident.Token})
+	err = engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{incident.Token})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -84,7 +84,7 @@ func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	idH := bpmnEngine.NewTaskHandler().Id("id").Handler(handler)
 	defer bpmnEngine.RemoveHandler(idH)
 
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), pi.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), pi.Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), pi, tokens)
 	assert.NoError(t, err)
@@ -119,7 +119,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	v := engineStorage.ProcessInstances[instance.Key]
 	// then
 	assert.NotNil(t, v, "Process isntance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetVariable(variableName))
+	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
 }
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
@@ -339,7 +339,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// TODO: would need different test
 
 	// All called processes should be terminated
-	tokens, err := bpmnEngine.persistence.GetTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
 	for _, token := range tokens {
@@ -356,6 +356,90 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateTerminated, pi.State, "expected canceled state for process instance, but found %s", pi.State)
 
+}
+
+func TestModifyProcessInstance(t *testing.T) {
+	// setup
+	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
+	definition, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-multiple-boundary-user-task-end.bpmn")
+	assert.NoError(t, err)
+
+	variableContext := make(map[string]interface{}, 1)
+	randomCorellationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+
+	// when
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), definition.Key, variableContext)
+	assert.NoError(t, err)
+
+	var executionTokens []runtime.ExecutionToken
+	assert.Eventually(t, func() bool {
+		executionTokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
+		assert.NoError(t, err)
+		if executionTokens != nil && len(executionTokens) == 1 {
+			return true
+		}
+		return false
+	}, 5*time.Second, 200*time.Millisecond)
+
+	var mainToken runtime.ExecutionToken
+	for _, token := range executionTokens {
+		if token.ElementId == "callActivity" {
+			mainToken = token
+		}
+	}
+	assert.NotEqual(t, "", mainToken.Key)
+
+	elementInstancesToTerminate := make([]int64, 0, 1)
+	elementInstancesToTerminate = append(elementInstancesToTerminate, mainToken.ElementInstanceKey)
+	elementIdsToStartInstance := make([]string, 0, 1)
+	elementIdsToStartInstance = append(elementIdsToStartInstance, "userTask")
+
+	modifiedInstance, runningTokens, err := bpmnEngine.ModifyInstance(t.Context(), instance.GetInstanceKey(), elementInstancesToTerminate, elementIdsToStartInstance, map[string]any{
+		"order": map[string]any{"name": "test-order-name"}})
+	if err != nil {
+		return
+	}
+	assert.NoError(t, err)
+	assert.Equal(t, definition.Key, modifiedInstance.Definition.Key)
+	assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.VariableHolder.LocalVariables()["order"])
+	assert.NotEmpty(t, runningTokens)
+	assert.Equal(t, 1, len(runningTokens))
+	assert.NotEmpty(t, runningTokens[0].Key)
+	assert.Equal(t, runningTokens[0].ElementId, "userTask")
+	assert.Equal(t, runningTokens[0].ProcessInstanceKey, instance.Key)
+
+	instanceCheck, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, definition.Key, instanceCheck.Definition.Key)
+	assert.Equal(t, map[string]any{"name": "test-order-name"}, instanceCheck.VariableHolder.LocalVariables()["order"])
+
+	// All message subscriptions should be canceled
+	subscriptions, err := bpmnEngine.persistence.FindTokenMessageSubscriptions(t.Context(), mainToken.Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions), "expected 0 message subscriptions, but found %d", len(subscriptions))
+
+	// All timers should be canceled
+	timers, err := bpmnEngine.persistence.FindTokenActiveTimerSubscriptions(t.Context(), mainToken.Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(timers), "expected 0 timers, but found %d", len(timers))
+
+	// All jobs should be canceled
+	jobs, err := bpmnEngine.persistence.FindTokenJobsInState(t.Context(), mainToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs), "expected 0 jobs, but found %d", len(jobs))
+
+	// All incidents should be resolved
+	// TODO: would need different test
+
+	// All called processes should be terminated
+	cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), mainToken.Key)
+	assert.NoError(t, err)
+
+	for _, cp := range cps {
+		assert.Equal(t, runtime.ActivityStateTerminated, cp.State, "expected cancelled state for terminated definition, but found %s", cp.State)
+	}
 }
 
 func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
@@ -403,11 +487,11 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	//run
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.NotEmpty(t, instance.VariableHolder.Variables())
-	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable"])
-	assert.Equal(t, false, instance.VariableHolder.Variables()["OutputTestResultVariable"])
-	assert.Nil(t, instance.VariableHolder.Variables()["testResultVariable2"])
-	assert.Equal(t, false, instance.VariableHolder.Variables()["testResultVariable3"])
+	assert.NotEmpty(t, instance.VariableHolder.LocalVariables())
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable"])
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["OutputTestResultVariable"])
+	assert.Nil(t, instance.VariableHolder.LocalVariables()["testResultVariable2"])
+	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable3"])
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }

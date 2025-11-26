@@ -62,6 +62,7 @@ service ZenService {
   rpc FindActiveMessage(FindActiveMessageRequest) returns (FindActiveMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
+  rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
@@ -229,8 +230,17 @@ message ProcessInstance {
   string process_id = 2;
   bytes variables = 3;
   int64 state = 4;
-  int64 createdAt = 5;
+  int64 created_at = 5;
   int64 definition_key = 6;
+}
+
+message ExecutionToken {
+  int64 key = 1;
+  int64 element_instance_key = 2;
+  string element_id = 3;
+  int64 process_instance_key = 4;
+  int64 created_at = 5;
+  int64 state = 6;
 }
 
 message Job {
@@ -387,6 +397,19 @@ message StartInstanceOnElementIdsResponse {
   ProcessInstance process = 2;
 }
 
+message ModifyProcessInstanceRequest {
+  int64 process_instance_key = 1;
+  repeated int64 element_instance_ids_to_terminate = 2;
+  repeated string element_ids_to_start_instance = 3;
+  bytes variables = 4;
+}
+
+message ModifyProcessInstanceResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
+  repeated ExecutionToken execution_tokens = 3;
+}
+
 message GetProcessInstancesRequest {
   int32 page = 1;
   int32 size = 2;
@@ -411,6 +434,7 @@ message GetProcessInstanceRequest {
 message GetProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance processes = 2;
+  repeated ExecutionToken execution_tokens = 3;
 }
 
 message GetProcessInstanceJobsRequest {

@@ -141,7 +141,7 @@ func TestBooleanExpressionEvaluates(t *testing.T) {
 		"aValue": 3,
 	}
 
-	result, err := evaluateExpression("aValue > 1", variables)
+	result, err := bpmnEngine.evaluateExpression("aValue > 1", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))
@@ -152,7 +152,7 @@ func TestBooleanExpressionWithEqualSignEvaluates(t *testing.T) {
 		"aValue": 3,
 	}
 
-	result, err := evaluateExpression("= aValue > 1", variables)
+	result, err := bpmnEngine.evaluateExpression("= aValue > 1", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))
@@ -165,7 +165,7 @@ func TestMathematicalExpressionEvaluates(t *testing.T) {
 		"sum": 10,
 	}
 
-	result, err := evaluateExpression("sum >= foo + bar", variables)
+	result, err := bpmnEngine.evaluateExpression("sum >= foo + bar", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))

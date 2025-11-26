@@ -380,6 +380,23 @@ func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 	return res, nil
 }
 
+func (mem *Storage) FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
+	res := make([]bpmnruntime.Job, 0)
+	for _, job := range mem.Jobs {
+		if job.Token.Key != tokenKey {
+			continue
+		}
+		for _, s := range states {
+			if job.State != s {
+				continue
+			} else {
+				res = append(res, job)
+			}
+		}
+	}
+	return res, nil
+}
+
 func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error) {
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
@@ -419,7 +436,7 @@ func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, 
 func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.Token.Key == tokenKey {
+		if sub.Token.Key == tokenKey && sub.State == state {
 			res = append(res, sub)
 		}
 	}
@@ -454,6 +471,17 @@ func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name s
 		return 0, storage.ErrNotFound
 	}
 	return res[0].Key, nil
+}
+
+func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
+	res := make([]bpmnruntime.Incident, 0)
+	for _, inc := range mem.Incidents {
+		if inc.Token.Key != executionTokenKey {
+			continue
+		}
+		res = append(res, inc)
+	}
+	return res, nil
 }
 
 func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
@@ -494,7 +522,17 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 var _ storage.TokenStorageReader = &Storage{}
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
-func (mem *Storage) GetTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+func (mem *Storage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	res := make([]bpmnruntime.ExecutionToken, 0)
+	for _, tok := range mem.ExecutionTokens {
+		if tok.ProcessInstanceKey == processInstanceKey && (tok.State == bpmnruntime.TokenStateWaiting || tok.State == bpmnruntime.TokenStateFailed || tok.State == bpmnruntime.TokenStateRunning) {
+			res = append(res, tok)
+		}
+	}
+	return res, nil
+}
+
+func (mem *Storage) GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	res := make([]bpmnruntime.ExecutionToken, 0)
 	for _, tok := range mem.ExecutionTokens {
 		if tok.ProcessInstanceKey == processInstanceKey {

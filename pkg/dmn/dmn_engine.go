@@ -43,6 +43,12 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 	}
 }
 
+func EngineWithFeel(feel *feel.FeelinRuntime) EngineOption {
+	return func(engine *ZenDmnEngine) {
+		engine.feelRuntime = feel
+	}
+}
+
 func (engine *ZenDmnEngine) ParseDmnFromFile(filename string) (*dmn.TDefinitions, []byte, error) {
 	xmlData, err := os.ReadFile(filename)
 	if err != nil {
@@ -317,10 +323,13 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 
 func (engine *ZenDmnEngine) evaluateLiteralExpression(decision *dmn.TDecision, decisionDefinition *runtime.DecisionDefinition, localVariableContext map[string]interface{}) (EvaluatedDecisionResult, error) {
 	var resultValue any
-	//var err error
+	var err error
 	switch decision.LiteralExpression.ExpressionLanguage {
 	case "feel", "":
-		resultValue = engine.feelRuntime.Evaluate(decision.LiteralExpression.Text.Text, localVariableContext)
+		resultValue, err = engine.feelRuntime.Evaluate(decision.LiteralExpression.Text.Text, localVariableContext)
+		if err != nil {
+			return EvaluatedDecisionResult{}, fmt.Errorf("failed to evaluated expression \"%s\" with variables %s: %w", decision.LiteralExpression.Text.Text, localVariableContext, err)
+		}
 		if err, ok := resultValue.(goja.Exception); ok {
 			return EvaluatedDecisionResult{}, fmt.Errorf("%s", err.String())
 		}
@@ -410,7 +419,10 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 
 	evaluatedInputs := make([]EvaluatedInput, len(decisionTable.Inputs))
 	for i, input := range decisionTable.Inputs {
-		value := engine.feelRuntime.Evaluate(input.InputExpression.Text, localVariableContext)
+		value, err := engine.feelRuntime.Evaluate(input.InputExpression.Text, localVariableContext)
+		if err != nil {
+			return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating epression \"%s\" with variables %s: %v", input.InputExpression.Text, localVariableContext, err)
+		}
 		evaluatedInputs[i] = EvaluatedInput{
 			InputId:         input.Id,
 			InputName:       input.Label,
@@ -425,7 +437,10 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
 			inputInstance := evaluatedInputs[i]
-			match := engine.evaluateCellMatch(inputInstance.InputExpression, inputEntry.Text, localVariableContext)
+			match, err := engine.evaluateCellMatch(inputInstance.InputExpression, inputEntry.Text, localVariableContext)
+			if err != nil {
+				return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating cell match: \"%s\" \"%s\" %s ,%v", inputInstance.InputExpression, inputEntry.Text, localVariableContext, err)
+			}
 			if !match {
 				allColumnsMatch = false
 				break
@@ -435,7 +450,10 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 		if allColumnsMatch {
 			evaluatedOutputs := make([]EvaluatedOutput, len(decisionTable.Outputs))
 			for i, output := range decisionTable.Outputs {
-				value := engine.feelRuntime.Evaluate(rule.OutputEntry[i].Text, localVariableContext)
+				value, err := engine.feelRuntime.Evaluate(rule.OutputEntry[i].Text, localVariableContext)
+				if err != nil {
+					return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating output \"%s\" with variables %s: %v", rule.OutputEntry[i].Text, localVariableContext, err)
+				}
 
 				evaluatedOutputs[i] = EvaluatedOutput{
 					OutputId:       output.Id,
@@ -481,10 +499,10 @@ func isUnique(list []dmn.TOutput) bool {
 	return true
 }
 
-func (engine *ZenDmnEngine) evaluateCellMatch(columnExpression string, cellExpression string, variables map[string]interface{}) bool {
+func (engine *ZenDmnEngine) evaluateCellMatch(columnExpression string, cellExpression string, variables map[string]interface{}) (bool, error) {
 	if cellExpression == "-" || cellExpression == "" {
 		// If the text is empty, it means any value is accepted
-		return true
+		return true, nil
 	}
 
 	var resultExpression string
@@ -498,7 +516,10 @@ func (engine *ZenDmnEngine) evaluateCellMatch(columnExpression string, cellExpre
 		resultExpression = columnExpression + " = " + cellExpression
 	}
 
-	result := engine.feelRuntime.UnaryTest(resultExpression, variables)
+	result, err := engine.feelRuntime.UnaryTest(resultExpression, variables)
+	if err != nil {
+		return false, fmt.Errorf("could not perform unary test: %v", err)
+	}
 
-	return result
+	return result, nil
 }

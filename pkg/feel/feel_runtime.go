@@ -2,75 +2,94 @@ package feel
 
 import (
 	_ "embed"
-	"github.com/dop251/goja"
+	"sync"
+	"time"
 )
 
-//go:embed feelin/index.esm.js
-var feelinSource string
+// max amount of active runners
+const maxVmPoolSize = 10
+
+// min amount of active runners
+const minVmPoolSize = 2
 
 type FeelinRuntime struct {
-	vmPool        chan *goja.Runtime
-	evalFuncPool  chan *func(expression string, variableContext map[string]any) any
-	unaryTestPool chan *func(expression string, variableContext map[string]any) bool
+	pool               chan *Runner
+	activeRunnersCount int32
+	activeRunnersMu    *sync.Mutex
 }
 
 func NewFeelinRuntime() *FeelinRuntime {
-	const vmPoolSize = 1
+	if maxVmPoolSize < minVmPoolSize {
+		panic("vm pool min size is smaller than vm pool max size")
+	}
+
 	runtime := FeelinRuntime{
-		vmPool:        make(chan *goja.Runtime, vmPoolSize),
-		evalFuncPool:  make(chan *func(expression string, variableContext map[string]any) any, vmPoolSize),
-		unaryTestPool: make(chan *func(expression string, variableContext map[string]any) bool, vmPoolSize),
+		pool:               make(chan *Runner, maxVmPoolSize),
+		activeRunnersCount: 0,
+		activeRunnersMu:    &sync.Mutex{},
 	}
 
-	for i := 0; i < vmPoolSize; i++ {
-		vm := goja.New()
-		_, err := vm.RunString(feelinSource)
-		if err != nil {
-			panic(err)
-		}
-		evaluateFunc, err := exportEvaluate(vm)
-		if err != nil {
-			panic(err)
-		}
-		unaryTestFunc, err := exportUnaryTest(vm)
-		if err != nil {
-			panic(err)
-		}
-
-		runtime.vmPool <- vm
-		runtime.evalFuncPool <- evaluateFunc
-		runtime.unaryTestPool <- unaryTestFunc
+	//start min amount of runners
+	for i := 0; i < minVmPoolSize; i++ {
+		runtime.activeRunnersMu.Lock()
+		runtime.pool <- newRunner()
+		runtime.activeRunnersCount++
+		runtime.activeRunnersMu.Unlock()
 	}
+
+	//cleanup runners every 10 minutes
+	//should clean runners only when they are not being used
+	go func() {
+		time.Sleep(10 * time.Minute)
+		if len(runtime.pool) > minVmPoolSize {
+			for i := minVmPoolSize; i < len(runtime.pool); {
+				runtime.activeRunnersMu.Lock()
+				<-runtime.pool
+				runtime.activeRunnersCount--
+				runtime.activeRunnersMu.Unlock()
+			}
+		}
+	}()
 
 	return &runtime
 }
 
-func exportEvaluate(vm *goja.Runtime) (*func(expression string, variableContext map[string]any) any, error) {
-	var evalFunc func(expression string, variableContext map[string]any) any
-	err := vm.ExportTo(vm.Get("evaluate"), &evalFunc)
-	if err != nil {
-		return nil, err
+func (r *FeelinRuntime) getRunnerFromPool() *Runner {
+	var runner *Runner
+	select {
+	case runner = <-r.pool:
+	default:
+		r.activeRunnersMu.Lock()
+		if r.activeRunnersCount < maxVmPoolSize {
+			runner = newRunner()
+			r.activeRunnersCount++
+		}
+		r.activeRunnersMu.Unlock()
 	}
-	return &evalFunc, nil
+	return runner
 }
 
-func exportUnaryTest(vm *goja.Runtime) (*func(expression string, variableContext map[string]any) bool, error) {
-	var unaryTest func(expression string, variableContext map[string]any) bool
-	err := vm.ExportTo(vm.Get("unaryTest"), &unaryTest)
-	if err != nil {
-		return nil, err
+func (r *FeelinRuntime) returnRunnerToPool(runner *Runner) {
+	select {
+	case r.pool <- runner:
+	default:
+		//delete runner if pool is full
+		r.activeRunnersMu.Lock()
+		r.activeRunnersCount--
+		r.activeRunnersMu.Unlock()
 	}
-	return &unaryTest, nil
 }
 
-func (r *FeelinRuntime) UnaryTest(expression string, variableContext map[string]any) bool {
-	unaryTest := <-r.unaryTestPool
-	defer func() { r.unaryTestPool <- unaryTest }()
-	return (*unaryTest)(expression, variableContext)
+func (r *FeelinRuntime) UnaryTest(expression string, variableContext map[string]any) (bool, error) {
+	var runner = r.getRunnerFromPool()
+	defer r.returnRunnerToPool(runner)
+
+	return (*runner.unaryTest)(expression, variableContext)
 }
 
-func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]any) any {
-	evalFunc := <-r.evalFuncPool
-	defer func() { r.evalFuncPool <- evalFunc }()
-	return (*evalFunc)(expression, variableContext)
+func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]any) (any, error) {
+	var runner = r.getRunnerFromPool()
+	defer r.returnRunnerToPool(runner)
+
+	return (*runner.evalFunc)(expression, variableContext)
 }

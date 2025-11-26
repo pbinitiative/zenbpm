@@ -1,23 +1,16 @@
 package bpmn
 
 import (
+	"fmt"
 	"strings"
-
-	"github.com/pbinitiative/feel"
 )
 
 func (engine *Engine) evaluateExpression(expression string, variableContext map[string]interface{}) (interface{}, error) {
 	expression = strings.TrimSpace(expression)
 	expression = strings.TrimPrefix(expression, "=") // FIXME: this is just for convenience, but should be removed
-	res, err := feel.EvalStringWithScope(expression, variableContext)
-	if err == nil {
-		if num, ok := res.(*feel.Number); ok {
-			// TODO: tbc: what about smart conversion to int, in case of integer value?
-			return num.Float64(), nil
-		}
-		if b, ok := res.(bool); ok {
-			return b, nil
-		}
+	res, err := engine.feelRuntime.Evaluate(expression, variableContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate expression %s with variables %s : %w", expression, variableContext, err)
 	}
-	return res, err
+	return res, nil
 }

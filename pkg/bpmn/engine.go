@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/feel"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type Engine struct {
 	metrics        *otelPkg.EngineMetrics
 	timerManager   *timerManager
 	dmnEngine      *dmn.ZenDmnEngine
+	feelRuntime    *feel.FeelinRuntime
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -55,6 +57,7 @@ func NewEngine(options ...EngineOption) Engine {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
 	persistence := inmemory.NewStorage()
+	feelRuntime := feel.NewFeelinRuntime()
 	engine := Engine{
 		taskhandlersMu:   &sync.RWMutex{},
 		taskHandlers:     []*taskHandler{},
@@ -65,7 +68,8 @@ func NewEngine(options ...EngineOption) Engine {
 		tracer:           tracer,
 		meter:            meter,
 		metrics:          metrics,
-		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence)),
+		feelRuntime:      feelRuntime,
+		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -999,7 +1003,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 
 	if len(element.GetOutputMapping()) > 0 {
-		variableHolder.SetLocalVariables(result.DecisionOutput)
+		variableHolder.SetLocalVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 		if err := variableHolder.PropagateLocalVariables(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)

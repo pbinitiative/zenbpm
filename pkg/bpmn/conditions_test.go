@@ -186,7 +186,7 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	// then
 	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
 	assert.NotNil(t, err)
-	assert.ErrorContains(t, err, "Error evaluating expression")
+	assert.ErrorContains(t, err, "No default flow, nor matching expressions found, for flow elements")
 }
 
 func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {

@@ -65,6 +65,9 @@ func (r *FeelinRuntime) getRunnerFromPool() *Runner {
 			r.activeRunnersCount++
 		}
 		r.activeRunnersMu.Unlock()
+		if runner == nil {
+			runner = <-r.pool
+		}
 	}
 	return runner
 }

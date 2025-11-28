@@ -478,7 +478,7 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	_, _, err = bpmnEngine.dmnEngine.SaveDecisionDefinition(
 		t.Context(),
 		"",
-		*definition,
+		definition,
 		xmldata,
 		bpmnEngine.generateKey(),
 	)
@@ -488,10 +488,10 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.NotEmpty(t, instance.VariableHolder.LocalVariables())
-	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable"])
-	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["OutputTestResultVariable"])
+	assert.Equal(t, true, (instance.VariableHolder.LocalVariables()["testResultVariable"]).(map[string]interface{})["canAutoLiquidate"])
+	assert.Equal(t, true, instance.VariableHolder.LocalVariables()["OutputTestResultVariable"])
 	assert.Nil(t, instance.VariableHolder.LocalVariables()["testResultVariable2"])
-	assert.Equal(t, false, instance.VariableHolder.LocalVariables()["testResultVariable3"])
+	assert.Equal(t, true, (instance.VariableHolder.LocalVariables()["testResultVariable3"]).(map[string]interface{})["canAutoLiquidate"])
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }

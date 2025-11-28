@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/script"
+	"github.com/pbinitiative/zenbpm/pkg/script/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script/js"
 	"sync"
 	"time"
 
@@ -38,6 +41,8 @@ type Engine struct {
 	metrics        *otelPkg.EngineMetrics
 	timerManager   *timerManager
 	dmnEngine      *dmn.ZenDmnEngine
+	feelRuntime    script.FeelRuntime
+	jsRuntime      script.JsRuntime
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -55,6 +60,8 @@ func NewEngine(options ...EngineOption) Engine {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
 	persistence := inmemory.NewStorage()
+	feelRuntime := feel.NewFeelinRuntime(context.TODO(), 1, 1)
+	jsRuntime := js.NewJsRuntime(context.TODO(), 1, 1)
 	engine := Engine{
 		taskhandlersMu:   &sync.RWMutex{},
 		taskHandlers:     []*taskHandler{},
@@ -65,7 +72,9 @@ func NewEngine(options ...EngineOption) Engine {
 		tracer:           tracer,
 		meter:            meter,
 		metrics:          metrics,
-		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence)),
+		feelRuntime:      feelRuntime,
+		jsRuntime:        jsRuntime,
+		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -83,6 +92,20 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
 		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence))
+	}
+}
+
+func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
+	return func(engine *Engine) {
+		engine.persistence = persistence
+		engine.feelRuntime = feelRuntime
+		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime))
+	}
+}
+
+func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
+	return func(engine *Engine) {
+		engine.jsRuntime = jsRuntime
 	}
 }
 
@@ -999,7 +1022,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 
 	if len(element.GetOutputMapping()) > 0 {
-		variableHolder.SetLocalVariables(result.DecisionOutput)
+		variableHolder.SetLocalVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 		if err := variableHolder.PropagateLocalVariables(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
@@ -1007,15 +1030,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	if len(result.DecisionOutput) == 1 {
-		var propagateValue any
-		for _, value := range result.DecisionOutput {
-			propagateValue = value
-		}
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, propagateValue)
-	} else {
-		variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
-	}
+	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+
 	return runtime.ActivityStateCompleted, nil
 }
 

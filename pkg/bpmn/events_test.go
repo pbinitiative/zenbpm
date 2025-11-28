@@ -423,7 +423,7 @@ func TestIntermediateMessageCatchEventPublishesVariablesIntoInstance(t *testing.
 	assert.Equal(t, "bar", instance.GetVariable("mappedFoo"))
 }
 
-func TestIntermediateMessageCatchEventOutputMappingFailed(t *testing.T) {
+func TestIntermediateMessageCatchEventOutputMappingReturnsEmpty(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-intermediate-message-catch-event-broken.bpmn")
@@ -434,20 +434,20 @@ func TestIntermediateMessageCatchEventOutputMappingFailed(t *testing.T) {
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg" && message.State == runtime.ActivityStateActive {
 			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
-			assert.Error(t, err)
+			assert.NoError(t, err)
 		}
 	}
 
 	// then
-	message, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateFailed)
+	message, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateCompleted)
 	assert.NoError(t, err)
 
 	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
 	assert.NoError(t, err)
 
-	assert.Equal(t, instance.GetState(), runtime.ActivityStateFailed)
+	assert.Equal(t, instance.GetState(), runtime.ActivityStateCompleted)
 	assert.Nil(t, instance.GetVariable("mappedFoo"))
-	assert.Equal(t, message[0].GetState(), runtime.ActivityStateFailed)
+	assert.Equal(t, message[0].GetState(), runtime.ActivityStateCompleted)
 }
 
 func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {

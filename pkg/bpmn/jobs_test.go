@@ -15,8 +15,8 @@ const (
 )
 
 func increaseCounterHandler(job ActivatedJob) {
-	counter := job.Variable(varCounter).(float64)
-	counter = counter + 1
+	counter := job.Variable(varCounter)
+	counter = counter.(int64) + 1
 	job.SetVariable(varCounter, counter)
 	job.Complete()
 }
@@ -53,11 +53,11 @@ func TestSimpleCountLoop(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	vars := map[string]interface{}{}
-	vars[varCounter] = 0.0
+	vars[varCounter] = int64(0)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars)
 	assert.NoError(t, err)
 
-	assert.Equal(t, 4.0, instance.GetVariable(varCounter))
+	assert.Equal(t, int64(4), instance.GetVariable(varCounter))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }
 
@@ -67,12 +67,12 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-count-loop-with-message.bpmn")
 
 	vars := map[string]interface{}{}
-	vars[varEngineValidationAttempts] = 0.0
+	vars[varEngineValidationAttempts] = int64(0)
 	nothingH := bpmnEngine.NewTaskHandler().Id("do-nothing").Handler(jobCompleteHandler)
 	defer bpmnEngine.RemoveHandler(nothingH)
 	validate := bpmnEngine.NewTaskHandler().Id("validate").Handler(func(job ActivatedJob) {
 		attemptsVariable := job.Variable(varEngineValidationAttempts)
-		attempts := attemptsVariable.(float64)
+		attempts := attemptsVariable.(int64)
 		foobar := attempts >= 1
 		attempts++
 		job.SetVariable(varEngineValidationAttempts, attempts)
@@ -102,11 +102,11 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.True(t, instance.GetVariable(varHasReachedMaxAttempts).(bool))
-	assert.Equal(t, 2.0, instance.GetVariable(varEngineValidationAttempts))
+	assert.Equal(t, int64(2), instance.GetVariable(varEngineValidationAttempts))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 
 	// internal State expected
-	messages := make([]runtime.MessageSubscription, 0)
+	messages := make([]runtime.MessageSubscription, int64(0))
 	for _, mes := range engineStorage.MessageSubscriptions {
 		if mes.ProcessInstanceKey == instance.Key {
 			messages = append(messages, mes)
@@ -171,7 +171,7 @@ func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 		"name": "order1",
 		"id":   "1234",
 	})
-	assert.Equal(t, 1234.0, pi.GetVariable("orderId"))
+	assert.Equal(t, int64(1234), pi.GetVariable("orderId"))
 	assert.Equal(t, "order1", pi.GetVariable("orderName"))
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
 }
@@ -467,7 +467,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 		"name": "order1",
 		"id":   "1234",
 	})
-	assert.Equal(t, 1234.0, pi.GetVariable("orderId"))
+	assert.Equal(t, int64(1234), pi.GetVariable("orderId"))
 	assert.Equal(t, "order1", pi.GetVariable("orderName"))
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
 }

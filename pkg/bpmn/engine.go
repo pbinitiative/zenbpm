@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script"
+	"github.com/pbinitiative/zenbpm/pkg/script/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script/js"
 	"sync"
 	"time"
 
@@ -39,7 +41,8 @@ type Engine struct {
 	metrics        *otelPkg.EngineMetrics
 	timerManager   *timerManager
 	dmnEngine      *dmn.ZenDmnEngine
-	feelRuntime    *feel.FeelinRuntime
+	feelRuntime    script.FeelRuntime
+	jsRuntime      script.JsRuntime
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
@@ -57,7 +60,8 @@ func NewEngine(options ...EngineOption) Engine {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
 	persistence := inmemory.NewStorage()
-	feelRuntime := feel.NewFeelinRuntime()
+	feelRuntime := feel.NewFeelinRuntime(context.TODO(), 1, 1)
+	jsRuntime := js.NewJsRuntime(context.TODO(), 1, 1)
 	engine := Engine{
 		taskhandlersMu:   &sync.RWMutex{},
 		taskHandlers:     []*taskHandler{},
@@ -69,6 +73,7 @@ func NewEngine(options ...EngineOption) Engine {
 		meter:            meter,
 		metrics:          metrics,
 		feelRuntime:      feelRuntime,
+		jsRuntime:        jsRuntime,
 		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
@@ -87,6 +92,20 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
 		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence))
+	}
+}
+
+func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
+	return func(engine *Engine) {
+		engine.persistence = persistence
+		engine.feelRuntime = feelRuntime
+		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime))
+	}
+}
+
+func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
+	return func(engine *Engine) {
+		engine.jsRuntime = jsRuntime
 	}
 }
 

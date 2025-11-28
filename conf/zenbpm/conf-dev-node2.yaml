@@ -16,6 +16,13 @@ cluster:
       - localhost:8091
       - localhost:8092
   nodeId: node-2
+  script:
+    feel:
+      maxVmPoolSize: 10
+      minVmPoolSize: 2
+    js:
+      maxVmPoolSize: 10
+      minVmPoolSize: 2
 tracing:
   enabled: true
   endpoint: localhost:4318

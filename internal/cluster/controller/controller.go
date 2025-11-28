@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/script"
+	"github.com/pbinitiative/zenbpm/pkg/script/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script/js"
 	"path/filepath"
 	"sync"
 	"time"
@@ -316,8 +319,17 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 		return
 	}
 
+	if partitionNode.FeelRuntime == nil && partitionNode.IsLeader(ctx) {
+		partitionNode.FeelRuntime = feel.NewFeelinRuntime(ctx, c.Config.Script.Feel.MaxVmPoolSize, c.Config.Script.Feel.MinVmPoolSize)
+
+	}
+
+	if partitionNode.JsRuntime == nil && partitionNode.IsLeader(ctx) {
+		partitionNode.JsRuntime = js.NewJsRuntime(ctx, c.Config.Script.Js.MaxVmPoolSize, c.Config.Script.Js.MinVmPoolSize)
+	}
+
 	if partitionNode.Engine == nil && partitionNode.IsLeader(ctx) {
-		engine, err := c.createEngine(ctx, c.partitions[partitionId].DB)
+		engine, err := c.createEngine(ctx, c.partitions[partitionId].DB, partitionNode.FeelRuntime, partitionNode.JsRuntime)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("failed to create engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails
@@ -358,7 +370,7 @@ func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partit
 	}
 }
 
-func (c *Controller) createEngine(ctx context.Context, db *partition.DB) (*bpmn.Engine, error) {
+func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRuntime script.FeelRuntime, jsRuntime script.JsRuntime) (*bpmn.Engine, error) {
 	// TODO: add check for migrations and apply only missing
 	migrations, err := sql.GetMigrations()
 	if err != nil {
@@ -376,7 +388,8 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB) (*bpmn.
 		c.logger.Error("Failed to execute migrations", "err", err)
 		return nil, fmt.Errorf("failed to execute migrations: %w", err)
 	}
-	engine := bpmn.NewEngine(bpmn.EngineWithStorage(db))
+
+	engine := bpmn.NewEngine(bpmn.EngineWithStorageAndFeel(db, feelRuntime), bpmn.EngineWithJs(jsRuntime))
 	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.Partition))
 	return &engine, nil
 }

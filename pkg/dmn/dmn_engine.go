@@ -8,9 +8,11 @@ import (
 	"github.com/dop251/goja"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script"
+	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -18,7 +20,7 @@ import (
 
 type ZenDmnEngine struct {
 	persistence storage.DecisionStorage
-	feelRuntime *feel.FeelinRuntime
+	feelRuntime script.FeelRuntime
 }
 
 type EngineOption = func(*ZenDmnEngine)
@@ -27,7 +29,7 @@ type EngineOption = func(*ZenDmnEngine)
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
-		feelRuntime: feel.NewFeelinRuntime(),
+		feelRuntime: feel.NewFeelinRuntime(context.TODO(), 1, 1),
 	}
 
 	for _, option := range options {
@@ -43,7 +45,7 @@ func EngineWithStorage(persistence storage.DecisionStorage) EngineOption {
 	}
 }
 
-func EngineWithFeel(feel *feel.FeelinRuntime) EngineOption {
+func EngineWithFeel(feel script.FeelRuntime) EngineOption {
 	return func(engine *ZenDmnEngine) {
 		engine.feelRuntime = feel
 	}
@@ -304,124 +306,203 @@ func (engine *ZenDmnEngine) evaluateDecision(ctx context.Context, decisionDefini
 		}
 	}
 
-	if foundDecision.DecisionTable != nil {
-		evaluatedDecisionTable, err := engine.evaluateDecisionTable(foundDecision, decisionDefinition, localVariableContext)
-		if err != nil {
-			return EvaluatedDecisionResult{}, nil, err
-		}
-		return evaluatedDecisionTable, evaluatedDependencies, nil
-	} else if foundDecision.LiteralExpression != nil {
-		evaluatedLiteralExpression, err := engine.evaluateLiteralExpression(foundDecision, decisionDefinition, localVariableContext)
-		if err != nil {
-			return EvaluatedDecisionResult{}, nil, err
-		}
-		return evaluatedLiteralExpression, evaluatedDependencies, nil
-	}
-
-	return EvaluatedDecisionResult{}, nil, fmt.Errorf("decision type unsuported on decision id %s", foundDecision.Id)
-}
-
-func (engine *ZenDmnEngine) evaluateLiteralExpression(decision *dmn.TDecision, decisionDefinition *runtime.DecisionDefinition, localVariableContext map[string]interface{}) (EvaluatedDecisionResult, error) {
-	var resultValue any
+	var decisionOutput map[string]interface{}
+	var matchedRules []EvaluatedRule
+	var evaluatedInputs []EvaluatedInput
 	var err error
-	switch decision.LiteralExpression.ExpressionLanguage {
-	case "feel", "":
-		resultValue, err = engine.feelRuntime.Evaluate(decision.LiteralExpression.Text.Text, localVariableContext)
-		if err != nil {
-			return EvaluatedDecisionResult{}, fmt.Errorf("failed to evaluated expression \"%s\" with variables %s: %w", decision.LiteralExpression.Text.Text, localVariableContext, err)
-		}
-		if err, ok := resultValue.(goja.Exception); ok {
-			return EvaluatedDecisionResult{}, fmt.Errorf("%s", err.String())
-		}
-	default:
-		return EvaluatedDecisionResult{}, fmt.Errorf("unsupported literal expression language %s on decision with Id %s in decisionDefinition %d", decision.LiteralExpression.ExpressionLanguage, decision.Id, decisionDefinition.Key)
+	var decisionName string
+
+	if foundDecision.Name != "" {
+		decisionName = foundDecision.Name
+	} else {
+		decisionName = foundDecision.Id
 	}
 
-	var resultVariable = make(map[string]any)
-	switch decision.Variable.TypeRef {
-	case "":
-		resultVariable[decision.Variable.Name] = resultValue
-	case "string":
-		if str, ok := resultValue.(string); ok {
-			resultVariable[decision.Variable.Name] = str
-		} else {
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
+	if foundDecision.DecisionTable != nil {
+		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, decisionName, localVariableContext)
+		if err != nil {
+			return EvaluatedDecisionResult{}, nil, err
 		}
-	case "boolean":
-		switch resultValue.(type) {
-		case bool:
-			resultVariable[decision.Variable.Name] = resultValue.(bool)
-		case nil:
-			resultVariable[decision.Variable.Name] = nil
-		default:
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
+	} else if foundDecision.LiteralExpression != nil {
+		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, decisionName, localVariableContext)
+		if err != nil {
+			return EvaluatedDecisionResult{}, nil, err
 		}
-	case "integer":
-		if str, ok := resultValue.(int); ok {
-			resultVariable[decision.Variable.Name] = str
-		} else {
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
+	} else if foundDecision.Context != nil {
+		decisionOutput, err = engine.evaluateContext(foundDecision.Context, decisionName, localVariableContext)
+		if err != nil {
+			return EvaluatedDecisionResult{}, nil, err
 		}
-	case "long":
-		if str, ok := resultValue.(int64); ok {
-			resultVariable[decision.Variable.Name] = str
-		} else {
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
-		}
-	case "double":
-		if str, ok := resultValue.(float64); ok {
-			resultVariable[decision.Variable.Name] = str
-		} else {
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
-		}
-	case "date":
-		//TODO: this is just placeholder
-		if str, ok := resultValue.(time.Time); ok {
-			resultVariable[decision.Variable.Name] = str
-		} else {
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
-		}
-	case "number":
-		switch resultValue.(type) {
-		case float64:
-			resultVariable[decision.Variable.Name] = resultValue.(float64)
-		case int64:
-			resultVariable[decision.Variable.Name] = resultValue.(int64)
-		case nil:
-			resultVariable[decision.Variable.Name] = nil
-		default:
-			return EvaluatedDecisionResult{}, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s in decisionDefinition %d", resultValue, decision.Variable.TypeRef, decision.Id, decisionDefinition.Key)
-		}
-	default:
-		return EvaluatedDecisionResult{}, fmt.Errorf("unsupported result type %s", decision.Variable.TypeRef)
+	} else {
+		return EvaluatedDecisionResult{}, nil, fmt.Errorf("decision type unsuported on decision id %s", foundDecision.Id)
 	}
 
 	return EvaluatedDecisionResult{
-		DecisionId:                decision.Id,
-		DecisionName:              decision.Name,
+		DecisionId:                foundDecision.Id,
+		DecisionName:              foundDecision.Name,
 		DecisionType:              "<literalExpression>",
 		DecisionDefinitionVersion: decisionDefinition.Version,
 		DecisionDefinitionKey:     decisionDefinition.Key,
 		DecisionDefinitionId:      decisionDefinition.Id,
-		MatchedRules:              nil,
-		EvaluatedInputs:           nil,
-		DecisionOutput:            resultVariable,
-	}, nil
+		MatchedRules:              matchedRules,
+		EvaluatedInputs:           evaluatedInputs,
+		DecisionOutput:            decisionOutput,
+	}, evaluatedDependencies, nil
 }
 
-func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decisionDefinition *runtime.DecisionDefinition, localVariableContext map[string]interface{}) (EvaluatedDecisionResult, error) {
-	//TODO: move to parsing checks
-	if len(decision.DecisionTable.Outputs) > 1 && !isUnique(decision.DecisionTable.Outputs) {
-		return EvaluatedDecisionResult{}, fmt.Errorf("decision table contains more than one output and all of them have to have unique names, decision id %s", decision.Id)
+func (engine *ZenDmnEngine) evaluateContext(decisionContext *dmn.TContext, resultVariableName string, inputVariables map[string]interface{}) (map[string]any, error) {
+	outputVariableContext := make(map[string]any)
+	localVariableContext := map[string]interface{}{}
+	maps.Copy(localVariableContext, inputVariables)
+
+	for i, contextEntry := range decisionContext.ContextEntries {
+		var output map[string]interface{}
+		var err error
+		if i == len(decisionContext.ContextEntries)-1 && contextEntry.Variable == nil {
+			if contextEntry.DecisionTable != nil {
+				output, _, _, err = engine.evaluateDecisionTable(contextEntry.DecisionTable, resultVariableName, localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			} else if contextEntry.LiteralExpression != nil {
+				output, err = engine.evaluateLiteralExpression(
+					contextEntry.LiteralExpression,
+					&dmn.TVariable{
+						Id:      resultVariableName,
+						Name:    resultVariableName,
+						TypeRef: "",
+					},
+					resultVariableName,
+					localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			} else if contextEntry.Context != nil {
+				output, err = engine.evaluateContext(contextEntry.Context, resultVariableName, localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return output, nil
+		} else {
+			if contextEntry.DecisionTable != nil {
+				output, _, _, err = engine.evaluateDecisionTable(contextEntry.DecisionTable, contextEntry.Variable.Name, localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			} else if contextEntry.LiteralExpression != nil {
+				output, err = engine.evaluateLiteralExpression(contextEntry.LiteralExpression, contextEntry.Variable, contextEntry.Variable.Name, localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			} else if contextEntry.Context != nil {
+				output, err = engine.evaluateContext(contextEntry.Context, contextEntry.Variable.Name, localVariableContext)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		for key, outputVariable := range output {
+			localVariableContext[key] = outputVariable
+			outputVariableContext[key] = outputVariable
+		}
 	}
 
-	decisionTable := decision.DecisionTable
+	resultVariable := make(map[string]any)
+	resultVariable[resultVariableName] = outputVariableContext
+	return resultVariable, nil
+}
+
+func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLiteralExpression, variable *dmn.TVariable, decisionId string, localVariableContext map[string]interface{}) (map[string]any, error) {
+	var resultValue any
+	var err error
+	switch literalExpression.ExpressionLanguage {
+	case "feel", "":
+		resultValue, err = engine.feelRuntime.(*feel.FeelinRuntime).Evaluate(literalExpression.Text.Text, localVariableContext)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluated expression \"%s\" with variables %s: %w", literalExpression.Text.Text, localVariableContext, err)
+		}
+		if err, ok := resultValue.(goja.Exception); ok {
+			return nil, fmt.Errorf("%s", err.String())
+		}
+	default:
+		return nil, fmt.Errorf("unsupported literal expression language %s on decision with Id %s", literalExpression.ExpressionLanguage, decisionId)
+	}
+
+	var resultVariable = make(map[string]any)
+	switch variable.TypeRef {
+	case "":
+		resultVariable[variable.Name] = resultValue
+	case "string":
+		if str, ok := resultValue.(string); ok {
+			resultVariable[variable.Name] = str
+		} else {
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "boolean":
+		switch resultValue.(type) {
+		case bool:
+			resultVariable[variable.Name] = resultValue.(bool)
+		case nil:
+			resultVariable[variable.Name] = nil
+		default:
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "integer":
+		if str, ok := resultValue.(int); ok {
+			resultVariable[variable.Name] = str
+		} else {
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "long":
+		if str, ok := resultValue.(int64); ok {
+			resultVariable[variable.Name] = str
+		} else {
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "double":
+		if str, ok := resultValue.(float64); ok {
+			resultVariable[variable.Name] = str
+		} else {
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "date":
+		//TODO: this is just placeholder
+		if str, ok := resultValue.(time.Time); ok {
+			resultVariable[variable.Name] = str
+		} else {
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	case "number":
+		switch resultValue.(type) {
+		case float64:
+			resultVariable[variable.Name] = resultValue.(float64)
+		case int64:
+			resultVariable[variable.Name] = resultValue.(int64)
+		case nil:
+			resultVariable[variable.Name] = nil
+		default:
+			return nil, fmt.Errorf("literal expression result value %x cannot be cast to %s on decision with Id %s", resultValue, variable.TypeRef, decisionId)
+		}
+	default:
+		resultVariable[variable.Name] = resultValue
+	}
+
+	return resultVariable, nil
+}
+
+func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTable, decisionId string, localVariableContext map[string]interface{}) (map[string]interface{}, []EvaluatedRule, []EvaluatedInput, error) {
+	//TODO: move to parsing checks
+	if len(decisionTable.Outputs) > 1 && !isUnique(decisionTable.Outputs) {
+		return nil, nil, nil, fmt.Errorf("decision table contains more than one output and all of them have to have unique names, decision id %s", decisionId)
+	}
 
 	evaluatedInputs := make([]EvaluatedInput, len(decisionTable.Inputs))
 	for i, input := range decisionTable.Inputs {
 		value, err := engine.feelRuntime.Evaluate(input.InputExpression.Text, localVariableContext)
 		if err != nil {
-			return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating epression \"%s\" with variables %s: %v", input.InputExpression.Text, localVariableContext, err)
+			return nil, nil, nil, fmt.Errorf("error while evaluating epression \"%s\" with variables %s: %v", input.InputExpression.Text, localVariableContext, err)
 		}
 		evaluatedInputs[i] = EvaluatedInput{
 			InputId:         input.Id,
@@ -433,13 +514,19 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 
 	matchedRules := make([]EvaluatedRule, 0)
 
+	//this map is edited each cycle dont use it after this for loop
+	cellMatchVariables := map[string]interface{}{}
+	maps.Copy(cellMatchVariables, localVariableContext)
 	for ruleIndex, rule := range decisionTable.Rules {
 		allColumnsMatch := true
 		for i, inputEntry := range rule.InputEntry {
-			inputInstance := evaluatedInputs[i]
-			match, err := engine.evaluateCellMatch(inputInstance.InputExpression, inputEntry.Text, localVariableContext)
+			cellMatchVariables["?"] = evaluatedInputs[i].InputValue
+			if inputEntry.Text == "" {
+				inputEntry.Text = "-"
+			}
+			match, err := engine.feelRuntime.UnaryTest(inputEntry.Text, cellMatchVariables)
 			if err != nil {
-				return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating cell match: \"%s\" \"%s\" %s ,%v", inputInstance.InputExpression, inputEntry.Text, localVariableContext, err)
+				return nil, nil, nil, fmt.Errorf("error while evaluating cell match:  \"%s\" %s ,%v", inputEntry.Text, cellMatchVariables, err)
 			}
 			if !match {
 				allColumnsMatch = false
@@ -452,7 +539,7 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 			for i, output := range decisionTable.Outputs {
 				value, err := engine.feelRuntime.Evaluate(rule.OutputEntry[i].Text, localVariableContext)
 				if err != nil {
-					return EvaluatedDecisionResult{}, fmt.Errorf("error while evaluating output \"%s\" with variables %s: %v", rule.OutputEntry[i].Text, localVariableContext, err)
+					return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" with variables %s: %v", rule.OutputEntry[i].Text, localVariableContext, err)
 				}
 
 				evaluatedOutputs[i] = EvaluatedOutput{
@@ -467,23 +554,16 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decision *dmn.TDecision, decis
 				RuleIndex:        ruleIndex + 1,
 				EvaluatedOutputs: evaluatedOutputs,
 			})
-			if decision.DecisionTable.HitPolicy == dmn.HitPolicyFirst {
+			if decisionTable.HitPolicy == dmn.HitPolicyFirst {
 				break
 			}
 		}
 	}
 
-	return EvaluatedDecisionResult{
-		DecisionId:                decision.Id,
-		DecisionName:              decision.Name,
-		DecisionType:              "<decisionTable>",
-		DecisionDefinitionVersion: decisionDefinition.Version,
-		DecisionDefinitionKey:     decisionDefinition.Key,
-		DecisionDefinitionId:      decisionDefinition.Id,
-		MatchedRules:              matchedRules,
-		EvaluatedInputs:           evaluatedInputs,
-		DecisionOutput:            EvaluateHitPolicyOutput(decision, decision.DecisionTable.HitPolicy, decision.DecisionTable.HitPolicyAggregation, matchedRules),
-	}, nil
+	return EvaluateHitPolicyOutput(decisionTable, decisionId, decisionTable.HitPolicy, decisionTable.HitPolicyAggregation, matchedRules),
+		matchedRules,
+		evaluatedInputs,
+		nil
 }
 
 func isUnique(list []dmn.TOutput) bool {
@@ -497,29 +577,4 @@ func isUnique(list []dmn.TOutput) bool {
 		seen[s.Name] = true
 	}
 	return true
-}
-
-func (engine *ZenDmnEngine) evaluateCellMatch(columnExpression string, cellExpression string, variables map[string]interface{}) (bool, error) {
-	if cellExpression == "-" || cellExpression == "" {
-		// If the text is empty, it means any value is accepted
-		return true, nil
-	}
-
-	var resultExpression string
-
-	if strings.HasPrefix(cellExpression, "=") ||
-		strings.HasPrefix(cellExpression, "<") ||
-		strings.HasPrefix(cellExpression, ">") ||
-		strings.HasPrefix(cellExpression, "in ") {
-		resultExpression = columnExpression + " " + cellExpression
-	} else {
-		resultExpression = columnExpression + " = " + cellExpression
-	}
-
-	result, err := engine.feelRuntime.UnaryTest(resultExpression, variables)
-	if err != nil {
-		return false, fmt.Errorf("could not perform unary test: %v", err)
-	}
-
-	return result, nil
 }

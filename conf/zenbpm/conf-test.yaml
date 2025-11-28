@@ -12,9 +12,16 @@ cluster:
     bootstrapExpect: 1
     bootstrapExpectTimeout: 30m
     joinAttempts: 5
-    joinAddresses: 
+    joinAddresses:
       - localhost:8090
   nodeId: test-node-1
+  script:
+    feel:
+      maxVmPoolSize: 10
+      minVmPoolSize: 2
+    js:
+      maxVmPoolSize: 10
+      minVmPoolSize: 2
 # tracing:
 #   enabled: true
 #   endpoint: localhost:4318

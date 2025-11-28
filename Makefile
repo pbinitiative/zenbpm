@@ -155,7 +155,7 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	go test -count=1 -v ./test/e2e/...
 
 .PHONY: test-dmntest
-test-dmntest:  ## Run end to end tests (tests will repeat 100 times)
+test-dmntest:
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \

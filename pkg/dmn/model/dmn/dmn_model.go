@@ -25,8 +25,9 @@ type TDecision struct {
 	Id                     string                    `xml:"id,attr"`
 	Name                   string                    `xml:"name,attr"`
 	DecisionTable          *TDecisionTable           `xml:"decisionTable,omitempty"`
-	Variable               TVariable                 `xml:"variable"`
+	Variable               *TVariable                `xml:"variable,omitempty"`
 	LiteralExpression      *TLiteralExpression       `xml:"literalExpression,omitempty"`
+	Context                *TContext                 `xml:"context,omitempty"`
 	VersionTag             VersionTag                `xml:"extensionElements>versionTag"`
 	InformationRequirement []TInformationRequirement `xml:"informationRequirement"`
 }
@@ -110,6 +111,17 @@ type TLiteralExpression struct {
 	Id                 string `xml:"id,attr"`
 	ExpressionLanguage string `xml:"expressionLanguage,attr"`
 	Text               Text   `xml:"text"`
+}
+
+type TContext struct {
+	ContextEntries []TContextEntry `xml:"contextEntry"`
+}
+
+type TContextEntry struct {
+	DecisionTable     *TDecisionTable     `xml:"decisionTable,omitempty"`
+	Variable          *TVariable          `xml:"variable,omitempty"`
+	LiteralExpression *TLiteralExpression `xml:"literalExpression,omitempty"`
+	Context           *TContext           `xml:"context,omitempty"`
 }
 
 type Text struct {

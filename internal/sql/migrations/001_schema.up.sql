@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS message_subscription(
     -- TODO: what about starting events with message listener?
     key INTEGER PRIMARY KEY, -- int64 snowflake id of the message subscription where node is partition id which handles the process instance
     element_id text NOT NULL, -- string id of the element from xml definition
+    element_instance_key integer NOT NULL, -- int64 id of the element instance
     process_definition_key integer NOT NULL, -- int64 reference to process definition
     process_instance_key integer NOT NULL, -- int64 reference to process instance
     name text NOT NULL, -- message name from the definition
@@ -100,7 +101,7 @@ CREATE TABLE IF NOT EXISTS execution_token(
 
 -- table that holds information about all the process instance visited nodes and transitions
 CREATE TABLE IF NOT EXISTS flow_element_history(
-    key INTEGER PRIMARY KEY, -- int64 snowflake id of flow element history item
+    element_instance_key INTEGER PRIMARY KEY, -- int64 snowflake id of flow element history item
     element_id text NOT NULL, -- string id of the element from xml definition
     process_instance_key integer NOT NULL, -- int64 id of process instance
     created_at integer NOT NULL -- unix millis of when the process flow element was started

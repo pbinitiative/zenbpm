@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -26,7 +27,7 @@ func TestNonOpenStore(t *testing.T) {
 	defer s.Close(true)
 	defer ln.Close()
 
-	if err := s.Stepdown(false); err != zenerr.ErrNotOpen {
+	if err := s.Stepdown(false); !errors.Is(err, zenerr.ErrNotOpen) {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 	if s.IsLeader() {
@@ -35,10 +36,10 @@ func TestNonOpenStore(t *testing.T) {
 	if s.HasLeader() {
 		t.Fatalf("store incorrectly marked as having leader")
 	}
-	if _, err := s.IsVoter(); err != zenerr.ErrNotOpen {
+	if _, err := s.IsVoter(); !errors.Is(err, zenerr.ErrNotOpen) {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
-	if _, err := s.CommitIndex(); err != zenerr.ErrNotOpen {
+	if _, err := s.CommitIndex(); !errors.Is(err, zenerr.ErrNotOpen) {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 	if addr, err := s.LeaderAddr(); addr != "" || err != nil {
@@ -53,7 +54,7 @@ func TestNonOpenStore(t *testing.T) {
 	if s.HasLeaderID() {
 		t.Fatalf("store incorrectly marked as having leader ID")
 	}
-	if _, err := s.Nodes(); err != zenerr.ErrNotOpen {
+	if _, err := s.Nodes(); !errors.Is(err, zenerr.ErrNotOpen) {
 		t.Fatalf("wrong error received for non-open store: %s", err)
 	}
 }

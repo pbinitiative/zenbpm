@@ -157,13 +157,15 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
 }
 
+// TODO: THIS METHOD SHOULD NOT BE IN ENGINE
+// TODO: this method is used only in tests !
 func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
-
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
 	}
 	// Check if process is root
+	//TODO: shouldnt this be in cancelInstance instance method or does it do anything ?
 	if instance.ParentProcessExecutionToken != nil {
 		// Cancel all child process instances
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.Key)
@@ -180,6 +182,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 
 }
 
+// TODO: process instance needs to be locked before canceling but there is a batch here that has to be flushed before unlocking
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch storage.Batch) error {
 
 	// Cancel all message subscriptions
@@ -274,6 +277,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	return nil
 }
 
+// TODO: needs locked process instance before terminating tokens
 func (engine *Engine) terminateExecutionTokens(
 	ctx context.Context,
 	batch storage.Batch,
@@ -485,13 +489,18 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
 		var be bpmn20.FlowNode = &startEvent
-		executionTokens = append(executionTokens, runtime.ExecutionToken{
+		token := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          be.GetId(),
 			ProcessInstanceKey: processInstance.Key,
 			State:              runtime.TokenStateRunning,
-		})
+		}
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		executionTokens = append(executionTokens, token)
 	}
 
 	err = batch.Flush(ctx)
@@ -831,7 +840,7 @@ func (engine *Engine) processFlowNode(
 
 	err = batch.SaveFlowElementHistory(ctx,
 		runtime.FlowElementHistoryItem{
-			Key:                engine.generateKey(),
+			ElementInstanceKey: currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.GetInstanceKey(),
 			ElementId:          activity.element.GetId(),
 			CreatedAt:          time.Now(),
@@ -1193,7 +1202,7 @@ func (engine *Engine) handleSimpleTransition(
 
 		err := batch.SaveFlowElementHistory(ctx,
 			runtime.FlowElementHistoryItem{
-				Key:                engine.generateKey(),
+				ElementInstanceKey: engine.generateKey(),
 				ProcessInstanceKey: instance.GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),

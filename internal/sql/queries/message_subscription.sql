@@ -1,7 +1,7 @@
 -- name: SaveMessageSubscription :exec
-INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
+INSERT INTO message_subscription(key, element_id, element_instance_key, process_definition_key, process_instance_key, name, state,
     created_at, correlation_key, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state;

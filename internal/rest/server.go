@@ -678,7 +678,7 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	}
 	resp := make([]public.FlowElementHistory, len(flow))
 	for i, flowNode := range flow {
-		key := fmt.Sprintf("%d", flowNode.GetKey())
+		key := fmt.Sprintf("%d", flowNode.GetElementInstanceKey())
 		createdAt := time.UnixMilli(flowNode.GetCreatedAt())
 		processInstanceKey := fmt.Sprintf("%d", flowNode.GetProcessInstanceKey())
 		resp[i] = public.FlowElementHistory{

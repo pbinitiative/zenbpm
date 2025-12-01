@@ -1,5 +1,5 @@
 -- name: SaveFlowElementHistory :exec
-INSERT INTO flow_element_history(key, element_id, process_instance_key, created_at)
+INSERT INTO flow_element_history(element_instance_key, element_id, process_instance_key, created_at)
     VALUES (?, ? ,? ,?)
 ON CONFLICT
     DO UPDATE SET

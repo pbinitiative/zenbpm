@@ -7,13 +7,13 @@ sidebar_position: 10
 An End Event is a BPMN flow element that terminates a process instance or a token. It indicates where and how a process flow ends.
 
 ## Key characteristics
-- Terminates the process or token
+- Terminates the process or token:
 	When reached, the End Event finishes the active token and may end the process instance.
 
-- No outgoing sequence flows
+- No outgoing sequence flows:
 	By definition, it cannot have outgoing connections because it stops the flow.
 
-- Multiple end events allowed
+- Multiple end events allowed:
 	A process can contain multiple End Events to indicate different termination points or results.
 
 - Types of end events

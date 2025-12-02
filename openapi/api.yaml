@@ -539,12 +539,18 @@ paths:
       parameters:
         - name: processDefinitionKey
           in: query
-          required: true
           schema:
             type: string
             pattern: '^\d{15,20}$'
           description: Key of the process definition
           example: "4503599627370498"
+        - name: parentProcessInstanceKey
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{15,20}$'
+          description: Key of the parent process instance
+          example: "1603294627315478"
         - name: page
           in: query
           schema:
@@ -1585,6 +1591,9 @@ components:
             - active
             - completed
             - terminated
+        parentProcessInstanceKey:
+          type: string
+          pattern: '^\d{15,20}$'
         variables:
           type: object
         activeElementInstances:

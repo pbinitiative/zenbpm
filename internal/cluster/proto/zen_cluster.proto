@@ -232,6 +232,7 @@ message ProcessInstance {
   int64 state = 4;
   int64 created_at = 5;
   int64 definition_key = 6;
+  int64 parent_key = 7;
 }
 
 message ExecutionToken {
@@ -415,6 +416,7 @@ message GetProcessInstancesRequest {
   int32 size = 2;
   repeated uint32 partitions = 3;
   int64 definition_key = 4;
+  int64 parent_key = 5;
 }
 
 message PartitionedProcessInstances {

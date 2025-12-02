@@ -539,6 +539,46 @@ func testInstanceParent(t *testing.T, db *DB) {
 	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.Key)
 	assert.NoError(t, err)
 	assert.NotNil(t, dbInst2.ParentProcessExecutionToken)
+
+	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: 0,
+		ParentInstanceKey:    0,
+		Offst:                0,
+		Size:                 20,
+	})
+	_ = instncs
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 5)
+
+	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: dbInst2.Definition.Key,
+		ParentInstanceKey:    0,
+		Offst:                0,
+		Size:                 20,
+	})
+	_ = instncs
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 2)
+
+	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: dbInst2.Definition.Key,
+		ParentInstanceKey:    tok1.Key,
+		Offst:                0,
+		Size:                 20,
+	})
+	_ = instncs
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 1)
+
+	subProcesses, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: inst2.Definition.Key,
+		ParentInstanceKey:    inst1.GetInstanceKey(),
+		Offst:                0,
+		Size:                 20,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, subProcesses)
+	assert.Equal(t, tok1.Key, subProcesses[0].ParentProcessExecutionToken.Int64)
 }
 
 type testStore struct {

@@ -110,6 +110,17 @@ func getKeyFromString(s string) (int64, error) {
 	return key, nil
 }
 
+func getOptionalKeyFromString(s *string) (int64, error) {
+	if s == nil || *s == "" {
+		return 0, nil
+	}
+	key, err := strconv.ParseInt(*s, 10, 64)
+	if err != nil {
+		return key, fmt.Errorf("failed to parse key: %w", err)
+	}
+	return key, nil
+}
+
 // TODO: implement turn off switch in regular usage
 func (s *Server) TestStartCpuProfile(ctx context.Context, request public.TestStartCpuProfileRequestObject) (public.TestStartCpuProfileResponseObject, error) {
 
@@ -564,7 +575,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		size = *request.Params.Size
 	}
 
-	definitionKey, err := getKeyFromString(request.Params.ProcessDefinitionKey)
+	definitionKey, err := getOptionalKeyFromString(request.Params.ProcessDefinitionKey)
 	if err != nil {
 		return public.GetProcessInstances400JSONResponse{
 			Code:    "TODO",
@@ -572,7 +583,21 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		}, nil
 	}
 
-	partitionedInstances, err := s.node.GetProcessInstances(ctx, definitionKey, page, size)
+	parentInstanceKey, err := getOptionalKeyFromString(request.Params.ParentProcessInstanceKey)
+	if err != nil {
+		return public.GetProcessInstances400JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	partitionedInstances, err := s.node.GetProcessInstances(
+		ctx,
+		definitionKey,
+		parentInstanceKey,
+		page,
+		size,
+	)
 	if err != nil {
 		return public.GetProcessInstances502JSONResponse{
 			Code:    "TODO",
@@ -610,6 +635,9 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				ProcessDefinitionKey: fmt.Sprintf("%d", instance.GetDefinitionKey()),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
 				Variables:            vars,
+			}
+			if instance.GetParentKey() != 0 {
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(fmt.Sprintf("%d", instance.GetParentKey()))
 			}
 		}
 	}

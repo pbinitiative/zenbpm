@@ -725,7 +725,13 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 }
 
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
-func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionKey int64, page int32, size int32) ([]*proto.PartitionedProcessInstances, error) {
+func (node *ZenNode) GetProcessInstances(
+	ctx context.Context,
+	processDefinitionKey int64,
+	parentProcessInstanceKey int64,
+	page int32,
+	size int32,
+) ([]*proto.PartitionedProcessInstances, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
 
@@ -744,6 +750,7 @@ func (node *ZenNode) GetProcessInstances(ctx context.Context, processDefinitionK
 			Size:          &size,
 			Partitions:    []uint32{partitionId},
 			DefinitionKey: &processDefinitionKey,
+			ParentKey:     &parentProcessInstanceKey,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process instances from partition %d", partitionId)

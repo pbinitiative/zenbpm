@@ -849,6 +849,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		}
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),
+			ParentInstanceKey:    req.GetParentKey(),
 			Offst:                int64(req.GetSize()) * int64(req.GetPage()-1),
 			Size:                 int64(req.GetSize()),
 		})
@@ -890,6 +891,20 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				State:         ptr.To(int64(inst.State)),
 				CreatedAt:     &inst.CreatedAt,
 				DefinitionKey: &inst.ProcessDefinitionKey,
+			}
+			if inst.ParentProcessExecutionToken.Valid {
+				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})
+				if err != nil {
+					return &proto.GetProcessInstancesResponse{
+						Error: &proto.ErrorResult{
+							Code:    nil,
+							Message: ptr.To(err.Error()),
+						},
+					}, err
+				}
+				if len(tokens) == 1 {
+					procInstances[i].ParentKey = &tokens[0].ProcessInstanceKey
+				}
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{

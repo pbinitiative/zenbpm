@@ -39,33 +39,6 @@ const (
 	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
 
-// Activity defines model for Activity.
-type Activity struct {
-	BpmnElementType      string    `json:"bpmnElementType"`
-	CreatedAt            time.Time `json:"createdAt"`
-	ElementId            string    `json:"elementId"`
-	Key                  string    `json:"key"`
-	ProcessDefinitionKey string    `json:"processDefinitionKey"`
-	ProcessInstanceKey   string    `json:"processInstanceKey"`
-	State                string    `json:"state"`
-}
-
-// ActivityPage defines model for ActivityPage.
-type ActivityPage struct {
-	// Count Number of items returned in the current page
-	Count int         `json:"count"`
-	Items *[]Activity `json:"items,omitempty"`
-
-	// Page Current page number (1-based indexing)
-	Page int `json:"page"`
-
-	// Size Number of items per page
-	Size int `json:"size"`
-
-	// TotalCount Total number of items available
-	TotalCount int `json:"totalCount"`
-}
-
 // DecisionDefinitionDetail defines model for DecisionDefinitionDetail.
 type DecisionDefinitionDetail struct {
 	DecisionDefinitionId string  `json:"decisionDefinitionId"`
@@ -95,6 +68,14 @@ type DecisionDefinitionsPage struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// ElementInstance defines model for ElementInstance.
+type ElementInstance struct {
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	ElementInstanceKey string    `json:"elementInstanceKey"`
+	State              string    `json:"state"`
 }
 
 // Error defines model for Error.
@@ -317,11 +298,13 @@ type ProcessDefinitionsPage struct {
 
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
-	CreatedAt            time.Time              `json:"createdAt"`
-	Key                  string                 `json:"key"`
-	ProcessDefinitionKey string                 `json:"processDefinitionKey"`
-	State                ProcessInstanceState   `json:"state"`
-	Variables            map[string]interface{} `json:"variables"`
+	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
+	CreatedAt                time.Time              `json:"createdAt"`
+	Key                      string                 `json:"key"`
+	ParentProcessInstanceKey *string                `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     string                 `json:"processDefinitionKey"`
+	State                    ProcessInstanceState   `json:"state"`
+	Variables                map[string]interface{} `json:"variables"`
 }
 
 // ProcessInstanceState defines model for ProcessInstance.State.
@@ -341,6 +324,17 @@ type ProcessInstancePage struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// StartElementInstanceData defines model for StartElementInstanceData.
+type StartElementInstanceData struct {
+	// ElementId Element instance is created at this element.
+	ElementId string `json:"elementId"`
+}
+
+// TerminateElementInstanceData defines model for TerminateElementInstanceData.
+type TerminateElementInstanceData struct {
+	ElementInstanceKey string `json:"elementInstanceKey"`
 }
 
 // GetDecisionDefinitionsParams defines parameters for GetDecisionDefinitions.
@@ -388,6 +382,19 @@ type PublishMessageJSONBody struct {
 	Variables      *map[string]interface{} `json:"variables,omitempty"`
 }
 
+// ModifyProcessInstanceJSONBody defines parameters for ModifyProcessInstance.
+type ModifyProcessInstanceJSONBody struct {
+	// ElementInstancesToStart Starts execution token.
+	ElementInstancesToStart *[]StartElementInstanceData `json:"elementInstancesToStart,omitempty"`
+
+	// ElementInstancesToTerminate Terminates execution token.
+	ElementInstancesToTerminate *[]TerminateElementInstanceData `json:"elementInstancesToTerminate,omitempty"`
+	ProcessInstanceKey          string                          `json:"processInstanceKey"`
+
+	// Variables Sets process instance variables.
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
 // StartProcessInstanceOnElementsJSONBody defines parameters for StartProcessInstanceOnElements.
 type StartProcessInstanceOnElementsJSONBody struct {
 	ProcessDefinitionKey string `json:"processDefinitionKey"`
@@ -409,7 +416,10 @@ type GetProcessDefinitionsParams struct {
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
-	ProcessDefinitionKey string `form:"processDefinitionKey" json:"processDefinitionKey"`
+	ProcessDefinitionKey *string `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+
+	// ParentProcessInstanceKey Key of the parent process instance
+	ParentProcessInstanceKey *string `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
 
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -424,15 +434,6 @@ type CreateProcessInstanceJSONBody struct {
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
 	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
-}
-
-// GetActivitiesParams defines parameters for GetActivities.
-type GetActivitiesParams struct {
-	// Page Page number (1-based indexing)
-	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
-
-	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
 // GetHistoryParams defines parameters for GetHistory.
@@ -470,6 +471,9 @@ type CompleteJobJSONRequestBody CompleteJobJSONBody
 
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
+
+// ModifyProcessInstanceJSONRequestBody defines body for ModifyProcessInstance for application/json ContentType.
+type ModifyProcessInstanceJSONRequestBody ModifyProcessInstanceJSONBody
 
 // StartProcessInstanceOnElementsJSONRequestBody defines body for StartProcessInstanceOnElements for application/json ContentType.
 type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElementsJSONBody
@@ -580,6 +584,11 @@ type ClientInterface interface {
 
 	PublishMessage(ctx context.Context, body PublishMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ModifyProcessInstanceWithBody request with any body
+	ModifyProcessInstanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ModifyProcessInstance(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// StartProcessInstanceOnElementsWithBody request with any body
 	StartProcessInstanceOnElementsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -604,9 +613,6 @@ type ClientInterface interface {
 
 	// GetProcessInstance request
 	GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetActivities request
-	GetActivities(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHistory request
 	GetHistory(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -756,6 +762,30 @@ func (c *Client) PublishMessage(ctx context.Context, body PublishMessageJSONRequ
 	return c.Client.Do(req)
 }
 
+func (c *Client) ModifyProcessInstanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewModifyProcessInstanceRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ModifyProcessInstance(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewModifyProcessInstanceRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) StartProcessInstanceOnElementsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStartProcessInstanceOnElementsRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -854,18 +884,6 @@ func (c *Client) CreateProcessInstance(ctx context.Context, body CreateProcessIn
 
 func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceRequest(c.Server, processInstanceKey)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetActivities(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetActivitiesRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1322,6 +1340,46 @@ func NewPublishMessageRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewModifyProcessInstanceRequest calls the generic ModifyProcessInstance builder with application/json body
+func NewModifyProcessInstanceRequest(server string, body ModifyProcessInstanceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewModifyProcessInstanceRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewModifyProcessInstanceRequestWithBody generates requests for ModifyProcessInstance with any type of body
+func NewModifyProcessInstanceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/modify/process-instance")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewStartProcessInstanceOnElementsRequest calls the generic StartProcessInstanceOnElements builder with application/json body
 func NewStartProcessInstanceOnElementsRequest(server string, body StartProcessInstanceOnElementsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1342,7 +1400,7 @@ func NewStartProcessInstanceOnElementsRequestWithBody(server string, contentType
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/migration/start-process-instance")
+	operationPath := fmt.Sprintf("/modify/start-process-instance")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1512,16 +1570,36 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processDefinitionKey", runtime.ParamLocationQuery, params.ProcessDefinitionKey); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
+		if params.ProcessDefinitionKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processDefinitionKey", runtime.ParamLocationQuery, *params.ProcessDefinitionKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
 				}
 			}
+
+		}
+
+		if params.ParentProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "parentProcessInstanceKey", runtime.ParamLocationQuery, *params.ParentProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		if params.Page != nil {
@@ -1631,78 +1709,6 @@ func NewGetProcessInstanceRequest(server string, processInstanceKey string) (*ht
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetActivitiesRequest generates requests for GetActivities
-func NewGetActivitiesRequest(server string, processInstanceKey string, params *GetActivitiesParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/process-instances/%s/activities", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Page != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Size != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2070,6 +2076,11 @@ type ClientWithResponsesInterface interface {
 
 	PublishMessageWithResponse(ctx context.Context, body PublishMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
 
+	// ModifyProcessInstanceWithBodyWithResponse request with any body
+	ModifyProcessInstanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error)
+
+	ModifyProcessInstanceWithResponse(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error)
+
 	// StartProcessInstanceOnElementsWithBodyWithResponse request with any body
 	StartProcessInstanceOnElementsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartProcessInstanceOnElementsResponse, error)
 
@@ -2094,9 +2105,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetProcessInstanceWithResponse request
 	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
-
-	// GetActivitiesWithResponse request
-	GetActivitiesWithResponse(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*GetActivitiesResponse, error)
 
 	// GetHistoryWithResponse request
 	GetHistoryWithResponse(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
@@ -2304,6 +2312,34 @@ func (r PublishMessageResponse) StatusCode() int {
 	return 0
 }
 
+type ModifyProcessInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		ActiveElementInstances *[]ElementInstance `json:"activeElementInstances,omitempty"`
+		ProcessInstance        *ProcessInstance   `json:"processInstance,omitempty"`
+	}
+	JSON400 *Error
+	JSON500 *Error
+	JSON502 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ModifyProcessInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ModifyProcessInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type StartProcessInstanceOnElementsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2472,28 +2508,6 @@ func (r GetProcessInstanceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetProcessInstanceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetActivitiesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ActivityPage
-}
-
-// Status returns HTTPResponse.Status
-func (r GetActivitiesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetActivitiesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2716,6 +2730,23 @@ func (c *ClientWithResponses) PublishMessageWithResponse(ctx context.Context, bo
 	return ParsePublishMessageResponse(rsp)
 }
 
+// ModifyProcessInstanceWithBodyWithResponse request with arbitrary body returning *ModifyProcessInstanceResponse
+func (c *ClientWithResponses) ModifyProcessInstanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error) {
+	rsp, err := c.ModifyProcessInstanceWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseModifyProcessInstanceResponse(rsp)
+}
+
+func (c *ClientWithResponses) ModifyProcessInstanceWithResponse(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error) {
+	rsp, err := c.ModifyProcessInstance(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseModifyProcessInstanceResponse(rsp)
+}
+
 // StartProcessInstanceOnElementsWithBodyWithResponse request with arbitrary body returning *StartProcessInstanceOnElementsResponse
 func (c *ClientWithResponses) StartProcessInstanceOnElementsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartProcessInstanceOnElementsResponse, error) {
 	rsp, err := c.StartProcessInstanceOnElementsWithBody(ctx, contentType, body, reqEditors...)
@@ -2793,15 +2824,6 @@ func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetProcessInstanceResponse(rsp)
-}
-
-// GetActivitiesWithResponse request returning *GetActivitiesResponse
-func (c *ClientWithResponses) GetActivitiesWithResponse(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*GetActivitiesResponse, error) {
-	rsp, err := c.GetActivities(ctx, processInstanceKey, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetActivitiesResponse(rsp)
 }
 
 // GetHistoryWithResponse request returning *GetHistoryResponse
@@ -3143,6 +3165,56 @@ func ParsePublishMessageResponse(rsp *http.Response) (*PublishMessageResponse, e
 	return response, nil
 }
 
+// ParseModifyProcessInstanceResponse parses an HTTP response from a ModifyProcessInstanceWithResponse call
+func ParseModifyProcessInstanceResponse(rsp *http.Response) (*ModifyProcessInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ModifyProcessInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			ActiveElementInstances *[]ElementInstance `json:"activeElementInstances,omitempty"`
+			ProcessInstance        *ProcessInstance   `json:"processInstance,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStartProcessInstanceOnElementsResponse parses an HTTP response from a StartProcessInstanceOnElementsWithResponse call
 func ParseStartProcessInstanceOnElementsResponse(rsp *http.Response) (*StartProcessInstanceOnElementsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3447,32 +3519,6 @@ func ParseGetProcessInstanceResponse(rsp *http.Response) (*GetProcessInstanceRes
 			return nil, err
 		}
 		response.JSON502 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetActivitiesResponse parses an HTTP response from a GetActivitiesWithResponse call
-func ParseGetActivitiesResponse(rsp *http.Response) (*GetActivitiesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetActivitiesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ActivityPage
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
 
 	}
 

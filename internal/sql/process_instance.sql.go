@@ -213,20 +213,39 @@ SELECT
 FROM
     process_instance
 WHERE
-    process_definition_key = ?1
+    CASE WHEN ?1 <> 0 THEN
+        process_instance.process_definition_key = ?1
+			else 1
+    END
+    AND CASE WHEN ?2 <> 0 THEN
+        process_instance.parent_process_execution_token IN (
+            SELECT
+                execution_token.key
+            FROM
+                execution_token
+            WHERE
+                execution_token.process_instance_key = ?2)
+						else 1
+    END
 ORDER BY
     created_at DESC
-LIMIT ?3 OFFSET ?2
+LIMIT ?4 OFFSET ?3
 `
 
 type FindProcessInstancesPageParams struct {
-	ProcessDefinitionKey int64 `json:"process_definition_key"`
-	Offst                int64 `json:"offst"`
-	Size                 int64 `json:"size"`
+	ProcessDefinitionKey interface{} `json:"process_definition_key"`
+	ParentInstanceKey    interface{} `json:"parent_instance_key"`
+	Offst                int64       `json:"offst"`
+	Size                 int64       `json:"size"`
 }
 
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage, arg.ProcessDefinitionKey, arg.Offst, arg.Size)
+	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage,
+		arg.ProcessDefinitionKey,
+		arg.ParentInstanceKey,
+		arg.Offst,
+		arg.Size,
+	)
 	if err != nil {
 		return nil, err
 	}

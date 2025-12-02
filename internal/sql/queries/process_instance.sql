@@ -66,7 +66,20 @@ SELECT
 FROM
     process_instance
 WHERE
-    process_definition_key = @process_definition_key
+    CASE WHEN @process_definition_key <> 0 THEN
+        process_instance.process_definition_key = @process_definition_key
+			else 1
+    END
+    AND CASE WHEN @parent_instance_key <> 0 THEN
+        process_instance.parent_process_execution_token IN (
+            SELECT
+                execution_token.key
+            FROM
+                execution_token
+            WHERE
+                execution_token.process_instance_key = @parent_instance_key)
+						else 1
+    END
 ORDER BY
     created_at DESC
 LIMIT @size OFFSET @offst;

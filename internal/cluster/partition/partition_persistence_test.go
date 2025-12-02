@@ -546,7 +546,6 @@ func testInstanceParent(t *testing.T, db *DB) {
 		Offst:                0,
 		Size:                 20,
 	})
-	_ = instncs
 	assert.NoError(t, err)
 	assert.Len(t, instncs, 5)
 
@@ -556,7 +555,6 @@ func testInstanceParent(t *testing.T, db *DB) {
 		Offst:                0,
 		Size:                 20,
 	})
-	_ = instncs
 	assert.NoError(t, err)
 	assert.Len(t, instncs, 2)
 
@@ -566,7 +564,6 @@ func testInstanceParent(t *testing.T, db *DB) {
 		Offst:                0,
 		Size:                 20,
 	})
-	_ = instncs
 	assert.NoError(t, err)
 	assert.Len(t, instncs, 1)
 

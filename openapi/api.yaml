@@ -31,12 +31,6 @@ paths:
       summary: Deploy a new decision definition
       tags:
         - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decision-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @decision.dmn
       requestBody:
         required: true
         content:
@@ -90,10 +84,6 @@ paths:
       summary: Get list of decision definitions
       tags:
         - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/decision-definitions?page=1&size=10"
       parameters:
         - name: page
           in: query
@@ -149,10 +139,6 @@ paths:
       summary: Get decision definition
       tags:
         - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/decision-definitions/123456789
       parameters:
         - name: decisionDefinitionKey
           required: true
@@ -198,18 +184,6 @@ paths:
       summary: Evaluate latest version of decision directly in engine
       tags:
         - decision
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decisions/sample-decision-id/evaluate \
-              -H "Content-Type: application/json" \
-              -d '{
-                "bindingType": "latest",
-                "variables": {
-                  "age": 25,
-                  "income": 50000
-                }
-              }'
       parameters:
         - name: decisionId
           required: true
@@ -291,12 +265,6 @@ paths:
       summary: Deploy a new process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @process.bpmn
       requestBody:
         required: true
         content:
@@ -349,10 +317,6 @@ paths:
       summary: Get list of process definitions
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-definitions?page=1&size=10"
       parameters:
         - name: page
           in: query
@@ -408,10 +372,6 @@ paths:
       summary: Get process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-definitions/123456789
       parameters:
         - name: processDefinitionKey
           required: true
@@ -457,18 +417,6 @@ paths:
       summary: Create a new process instance
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-instances \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processDefinitionKey": "123456789",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -532,10 +480,6 @@ paths:
       operationId: getProcessInstances
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances?processDefinitionKey=123456789&page=1&size=10"
       parameters:
         - name: processDefinitionKey
           in: query
@@ -635,10 +579,6 @@ paths:
       tags:
         - process-instance
       summary: Get state of a process instance selected by processInstanceKey
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789
       parameters:
         - name: processInstanceKey
           in: path
@@ -691,10 +631,6 @@ paths:
       tags:
         - process-instance
       summary: Get list of jobs for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/jobs?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -778,10 +714,6 @@ paths:
       tags:
         - process-instance
       summary: Get list of visited flow elements for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/history?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -853,10 +785,6 @@ paths:
       tags:
         - process-instance
       summary: Get list of incidents for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/incidents?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
@@ -931,10 +859,6 @@ paths:
       tags:
         - job
       summary: Get list of jobs on partitions
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
       parameters:
         - name: jobType
           in: query
@@ -1016,18 +940,6 @@ paths:
       tags:
         - job
       summary: Complete a job
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/jobs \
-              -H "Content-Type: application/json" \
-              -d '{
-                "jobKey": "123456789",
-                "variables": {
-                  "result": "success",
-                  "processedItems": 42
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1070,19 +982,6 @@ paths:
       tags:
         - message
       summary: Publish a message
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/messages \
-              -H "Content-Type: application/json" \
-              -d '{
-                "correlationKey": "instance-key-789",
-                "messageName": "payment-received",
-                "variables": {
-                  "paymentId": "123456789",
-                  "amount": 500
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1130,10 +1029,6 @@ paths:
       tags:
         - incident
       summary: Resolve an incident
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/incidents/123456789/resolve
       parameters:
         - name: incidentKey
           in: path

@@ -120,65 +120,51 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 	return engine.dmnEngine
 }
 
-// CreateInstanceById creates a new instance for a process with given process ID and uses latest version (if available)
-// Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
+// Start will start the process engine instance.
+// Engine will start to pull process instances with execution tokens that need to be processed
+func (engine *Engine) Start() error {
+	ctx := context.Background()
+	if engine.timerManager != nil {
+		engine.timerManager.stop()
+	}
+	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.FindTimersTo, 10*time.Second)
+	engine.timerManager.start()
+	tokens, err := engine.persistence.GetRunningTokens(ctx)
 	if err != nil {
-		return nil, errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err)
+		return fmt.Errorf("failed to load running tokens: %w", err)
+	}
+	type instanceToStart struct {
+		instance *runtime.ProcessInstance
+		tokens   []runtime.ExecutionToken
+	}
+	instancesToStart := make(map[int64]instanceToStart)
+	for _, token := range tokens {
+		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
+			val.tokens = append(val.tokens, token)
+			instancesToStart[token.ProcessInstanceKey] = val
+		} else {
+			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			if err != nil {
+				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
+			}
+			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
+				instance: &instance,
+				tokens:   []runtime.ExecutionToken{token},
+			}
+		}
+	}
+	for _, instance := range instancesToStart {
+		err := engine.runProcessInstance(ctx, instance.instance, instance.tokens)
+		if err != nil {
+			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
+		}
 	}
 
-	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
-	if err != nil {
-		return instance, errors.Join(newEngineErrorf("failed to create process instance: %s", processId), err)
-	}
-
-	return instance, nil
+	return nil
 }
 
-// CreateInstanceByKey creates a new instance for a process with given process definition key
-// Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
-	if err != nil {
-		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err)
-	}
-
-	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
-	if err != nil {
-		return instance, errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", definitionKey), err)
-	}
-
-	return instance, nil
-}
-
-// CreateInstance creates a new instance for a process with given processKey
-// Might return BpmnEngineError, if process key was not found
-func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
-}
-
-func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
-
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
-	if err != nil {
-		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
-	}
-	// Check if process is root
-	if instance.ParentProcessExecutionToken != nil {
-		// Cancel all child process instances
-		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.Key)
-	}
-
-	batch := engine.persistence.NewBatch()
-	err = engine.cancelInstance(ctx, instance, batch)
-
-	if err != nil {
-		return err
-	}
-
-	return batch.Flush(ctx)
-
+func (engine *Engine) Stop() {
+	engine.timerManager.stop()
 }
 
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch storage.Batch) error {
@@ -565,15 +551,6 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	return &processInstance, nil
 }
 
-func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
-	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
-	if err != nil {
-		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
-	}
-
-	return engine.startInstanceOnElements(ctx, &processDefinition, startingElementIds, runtime.NewVariableHolder(nil, variableContext), nil)
-}
-
 func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefinition *runtime.ProcessDefinition, startingElementIds []string, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
 		Definition:                  processDefinition,
@@ -629,65 +606,6 @@ func (engine *Engine) startInstanceOnElements(ctx context.Context, processDefini
 	return &processInstance, nil
 }
 
-// FindProcessInstance searches for a given processInstanceKey
-// and returns the corresponding processInstanceInfo, or otherwise nil
-func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
-	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
-}
-
-// FindProcessesById returns all registered processes with given ID
-// result array is ordered by version number, from 1 (first) and largest version (last)
-func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
-	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
-}
-
-// Start will start the process engine instance.
-// Engine will start to pull process instances with execution tokens that need to be processed
-func (engine *Engine) Start() error {
-	ctx := context.Background()
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
-	}
-	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.FindTimersTo, 10*time.Second)
-	engine.timerManager.start()
-	tokens, err := engine.persistence.GetRunningTokens(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load running tokens: %w", err)
-	}
-	type instanceToStart struct {
-		instance *runtime.ProcessInstance
-		tokens   []runtime.ExecutionToken
-	}
-	instancesToStart := make(map[int64]instanceToStart)
-	for _, token := range tokens {
-		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
-			val.tokens = append(val.tokens, token)
-			instancesToStart[token.ProcessInstanceKey] = val
-		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
-			if err != nil {
-				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
-			}
-			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
-				instance: &instance,
-				tokens:   []runtime.ExecutionToken{token},
-			}
-		}
-	}
-	for _, instance := range instancesToStart {
-		err := engine.runProcessInstance(ctx, instance.instance, instance.tokens)
-		if err != nil {
-			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
-		}
-	}
-
-	return nil
-}
-
-func (engine *Engine) Stop() {
-	engine.timerManager.stop()
-}
-
 // runProcessInstance will run the process instance with supplied tokens.
 // As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
 // Lock will be released once the runProcessInstance function finishes the processing.
@@ -705,7 +623,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 	defer engine.runningInstances.unlockInstance(instance)
 
 	// we have to load the instance from DB because previous run could change it
-	inst, err := engine.FindProcessInstance(instance.Key)
+	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance to run: %w", err)
 	}
@@ -784,8 +702,12 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			}
 		}
 
+		//sub process ended
 		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
-			engine.handleCallActivityParentContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
+			err := engine.handleParentProcessContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
+			if err != nil {
+				return err
+			}
 		}
 
 		err = batch.Flush(ctx)
@@ -849,7 +771,18 @@ func (engine *Engine) getExecutionTokenActivity(
 	instance *runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
-	currentFlowNode := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+	var currentFlowNode bpmn20.FlowNode
+	if instance.ParentProcessExecutionToken != nil && instance.TargetParentActivityID != nil {
+		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(*instance.TargetParentActivityID)
+		switch parentActivityDefinition.(type) {
+		case *bpmn20.TSubProcess:
+			currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+		default:
+			currentFlowNode = instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+		}
+	} else {
+		currentFlowNode = instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+	}
 	if currentFlowNode == nil {
 		return nil, fmt.Errorf("failed to find flow node %s for execution token in process definition", token.ElementId)
 	}
@@ -911,7 +844,7 @@ func (engine *Engine) processFlowNode(
 		}
 		currentToken.State = runtime.TokenStateCompleted
 		return []runtime.ExecutionToken{currentToken}, nil
-	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask:
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
 	case *bpmn20.TIntermediateCatchEvent:
 		// intermediate catch events following event based gateway are handled in event based gateway
@@ -970,6 +903,9 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
 	case *bpmn20.TCallActivity:
 		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
+		// we created process instance and its running in separate goroutine
+	case *bpmn20.TSubProcess:
+		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken)
 		// we created process instance and its running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)

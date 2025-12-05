@@ -50,7 +50,45 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 }
 
-func TestCallActivityStartsAndCompletesAfterFinishingtheJob(t *testing.T) {
+func TestSubProcessStartsAndCompletes(t *testing.T) {
+	// setup
+	process, err := bpmnEngine.LoadFromFile("./test-cases/simple_sub_process_task.bpmn")
+	assert.NoError(t, err)
+
+	variableName := "variable_name"
+	taskId := "id"
+	variableContext := make(map[string]interface{}, 1)
+	variableContext[variableName] = "oldVal"
+
+	handler := func(job ActivatedJob) {
+		v := job.Variable(variableName)
+		assert.Equal(t, "oldVal", v, "one should be able to read variables")
+		job.SetVariable(variableName, "newVal")
+		job.Complete()
+	}
+
+	h := bpmnEngine.NewTaskHandler().Id(taskId).Handler(handler)
+	defer bpmnEngine.RemoveHandler(h)
+
+	// given
+	taskHandler := bpmnEngine.NewTaskHandler().Id(taskId).Handler(handler)
+	defer bpmnEngine.RemoveHandler(taskHandler)
+
+	// when
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	v := engineStorage.ProcessInstances[instance.Key]
+	time.Sleep(2 * time.Second)
+	*instance, err = bpmnEngine.FindProcessInstance(instance.Key)
+	assert.NoError(t, err)
+	// then
+	assert.NotNil(t, v, "Process instance needs to be present")
+	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+}
+
+func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)

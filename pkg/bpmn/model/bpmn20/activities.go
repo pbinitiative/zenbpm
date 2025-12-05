@@ -152,3 +152,8 @@ type TCallActivity struct {
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }
+
+type TSubProcess struct {
+	TActivity
+	TProcess
+}

@@ -693,8 +693,8 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
-	err = batch.SaveFlowElementInstance(ctx,
-		runtime.FlowElementInstanceItem{
+	err = batch.SaveFlowElementHistory(ctx,
+		runtime.FlowElementHistoryItem{
 			Key:                engine.generateKey(),
 			ProcessInstanceKey: instance.GetInstanceKey(),
 			ElementId:          activity.element.GetId(),
@@ -1058,8 +1058,8 @@ func (engine *Engine) handleSimpleTransition(
 			})
 		}
 
-		err := batch.SaveFlowElementInstance(ctx,
-			runtime.FlowElementInstanceItem{
+		err := batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
 				Key:                engine.generateKey(),
 				ProcessInstanceKey: instance.GetInstanceKey(),
 				ElementId:          flow.GetId(),

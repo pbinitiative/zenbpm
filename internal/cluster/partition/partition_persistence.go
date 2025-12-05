@@ -848,7 +848,6 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
 	var TargetParentActivityID string
-	ptr.Deref(processInstance.TargetParentActivityID, TargetParentActivityID)
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
@@ -860,7 +859,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Valid: processInstance.ParentProcessExecutionToken != nil,
 		},
 		TargetParentActivityID: ssql.NullString{
-			String: TargetParentActivityID,
+			String: ptr.Deref(processInstance.TargetParentActivityID, TargetParentActivityID),
 			Valid:  processInstance.TargetParentActivityID != nil,
 		},
 	})

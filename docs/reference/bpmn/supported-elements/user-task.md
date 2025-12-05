@@ -52,4 +52,4 @@ A rectangle with a person icon in the top-left corner.
 ```
 
 ## Current Implementation
-User task is fully supported through external workers. Tasks are distributed to worker applications that handle task lifecycle (claim, complete, fail) via the external task pattern and worker API.
+User task is fully supported.

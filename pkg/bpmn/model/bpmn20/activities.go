@@ -155,5 +155,5 @@ type TCallActivity struct {
 
 type TSubProcess struct {
 	TActivity
-	SubProcess TProcess
+	TProcess
 }

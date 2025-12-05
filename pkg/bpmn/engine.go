@@ -652,7 +652,7 @@ func (engine *Engine) getExecutionTokenActivity(
 		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(*instance.TargetParentActivityID)
 		switch parentActivityDefinition.(type) {
 		case *bpmn20.TSubProcess:
-			currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).SubProcess.GetFlowNodeById(token.ElementId)
+			currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
 		default:
 			currentFlowNode = instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		}
@@ -720,7 +720,7 @@ func (engine *Engine) processFlowNode(
 		}
 		currentToken.State = runtime.TokenStateCompleted
 		return []runtime.ExecutionToken{currentToken}, nil
-	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask:
+	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess:
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
 	case *bpmn20.TIntermediateCatchEvent:
 		// intermediate catch events following event based gateway are handled in event based gateway

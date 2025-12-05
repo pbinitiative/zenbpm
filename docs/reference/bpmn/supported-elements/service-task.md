@@ -7,19 +7,19 @@ sidebar_position: 20
 A Service Task is a BPMN flow element that represents work performed automatically by a system, without human involvement. It automates process steps by invoking external services, APIs, or backend systems.
 
 ## Key characteristics
-- Automated execution
+- Automated execution:
 	A Service Task executes automatically without requiring human interaction. It invokes an external service and waits for the result.
 
-- Can have incoming and outgoing sequence flows
+- Can have incoming and outgoing sequence flows:
 	Service Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing based on service outcomes.
 
-- Input and output parameters
+- Input and output parameters:
 	Service Tasks can receive data from the process and return data back to continue execution with service-provided information.
 
-- Implementation types
+- Implementation types:
 	Service Tasks can invoke different types of implementations (HTTP calls, web services, scripts, etc.) based on configuration.
 
-- Error handling
+- Error handling:
 	Service Tasks support error handling through boundary events and fault responses when service calls fail.
 
 - Types of service task handling

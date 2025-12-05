@@ -215,7 +215,8 @@ FROM
 WHERE
     CASE WHEN ?1 <> 0 THEN
         process_instance.process_definition_key = ?1
-			else 1
+    ELSE
+        1
     END
     AND CASE WHEN ?2 <> 0 THEN
         process_instance.parent_process_execution_token IN (
@@ -225,7 +226,8 @@ WHERE
                 execution_token
             WHERE
                 execution_token.process_instance_key = ?2)
-						else 1
+    ELSE
+        1
     END
 ORDER BY
     created_at DESC

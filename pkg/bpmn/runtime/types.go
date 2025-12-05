@@ -31,6 +31,7 @@ type ProcessInstance struct {
 	CreatedAt                   time.Time
 	State                       ActivityState
 	ParentProcessExecutionToken *ExecutionToken
+	TargetParentActivityID      *string
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {

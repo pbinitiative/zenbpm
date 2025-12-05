@@ -778,6 +778,12 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 	}
 
 	var parentToken *bpmnruntime.ExecutionToken
+
+	var TargetParentActivityID *string
+	if dbInstance.TargetParentActivityID.Valid {
+		TargetParentActivityID = &dbInstance.TargetParentActivityID.String
+	}
+
 	if dbInstance.ParentProcessExecutionToken.Valid {
 		tokens, err := rq.Queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
 		if err != nil {
@@ -804,6 +810,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
 		State:                       bpmnruntime.ActivityState(dbInstance.State),
 		ParentProcessExecutionToken: parentToken,
+		TargetParentActivityID:      TargetParentActivityID,
 	}
 
 	return res, nil
@@ -840,6 +847,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
+	var TargetParentActivityID string
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
@@ -849,6 +857,10 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		ParentProcessExecutionToken: ssql.NullInt64{
 			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, bpmnruntime.ExecutionToken{}).Key,
 			Valid: processInstance.ParentProcessExecutionToken != nil,
+		},
+		TargetParentActivityID: ssql.NullString{
+			String: ptr.Deref(processInstance.TargetParentActivityID, TargetParentActivityID),
+			Valid:  processInstance.TargetParentActivityID != nil,
 		},
 	})
 	if err != nil {

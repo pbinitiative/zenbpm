@@ -7,6 +7,8 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
@@ -24,17 +26,52 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &currentToken)
+			//TODO: We need tokenSpan from when the parent token started in runProcessInstance() to properly fail the token and span
+			ctx, todoSpan := engine.tracer.Start(ctx, fmt.Sprintf("callActivity:%s", element.Id), trace.WithAttributes(
+				attribute.Int64("parentProcessInstanceKey", instance.Key),
+			))
+			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &currentToken, nil)
 			if err != nil {
-				// TODO: update parent instance/token with fail
+				engine.runningInstances.lockInstance(instance)
+				engine.handleIncident(ctx, currentToken, err, todoSpan)
+				engine.runningInstances.unlockInstance(instance)
 				engine.logger.Error("failed to run activity instance %d: %w", calledProcessInstance.Key, err)
+				return
 			}
+			todoSpan.End()
 		}()
 	})
 	return runtime.ActivityStateActive, nil
 }
 
-func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
+func (engine *Engine) createSubProcess(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TSubProcess, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+	if err := variableHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+		instance.State = runtime.ActivityStateFailed
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
+	}
+
+	batch.AddPostFlushAction(ctx, func() {
+		go func() {
+			//TODO: We need tokenSpan from when the parent token started in runProcessInstance() to properly fail the token and span
+			ctx, todoSpan := engine.tracer.Start(ctx, fmt.Sprintf("subProcess:%s", element.Id), trace.WithAttributes(
+				attribute.Int64("parentProcessInstanceKey", instance.Key),
+			))
+			calledProcessInstance, err := engine.createInstance(ctx, instance.Definition, variableHolder, &currentToken, &element.Id)
+			if err != nil {
+				engine.runningInstances.lockInstance(instance)
+				engine.handleIncident(ctx, currentToken, err, todoSpan)
+				engine.runningInstances.unlockInstance(instance)
+				engine.logger.Error("failed to run activity instance %d: %w", calledProcessInstance.Key, err)
+				return
+			}
+			todoSpan.End()
+		}()
+	})
+	return runtime.ActivityStateActive, nil
+}
+
+func (engine *Engine) handleParentProcessContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
 
 	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
 	if err != nil {
@@ -43,7 +80,6 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	parentInstance := &ppi
 
 	engine.runningInstances.lockInstance(parentInstance)
-	defer engine.runningInstances.unlockInstance(parentInstance)
 
 	element := ppi.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 	// map the variables back to the parent
@@ -83,6 +119,7 @@ func (engine *Engine) handleCallActivityParentContinuation(ctx context.Context, 
 	}
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
+			engine.runningInstances.unlockInstance(parentInstance)
 			err = engine.runProcessInstance(ctx, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance: %w", err)

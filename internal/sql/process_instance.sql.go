@@ -119,7 +119,7 @@ func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, currunix sq
 
 const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -142,6 +142,7 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.TargetParentActivityID,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 		); err != nil {
@@ -160,7 +161,7 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 
 const findProcessInstances = `-- name: FindProcessInstances :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -191,6 +192,7 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.TargetParentActivityID,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 		); err != nil {
@@ -209,13 +211,14 @@ func (q *Queries) FindProcessInstances(ctx context.Context, arg FindProcessInsta
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
     CASE WHEN ?1 <> 0 THEN
         process_instance.process_definition_key = ?1
-			else 1
+    ELSE
+        1
     END
     AND CASE WHEN ?2 <> 0 THEN
         process_instance.parent_process_execution_token IN (
@@ -225,7 +228,8 @@ WHERE
                 execution_token
             WHERE
                 execution_token.process_instance_key = ?2)
-						else 1
+    ELSE
+        1
     END
 ORDER BY
     created_at DESC
@@ -260,6 +264,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.TargetParentActivityID,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 		); err != nil {
@@ -278,7 +283,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
-    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -295,6 +300,7 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.State,
 		&i.Variables,
 		&i.ParentProcessExecutionToken,
+		&i.TargetParentActivityID,
 		&i.HistoryTtlSec,
 		&i.HistoryDeleteSec,
 	)
@@ -302,8 +308,8 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
@@ -311,12 +317,13 @@ ON CONFLICT (key)
 `
 
 type SaveProcessInstanceParams struct {
-	Key                         int64         `json:"key"`
-	ProcessDefinitionKey        int64         `json:"process_definition_key"`
-	CreatedAt                   int64         `json:"created_at"`
-	State                       int64         `json:"state"`
-	Variables                   string        `json:"variables"`
-	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
+	Key                         int64          `json:"key"`
+	ProcessDefinitionKey        int64          `json:"process_definition_key"`
+	CreatedAt                   int64          `json:"created_at"`
+	State                       int64          `json:"state"`
+	Variables                   string         `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
+	TargetParentActivityID      sql.NullString `json:"target_parent_activity_id"`
 }
 
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
@@ -327,6 +334,7 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.State,
 		arg.Variables,
 		arg.ParentProcessExecutionToken,
+		arg.TargetParentActivityID,
 	)
 	return err
 }

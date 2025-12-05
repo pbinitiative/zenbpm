@@ -1,10 +1,11 @@
 -- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, business_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
-        variables = excluded.variables;
+        variables = excluded.variables,
+        business_key = excluded.business_key;
 
 -- name: SetProcessInstanceTTL :exec
 UPDATE
@@ -49,16 +50,6 @@ WHERE
 DELETE FROM process_instance
 WHERE key IN (sqlc.slice('keys'));
 
--- name: FindProcessInstances :many
-SELECT
-    *
-FROM
-    process_instance
-WHERE
-    COALESCE(sqlc.narg('key'), "key") = "key"
-    AND COALESCE(sqlc.narg('process_definition_key'), process_definition_key) = process_definition_key
-ORDER BY
-    created_at DESC;
 
 -- name: FindProcessInstancesPage :many
 SELECT
@@ -82,6 +73,7 @@ WHERE
     ELSE
         1
     END
+    AND COALESCE(sqlc.narg('business_key'), business_key) = business_key
 ORDER BY
     created_at DESC
 LIMIT @size OFFSET @offst;

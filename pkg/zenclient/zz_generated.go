@@ -86,16 +86,16 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     map[string]interface{}    `json:"decisionOutput"`
+	DecisionOutput     interface{}               `json:"decisionOutput"`
 	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
-	InputExpression string                 `json:"inputExpression"`
-	InputId         string                 `json:"inputId"`
-	InputName       string                 `json:"inputName"`
-	InputValue      map[string]interface{} `json:"inputValue"`
+	InputExpression string      `json:"inputExpression"`
+	InputId         string      `json:"inputId"`
+	InputName       string      `json:"inputName"`
+	InputValue      interface{} `json:"inputValue"`
 }
 
 // EvaluatedDecisionOutput defines model for EvaluatedDecisionOutput.
@@ -299,6 +299,7 @@ type ProcessDefinitionsPage struct {
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
 	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
+	BusinessKey              *string                `json:"businessKey,omitempty"`
 	CreatedAt                time.Time              `json:"createdAt"`
 	Key                      string                 `json:"key"`
 	ParentProcessInstanceKey *string                `json:"parentProcessInstanceKey,omitempty"`
@@ -421,6 +422,9 @@ type GetProcessInstancesParams struct {
 	// ParentProcessInstanceKey Key of the parent process instance
 	ParentProcessInstanceKey *string `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
 
+	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
+	BusinessKey *string `form:"businessKey,omitempty" json:"businessKey,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
@@ -430,6 +434,9 @@ type GetProcessInstancesParams struct {
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
+	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
+	BusinessKey *string `json:"businessKey,omitempty"`
+
 	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
 	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
@@ -1589,6 +1596,22 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 		if params.ParentProcessInstanceKey != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "parentProcessInstanceKey", runtime.ParamLocationQuery, *params.ParentProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BusinessKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "businessKey", runtime.ParamLocationQuery, *params.BusinessKey); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

@@ -435,6 +435,9 @@ paths:
                   type: string
                   description: Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
                   example: 30d
+                businessKey:
+                  type: string
+                  description: Business key of the process instance used mainly for correlating process instance to the business entity.
             example:
               processDefinitionKey: "4503599627370498"
               variables:
@@ -495,6 +498,11 @@ paths:
             pattern: '^\d{15,20}$'
           description: Key of the parent process instance
           example: "1603294627315478"
+        - name: businessKey
+          in: query
+          schema:
+            type: string
+          description: Business key of the process instance used mainly for correlating process instance to the business entity.
         - name: page
           in: query
           schema:
@@ -513,6 +521,7 @@ paths:
             default: 10
           description: Number of items per page
           example: 10
+
       responses:
         200:
           description: List of running process instances
@@ -1086,7 +1095,7 @@ paths:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: [ "flowNode-1","flowNode-2" ]
+              startingElementIds: ["flowNode-1", "flowNode-2"]
       responses:
         201:
           description: Process instance created
@@ -1190,7 +1199,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to profile
       responses:
         200:
@@ -1213,7 +1222,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to stop profiling
       responses:
         200:
@@ -1477,6 +1486,8 @@ components:
         processDefinitionKey:
           type: string
           pattern: '^\d{15,20}$'
+        businessKey:
+          type: string
         createdAt:
           type: string
           format: date-time

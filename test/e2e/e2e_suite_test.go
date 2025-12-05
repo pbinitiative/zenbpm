@@ -105,6 +105,6 @@ func TestMain(m *testing.M) {
 		log.Error("failed to properly stop zen node: %s", err)
 	}
 	openTelemetry.Stop(appContext)
-	os.RemoveAll(tempDir)
+	// os.RemoveAll(tempDir)
 	os.Exit(code)
 }

@@ -614,6 +614,7 @@ func (node *ZenNode) CreateInstance(
 	processDefinitionKey int64,
 	variables map[string]any,
 	timeToLive *types.TTL,
+	businessKey *string,
 ) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()
@@ -637,8 +638,9 @@ func (node *ZenNode) CreateInstance(
 		StartBy: &proto.CreateInstanceRequest_DefinitionKey{
 			DefinitionKey: processDefinitionKey,
 		},
-		Variables:  vars,
-		HistoryTTL: (*int64)(timeToLive),
+		Variables:   vars,
+		HistoryTTL:  (*int64)(timeToLive),
+		BusinessKey: businessKey,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to create process instance")
@@ -727,7 +729,7 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
 func (node *ZenNode) GetProcessInstances(
 	ctx context.Context,
-	processDefinitionKey int64,
+	processDefinitionKey *int64, businessKey *string,
 	parentProcessInstanceKey int64,
 	page int32,
 	size int32,
@@ -749,8 +751,8 @@ func (node *ZenNode) GetProcessInstances(
 			Page:          &page,
 			Size:          &size,
 			Partitions:    []uint32{partitionId},
-			DefinitionKey: &processDefinitionKey,
-			ParentKey:     &parentProcessInstanceKey,
+			DefinitionKey: processDefinitionKey,
+			BusinessKey:   businessKey,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process instances from partition %d", partitionId)

@@ -27,6 +27,7 @@ type CatchEvent struct {
 type ProcessInstance struct {
 	Definition                  *ProcessDefinition
 	Key                         int64
+	BusinessKey                 *string
 	VariableHolder              VariableHolder
 	CreatedAt                   time.Time
 	State                       ActivityState

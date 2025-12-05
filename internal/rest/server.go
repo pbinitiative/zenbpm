@@ -503,7 +503,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		}
 		ttl = &parsedTTL
 	}
-	process, err := s.node.CreateInstance(ctx, key, variables, ttl)
+
+	process, err := s.node.CreateInstance(ctx, key, variables, ttl, request.Body.BusinessKey)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -683,6 +684,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		ActiveElementInstances: respActiveElementInstances,
 		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 		Key:                    fmt.Sprintf("%d", instance.GetKey()),
+		BusinessKey:            instance.BusinessKey,
 		ProcessDefinitionKey:   fmt.Sprintf("%d", instance.GetDefinitionKey()),
 		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
 		Variables:              vars,

@@ -38,7 +38,7 @@ const (
 	ZenService_StopCpuProfiler_FullMethodName                = "/cluster.ZenService/StopCpuProfiler"
 	ZenService_NodeCommand_FullMethodName                    = "/cluster.ZenService/NodeCommand"
 	ZenService_EvaluateDecision_FullMethodName               = "/cluster.ZenService/EvaluateDecision"
-	ZenService_DeployDecisionDefinition_FullMethodName       = "/cluster.ZenService/DeployDecisionDefinition"
+	ZenService_DeployDmnResourceDefinition_FullMethodName    = "/cluster.ZenService/DeployDmnResourceDefinition"
 	ZenService_DeployProcessDefinition_FullMethodName        = "/cluster.ZenService/DeployProcessDefinition"
 	ZenService_ActivateJob_FullMethodName                    = "/cluster.ZenService/ActivateJob"
 	ZenService_PublishMessage_FullMethodName                 = "/cluster.ZenService/PublishMessage"
@@ -96,7 +96,7 @@ type ZenServiceClient interface {
 	// engine endpoints
 	// Deploys definition into partitions that receiving node is leader of
 	EvaluateDecision(ctx context.Context, in *EvaluateDecisionRequest, opts ...grpc.CallOption) (*EvaluatedDRDResult, error)
-	DeployDecisionDefinition(ctx context.Context, in *DeployDecisionDefinitionRequest, opts ...grpc.CallOption) (*DeployDecisionDefinitionResponse, error)
+	DeployDmnResourceDefinition(ctx context.Context, in *DeployDmnResourceDefinitionRequest, opts ...grpc.CallOption) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(ctx context.Context, in *DeployProcessDefinitionRequest, opts ...grpc.CallOption) (*DeployProcessDefinitionResponse, error)
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
@@ -309,10 +309,10 @@ func (c *zenServiceClient) EvaluateDecision(ctx context.Context, in *EvaluateDec
 	return out, nil
 }
 
-func (c *zenServiceClient) DeployDecisionDefinition(ctx context.Context, in *DeployDecisionDefinitionRequest, opts ...grpc.CallOption) (*DeployDecisionDefinitionResponse, error) {
+func (c *zenServiceClient) DeployDmnResourceDefinition(ctx context.Context, in *DeployDmnResourceDefinitionRequest, opts ...grpc.CallOption) (*DeployDmnResourceDefinitionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeployDecisionDefinitionResponse)
-	err := c.cc.Invoke(ctx, ZenService_DeployDecisionDefinition_FullMethodName, in, out, cOpts...)
+	out := new(DeployDmnResourceDefinitionResponse)
+	err := c.cc.Invoke(ctx, ZenService_DeployDmnResourceDefinition_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +557,7 @@ type ZenServiceServer interface {
 	// engine endpoints
 	// Deploys definition into partitions that receiving node is leader of
 	EvaluateDecision(context.Context, *EvaluateDecisionRequest) (*EvaluatedDRDResult, error)
-	DeployDecisionDefinition(context.Context, *DeployDecisionDefinitionRequest) (*DeployDecisionDefinitionResponse, error)
+	DeployDmnResourceDefinition(context.Context, *DeployDmnResourceDefinitionRequest) (*DeployDmnResourceDefinitionResponse, error)
 	DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error)
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
@@ -644,8 +644,8 @@ func (UnimplementedZenServiceServer) NodeCommand(context.Context, *proto.Command
 func (UnimplementedZenServiceServer) EvaluateDecision(context.Context, *EvaluateDecisionRequest) (*EvaluatedDRDResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EvaluateDecision not implemented")
 }
-func (UnimplementedZenServiceServer) DeployDecisionDefinition(context.Context, *DeployDecisionDefinitionRequest) (*DeployDecisionDefinitionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeployDecisionDefinition not implemented")
+func (UnimplementedZenServiceServer) DeployDmnResourceDefinition(context.Context, *DeployDmnResourceDefinitionRequest) (*DeployDmnResourceDefinitionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeployDmnResourceDefinition not implemented")
 }
 func (UnimplementedZenServiceServer) DeployProcessDefinition(context.Context, *DeployProcessDefinitionRequest) (*DeployProcessDefinitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeployProcessDefinition not implemented")
@@ -1049,20 +1049,20 @@ func _ZenService_EvaluateDecision_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_DeployDecisionDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeployDecisionDefinitionRequest)
+func _ZenService_DeployDmnResourceDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployDmnResourceDefinitionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZenServiceServer).DeployDecisionDefinition(ctx, in)
+		return srv.(ZenServiceServer).DeployDmnResourceDefinition(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZenService_DeployDecisionDefinition_FullMethodName,
+		FullMethod: ZenService_DeployDmnResourceDefinition_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).DeployDecisionDefinition(ctx, req.(*DeployDecisionDefinitionRequest))
+		return srv.(ZenServiceServer).DeployDmnResourceDefinition(ctx, req.(*DeployDmnResourceDefinitionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1471,8 +1471,8 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_EvaluateDecision_Handler,
 		},
 		{
-			MethodName: "DeployDecisionDefinition",
-			Handler:    _ZenService_DeployDecisionDefinition_Handler,
+			MethodName: "DeployDmnResourceDefinition",
+			Handler:    _ZenService_DeployDmnResourceDefinition_Handler,
 		},
 		{
 			MethodName: "DeployProcessDefinition",

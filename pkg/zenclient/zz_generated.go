@@ -39,26 +39,28 @@ const (
 	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
 
-// DecisionDefinitionDetail defines model for DecisionDefinitionDetail.
-type DecisionDefinitionDetail struct {
+// DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
+type DmnResourceDefinitionDetail struct {
 	DecisionDefinitionId string  `json:"decisionDefinitionId"`
 	DmnData              *string `json:"dmnData,omitempty"`
 	Key                  string  `json:"key"`
+	ResourceName         string  `json:"resourceName"`
 	Version              int     `json:"version"`
 }
 
-// DecisionDefinitionSimple defines model for DecisionDefinitionSimple.
-type DecisionDefinitionSimple struct {
+// DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
+type DmnResourceDefinitionSimple struct {
 	DecisionDefinitionId string `json:"decisionDefinitionId"`
 	Key                  string `json:"key"`
+	ResourceName         string `json:"resourceName"`
 	Version              int    `json:"version"`
 }
 
-// DecisionDefinitionsPage defines model for DecisionDefinitionsPage.
-type DecisionDefinitionsPage struct {
+// DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
+type DmnResourceDefinitionsPage struct {
 	// Count Number of items returned in the current page
-	Count int                        `json:"count"`
-	Items []DecisionDefinitionSimple `json:"items"`
+	Count int                           `json:"count"`
+	Items []DmnResourceDefinitionSimple `json:"items"`
 
 	// Page Current page number (1-based indexing)
 	Page int `json:"page"`
@@ -86,16 +88,16 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     map[string]interface{}    `json:"decisionOutput"`
+	DecisionOutput     interface{}               `json:"decisionOutput"`
 	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
-	InputExpression string                 `json:"inputExpression"`
-	InputId         string                 `json:"inputId"`
-	InputName       string                 `json:"inputName"`
-	InputValue      map[string]interface{} `json:"inputValue"`
+	InputExpression string      `json:"inputExpression"`
+	InputId         string      `json:"inputId"`
+	InputName       string      `json:"inputName"`
+	InputValue      interface{} `json:"inputValue"`
 }
 
 // EvaluatedDecisionOutput defines model for EvaluatedDecisionOutput.
@@ -108,12 +110,12 @@ type EvaluatedDecisionOutput struct {
 // EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
 type EvaluatedDecisionResult struct {
 	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
-	DecisionDefinitionKey     string                   `json:"decisionDefinitionKey"`
 	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
 	DecisionId                string                   `json:"decisionId"`
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
+	DmnResourceDefinitionKey  string                   `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
 }
@@ -337,15 +339,6 @@ type TerminateElementInstanceData struct {
 	ElementInstanceKey string `json:"elementInstanceKey"`
 }
 
-// GetDecisionDefinitionsParams defines parameters for GetDecisionDefinitions.
-type GetDecisionDefinitionsParams struct {
-	// Page Page number (1-based indexing)
-	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
-
-	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
-}
-
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
@@ -360,6 +353,15 @@ type EvaluateDecisionJSONBody struct {
 
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBodyBindingType string
+
+// GetDmnResourceDefinitionsParams defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+}
 
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
@@ -554,19 +556,19 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// GetDecisionDefinitions request
-	GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateDecisionDefinitionWithBody request with any body
-	CreateDecisionDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetDecisionDefinition request
-	GetDecisionDefinition(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// EvaluateDecisionWithBody request with any body
 	EvaluateDecisionWithBody(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	EvaluateDecision(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDmnResourceDefinitions request
+	GetDmnResourceDefinitions(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDmnResourceDefinitionWithBody request with any body
+	CreateDmnResourceDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDmnResourceDefinition request
+	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResolveIncident request
 	ResolveIncident(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -630,42 +632,6 @@ type ClientInterface interface {
 	TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetDecisionDefinitionsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) CreateDecisionDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateDecisionDefinitionRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetDecisionDefinition(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetDecisionDefinitionRequest(c.Server, decisionDefinitionKey)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 func (c *Client) EvaluateDecisionWithBody(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEvaluateDecisionRequestWithBody(c.Server, decisionId, contentType, body)
 	if err != nil {
@@ -680,6 +646,42 @@ func (c *Client) EvaluateDecisionWithBody(ctx context.Context, decisionId string
 
 func (c *Client) EvaluateDecision(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEvaluateDecisionRequest(c.Server, decisionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDmnResourceDefinitions(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDmnResourceDefinitionsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateDmnResourceDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDmnResourceDefinitionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDmnResourceDefinitionRequest(c.Server, dmnResourceDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -954,8 +956,55 @@ func (c *Client) TestStopCpuProfile(ctx context.Context, nodeId string, reqEdito
 	return c.Client.Do(req)
 }
 
-// NewGetDecisionDefinitionsRequest generates requests for GetDecisionDefinitions
-func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefinitionsParams) (*http.Request, error) {
+// NewEvaluateDecisionRequest calls the generic EvaluateDecision builder with application/json body
+func NewEvaluateDecisionRequest(server string, decisionId string, body EvaluateDecisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEvaluateDecisionRequestWithBody(server, decisionId, "application/json", bodyReader)
+}
+
+// NewEvaluateDecisionRequestWithBody generates requests for EvaluateDecision with any type of body
+func NewEvaluateDecisionRequestWithBody(server string, decisionId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionId", runtime.ParamLocationPath, decisionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/decision-definitions/%s/evaluate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetDmnResourceDefinitionsRequest generates requests for GetDmnResourceDefinitions
+func NewGetDmnResourceDefinitionsRequest(server string, params *GetDmnResourceDefinitionsParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -963,7 +1012,7 @@ func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefiniti
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions")
+	operationPath := fmt.Sprintf("/dmn-resource-definitions")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1019,8 +1068,8 @@ func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefiniti
 	return req, nil
 }
 
-// NewCreateDecisionDefinitionRequestWithBody generates requests for CreateDecisionDefinition with any type of body
-func NewCreateDecisionDefinitionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewCreateDmnResourceDefinitionRequestWithBody generates requests for CreateDmnResourceDefinition with any type of body
+func NewCreateDmnResourceDefinitionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1028,7 +1077,7 @@ func NewCreateDecisionDefinitionRequestWithBody(server string, contentType strin
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions")
+	operationPath := fmt.Sprintf("/dmn-resource-definitions")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1048,13 +1097,13 @@ func NewCreateDecisionDefinitionRequestWithBody(server string, contentType strin
 	return req, nil
 }
 
-// NewGetDecisionDefinitionRequest generates requests for GetDecisionDefinition
-func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string) (*http.Request, error) {
+// NewGetDmnResourceDefinitionRequest generates requests for GetDmnResourceDefinition
+func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionDefinitionKey", runtime.ParamLocationPath, decisionDefinitionKey)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "dmnResourceDefinitionKey", runtime.ParamLocationPath, dmnResourceDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1064,7 +1113,7 @@ func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions/%s", pathParam0)
+	operationPath := fmt.Sprintf("/dmn-resource-definitions/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1078,53 +1127,6 @@ func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string
 	if err != nil {
 		return nil, err
 	}
-
-	return req, nil
-}
-
-// NewEvaluateDecisionRequest calls the generic EvaluateDecision builder with application/json body
-func NewEvaluateDecisionRequest(server string, decisionId string, body EvaluateDecisionJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewEvaluateDecisionRequestWithBody(server, decisionId, "application/json", bodyReader)
-}
-
-// NewEvaluateDecisionRequestWithBody generates requests for EvaluateDecision with any type of body
-func NewEvaluateDecisionRequestWithBody(server string, decisionId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionId", runtime.ParamLocationPath, decisionId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/decisions/%s/evaluate", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2046,19 +2048,19 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// GetDecisionDefinitionsWithResponse request
-	GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error)
-
-	// CreateDecisionDefinitionWithBodyWithResponse request with any body
-	CreateDecisionDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionDefinitionResponse, error)
-
-	// GetDecisionDefinitionWithResponse request
-	GetDecisionDefinitionWithResponse(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionResponse, error)
-
 	// EvaluateDecisionWithBodyWithResponse request with any body
 	EvaluateDecisionWithBodyWithResponse(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error)
 
 	EvaluateDecisionWithResponse(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error)
+
+	// GetDmnResourceDefinitionsWithResponse request
+	GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error)
+
+	// CreateDmnResourceDefinitionWithBodyWithResponse request with any body
+	CreateDmnResourceDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDmnResourceDefinitionResponse, error)
+
+	// GetDmnResourceDefinitionWithResponse request
+	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
 
 	// ResolveIncidentWithResponse request
 	ResolveIncidentWithResponse(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
@@ -2122,80 +2124,6 @@ type ClientWithResponsesInterface interface {
 	TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error)
 }
 
-type GetDecisionDefinitionsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *DecisionDefinitionsPage
-	JSON502      *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r GetDecisionDefinitionsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetDecisionDefinitionsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type CreateDecisionDefinitionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *struct {
-		DecisionDefinitionKey string `json:"decisionDefinitionKey"`
-	}
-	JSON400 *Error
-	JSON409 *Error
-	JSON502 *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateDecisionDefinitionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateDecisionDefinitionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetDecisionDefinitionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *DecisionDefinitionDetail
-	JSON400      *Error
-	JSON502      *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r GetDecisionDefinitionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetDecisionDefinitionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 type EvaluateDecisionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2213,6 +2141,80 @@ func (r EvaluateDecisionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r EvaluateDecisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDmnResourceDefinitionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DmnResourceDefinitionsPage
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDmnResourceDefinitionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDmnResourceDefinitionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateDmnResourceDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
+	}
+	JSON400 *Error
+	JSON409 *Error
+	JSON502 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDmnResourceDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDmnResourceDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDmnResourceDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DmnResourceDefinitionDetail
+	JSON400      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDmnResourceDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDmnResourceDefinitionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2634,33 +2636,6 @@ func (r TestStopCpuProfileResponse) StatusCode() int {
 	return 0
 }
 
-// GetDecisionDefinitionsWithResponse request returning *GetDecisionDefinitionsResponse
-func (c *ClientWithResponses) GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error) {
-	rsp, err := c.GetDecisionDefinitions(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetDecisionDefinitionsResponse(rsp)
-}
-
-// CreateDecisionDefinitionWithBodyWithResponse request with arbitrary body returning *CreateDecisionDefinitionResponse
-func (c *ClientWithResponses) CreateDecisionDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionDefinitionResponse, error) {
-	rsp, err := c.CreateDecisionDefinitionWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateDecisionDefinitionResponse(rsp)
-}
-
-// GetDecisionDefinitionWithResponse request returning *GetDecisionDefinitionResponse
-func (c *ClientWithResponses) GetDecisionDefinitionWithResponse(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionResponse, error) {
-	rsp, err := c.GetDecisionDefinition(ctx, decisionDefinitionKey, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetDecisionDefinitionResponse(rsp)
-}
-
 // EvaluateDecisionWithBodyWithResponse request with arbitrary body returning *EvaluateDecisionResponse
 func (c *ClientWithResponses) EvaluateDecisionWithBodyWithResponse(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error) {
 	rsp, err := c.EvaluateDecisionWithBody(ctx, decisionId, contentType, body, reqEditors...)
@@ -2676,6 +2651,33 @@ func (c *ClientWithResponses) EvaluateDecisionWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseEvaluateDecisionResponse(rsp)
+}
+
+// GetDmnResourceDefinitionsWithResponse request returning *GetDmnResourceDefinitionsResponse
+func (c *ClientWithResponses) GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error) {
+	rsp, err := c.GetDmnResourceDefinitions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDmnResourceDefinitionsResponse(rsp)
+}
+
+// CreateDmnResourceDefinitionWithBodyWithResponse request with arbitrary body returning *CreateDmnResourceDefinitionResponse
+func (c *ClientWithResponses) CreateDmnResourceDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDmnResourceDefinitionResponse, error) {
+	rsp, err := c.CreateDmnResourceDefinitionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDmnResourceDefinitionResponse(rsp)
+}
+
+// GetDmnResourceDefinitionWithResponse request returning *GetDmnResourceDefinitionResponse
+func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error) {
+	rsp, err := c.GetDmnResourceDefinition(ctx, dmnResourceDefinitionKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDmnResourceDefinitionResponse(rsp)
 }
 
 // ResolveIncidentWithResponse request returning *ResolveIncidentResponse
@@ -2871,22 +2873,55 @@ func (c *ClientWithResponses) TestStopCpuProfileWithResponse(ctx context.Context
 	return ParseTestStopCpuProfileResponse(rsp)
 }
 
-// ParseGetDecisionDefinitionsResponse parses an HTTP response from a GetDecisionDefinitionsWithResponse call
-func ParseGetDecisionDefinitionsResponse(rsp *http.Response) (*GetDecisionDefinitionsResponse, error) {
+// ParseEvaluateDecisionResponse parses an HTTP response from a EvaluateDecisionWithResponse call
+func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetDecisionDefinitionsResponse{
+	response := &EvaluateDecisionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest DecisionDefinitionsPage
+		var dest EvaluatedDRDResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDmnResourceDefinitionsResponse parses an HTTP response from a GetDmnResourceDefinitionsWithResponse call
+func ParseGetDmnResourceDefinitionsResponse(rsp *http.Response) (*GetDmnResourceDefinitionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDmnResourceDefinitionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DmnResourceDefinitionsPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2904,15 +2939,15 @@ func ParseGetDecisionDefinitionsResponse(rsp *http.Response) (*GetDecisionDefini
 	return response, nil
 }
 
-// ParseCreateDecisionDefinitionResponse parses an HTTP response from a CreateDecisionDefinitionWithResponse call
-func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionDefinitionResponse, error) {
+// ParseCreateDmnResourceDefinitionResponse parses an HTTP response from a CreateDmnResourceDefinitionWithResponse call
+func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnResourceDefinitionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &CreateDecisionDefinitionResponse{
+	response := &CreateDmnResourceDefinitionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -2920,7 +2955,7 @@ func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionD
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			DecisionDefinitionKey string `json:"decisionDefinitionKey"`
+			DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -2953,22 +2988,22 @@ func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionD
 	return response, nil
 }
 
-// ParseGetDecisionDefinitionResponse parses an HTTP response from a GetDecisionDefinitionWithResponse call
-func ParseGetDecisionDefinitionResponse(rsp *http.Response) (*GetDecisionDefinitionResponse, error) {
+// ParseGetDmnResourceDefinitionResponse parses an HTTP response from a GetDmnResourceDefinitionWithResponse call
+func ParseGetDmnResourceDefinitionResponse(rsp *http.Response) (*GetDmnResourceDefinitionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetDecisionDefinitionResponse{
+	response := &GetDmnResourceDefinitionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest DecisionDefinitionDetail
+		var dest DmnResourceDefinitionDetail
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2987,39 +3022,6 @@ func ParseGetDecisionDefinitionResponse(rsp *http.Response) (*GetDecisionDefinit
 			return nil, err
 		}
 		response.JSON502 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseEvaluateDecisionResponse parses an HTTP response from a EvaluateDecisionWithResponse call
-func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &EvaluateDecisionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest EvaluatedDRDResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
 
 	}
 

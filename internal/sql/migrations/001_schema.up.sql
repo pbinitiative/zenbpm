@@ -118,24 +118,32 @@ CREATE TABLE IF NOT EXISTS incident(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
--- table that holds information about all the decision definitions
-CREATE TABLE IF NOT EXISTS decision_definition(
-    key INTEGER PRIMARY KEY, -- int64 id of the decision definition
-    version integer NOT NULL, -- int64 version of the decision definition
-    dmn_id text NOT NULL, -- id of the decision from xml definition
-    dmn_data text NOT NULL, -- string of the decision definition
-    dmn_checksum BLOB NOT NULL, -- md5 checksum of the decision definition
+-- table that holds information about all the dmn resource definitions
+CREATE TABLE IF NOT EXISTS dmn_resource_definition(
+    key INTEGER PRIMARY KEY, -- int64 id of the dmn resource definition
+    version integer NOT NULL, -- int64 version of the dmn resource definition
+    dmn_id text NOT NULL, -- id of the dmn resource from xml definition
+    dmn_data text NOT NULL, -- string of the dmn resource definition
+    dmn_checksum BLOB NOT NULL, -- md5 checksum of the dmn resource definition
     dmn_resource_name text NOT NULL -- resource name from deployment
 );
 
--- table that holds information about all the decision
-CREATE TABLE IF NOT EXISTS decision(
-    version integer NOT NULL, -- int64 version of the decision
-    decision_id text NOT NULL, -- id of the decision from xml
-    version_tag text NOT NULL, -- string version tag of the decision (user defined)
-    decision_definition_id text NOT NULL, -- id of the decision definition from xml definition
-    decision_definition_key integer NOT NULL, -- int64 reference to decision definition
-    FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key) -- reference to decision definition
+-- table that holds information about all the decision definitions
+CREATE TABLE IF NOT EXISTS decision_definition(
+    version INTEGER NOT NULL, -- int64 version of the decision definition
+    decision_id TEXT NOT NULL, -- id of the decision from xml
+    version_tag TEXT NOT NULL, -- string version tag of the decision definition (user defined)
+    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml dmn decision definition
+    dmn_resource_definition_key INTEGER NOT NULL, -- int64 reference to dmn resource definition
+    FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key) -- reference to decision definition
+);
+
+CREATE TABLE IF NOT EXISTS decision_instance(
+      key INTEGER PRIMARY KEY, -- int64 snowflake id of the business rule task
+      decision_id TEXT NOT NULL, -- id of the decision from xml
+      created_at integer NOT NULL, -- unix millis of when the instance of the job was created
+      output_variables text NOT NULL, -- serialized json variables of the process instance
+      evaluated_decisions text NOT NULL -- serialized json variables of the process instance
 );
 
 -- TODO: create a table for dumb activities like gateway/...

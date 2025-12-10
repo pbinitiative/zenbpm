@@ -17,20 +17,20 @@ servers:
 tags:
   - name: process-definition
   - name: process-instance
+  - name: dmn-resource-definition
   - name: decision-definition
-  - name: decision
   - name: job
   - name: message
   - name: incident
   - name: test
 
 paths:
-  /decision-definitions:
+  /dmn-resource-definitions:
     post:
-      operationId: createDecisionDefinition
-      summary: Deploy a new decision definition
+      operationId: createDmnResourceDefinition
+      summary: Deploy a new dmn resource definition
       tags:
-        - decision-definition
+        - dmn-resource-definition
       requestBody:
         required: true
         content:
@@ -47,19 +47,19 @@ paths:
               </definitions>
       responses:
         201:
-          description: Decision definition deployed
+          description: Dmn resource definition deployed
           content:
             application/json:
               schema:
                 type: object
                 required:
-                  - decisionDefinitionKey
+                  - dmnResourceDefinitionKey
                 properties:
-                  decisionDefinitionKey:
+                  dmnResourceDefinitionKey:
                     type: string
                     pattern: '^\d{15,20}$'
               example:
-                decisionDefinitionKey: "4503599627370495"
+                dmnResourceDefinitionKey: "4503599627370495"
         400:
           description: Bad request
           content:
@@ -67,7 +67,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         409:
-          description: Conflict - decision definition already exists
+          description: Conflict - dmn resource definition already exists
           content:
             application/json:
               schema:
@@ -80,10 +80,10 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     get:
-      operationId: getDecisionDefinitions
-      summary: Get list of decision definitions
+      operationId: getDmnResourceDefinitions
+      summary: Get list of dmn resource definitions
       tags:
-        - decision-definition
+        - dmn-resource-definition
       parameters:
         - name: page
           in: query
@@ -106,11 +106,11 @@ paths:
           example: 10
       responses:
         200:
-          description: List of decision definitions
+          description: List of dmn resource definitions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionsPage"
+                $ref: "#/components/schemas/DmnResourceDefinitionsPage"
               example:
                 items:
                   - key: "4503599627370495"
@@ -133,14 +133,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decision-definitions/{decisionDefinitionKey}:
+  /dmn-resource-definitions/{dmnResourceDefinitionKey}:
     get:
-      operationId: getDecisionDefinition
-      summary: Get decision definition
+      operationId: getDmnResourceDefinition
+      summary: Get dmn resource definition
       tags:
-        - decision-definition
+        - dmn-resource-definition
       parameters:
-        - name: decisionDefinitionKey
+        - name: dmnResourceDefinitionKey
           required: true
           in: path
           schema:
@@ -149,11 +149,11 @@ paths:
           example: "4503599627370495"
       responses:
         200:
-          description: Decision definition
+          description: Dmn resource definition
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionDetail"
+                $ref: "#/components/schemas/DmnResourceDefinitionDetail"
               example:
                 key: "4503599627370495"
                 version: 1
@@ -178,12 +178,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decisions/{decisionId}/evaluate:
+  /decision-definitions/{decisionId}/evaluate:
     post:
       operationId: evaluateDecision
-      summary: Evaluate latest version of decision directly in engine
+      summary: Evaluate latest version of decision definition directly in engine
       tags:
-        - decision
+        - decision-definition
       parameters:
         - name: decisionId
           required: true
@@ -232,7 +232,7 @@ paths:
                     decisionName: "Loan Approval"
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
-                    decisionDefinitionKey: "4503599627370495"
+                    dmnResourceDefinitionKey: "4503599627370495"
                     decisionDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
@@ -1287,7 +1287,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProcessInstance"
-    DecisionDefinitionsPage:
+    DmnResourceDefinitionsPage:
       type: object
       allOf:
         - type: object
@@ -1297,14 +1297,15 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/DecisionDefinitionSimple"
+                $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - $ref: "#/components/schemas/PageMetadata"
-    DecisionDefinitionSimple:
+    DmnResourceDefinitionSimple:
       type: object
       required:
         - key
         - version
         - decisionDefinitionId
+        - resourceName
       properties:
         key:
           type: string
@@ -1313,12 +1314,14 @@ components:
           type: integer
         decisionDefinitionId:
           type: string
-    DecisionDefinitionDetail:
+        resourceName:
+          type: string
+    DmnResourceDefinitionDetail:
       type: object
       required:
         - dmnData
       allOf:
-        - $ref: "#/components/schemas/DecisionDefinitionSimple"
+        - $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - type: object
           properties:
             dmnData:
@@ -1341,7 +1344,7 @@ components:
         - decisionName
         - decisionType
         - decisionDefinitionVersion
-        - decisionDefinitionKey
+        - dmnResourceDefinitionKey
         - decisionDefinitionId
         - matchedRules
         - decisionOutput
@@ -1355,7 +1358,7 @@ components:
           type: string
         decisionDefinitionVersion:
           type: integer
-        decisionDefinitionKey:
+        dmnResourceDefinitionKey:
           type: string
           pattern: '^\d{15,20}$'
         decisionDefinitionId:

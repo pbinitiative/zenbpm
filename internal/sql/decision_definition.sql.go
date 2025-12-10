@@ -9,81 +9,47 @@ import (
 	"context"
 )
 
-const findAllDecisionDefinitions = `-- name: FindAllDecisionDefinitions :many
+const findDecisionDefinitionByIdAndDmnResourceDefinitionKey = `-- name: FindDecisionDefinitionByIdAndDmnResourceDefinitionKey :one
 SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
-FROM
-    decision_definition
-ORDER BY
-    version DESC
-`
-
-func (q *Queries) FindAllDecisionDefinitions(ctx context.Context) ([]DecisionDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findAllDecisionDefinitions)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DecisionDefinition{}
-	for rows.Next() {
-		var i DecisionDefinition
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.DmnID,
-			&i.DmnData,
-			&i.DmnChecksum,
-			&i.DmnResourceName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findDecisionDefinitionByKey = `-- name: FindDecisionDefinitionByKey :one
-SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
-    key = ?1
+    dmn_resource_definition_key = ?1
+    and decision_id = ?2
 `
 
-func (q *Queries) FindDecisionDefinitionByKey(ctx context.Context, key int64) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findDecisionDefinitionByKey, key)
+type FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams struct {
+	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
+	DecisionID               string `json:"decision_id"`
+}
+
+func (q *Queries) FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, arg FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findDecisionDefinitionByIdAndDmnResourceDefinitionKey, arg.DmnResourceDefinitionKey, arg.DecisionID)
 	var i DecisionDefinition
 	err := row.Scan(
-		&i.Key,
 		&i.Version,
-		&i.DmnID,
-		&i.DmnData,
-		&i.DmnChecksum,
-		&i.DmnResourceName,
+		&i.DecisionID,
+		&i.VersionTag,
+		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
 }
 
 const findDecisionDefinitionsById = `-- name: FindDecisionDefinitionsById :many
 SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
-    dmn_id = ?1
+    decision_id = ?1
 ORDER BY
-    version ASC
+    version DESC
 `
 
-func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string) ([]DecisionDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findDecisionDefinitionsById, dmnID)
+func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, decisionID string) ([]DecisionDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, findDecisionDefinitionsById, decisionID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +58,11 @@ func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string)
 	for rows.Next() {
 		var i DecisionDefinition
 		if err := rows.Scan(
-			&i.Key,
 			&i.Version,
-			&i.DmnID,
-			&i.DmnData,
-			&i.DmnChecksum,
-			&i.DmnResourceName,
+			&i.DecisionID,
+			&i.VersionTag,
+			&i.DecisionDefinitionID,
+			&i.DmnResourceDefinitionKey,
 		); err != nil {
 			return nil, err
 		}
@@ -114,69 +79,111 @@ func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, dmnID string)
 
 const findLatestDecisionDefinitionById = `-- name: FindLatestDecisionDefinitionById :one
 SELECT
-    "key", version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name
+    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
-    dmn_id = ?1
+    decision_id = ?1
 ORDER BY
     version DESC
 LIMIT 1
 `
 
-func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, dmnID string) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionById, dmnID)
+func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, decisionID string) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionById, decisionID)
 	var i DecisionDefinition
 	err := row.Scan(
-		&i.Key,
 		&i.Version,
-		&i.DmnID,
-		&i.DmnData,
-		&i.DmnChecksum,
-		&i.DmnResourceName,
+		&i.DecisionID,
+		&i.VersionTag,
+		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
 }
 
-const getDecisionDefinitionKeyByChecksum = `-- name: GetDecisionDefinitionKeyByChecksum :one
+const findLatestDecisionDefinitionByIdAndDecisionDefinitionId = `-- name: FindLatestDecisionDefinitionByIdAndDecisionDefinitionId :one
 SELECT
-    key
+    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
 FROM
-    decision_definition
+    decision_definition d
 WHERE
-    dmn_checksum = ?1
+    decision_id = ?1
+    AND decision_definition_id = ?2
+ORDER BY
+    version DESC
 LIMIT 1
 `
 
-func (q *Queries) GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getDecisionDefinitionKeyByChecksum, dmnChecksum)
-	var key int64
-	err := row.Scan(&key)
-	return key, err
+type FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams struct {
+	DecisionID           string `json:"decision_id"`
+	DecisionDefinitionID string `json:"decision_definition_id"`
+}
+
+func (q *Queries) FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DecisionDefinitionID)
+	var i DecisionDefinition
+	err := row.Scan(
+		&i.Version,
+		&i.DecisionID,
+		&i.VersionTag,
+		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionKey,
+	)
+	return i, err
+}
+
+const findLatestDecisionDefinitionByIdAndVersionTag = `-- name: FindLatestDecisionDefinitionByIdAndVersionTag :one
+SELECT
+    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+FROM
+    decision_definition
+WHERE
+    decision_id = ?1
+    AND version_tag = ?2
+ORDER BY
+    version DESC
+LIMIT 1
+`
+
+type FindLatestDecisionDefinitionByIdAndVersionTagParams struct {
+	DecisionID string `json:"decision_id"`
+	VersionTag string `json:"version_tag"`
+}
+
+func (q *Queries) FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndVersionTag, arg.DecisionID, arg.VersionTag)
+	var i DecisionDefinition
+	err := row.Scan(
+		&i.Version,
+		&i.DecisionID,
+		&i.VersionTag,
+		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionKey,
+	)
+	return i, err
 }
 
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec
-INSERT INTO decision_definition(key, version, dmn_id, dmn_data, dmn_checksum, dmn_resource_name)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO decision_definition(version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key)
+    VALUES (?, ?, ?, ?, ?)
 `
 
 type SaveDecisionDefinitionParams struct {
-	Key             int64  `json:"key"`
-	Version         int64  `json:"version"`
-	DmnID           string `json:"dmn_id"`
-	DmnData         string `json:"dmn_data"`
-	DmnChecksum     []byte `json:"dmn_checksum"`
-	DmnResourceName string `json:"dmn_resource_name"`
+	Version                  int64  `json:"version"`
+	DecisionID               string `json:"decision_id"`
+	VersionTag               string `json:"version_tag"`
+	DecisionDefinitionID     string `json:"decision_definition_id"`
+	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
 }
 
 func (q *Queries) SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error {
 	_, err := q.db.ExecContext(ctx, saveDecisionDefinition,
-		arg.Key,
 		arg.Version,
-		arg.DmnID,
-		arg.DmnData,
-		arg.DmnChecksum,
-		arg.DmnResourceName,
+		arg.DecisionID,
+		arg.VersionTag,
+		arg.DecisionDefinitionID,
+		arg.DmnResourceDefinitionKey,
 	)
 	return err
 }

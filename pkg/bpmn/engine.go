@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/script/js"
-	"sync"
-	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
 
@@ -981,7 +982,7 @@ func (engine *Engine) createBusinessRuleTask(
 
 	switch element.Implementation.(type) {
 	case *bpmn20.TBusinessRuleTaskLocal:
-		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal))
+		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal), &currentToken)
 	case *bpmn20.TBusinessRuleTaskExternal:
 		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
 	default:
@@ -1000,6 +1001,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	instance *runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskLocal,
+	token *runtime.ExecutionToken,
 ) (runtime.ActivityState, error) {
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if len(element.GetInputMapping()) > 0 {
@@ -1020,6 +1022,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		instance.State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate business rule %s: %w", element.TTask.Id, err)
 	}
+
+	// TODO persist relation between result.DecisionInstanceKey and flow_element_history
 
 	if len(element.GetOutputMapping()) > 0 {
 		variableHolder.SetLocalVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)

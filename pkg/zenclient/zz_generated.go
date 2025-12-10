@@ -43,7 +43,7 @@ const (
 type DmnResourceDefinitionDetail struct {
 	DecisionDefinitionId string  `json:"decisionDefinitionId"`
 	DmnData              *string `json:"dmnData,omitempty"`
-	Key                  string  `json:"key"`
+	Key                  int64   `json:"key"`
 	ResourceName         string  `json:"resourceName"`
 	Version              int     `json:"version"`
 }
@@ -51,7 +51,7 @@ type DmnResourceDefinitionDetail struct {
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
 	DecisionDefinitionId string `json:"decisionDefinitionId"`
-	Key                  string `json:"key"`
+	Key                  int64  `json:"key"`
 	ResourceName         string `json:"resourceName"`
 	Version              int    `json:"version"`
 }
@@ -76,7 +76,7 @@ type DmnResourceDefinitionsPage struct {
 type ElementInstance struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
-	ElementInstanceKey string    `json:"elementInstanceKey"`
+	ElementInstanceKey int64     `json:"elementInstanceKey"`
 	State              string    `json:"state"`
 }
 
@@ -115,7 +115,7 @@ type EvaluatedDecisionResult struct {
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
-	DmnResourceDefinitionKey  string                   `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
 }
@@ -131,8 +131,8 @@ type EvaluatedDecisionRule struct {
 type FlowElementHistory struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
-	Key                string    `json:"key"`
-	ProcessInstanceKey string    `json:"processInstanceKey"`
+	Key                int64     `json:"key"`
+	ProcessInstanceKey int64     `json:"processInstanceKey"`
 }
 
 // FlowElementHistoryPage defines model for FlowElementHistoryPage.
@@ -155,11 +155,11 @@ type FlowElementHistoryPage struct {
 type Incident struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	ElementId          string     `json:"elementId"`
-	ElementInstanceKey string     `json:"elementInstanceKey"`
-	ExecutionToken     string     `json:"executionToken"`
-	Key                string     `json:"key"`
+	ElementInstanceKey int64      `json:"elementInstanceKey"`
+	ExecutionToken     int64      `json:"executionToken"`
+	Key                int64      `json:"key"`
 	Message            string     `json:"message"`
-	ProcessInstanceKey string     `json:"processInstanceKey"`
+	ProcessInstanceKey int64      `json:"processInstanceKey"`
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
@@ -183,8 +183,8 @@ type IncidentPage struct {
 type Job struct {
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
-	Key                string                 `json:"key"`
-	ProcessInstanceKey string                 `json:"processInstanceKey"`
+	Key                int64                  `json:"key"`
+	ProcessInstanceKey int64                  `json:"processInstanceKey"`
 	State              JobState               `json:"state"`
 	Type               string                 `json:"type"`
 	Variables          map[string]interface{} `json:"variables"`
@@ -271,14 +271,14 @@ type PartitionedPageMetadata struct {
 type ProcessDefinitionDetail struct {
 	BpmnData      *string `json:"bpmnData,omitempty"`
 	BpmnProcessId string  `json:"bpmnProcessId"`
-	Key           string  `json:"key"`
+	Key           int64   `json:"key"`
 	Version       int     `json:"version"`
 }
 
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
 type ProcessDefinitionSimple struct {
 	BpmnProcessId string `json:"bpmnProcessId"`
-	Key           string `json:"key"`
+	Key           int64  `json:"key"`
 	Version       int    `json:"version"`
 }
 
@@ -302,9 +302,9 @@ type ProcessDefinitionsPage struct {
 type ProcessInstance struct {
 	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
 	CreatedAt                time.Time              `json:"createdAt"`
-	Key                      string                 `json:"key"`
-	ParentProcessInstanceKey *string                `json:"parentProcessInstanceKey,omitempty"`
-	ProcessDefinitionKey     string                 `json:"processDefinitionKey"`
+	Key                      int64                  `json:"key"`
+	ParentProcessInstanceKey *int64                 `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                  `json:"processDefinitionKey"`
 	State                    ProcessInstanceState   `json:"state"`
 	Variables                map[string]interface{} `json:"variables"`
 }
@@ -336,7 +336,7 @@ type StartElementInstanceData struct {
 
 // TerminateElementInstanceData defines model for TerminateElementInstanceData.
 type TerminateElementInstanceData struct {
-	ElementInstanceKey string `json:"elementInstanceKey"`
+	ElementInstanceKey int64 `json:"elementInstanceKey"`
 }
 
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
@@ -373,7 +373,7 @@ type GetJobsParams struct {
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey    string                  `json:"jobKey"`
+	JobKey    int64                   `json:"jobKey"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -391,7 +391,7 @@ type ModifyProcessInstanceJSONBody struct {
 
 	// ElementInstancesToTerminate Terminates execution token.
 	ElementInstancesToTerminate *[]TerminateElementInstanceData `json:"elementInstancesToTerminate,omitempty"`
-	ProcessInstanceKey          string                          `json:"processInstanceKey"`
+	ProcessInstanceKey          int64                           `json:"processInstanceKey"`
 
 	// Variables Sets process instance variables.
 	Variables *map[string]interface{} `json:"variables,omitempty"`
@@ -399,7 +399,7 @@ type ModifyProcessInstanceJSONBody struct {
 
 // StartProcessInstanceOnElementsJSONBody defines parameters for StartProcessInstanceOnElements.
 type StartProcessInstanceOnElementsJSONBody struct {
-	ProcessDefinitionKey string `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 
 	// StartingElementIds Allows for a start at chosen element id
 	StartingElementIds []string                `json:"startingElementIds"`
@@ -418,10 +418,10 @@ type GetProcessDefinitionsParams struct {
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
-	ProcessDefinitionKey *string `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+	ProcessDefinitionKey *int64 `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
 
 	// ParentProcessInstanceKey Key of the parent process instance
-	ParentProcessInstanceKey *string `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
+	ParentProcessInstanceKey *int64 `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
 
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -434,7 +434,7 @@ type GetProcessInstancesParams struct {
 type CreateProcessInstanceJSONBody struct {
 	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
-	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -568,10 +568,10 @@ type ClientInterface interface {
 	CreateDmnResourceDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetDmnResourceDefinition request
-	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResolveIncident request
-	ResolveIncident(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetJobs request
 	GetJobs(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -603,7 +603,7 @@ type ClientInterface interface {
 	CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessDefinition request
-	GetProcessDefinition(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstances request
 	GetProcessInstances(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -614,16 +614,16 @@ type ClientInterface interface {
 	CreateProcessInstance(ctx context.Context, body CreateProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstance request
-	GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHistory request
-	GetHistory(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetIncidents request
-	GetIncidents(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetIncidents(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstanceJobs request
-	GetProcessInstanceJobs(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStartCpuProfile request
 	TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -680,7 +680,7 @@ func (c *Client) CreateDmnResourceDefinitionWithBody(ctx context.Context, conten
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDmnResourceDefinitionRequest(c.Server, dmnResourceDefinitionKey)
 	if err != nil {
 		return nil, err
@@ -692,7 +692,7 @@ func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefini
 	return c.Client.Do(req)
 }
 
-func (c *Client) ResolveIncident(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolveIncidentRequest(c.Server, incidentKey)
 	if err != nil {
 		return nil, err
@@ -836,7 +836,7 @@ func (c *Client) CreateProcessDefinitionWithBody(ctx context.Context, contentTyp
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessDefinition(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessDefinitionRequest(c.Server, processDefinitionKey)
 	if err != nil {
 		return nil, err
@@ -884,7 +884,7 @@ func (c *Client) CreateProcessInstance(ctx context.Context, body CreateProcessIn
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceRequest(c.Server, processInstanceKey)
 	if err != nil {
 		return nil, err
@@ -896,7 +896,7 @@ func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey stri
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetHistory(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHistoryRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
@@ -908,7 +908,7 @@ func (c *Client) GetHistory(ctx context.Context, processInstanceKey string, para
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetIncidents(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetIncidents(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetIncidentsRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
@@ -920,7 +920,7 @@ func (c *Client) GetIncidents(ctx context.Context, processInstanceKey string, pa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceJobsRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
@@ -1098,7 +1098,7 @@ func NewCreateDmnResourceDefinitionRequestWithBody(server string, contentType st
 }
 
 // NewGetDmnResourceDefinitionRequest generates requests for GetDmnResourceDefinition
-func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey string) (*http.Request, error) {
+func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1132,7 +1132,7 @@ func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey 
 }
 
 // NewResolveIncidentRequest generates requests for ResolveIncident
-func NewResolveIncidentRequest(server string, incidentKey string) (*http.Request, error) {
+func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1517,7 +1517,7 @@ func NewCreateProcessDefinitionRequestWithBody(server string, contentType string
 }
 
 // NewGetProcessDefinitionRequest generates requests for GetProcessDefinition
-func NewGetProcessDefinitionRequest(server string, processDefinitionKey string) (*http.Request, error) {
+func NewGetProcessDefinitionRequest(server string, processDefinitionKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1688,7 +1688,7 @@ func NewCreateProcessInstanceRequestWithBody(server string, contentType string, 
 }
 
 // NewGetProcessInstanceRequest generates requests for GetProcessInstance
-func NewGetProcessInstanceRequest(server string, processInstanceKey string) (*http.Request, error) {
+func NewGetProcessInstanceRequest(server string, processInstanceKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1722,7 +1722,7 @@ func NewGetProcessInstanceRequest(server string, processInstanceKey string) (*ht
 }
 
 // NewGetHistoryRequest generates requests for GetHistory
-func NewGetHistoryRequest(server string, processInstanceKey string, params *GetHistoryParams) (*http.Request, error) {
+func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHistoryParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1794,7 +1794,7 @@ func NewGetHistoryRequest(server string, processInstanceKey string, params *GetH
 }
 
 // NewGetIncidentsRequest generates requests for GetIncidents
-func NewGetIncidentsRequest(server string, processInstanceKey string, params *GetIncidentsParams) (*http.Request, error) {
+func NewGetIncidentsRequest(server string, processInstanceKey int64, params *GetIncidentsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1866,7 +1866,7 @@ func NewGetIncidentsRequest(server string, processInstanceKey string, params *Ge
 }
 
 // NewGetProcessInstanceJobsRequest generates requests for GetProcessInstanceJobs
-func NewGetProcessInstanceJobsRequest(server string, processInstanceKey string, params *GetProcessInstanceJobsParams) (*http.Request, error) {
+func NewGetProcessInstanceJobsRequest(server string, processInstanceKey int64, params *GetProcessInstanceJobsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2060,10 +2060,10 @@ type ClientWithResponsesInterface interface {
 	CreateDmnResourceDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDmnResourceDefinitionResponse, error)
 
 	// GetDmnResourceDefinitionWithResponse request
-	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
+	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
 
 	// ResolveIncidentWithResponse request
-	ResolveIncidentWithResponse(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
 
 	// GetJobsWithResponse request
 	GetJobsWithResponse(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*GetJobsResponse, error)
@@ -2095,7 +2095,7 @@ type ClientWithResponsesInterface interface {
 	CreateProcessDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProcessDefinitionResponse, error)
 
 	// GetProcessDefinitionWithResponse request
-	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
+	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
 
 	// GetProcessInstancesWithResponse request
 	GetProcessInstancesWithResponse(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetProcessInstancesResponse, error)
@@ -2106,16 +2106,16 @@ type ClientWithResponsesInterface interface {
 	CreateProcessInstanceWithResponse(ctx context.Context, body CreateProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProcessInstanceResponse, error)
 
 	// GetProcessInstanceWithResponse request
-	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
+	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
 
 	// GetHistoryWithResponse request
-	GetHistoryWithResponse(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
+	GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
 
 	// GetIncidentsWithResponse request
-	GetIncidentsWithResponse(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error)
+	GetIncidentsWithResponse(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error)
 
 	// GetProcessInstanceJobsWithResponse request
-	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
+	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
 
 	// TestStartCpuProfileWithResponse request
 	TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error)
@@ -2174,7 +2174,7 @@ type CreateDmnResourceDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *struct {
-		DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
+		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 	}
 	JSON400 *Error
 	JSON409 *Error
@@ -2394,7 +2394,7 @@ type CreateProcessDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *struct {
-		ProcessDefinitionKey string `json:"processDefinitionKey"`
+		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 	}
 	JSON400 *Error
 	JSON409 *Error
@@ -2672,7 +2672,7 @@ func (c *ClientWithResponses) CreateDmnResourceDefinitionWithBodyWithResponse(ct
 }
 
 // GetDmnResourceDefinitionWithResponse request returning *GetDmnResourceDefinitionResponse
-func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error) {
+func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error) {
 	rsp, err := c.GetDmnResourceDefinition(ctx, dmnResourceDefinitionKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2681,7 +2681,7 @@ func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.C
 }
 
 // ResolveIncidentWithResponse request returning *ResolveIncidentResponse
-func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
 	rsp, err := c.ResolveIncident(ctx, incidentKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2785,7 +2785,7 @@ func (c *ClientWithResponses) CreateProcessDefinitionWithBodyWithResponse(ctx co
 }
 
 // GetProcessDefinitionWithResponse request returning *GetProcessDefinitionResponse
-func (c *ClientWithResponses) GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error) {
+func (c *ClientWithResponses) GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error) {
 	rsp, err := c.GetProcessDefinition(ctx, processDefinitionKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2820,7 +2820,7 @@ func (c *ClientWithResponses) CreateProcessInstanceWithResponse(ctx context.Cont
 }
 
 // GetProcessInstanceWithResponse request returning *GetProcessInstanceResponse
-func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error) {
+func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error) {
 	rsp, err := c.GetProcessInstance(ctx, processInstanceKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2829,7 +2829,7 @@ func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context
 }
 
 // GetHistoryWithResponse request returning *GetHistoryResponse
-func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error) {
+func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error) {
 	rsp, err := c.GetHistory(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2838,7 +2838,7 @@ func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, proces
 }
 
 // GetIncidentsWithResponse request returning *GetIncidentsResponse
-func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error) {
+func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error) {
 	rsp, err := c.GetIncidents(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2847,7 +2847,7 @@ func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, proc
 }
 
 // GetProcessInstanceJobsWithResponse request returning *GetProcessInstanceJobsResponse
-func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error) {
+func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error) {
 	rsp, err := c.GetProcessInstanceJobs(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2955,7 +2955,7 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
+			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -3313,7 +3313,7 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			ProcessDefinitionKey string `json:"processDefinitionKey"`
+			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

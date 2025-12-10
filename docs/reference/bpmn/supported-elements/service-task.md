@@ -22,26 +22,26 @@ A Service Task is a BPMN flow element that represents work performed automatical
 - Error handling:
 	Service Tasks support error handling through boundary events and fault responses when service calls fail.
 
-- Types of service task handling
-	- **HTTP/REST invocation**
+- Types of service task handling:
+	- **HTTP/REST invocation:**
 		Calls external REST APIs or HTTP endpoints. Sends request data and processes the response to continue execution.
 
-	- **SOAP web service**
+	- **SOAP web service:**
 		Invokes SOAP-based web services with XML payloads. Suitable for enterprise system integration.
 
-	- **Message-based**
+	- **Message-based:**
 		Sends a message to an external system and waits for a correlated response or acknowledgment.
 
-	- **Script execution**
+	- **Script execution:**
 		Executes server-side scripts or expressions to perform calculations, data transformations, or business logic.
 
-	- **Database operations**
+	- **Database operations:**
 		Executes database queries, updates, or stored procedures to interact with data systems.
 
-	- **External worker pattern**
+	- **External worker pattern:**
 		Delegates work to external worker applications that subscribe to task types and handle execution asynchronously.
 
-	- **System integration**
+	- **System integration:**
 		Integrates with third-party systems, microservices, or legacy systems through adapters or connectors.
 
 ## Graphical notation

@@ -8,7 +8,7 @@ A User Task is a BPMN flow element that represents work performed by a human. It
 
 ## Key characteristics
 - Requires human intervention:
-	A User Task pauses the process instance and waits for a human to complete the work and submit a response.
+	a User Task pauses the process instance and waits for a human to complete the work and submit a response.
 
 - Can have incoming and outgoing sequence flows:
 	User Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing based on task outcomes.
@@ -17,26 +17,26 @@ A User Task is a BPMN flow element that represents work performed by a human. It
 	User Tasks can receive data from the process and return data back to continue execution with user-provided information.
 
 - Assignment rules:
-	Tasks can be assigned to specific users, groups, or dynamically based on process variables and expressions.
+	tasks can be assigned to specific users, groups, or dynamically based on process variables and expressions.
 
-- Types of user task handling
-	- **Simple assignment**
-		Task is assigned to a single user or group. The assigned user must claim and complete the task.
+- Types of user task handling:
+	- **Simple assignment:**
+		task is assigned to a single user or group. The assigned user must claim and complete the task.
 
-	- **Pool-based assignment**
-		Task is assigned to a pool of candidates (e.g., all users in a department). Any member can claim and complete it.
+	- **Pool-based assignment:**
+		task is assigned to a pool of candidates (e.g., all users in a department). Any member can claim and complete it.
 
-	- **Dynamic assignment**
-		Task assignment is determined at runtime based on process variables, expressions, or business rules.
+	- **Dynamic assignment:**
+		task assignment is determined at runtime based on process variables, expressions, or business rules.
 
-	- **Escalation**
-		If a User Task is not completed within a specified time, it can be escalated to a manager or supervisor.
+	- **Escalation:**
+		if a User Task is not completed within a specified time, it can be escalated to a manager or supervisor.
 
-	- **Delegation**
-		The assigned user can delegate the task to another user while maintaining audit trail and original assignment context.
+	- **Delegation:**
+		the assigned user can delegate the task to another user while maintaining audit trail and original assignment context.
 
-	- **Priority-based**
-		User Tasks can have priority levels (low, medium, high, critical) to help users prioritize their work queue.
+	- **Priority-based:**
+		user asks can have priority levels (low, medium, high, critical) to help users prioritize their work queue.
 
 ## Graphical notation
 ![User task usage example](./../../assets/bpmn/user_task.svg)

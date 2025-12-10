@@ -6,17 +6,17 @@ sidebar_position: 1
 A Start Event is a BPMN flow element that marks the point where a process or subprocess begins execution. It indicates when and under what conditions a process instance is created.
 
 ## Key characteristics
-- Creates a new process instance
+- Creates a new process instance:
     A Start Event signals the initiation of a process. Each trigger results in one new instance.
 
-- No incoming sequence flows
+- No incoming sequence flows:
   By definition, it cannot have incoming connections, because nothing precedes the start.
 
-- Exactly one required in a top-level process
+- Exactly one required in a top-level process:
   A process must have at least one Start Event.2
   Subprocesses may have multiple start events (for event subprocesses).
 
-- **Type of trigger determines activation**
+- **Type of trigger determines activation:**
   Depending on the type, Start Events react to specific triggers and create new process instances when those triggers occur:
 
   - **None** (manual start):

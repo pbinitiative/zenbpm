@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="User task">
+  <title>User task</title>
+  
+  <!-- Task rectangle -->
+  <rect x="20" y="20" width="200" height="100" fill="white" stroke="black" stroke-width="2" rx="3"/>
+  
+  <!-- User icon head -->
+  <circle cx="42" cy="40" r="8" fill="black"/>
+  
+  <!-- User icon body -->
+  <path d="M 42 50 Q 35 58 30 68 L 54 68 Q 49 58 42 50" fill="black"/>
+</svg>

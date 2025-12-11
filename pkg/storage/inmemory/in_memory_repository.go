@@ -138,10 +138,10 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Con
 	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
 }
 
-func (mem *Storage) GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
 	for _, dec := range mem.DecisionDefinitions[decisionId] {
-		if dec.DecisionDefinitionId != decisionDefinitionId {
+		if dec.DmnResourceDefinitionId != dmnResourceDefinitionId {
 			continue
 		}
 		res = append(res, dec)

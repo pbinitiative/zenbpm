@@ -41,19 +41,19 @@ const (
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
-	DecisionDefinitionId string  `json:"decisionDefinitionId"`
-	DmnData              *string `json:"dmnData,omitempty"`
-	Key                  int64   `json:"key"`
-	ResourceName         string  `json:"resourceName"`
-	Version              int     `json:"version"`
+	DmnData                 *string `json:"dmnData,omitempty"`
+	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
+	Key                     int64   `json:"key"`
+	ResourceName            string  `json:"resourceName"`
+	Version                 int     `json:"version"`
 }
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
-	DecisionDefinitionId string `json:"decisionDefinitionId"`
-	Key                  int64  `json:"key"`
-	ResourceName         string `json:"resourceName"`
-	Version              int    `json:"version"`
+	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
+	Key                     int64   `json:"key"`
+	ResourceName            string  `json:"resourceName"`
+	Version                 int     `json:"version"`
 }
 
 // DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.

@@ -549,7 +549,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 			DecisionType:                 &evaluatedDecision.DecisionType,
 			DmnResourceDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
 			DmnResourceDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
-			DecisionDefinitionId:         &evaluatedDecision.DecisionDefinitionId,
+			DmnResourceDefinitionId:      &evaluatedDecision.DecisionDefinitionId,
 			MatchedRules:                 matchedRules,
 			DecisionOutput:               evaluatedDecisionOutput,
 			EvaluatedInputs:              evaluatedInputs,

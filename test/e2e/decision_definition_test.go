@@ -25,7 +25,7 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 		assert.NoError(t, err)
 		count := 0
 		for _, def := range definitions {
-			if def.DecisionDefinitionId == "example_canAutoLiquidate" {
+			if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
 				count++
 			}
 		}
@@ -38,12 +38,12 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 		assert.Greater(t, len(list), 0)
 		var deployedDefinition public.DmnResourceDefinitionSimple
 		for _, def := range list {
-			if def.DecisionDefinitionId == "example_canAutoLiquidate" {
+			if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
 				deployedDefinition = def
 				break
 			}
 		}
-		assert.Equal(t, "example_canAutoLiquidate", deployedDefinition.DecisionDefinitionId)
+		assert.Equal(t, "example_canAutoLiquidate", *deployedDefinition.DmnResourceDefinitionId)
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
@@ -53,22 +53,22 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 
 		detail, err := getDmnResourceDefinitionDetail(t, list[0].Key)
 		assert.NoError(t, err)
-		assert.Equal(t, "example_canAutoLiquidate", detail.DecisionDefinitionId)
+		assert.Equal(t, "example_canAutoLiquidate", *detail.DmnResourceDefinitionId)
 		assert.NotNil(t, detail.DmnData)
 	})
 }
 
-func getDmnResourceDefinitionDetail(t testing.TB, key string) (public.DmnResourceDefinitionDetail, error) {
+func getDmnResourceDefinitionDetail(t testing.TB, key int64) (public.DmnResourceDefinitionDetail, error) {
 	var detail public.DmnResourceDefinitionDetail
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/dmn-resource-definitions/%s", key)).
+		WithPath(fmt.Sprintf("/v1/dmn-resource-definitions/%d", key)).
 		DoOk()
 	if err != nil {
-		return detail, fmt.Errorf("failed to get %s dmn resource definition detail: %w", key, err)
+		return detail, fmt.Errorf("failed to get %d dmn resource definition detail: %w", key, err)
 	}
 	err = json.Unmarshal(resp, &detail)
 	if err != nil {
-		return detail, fmt.Errorf("failed to unmarshal %s dmn resource definition detail: %w", key, err)
+		return detail, fmt.Errorf("failed to unmarshal %d dmn resource definition detail: %w", key, err)
 	}
 	return detail, nil
 }

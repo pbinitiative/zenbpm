@@ -392,7 +392,7 @@ func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId st
 		Version:                  decisionDefinition.Version,
 		Id:                       decisionDefinition.DecisionID,
 		VersionTag:               decisionDefinition.VersionTag,
-		DecisionDefinitionId:     decisionDefinition.DecisionDefinitionID,
+		DmnResourceDefinitionId:  decisionDefinition.DmnResourceDefinitionID,
 		DmnResourceDefinitionKey: decisionDefinition.DmnResourceDefinitionKey,
 	}
 
@@ -411,7 +411,7 @@ func (rq *DB) GetDecisionDefinitionsById(ctx context.Context, decisionId string)
 			Version:                  dec.Version,
 			Id:                       dec.DecisionID,
 			VersionTag:               dec.VersionTag,
-			DecisionDefinitionId:     dec.DecisionDefinitionID,
+			DmnResourceDefinitionId:  dec.DmnResourceDefinitionID,
 			DmnResourceDefinitionKey: dec.DmnResourceDefinitionKey,
 		}
 	}
@@ -434,19 +434,19 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
-		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
 		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	var res dmnruntime.DecisionDefinition
 	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx,
 		sql.FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams{
-			DecisionID:           decisionId,
-			DecisionDefinitionID: decisionDefinitionId,
+			DecisionID:              decisionId,
+			DmnResourceDefinitionID: dmnResourceDefinitionId,
 		},
 	)
 	if err != nil {
@@ -457,7 +457,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
-		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
 		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
@@ -480,7 +480,7 @@ func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.C
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
-		DecisionDefinitionId:     dbDecision.DecisionDefinitionID,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
 		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
@@ -498,7 +498,7 @@ func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, decision d
 		Version:                  decision.Version,
 		DecisionID:               decision.Id,
 		VersionTag:               decision.VersionTag,
-		DecisionDefinitionID:     decision.DecisionDefinitionId,
+		DmnResourceDefinitionID:  decision.DmnResourceDefinitionId,
 		DmnResourceDefinitionKey: decision.DmnResourceDefinitionKey,
 	})
 	if err != nil {
@@ -515,12 +515,12 @@ func (rq *DB) SaveDmnResourceDefinition(ctx context.Context, definition dmnrunti
 
 func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DmnResourceDefinition) error {
 	err := db.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
-		DmnID:           definition.Id,
-		Key:             definition.Key,
-		Version:         definition.Version,
-		DmnData:         string(definition.DmnData),
-		DmnChecksum:     definition.DmnChecksum[:],
-		DmnResourceName: definition.DmnResourceName,
+		DmnResourceDefinitionID: definition.Id,
+		Key:                     definition.Key,
+		Version:                 definition.Version,
+		DmnData:                 string(definition.DmnData),
+		DmnChecksum:             definition.DmnChecksum[:],
+		DmnResourceName:         definition.DmnResourceName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save dmn resource definition: %w", err)
@@ -549,7 +549,7 @@ func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, decisionD
 	}
 
 	res = dmnruntime.DmnResourceDefinition{
-		Id:              dbDefinition.DmnID,
+		Id:              dbDefinition.DmnResourceDefinitionID,
 		Version:         dbDefinition.Version,
 		Key:             dbDefinition.Key,
 		Definitions:     definitions,
@@ -582,7 +582,7 @@ func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDef
 	}
 
 	res = dmnruntime.DmnResourceDefinition{
-		Id:              drd.DmnID,
+		Id:              drd.DmnResourceDefinitionID,
 		Version:         drd.Version,
 		Key:             drd.Key,
 		Definitions:     definitions,
@@ -616,7 +616,7 @@ func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefini
 			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 		}
 		res[i] = dmnruntime.DmnResourceDefinition{
-			Id:              def.DmnID,
+			Id:              def.DmnResourceDefinitionID,
 			Version:         def.Version,
 			Key:             def.Key,
 			Definitions:     definitions,

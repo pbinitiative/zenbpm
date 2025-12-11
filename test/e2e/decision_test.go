@@ -17,7 +17,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.DecisionDefinitionId == "example_canAutoLiquidate" {
+		if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
 			definition = def
 			break
 		}
@@ -27,7 +27,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			public.Latest,
-			&definition.DecisionDefinitionId,
+			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{
@@ -62,7 +62,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			public.VersionTag,
-			&definition.DecisionDefinitionId,
+			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			&versionTag,
 			map[string]any{
@@ -79,7 +79,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			public.Deployment,
-			&definition.DecisionDefinitionId,
+			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{

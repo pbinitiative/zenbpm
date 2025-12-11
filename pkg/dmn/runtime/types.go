@@ -20,7 +20,7 @@ type DecisionDefinition struct {
 	Version                  int64  // A version of the process, default=1, incremented, when another process with the same ID is loaded
 	Id                       string // The decision ID as defined in the DMN file
 	VersionTag               string // The VersionTag as defined in the DMN file
-	DecisionDefinitionId     string // The DecisionDefinitionId is the parent DMN file's id
+	DmnResourceDefinitionId  string // The DecisionDefinitionId is the parent DMN file's id
 	DmnResourceDefinitionKey int64  // An id to dmn resource definition that hosts the decision table
 }
 type DecisionInstance struct {

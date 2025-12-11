@@ -93,7 +93,7 @@ func getDecisionDefinition(r int64, dmnResourceDefinitionKey int64) dmnruntime.D
 		Version:                  1,
 		Id:                       fmt.Sprintf("id-%d", r),
 		VersionTag:               "123",
-		DecisionDefinitionId:     fmt.Sprintf("id-%d", dmnResourceDefinitionKey),
+		DmnResourceDefinitionId:  fmt.Sprintf("id-%d", dmnResourceDefinitionKey),
 		DmnResourceDefinitionKey: dmnResourceDefinitionKey,
 	}
 }
@@ -715,13 +715,13 @@ func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t
 		assert.NoError(t, err)
 		assert.Equal(t, decisionDefinitionKey, decisionDefinition.DmnResourceDefinitionKey)
 		assert.Equal(t, dec.Id, decisionDefinition.Id)
-		assert.Equal(t, dec.DecisionDefinitionId, decisionDefinition.DecisionDefinitionId)
+		assert.Equal(t, dec.DmnResourceDefinitionId, decisionDefinition.DmnResourceDefinitionId)
 
-		decisionDefinition, err = s.GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(t.Context(), dec.Id, dec.DecisionDefinitionId)
+		decisionDefinition, err = s.GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(t.Context(), dec.Id, dec.DmnResourceDefinitionId)
 		assert.NoError(t, err)
 		assert.Equal(t, decisionDefinitionKey, decisionDefinition.DmnResourceDefinitionKey)
 		assert.Equal(t, dec.Id, decisionDefinition.Id)
-		assert.Equal(t, dec.DecisionDefinitionId, decisionDefinition.DecisionDefinitionId)
+		assert.Equal(t, dec.DmnResourceDefinitionId, decisionDefinition.DmnResourceDefinitionId)
 
 		decisionDefinition, err = s.GetLatestDecisionDefinitionByIdAndVersionTag(t.Context(), dec.Id, dec.VersionTag)
 		assert.NoError(t, err)

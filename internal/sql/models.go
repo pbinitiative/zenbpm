@@ -12,7 +12,7 @@ type DecisionDefinition struct {
 	Version                  int64  `json:"version"`
 	DecisionID               string `json:"decision_id"`
 	VersionTag               string `json:"version_tag"`
-	DecisionDefinitionID     string `json:"decision_definition_id"`
+	DmnResourceDefinitionID  string `json:"dmn_resource_definition_id"`
 	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
 }
 
@@ -25,12 +25,12 @@ type DecisionInstance struct {
 }
 
 type DmnResourceDefinition struct {
-	Key             int64  `json:"key"`
-	Version         int64  `json:"version"`
-	DmnID           string `json:"dmn_id"`
-	DmnData         string `json:"dmn_data"`
-	DmnChecksum     []byte `json:"dmn_checksum"`
-	DmnResourceName string `json:"dmn_resource_name"`
+	Key                     int64  `json:"key"`
+	Version                 int64  `json:"version"`
+	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
+	DmnData                 string `json:"dmn_data"`
+	DmnChecksum             []byte `json:"dmn_checksum"`
+	DmnResourceName         string `json:"dmn_resource_name"`
 }
 
 type ExecutionToken struct {

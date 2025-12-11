@@ -1311,7 +1311,7 @@ components:
           format: int64
         version:
           type: integer
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
         resourceName:
           type: string

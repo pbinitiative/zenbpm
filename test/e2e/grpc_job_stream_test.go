@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +32,7 @@ func TestGrpcJobStream(t *testing.T) {
 	assert.NoError(t, err)
 
 	instances := 10
-	startedInstances := make([]string, 0, instances)
+	startedInstances := make([]int64, 0, instances)
 	for range instances {
 		instance, err = createProcessInstance(t, definition.ProcessDefinitionKey, map[string]any{
 			"testVar": 123,
@@ -162,10 +161,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, incidents, 1)
 
-	key, err := strconv.ParseInt(incidents[0].Key, 10, 64)
-	assert.NoError(t, err)
-
-	resolveIncident(t, key)
+	resolveIncident(t, incidents[0].Key)
 
 	assert.Eventually(t, func() bool {
 		jobs, err := getProcessInstanceJobs(t, instance.Key)

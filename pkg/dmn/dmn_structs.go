@@ -1,8 +1,9 @@
 package dmn
 
 type EvaluatedDRDResult struct {
-	EvaluatedDecisions []EvaluatedDecisionResult
-	DecisionOutput     interface{}
+	EvaluatedDecisions  []EvaluatedDecisionResult
+	DecisionOutput      interface{}
+	DecisionInstanceKey int64
 }
 
 type EvaluatedDecisionResult struct {

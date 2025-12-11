@@ -181,12 +181,6 @@ WHERE
     ELSE
         1
     END
-    AND
-    CASE WHEN ?3 <> 0 THEN
-        process_instance.business_key = ?3
-    ELSE
-        1
-    END
 ORDER BY
     created_at DESC
 LIMIT ?5 OFFSET ?4

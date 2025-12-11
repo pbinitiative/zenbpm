@@ -549,15 +549,15 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 		}
 
 		evaluatedDecisions = append(evaluatedDecisions, &proto.EvaluatedDecisionResult{
-			DecisionId:                &evaluatedDecision.DecisionId,
-			DecisionName:              &evaluatedDecision.DecisionName,
-			DecisionType:              &evaluatedDecision.DecisionType,
-			DecisionDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
-			DecisionDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
-			DecisionDefinitionId:      &evaluatedDecision.DecisionDefinitionId,
-			MatchedRules:              matchedRules,
-			DecisionOutput:            evaluatedDecisionOutput,
-			EvaluatedInputs:           evaluatedInputs,
+			DecisionId:                   &evaluatedDecision.DecisionId,
+			DecisionName:                 &evaluatedDecision.DecisionName,
+			DecisionType:                 &evaluatedDecision.DecisionType,
+			DmnResourceDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
+			DmnResourceDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
+			DecisionDefinitionId:         &evaluatedDecision.DecisionDefinitionId,
+			MatchedRules:                 matchedRules,
+			DecisionOutput:               evaluatedDecisionOutput,
+			EvaluatedInputs:              evaluatedInputs,
 		})
 	}
 
@@ -568,14 +568,14 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 	}, nil
 }
 
-func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.DeployDecisionDefinitionRequest) (*proto.DeployDecisionDefinitionResponse, error) {
+func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.DeployDmnResourceDefinitionRequest) (*proto.DeployDmnResourceDefinitionResponse, error) {
 	var err error
 
 	bpmnEngines := s.controller.Engines(ctx)
 
 	if len(bpmnEngines) == 0 {
 		err = fmt.Errorf("no engines available: %w", err)
-		return &proto.DeployDecisionDefinitionResponse{
+		return &proto.DeployDmnResourceDefinitionResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
 				Message: ptr.To(err.Error()),
@@ -591,10 +591,10 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 				return nil, err
 			}
 		}
-		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", definition, req.GetData(), req.GetKey())
+		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, "", definition, req.GetData(), req.GetKey())
 		if err != nil {
-			err = fmt.Errorf("failed to deploy decision definition: %w", err)
-			return &proto.DeployDecisionDefinitionResponse{
+			err = fmt.Errorf("failed to deploy dmn resource definition: %w", err)
+			return &proto.DeployDmnResourceDefinitionResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
 					Message: ptr.To(err.Error()),
@@ -602,7 +602,7 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 			}, err
 		}
 	}
-	return &proto.DeployDecisionDefinitionResponse{}, nil
+	return &proto.DeployDmnResourceDefinitionResponse{}, nil
 }
 
 func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {

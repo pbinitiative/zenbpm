@@ -239,50 +239,52 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
 	return node.controller.GetReadOnlyDB(ctx)
 }
 
-// GetDecisionDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetDecisionDefinitions(ctx context.Context) ([]proto.DecisionDefinition, error) {
+// GetDmnResourceDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context) ([]proto.DmnResourceDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get decision definitions: %w", err)
+		return nil, fmt.Errorf("failed to get dmn resource definitions: %w", err)
 	}
-	definitions, err := db.Queries.FindAllDecisionDefinitions(ctx)
+	definitions, err := db.Queries.FindAllDmnResourceDefinitions(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read decision definitions from database: %w", err)
+		return nil, fmt.Errorf("failed to read dmn resource definitions from database: %w", err)
 	}
-	resp := make([]proto.DecisionDefinition, 0, len(definitions))
+	resp := make([]proto.DmnResourceDefinition, 0, len(definitions))
 	for _, def := range definitions {
-		resp = append(resp, proto.DecisionDefinition{
+		resp = append(resp, proto.DmnResourceDefinition{
 			Key:                  &def.Key,
 			Version:              ptr.To(int32(def.Version)),
 			DecisionDefinitionId: &def.DmnID,
 			Definition:           []byte(def.DmnData),
+			ResourceName:         &def.DmnResourceName,
 		})
 	}
 	return resp, nil
 }
 
-// GetDecisionDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetDecisionDefinition(ctx context.Context, key int64) (proto.DecisionDefinition, error) {
+// GetDmnResourceDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
+func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (proto.DmnResourceDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.DecisionDefinition{}, fmt.Errorf("failed to get decision definition: %w", err)
+		return proto.DmnResourceDefinition{}, fmt.Errorf("failed to get dmn resource definition: %w", err)
 	}
-	def, err := db.Queries.FindDecisionDefinitionByKey(ctx, key)
+	def, err := db.Queries.FindDmnResourceDefinitionByKey(ctx, key)
 	if err != nil {
-		return proto.DecisionDefinition{}, fmt.Errorf("failed to read process decision from database: %w", err)
+		return proto.DmnResourceDefinition{}, fmt.Errorf("failed to read dmn resource definition by key: %d from database: %w", key, err)
 	}
-	return proto.DecisionDefinition{
+	return proto.DmnResourceDefinition{
 		Key:                  &def.Key,
 		Version:              ptr.To(int32(def.Version)),
 		DecisionDefinitionId: &def.DmnID,
 		Definition:           []byte(def.DmnData),
+		ResourceName:         &def.DmnResourceName,
 	}, nil
 }
 
-func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
-	key, err := node.GetDecisionDefinitionKeyByBytes(ctx, data)
+func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
+	key, err := node.GetDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		log.Error("Failed to get definition key by bytes: %s", err)
+		log.Error("Failed to get dmn resource definition key by bytes: %s", err)
 	}
 	if key != 0 {
 		return DeployResult{key, true}, err
@@ -297,12 +299,12 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 		if err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
-		resp, err := client.DeployDecisionDefinition(ctx, &proto.DeployDecisionDefinitionRequest{
+		resp, err := client.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
 			Key:  ptr.To(definitionKey.Int64()),
 			Data: data,
 		})
 		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("client call to deploy decision definition failed")
+			e := fmt.Errorf("client call to deploy dmn resource definition failed")
 			if err != nil {
 				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
 			} else if resp.Error != nil {
@@ -316,15 +318,15 @@ func (node *ZenNode) DeployDecisionDefinitionToAllPartitions(ctx context.Context
 	return DeployResult{definitionKey.Int64(), false}, nil
 }
 
-func (node *ZenNode) GetDecisionDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) GetDmnResourceDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get database for decision definition key lookup: %w", err)
+		return 0, fmt.Errorf("failed to get database for dmn resource definition key lookup: %w", err)
 	}
 	md5sum := md5.Sum(data)
-	key, err := db.Queries.GetDecisionDefinitionKeyByChecksum(ctx, md5sum[:])
+	key, err := db.Queries.GetDmnResourceDefinitionKeyByChecksum(ctx, md5sum[:])
 	if err != nil && err.Error() != "No result row" {
-		return 0, fmt.Errorf("failed to find decision definition by checksum: %w", err)
+		return 0, fmt.Errorf("failed to find dmn resource definition by checksum: %w", err)
 	}
 	return key, nil
 }

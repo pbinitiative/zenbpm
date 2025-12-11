@@ -1,0 +1,29 @@
+-- name: SaveFlowElementInstance :exec
+INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
+    VALUES (?, ? ,? ,?, ?, ?, ?)
+ON CONFLICT
+    DO UPDATE SET
+       process_instance_key = excluded.process_instance_key,
+       element_id = excluded.element_id;
+
+-- name: DeleteFlowElementInstance :exec
+DELETE FROM flow_element_instance
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
+-- name: GetFlowElementInstance :many
+SELECT
+    *
+FROM
+    flow_element_instance
+WHERE
+    process_instance_key = @process_instance_key;
+
+
+-- name: GetFlowElementInstanceByTokenKey :many
+SELECT
+    *
+FROM
+    flow_element_instance
+WHERE
+    execution_token_key = @execution_token_key
+ORDER BY created_at DESC;

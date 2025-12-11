@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -46,7 +47,7 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 // CreateInstance creates a new instance for a process with given processKey
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil, nil)
+	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
 }
 
 func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
@@ -160,5 +161,14 @@ func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processD
 		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
 	}
 
-	return engine.startInstanceOnElements(ctx, &processDefinition, startingElementIds, runtime.NewVariableHolder(nil, variableContext), nil)
+	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(startingElementIds))
+	for _, startingFlowNodeId := range startingElementIds {
+		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
+		if startNode == nil {
+			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key)
+		}
+		startingFlowNodes = append(startingFlowNodes, startNode)
+	}
+
+	return engine.createInstanceWithStartingElements(ctx, &processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), nil, nil)
 }

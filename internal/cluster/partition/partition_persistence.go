@@ -122,7 +122,7 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 	})
 	var err error
 	if len(processes) > rq.historyDeleteThreshold {
-		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
@@ -779,9 +779,9 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 
 	var parentToken *bpmnruntime.ExecutionToken
 
-	var TargetParentActivityID *string
-	if dbInstance.TargetParentActivityID.Valid {
-		TargetParentActivityID = &dbInstance.TargetParentActivityID.String
+	var SubprocessTargetElementID *string
+	if dbInstance.SubprocessTargetElementID.Valid {
+		SubprocessTargetElementID = &dbInstance.SubprocessTargetElementID.String
 	}
 
 	if dbInstance.ParentProcessExecutionToken.Valid {
@@ -810,7 +810,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
 		State:                       bpmnruntime.ActivityState(dbInstance.State),
 		ParentProcessExecutionToken: parentToken,
-		TargetParentActivityID:      TargetParentActivityID,
+		SubprocessTargetElementId:   SubprocessTargetElementID,
 	}
 
 	return res, nil
@@ -847,7 +847,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
-	var TargetParentActivityID string
+	var SubprocessTargetElementID string
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
@@ -858,9 +858,9 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, bpmnruntime.ExecutionToken{}).Key,
 			Valid: processInstance.ParentProcessExecutionToken != nil,
 		},
-		TargetParentActivityID: ssql.NullString{
-			String: ptr.Deref(processInstance.TargetParentActivityID, TargetParentActivityID),
-			Valid:  processInstance.TargetParentActivityID != nil,
+		SubprocessTargetElementID: ssql.NullString{
+			String: ptr.Deref(processInstance.SubprocessTargetElementId, SubprocessTargetElementID),
+			Valid:  processInstance.SubprocessTargetElementId != nil,
 		},
 	})
 	if err != nil {
@@ -1603,14 +1603,21 @@ func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.Execution
 	})
 }
 
-func (rq *DB) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	return SaveFlowElementHistoryWith(ctx, rq.Queries, historyItem)
+func (rq *DB) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstanceItem, error) {
+	key, err := rq.Queries.GetFlowElementInstanceByTokenKey(ctx, token.Key)
+	if err != nil {
+		return bpmnruntime.FlowElementInstanceItem{}, err
+	}
 }
 
-func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	return db.SaveFlowElementHistory(
+func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstanceItem) error {
+	return SaveFlowElementHistoryWith(ctx, rq.Queries, flowElementInstance)
+}
+
+func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem bpmnruntime.FlowElementInstanceItem) error {
+	return db.SaveFlowElementInstance(
 		ctx,
-		sql.SaveFlowElementHistoryParams{
+		sql.SaveFlowElementInstanceParams{
 			Key:                historyItem.Key,
 			ElementID:          historyItem.ElementId,
 			ProcessInstanceKey: historyItem.ProcessInstanceKey,
@@ -1899,7 +1906,7 @@ func (b *DBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToke
 	return SaveToken(ctx, b.queries, token)
 }
 
-func (b *DBBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
+func (b *DBBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementInstanceItem) error {
 	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
 }
 

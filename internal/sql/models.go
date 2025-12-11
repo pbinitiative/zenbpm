@@ -34,11 +34,14 @@ type ExecutionToken struct {
 	CreatedAt          int64  `json:"created_at"`
 }
 
-type FlowElementHistory struct {
+type FlowElementInstance struct {
 	Key                int64  `json:"key"`
 	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
+	ExecutionTokenKey  int64  `json:"execution_token_key"`
 	CreatedAt          int64  `json:"created_at"`
+	InputVariables     string `json:"input_variables"`
+	OutputVariables    string `json:"output_variables"`
 }
 
 type Incident struct {
@@ -106,7 +109,7 @@ type ProcessInstance struct {
 	State                       int64          `json:"state"`
 	Variables                   string         `json:"variables"`
 	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
-	TargetParentActivityID      sql.NullString `json:"target_parent_activity_id"`
+	SubprocessTargetElementID   sql.NullString `json:"subprocess_target_element_id"`
 	HistoryTtlSec               sql.NullInt64  `json:"history_ttl_sec"`
 	HistoryDeleteSec            sql.NullInt64  `json:"history_delete_sec"`
 }

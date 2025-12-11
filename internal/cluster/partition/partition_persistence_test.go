@@ -274,7 +274,7 @@ func TestDataCleanup(t *testing.T) {
 			ElementId:          "job-123",
 			CreatedAt:          job.CreatedAt,
 		}
-		err = db.SaveFlowElementHistory(ctx, flowHist)
+		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
 	}
 

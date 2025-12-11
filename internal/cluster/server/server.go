@@ -753,7 +753,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			},
 		}, err
 	}
-	flowElements, err := queries.GetFlowElementHistory(ctx, req.GetProcessInstanceKey())
+	flowElements, err := queries.GetFlowElementInstance(ctx, req.GetProcessInstanceKey())
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetFlowElementHistoryResponse{

@@ -109,9 +109,19 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
 
-	err = engine.runProcessInstance(ctx, instance, tokens)
-	if err != nil {
-		return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
+	go func() {
+		tokens, err = engine.handleSimpleTransition(ctx, batch, instance, task, currentToken)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
+		}
+		for _, token := range tokens {
+			batch.SaveToken(ctx, token)
+		}
+
+		err = engine.runProcessInstance(ctx, instance, tokens)
+		if err != nil {
+			return fmt.Errorf("failed to run process instance %d: %w", instance.Key, err)
+		}
 	}
 	return nil
 }
@@ -177,13 +187,6 @@ func (engine *Engine) completeJob(
 
 	currentToken := job.Token
 
-	tokens, err = engine.handleSimpleTransition(ctx, batch, instance, task, currentToken)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)
-	}
-	for _, token := range tokens {
-		batch.SaveToken(ctx, token)
-	}
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to complete job %+v: %w", job, err)

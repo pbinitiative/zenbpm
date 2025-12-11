@@ -26,7 +26,8 @@ type Storage interface {
 	TokenStorageReader
 	TokenStorageWriter
 	DecisionStorage
-	FlowElementHistoryWriter
+	FlowElementInstanceReader
+	FlowElementInstanceWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 
@@ -51,7 +52,7 @@ type Batch interface {
 	JobStorageWriter
 	MessageStorageWriter
 	TokenStorageWriter
-	FlowElementHistoryWriter
+	FlowElementInstanceWriter
 	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
@@ -182,8 +183,14 @@ type TokenStorageWriter interface {
 	SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error
 }
 
-type FlowElementHistoryWriter interface {
-	SaveFlowElementHistory(ctx context.Context, item bpmnruntime.FlowElementHistoryItem) error
+type FlowElementInstanceReader interface {
+	GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstanceItem, error)
+	GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int, error)
+	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstanceItem, error)
+}
+
+type FlowElementInstanceWriter interface {
+	SaveFlowElementInstance(ctx context.Context, item bpmnruntime.FlowElementInstanceItem) error
 }
 
 type IncidentStorageReader interface {

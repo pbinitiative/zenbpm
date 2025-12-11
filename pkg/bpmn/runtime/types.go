@@ -31,7 +31,7 @@ type ProcessInstance struct {
 	CreatedAt                   time.Time
 	State                       ActivityState
 	ParentProcessExecutionToken *ExecutionToken
-	TargetParentActivityID      *string
+	SubprocessTargetElementId   *string
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
@@ -269,11 +269,14 @@ type ExecutionToken struct {
 	CreatedAt          time.Time
 }
 
-type FlowElementHistoryItem struct {
+type FlowElementInstanceItem struct {
 	Key                int64
 	ProcessInstanceKey int64
 	ElementId          string
 	CreatedAt          time.Time
+	ExecutionToken     ExecutionToken
+	InputVariables     map[string]any
+	OutputVariables    map[string]any
 }
 
 // Incident represent an incident that happened in process execution

@@ -1,5 +1,5 @@
 -- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, target_parent_activity_id)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, subprocess_target_element_id)
     VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET

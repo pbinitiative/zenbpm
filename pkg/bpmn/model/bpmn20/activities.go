@@ -38,10 +38,10 @@ type UserTaskElement interface {
 
 type TActivity struct {
 	TFlowNode
-	CompletionQuantity int  `xml:"completionQuantity,attr"`
-	IsForCompensation  bool `xml:"isForCompensation,attr"`
-	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
-
+	MultiInstance      *TMultiInstance `xml:"multiInstanceLoopCharacteristics,omitempty"`
+	CompletionQuantity int             `xml:"completionQuantity,attr"`
+	IsForCompensation  bool            `xml:"isForCompensation,attr"`
+	StartQuantity      int             `xml:"startQuantity,attr" default:"1"`
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
@@ -156,4 +156,13 @@ type TCallActivity struct {
 type TSubProcess struct {
 	TActivity
 	TProcess
+}
+
+type TMultiInstance struct {
+	IsSequential              bool   `xml:"isSequential,attr"`
+	InputCollectionExpression string `xml:"extensionElements>loopCharacteristics>inputCollection,attr"`
+	OutputCollectionName      string `xml:"extensionElements>loopCharacteristics>outputCollection,attr"`
+	InputElementName          string `xml:"extensionElements>loopCharacteristics>inputElement,attr"`
+	OutputElementExpression   string `xml:"extensionElements>loopCharacteristics>outputElement,attr"`
+	CompletionCondition       string `xml:"completionCondition"`
 }

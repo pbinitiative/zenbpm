@@ -12,7 +12,7 @@ import (
 type Querier interface {
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
-	DeleteFlowElementHistory(ctx context.Context, keys []int64) error
+	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
@@ -67,7 +67,8 @@ type Querier interface {
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
 	GetDecisionDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
-	GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error)
+	GetFlowElementInstance(ctx context.Context, processInstanceKey int64) ([]FlowElementInstance, error)
+	GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) ([]FlowElementInstance, error)
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessDefinitionsCount(ctx context.Context) (int64, error)
@@ -78,7 +79,7 @@ type Querier interface {
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)
 	SaveDecision(ctx context.Context, arg SaveDecisionParams) error
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
-	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
+	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error

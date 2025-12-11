@@ -25,7 +25,7 @@ type Storage struct {
 	Timers               map[int64]bpmnruntime.Timer
 	Jobs                 map[int64]bpmnruntime.Job
 	ExecutionTokens      map[int64]bpmnruntime.ExecutionToken
-	FlowElementHistory   map[int64]bpmnruntime.FlowElementHistoryItem
+	FlowElementInstance  map[int64]bpmnruntime.FlowElementInstanceItem
 	Incidents            map[int64]bpmnruntime.Incident
 }
 
@@ -43,7 +43,7 @@ func NewStorage() *Storage {
 		Timers:               make(map[int64]bpmnruntime.Timer),
 		Jobs:                 make(map[int64]bpmnruntime.Job),
 		ExecutionTokens:      make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementHistory:   make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		FlowElementInstance:  make(map[int64]bpmnruntime.FlowElementInstanceItem),
 		Incidents:            make(map[int64]bpmnruntime.Incident),
 	}
 }
@@ -71,8 +71,8 @@ func (mem *Storage) Copy() *Storage {
 	for k, v := range mem.ExecutionTokens {
 		c.ExecutionTokens[k] = v
 	}
-	for k, v := range mem.FlowElementHistory {
-		c.FlowElementHistory[k] = v
+	for k, v := range mem.FlowElementInstance {
+		c.FlowElementInstance[k] = v
 	}
 	for k, v := range mem.Incidents {
 		c.Incidents[k] = v
@@ -561,8 +561,8 @@ func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionTo
 	return nil
 }
 
-func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	mem.FlowElementHistory[historyItem.Key] = historyItem
+func (mem *Storage) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstanceItem) error {
+	mem.FlowElementInstance[historyItem.Key] = historyItem
 	return nil
 }
 
@@ -662,9 +662,9 @@ func (b *StorageBatch) SaveToken(ctx context.Context, token bpmnruntime.Executio
 	return nil
 }
 
-func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
+func (b *StorageBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstanceItem) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveFlowElementHistory(ctx, historyItem)
+		return b.db.SaveFlowElementInstance(ctx, historyItem)
 	})
 	return nil
 }

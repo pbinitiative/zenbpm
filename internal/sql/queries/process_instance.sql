@@ -73,7 +73,12 @@ WHERE
     ELSE
         1
     END
-    AND COALESCE(sqlc.narg('business_key'), business_key) = business_key
+    AND
+    CASE WHEN @business_key <> 0 THEN
+        process_instance.business_key = @business_key
+    ELSE
+        1
+    END
 ORDER BY
     created_at DESC
 LIMIT @size OFFSET @offst;

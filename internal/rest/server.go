@@ -594,7 +594,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
-		definitionKey,
+		&definitionKey,
+		request.Params.BusinessKey,
 		parentInstanceKey,
 		page,
 		size,
@@ -635,6 +636,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				Key:                  fmt.Sprintf("%d", instance.GetKey()),
 				ProcessDefinitionKey: fmt.Sprintf("%d", instance.GetDefinitionKey()),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
+				BusinessKey:          instance.BusinessKey,
 				Variables:            vars,
 			}
 			if instance.GetParentKey() != 0 {

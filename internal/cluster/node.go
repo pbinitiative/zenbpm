@@ -752,6 +752,7 @@ func (node *ZenNode) GetProcessInstances(
 			Size:          &size,
 			Partitions:    []uint32{partitionId},
 			DefinitionKey: processDefinitionKey,
+			ParentKey:     &parentProcessInstanceKey,
 			BusinessKey:   businessKey,
 		})
 		if err != nil || resp.Error != nil {

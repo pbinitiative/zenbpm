@@ -92,6 +92,12 @@ To keep track of the parallel executions the token that activated the gateway is
 
 ## Interacting with the BPMN engine
 
+### Business Key
+
+For the correlation of process instances to external business entities `businessKey` attribute can optionally be used. This attribute allows you to efficiently identify the process instance which is associated with the business entity.
+
+For usage please see [OpenAPI](../../openapi/redocusaurus/api.yaml).
+
 ## Workers
 
 ## Supported elements

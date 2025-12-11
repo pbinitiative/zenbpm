@@ -894,6 +894,11 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		}
 		procInstances := make([]*proto.ProcessInstance, len(instances))
 		for i, inst := range instances {
+			var businessKey *string
+			if inst.BusinessKey.Valid {
+				businessKey = &inst.BusinessKey.String
+			}
+
 			procInstances[i] = &proto.ProcessInstance{
 				Key:           &inst.Key,
 				ProcessId:     ptr.To(definitionMap[inst.ProcessDefinitionKey].BpmnProcessID),
@@ -901,6 +906,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				State:         ptr.To(int64(inst.State)),
 				CreatedAt:     &inst.CreatedAt,
 				DefinitionKey: &inst.ProcessDefinitionKey,
+				BusinessKey:   businessKey,
 			}
 			if inst.ParentProcessExecutionToken.Valid {
 				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})

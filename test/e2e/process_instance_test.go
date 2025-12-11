@@ -143,7 +143,7 @@ func TestBusinessKey(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
 		for _, pi := range processInstances {
-			assert.Equal(t, instance.BusinessKey, ptr.Deref(pi.BusinessKey, ""))
+			assert.Equal(t, bk, ptr.Deref(pi.BusinessKey, ""))
 			assert.NotEmpty(t, pi.Key)
 		}
 	})

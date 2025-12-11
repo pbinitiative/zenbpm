@@ -181,18 +181,23 @@ WHERE
     ELSE
         1
     END
-    AND COALESCE(?3, business_key) = business_key
+    AND
+    CASE WHEN ?3 <> 0 THEN
+        process_instance.business_key = ?3
+    ELSE
+        1
+    END
 ORDER BY
     created_at DESC
 LIMIT ?5 OFFSET ?4
 `
 
 type FindProcessInstancesPageParams struct {
-	ProcessDefinitionKey interface{}    `json:"process_definition_key"`
-	ParentInstanceKey    interface{}    `json:"parent_instance_key"`
-	BusinessKey          sql.NullString `json:"business_key"`
-	Offst                int64          `json:"offst"`
-	Size                 int64          `json:"size"`
+	ProcessDefinitionKey interface{} `json:"process_definition_key"`
+	ParentInstanceKey    interface{} `json:"parent_instance_key"`
+	BusinessKey          interface{} `json:"business_key"`
+	Offst                int64       `json:"offst"`
+	Size                 int64       `json:"size"`
 }
 
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error) {

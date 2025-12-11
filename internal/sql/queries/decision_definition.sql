@@ -1,5 +1,5 @@
 -- name: SaveDecisionDefinition :exec
-INSERT INTO decision_definition(version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key)
+INSERT INTO decision_definition(version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key)
     VALUES (?, ?, ?, ?, ?);
 
 -- name: FindDecisionDefinitionByIdAndDmnResourceDefinitionKey :one
@@ -41,7 +41,7 @@ FROM
     decision_definition d
 WHERE
     decision_id = @decision_id
-    AND decision_definition_id = @decision_definition_id
+    AND dmn_resource_definition_id = @dmn_resource_definition_id
 ORDER BY
     version DESC
 LIMIT 1;

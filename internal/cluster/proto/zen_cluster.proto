@@ -172,7 +172,7 @@ message EvaluatedDecisionResult {
   string decisionType = 3;
   int64 dmnResourceDefinitionVersion = 4;
   int64 dmnResourceDefinitionKey = 5;
-  string decisionDefinitionId = 6;
+  string dmnResourceDefinitionId = 6;
   repeated EvaluatedRule matchedRules = 7 ;
   bytes decisionOutput = 8 ;
   repeated EvaluatedInput evaluatedInputs = 9;
@@ -200,7 +200,7 @@ message EvaluatedInput {
 message DmnResourceDefinition {
   int64 key = 1;
   int32 version = 2;
-  string decision_definition_id = 3;
+  string dmn_resource_definition_id = 3;
   bytes definition = 4;
   string resourceName = 5;
 }

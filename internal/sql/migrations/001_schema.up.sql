@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS incident(
 CREATE TABLE IF NOT EXISTS dmn_resource_definition(
     key INTEGER PRIMARY KEY, -- int64 id of the dmn resource definition
     version integer NOT NULL, -- int64 version of the dmn resource definition
-    dmn_id text NOT NULL, -- id of the dmn resource from xml definition
+    dmn_resource_definition_id text NOT NULL, -- id of the dmn resource from xml definition
     dmn_data text NOT NULL, -- string of the dmn resource definition
     dmn_checksum BLOB NOT NULL, -- md5 checksum of the dmn resource definition
     dmn_resource_name text NOT NULL -- resource name from deployment
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS decision_definition(
     version INTEGER NOT NULL, -- int64 version of the decision definition
     decision_id TEXT NOT NULL, -- id of the decision from xml
     version_tag TEXT NOT NULL, -- string version tag of the decision definition (user defined)
-    decision_definition_id TEXT NOT NULL, -- id of the decision definition from xml dmn decision definition
+    dmn_resource_definition_id TEXT NOT NULL, -- id of the decision definition from xml dmn resource definition
     dmn_resource_definition_key INTEGER NOT NULL, -- int64 reference to dmn resource definition
     FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key) -- reference to decision definition
 );

@@ -97,7 +97,7 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 			Version:                  1,
 			Id:                       definition.Id,
 			VersionTag:               definition.VersionTag.Value,
-			DecisionDefinitionId:     dmnResourceDefinition.Id,
+			DmnResourceDefinitionId:  dmnResourceDefinition.Id,
 			DmnResourceDefinitionKey: dmnResourceDefinition.Key,
 		}
 		decisionDefinitions = append(decisionDefinitions, decisionDefinition)
@@ -180,23 +180,23 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 			if err != nil {
 				return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
-					decisionDefinition.DecisionDefinitionId,
+					decisionDefinition.DmnResourceDefinitionId,
 					decisionDefinition.DmnResourceDefinitionKey,
 					decisionDefinition.Id,
 					err,
 				)
 			}
 		case 2:
-			decisionDefinitionId := decisionPath[0]
+			dmnResourceDefinitionId := decisionPath[0]
 			decisionId = decisionPath[1]
-			decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx, decisionId, decisionDefinitionId)
+			decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx, decisionId, dmnResourceDefinitionId)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s stored in decisionDefinition %s : %w", decisionId, decisionDefinitionId, err)
+				return nil, fmt.Errorf("failed to find decisionDefinition %s stored in dmnResourceDefinition %s : %w", decisionId, dmnResourceDefinitionId, err)
 			}
 			dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find decisionDefinition %s:%d contaning decisionDefinition %s : %w",
-					decisionDefinition.DecisionDefinitionId,
+				return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
+					decisionDefinition.DmnResourceDefinitionId,
 					decisionDefinition.DmnResourceDefinitionKey,
 					decisionDefinition.Id,
 					err,
@@ -216,7 +216,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
-				decisionDefinition.DecisionDefinitionId,
+				decisionDefinition.DmnResourceDefinitionId,
 				decisionDefinition.DmnResourceDefinitionKey,
 				decisionDefinition.Id,
 				err,

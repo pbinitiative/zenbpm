@@ -148,10 +148,10 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 	items := make([]public.DmnResourceDefinitionSimple, 0)
 	for _, p := range definitions {
 		processDefinitionSimple := public.DmnResourceDefinitionSimple{
-			Key:                  p.GetKey(),
-			Version:              int(p.GetVersion()),
-			DecisionDefinitionId: p.GetDecisionDefinitionId(),
-			ResourceName:         *p.ResourceName,
+			Key:                     p.GetKey(),
+			Version:                 int(p.GetVersion()),
+			DmnResourceDefinitionId: p.DmnResourceDefinitionId,
+			ResourceName:            *p.ResourceName,
 		}
 		items = append(items, processDefinitionSimple)
 	}
@@ -202,10 +202,10 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 	}
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
-			DecisionDefinitionId: definition.GetDecisionDefinitionId(),
-			ResourceName:         definition.GetResourceName(),
-			Key:                  definition.GetKey(),
-			Version:              int(definition.GetVersion()),
+			DmnResourceDefinitionId: definition.DmnResourceDefinitionId,
+			ResourceName:            definition.GetResourceName(),
+			Key:                     definition.GetKey(),
+			Version:                 int(definition.GetVersion()),
 		},
 		DmnData: ptr.To(string(definition.GetDefinition())),
 	}, nil
@@ -330,7 +330,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			DecisionType:              evaluatedDecision.GetDecisionType(),
 			DecisionDefinitionVersion: int(evaluatedDecision.GetDmnResourceDefinitionVersion()),
 			DmnResourceDefinitionKey:  evaluatedDecision.GetDmnResourceDefinitionKey(),
-			DecisionDefinitionId:      evaluatedDecision.GetDecisionDefinitionId(),
+			DecisionDefinitionId:      evaluatedDecision.GetDmnResourceDefinitionId(),
 			MatchedRules:              matchedRules,
 			DecisionOutput:            resultDecisionOutput,
 			EvaluatedInputs:           evaluatedInputs,
@@ -522,18 +522,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		size = *request.Params.Size
 	}
 
-	if request.Params.ProcessDefinitionKey == nil {
-		request.Params.ProcessDefinitionKey = ptr.To(int64(0))
-	}
-
-	if request.Params.ParentProcessInstanceKey == nil {
-		request.Params.ParentProcessInstanceKey = ptr.To(int64(0))
-	}
+	definitionKey := ptr.Deref(request.Params.ProcessDefinitionKey, int64(0))
+	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
-		*request.Params.ProcessDefinitionKey,
-		*request.Params.ParentProcessInstanceKey,
+		definitionKey,
+		parentInstanceKey,
 		page,
 		size,
 	)

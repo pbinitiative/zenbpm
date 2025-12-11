@@ -71,7 +71,7 @@ type DecisionDefinitionStorageReader interface {
 
 	GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error)
 
-	GetLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
+	GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error)
 
 	GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
 }

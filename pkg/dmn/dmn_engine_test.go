@@ -52,7 +52,7 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	assert.Equal(t, 1, len(decisions))
 	assert.Equal(t, "example_canAutoLiquidateRule", decisions[0].Id)
 	assert.Equal(t, int64(1), decisions[0].Version)
-	assert.Equal(t, "example_canAutoLiquidate", decisions[0].DecisionDefinitionId)
+	assert.Equal(t, "example_canAutoLiquidate", decisions[0].DmnResourceDefinitionId)
 	assert.Equal(t, metadata.Key, decisions[0].DmnResourceDefinitionKey)
 	assert.Equal(t, "versionTagTest", decisions[0].VersionTag)
 }

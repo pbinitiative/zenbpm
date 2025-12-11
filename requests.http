@@ -18,7 +18,7 @@ Content-Type: application/json
 
 {
   "historyTimeToLive": "1d8h",
-  "processDefinitionKey": "{{definition_key}}",
+  "processDefinitionKey": {{definition_key}},
 	"variables":{
 	  "name": "Test name"
 	}
@@ -42,7 +42,7 @@ POST {{host}}/v1/jobs
 Content-Type: application/json
 
 {
-  "jobKey": "{{ActivateJob.response.body.$[0].key}}",
+  "jobKey": {{ActivateJob.response.body.$[0].key}},
 	"variables": {}
 }
 

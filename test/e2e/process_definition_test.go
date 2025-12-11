@@ -61,17 +61,17 @@ func TestRestApiProcessDefinition(t *testing.T) {
 	})
 }
 
-func getDefinitionDetail(t testing.TB, key string) (public.ProcessDefinitionDetail, error) {
+func getDefinitionDetail(t testing.TB, key int64) (public.ProcessDefinitionDetail, error) {
 	var detail public.ProcessDefinitionDetail
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-definitions/%s", key)).
+		WithPath(fmt.Sprintf("/v1/process-definitions/%d", key)).
 		DoOk()
 	if err != nil {
-		return detail, fmt.Errorf("failed to get %s process definition detail: %w", key, err)
+		return detail, fmt.Errorf("failed to get %d process definition detail: %w", key, err)
 	}
 	err = json.Unmarshal(resp, &detail)
 	if err != nil {
-		return detail, fmt.Errorf("failed to unmarshal %s process definition detail: %w", key, err)
+		return detail, fmt.Errorf("failed to unmarshal %d process definition detail: %w", key, err)
 	}
 	return detail, nil
 }

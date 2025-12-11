@@ -74,7 +74,7 @@ WHERE
         1
     END
     AND
-    CASE WHEN @business_key <> 0 THEN
+    CASE WHEN @business_key IS NOT NULL THEN
         process_instance.business_key = @business_key
     ELSE
         1

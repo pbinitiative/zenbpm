@@ -128,7 +128,6 @@ func TestBusinessKey(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
-		// assert.NotEmpty(t, instance.BusinessKey)
 	})
 
 	t.Run("read instance state", func(t *testing.T) {

@@ -35,6 +35,16 @@ FROM
 WHERE
     process_instance_key = @process_instance_key;
 
+-- name: FindIncidentsPageByProcessInstanceKey :many
+SELECT
+    *,
+    COUNT(*) OVER () AS total_count
+FROM
+    incident
+WHERE
+    process_instance_key = @process_instance_key
+LIMIT @size OFFSET @offset;
+
 -- name: FindIncidentsByExecutionTokenKey :many
 SELECT
     *

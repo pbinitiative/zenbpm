@@ -23,19 +23,14 @@ ORDER BY
 
 -- name: GetProcessDefinitionsPage :many
 SELECT
-    *
+    *,
+    COUNT(*) OVER() AS total_count
 FROM
     process_definition
 ORDER BY
     version DESC
 LIMIT @limit
 OFFSET @offset;
-
--- name: GetProcessDefinitionsCount :one
-SELECT
-    COUNT(1)
-FROM
-    process_definition;
 
 -- name: FindProcessDefinitionByKey :one
 SELECT

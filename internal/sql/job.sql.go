@@ -222,13 +222,14 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 
 const findJobsFilter = `-- name: FindJobsFilter :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token,
+    count(*) OVER () AS total_count
 FROM
     job
 WHERE
     COALESCE(?1, type) = type
     AND COALESCE(?2, state) = state
-LIMIT ?4 offset ?3
+LIMIT ?4 OFFSET ?3
 `
 
 type FindJobsFilterParams struct {
@@ -238,7 +239,20 @@ type FindJobsFilterParams struct {
 	Size   int64          `json:"size"`
 }
 
-func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]Job, error) {
+type FindJobsFilterRow struct {
+	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Type               string `json:"type"`
+	State              int64  `json:"state"`
+	CreatedAt          int64  `json:"created_at"`
+	Variables          string `json:"variables"`
+	ExecutionToken     int64  `json:"execution_token"`
+	TotalCount         int64  `json:"total_count"`
+}
+
+func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]FindJobsFilterRow, error) {
 	rows, err := q.db.QueryContext(ctx, findJobsFilter,
 		arg.Type,
 		arg.State,
@@ -249,9 +263,9 @@ func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) 
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Job{}
+	items := []FindJobsFilterRow{}
 	for rows.Next() {
-		var i Job
+		var i FindJobsFilterRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ElementInstanceKey,
@@ -262,6 +276,7 @@ func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) 
 			&i.CreatedAt,
 			&i.Variables,
 			&i.ExecutionToken,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -278,22 +293,43 @@ func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) 
 
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token,
+    COUNT(*) OVER () AS total_count
 FROM
     job
 WHERE
     process_instance_key = ?1
+LIMIT ?3 OFFSET ?2
 `
 
-func (q *Queries) FindProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]Job, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessInstanceJobs, processInstanceKey)
+type FindProcessInstanceJobsParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	Offset             int64 `json:"offset"`
+	Size               int64 `json:"size"`
+}
+
+type FindProcessInstanceJobsRow struct {
+	Key                int64  `json:"key"`
+	ElementInstanceKey int64  `json:"element_instance_key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	Type               string `json:"type"`
+	State              int64  `json:"state"`
+	CreatedAt          int64  `json:"created_at"`
+	Variables          string `json:"variables"`
+	ExecutionToken     int64  `json:"execution_token"`
+	TotalCount         int64  `json:"total_count"`
+}
+
+func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceJobs, arg.ProcessInstanceKey, arg.Offset, arg.Size)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Job{}
+	items := []FindProcessInstanceJobsRow{}
 	for rows.Next() {
-		var i Job
+		var i FindProcessInstanceJobsRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ElementInstanceKey,
@@ -304,6 +340,7 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, processInstanceKe
 			&i.CreatedAt,
 			&i.Variables,
 			&i.ExecutionToken,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

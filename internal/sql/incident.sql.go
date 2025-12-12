@@ -185,6 +185,68 @@ func (q *Queries) FindIncidentsByProcessInstanceKey(ctx context.Context, process
 	return items, nil
 }
 
+const findIncidentsPageByProcessInstanceKey = `-- name: FindIncidentsPageByProcessInstanceKey :many
+SELECT
+    "key", element_instance_key, element_id, process_instance_key, message, created_at, resolved_at, execution_token,
+    COUNT(*) OVER () AS total_count
+FROM
+    incident
+WHERE
+    process_instance_key = ?1
+LIMIT ?3 OFFSET ?2
+`
+
+type FindIncidentsPageByProcessInstanceKeyParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	Offset             int64 `json:"offset"`
+	Size               int64 `json:"size"`
+}
+
+type FindIncidentsPageByProcessInstanceKeyRow struct {
+	Key                int64         `json:"key"`
+	ElementInstanceKey int64         `json:"element_instance_key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	Message            string        `json:"message"`
+	CreatedAt          int64         `json:"created_at"`
+	ResolvedAt         sql.NullInt64 `json:"resolved_at"`
+	ExecutionToken     int64         `json:"execution_token"`
+	TotalCount         int64         `json:"total_count"`
+}
+
+func (q *Queries) FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg FindIncidentsPageByProcessInstanceKeyParams) ([]FindIncidentsPageByProcessInstanceKeyRow, error) {
+	rows, err := q.db.QueryContext(ctx, findIncidentsPageByProcessInstanceKey, arg.ProcessInstanceKey, arg.Offset, arg.Size)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindIncidentsPageByProcessInstanceKeyRow{}
+	for rows.Next() {
+		var i FindIncidentsPageByProcessInstanceKeyRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Message,
+			&i.CreatedAt,
+			&i.ResolvedAt,
+			&i.ExecutionToken,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveIncident = `-- name: SaveIncident :exec
 INSERT INTO incident(key, element_id, element_instance_key, process_instance_key, message, created_at, resolved_at, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)

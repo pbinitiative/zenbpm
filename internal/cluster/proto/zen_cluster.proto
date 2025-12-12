@@ -426,6 +426,7 @@ message GetProcessInstancesRequest {
 message PartitionedProcessInstances {
   uint32 partition_id = 1;
   repeated ProcessInstance instances = 2;
+  int32 totalCount = 3;
 }
 
 message GetProcessInstancesResponse {
@@ -445,29 +446,38 @@ message GetProcessInstanceResponse {
 
 message GetProcessInstanceJobsRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
 }
 
 message GetProcessInstanceJobsResponse {
   ErrorResult error = 1;
   repeated Job jobs = 2;
+  int32 totalCount = 3;
 }
 
 message GetFlowElementHistoryRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
 }
 
 message GetFlowElementHistoryResponse {
   ErrorResult error = 1;
   repeated FlowElement flow = 2;
+  int32 totalCount = 3;
 }
 
 message GetIncidentsRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
 }
 
 message GetIncidentsResponse {
   ErrorResult error = 1;
   repeated Incident incidents = 2;
+  int32 totalCount = 3;
 }
 
 message GetJobsRequest {
@@ -481,6 +491,7 @@ message GetJobsRequest {
 message PartitionedJobs {
   uint32 partition_id = 1;
   repeated Job jobs = 2;
+  int32 totalCount = 3;
 }
 
 message GetJobsResponse {

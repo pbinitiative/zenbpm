@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -102,25 +101,6 @@ func (s *Server) Stop(ctx context.Context) {
 	}
 }
 
-func getKeyFromString(s string) (int64, error) {
-	key, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return key, fmt.Errorf("failed to parse key: %w", err)
-	}
-	return key, nil
-}
-
-func getOptionalKeyFromString(s *string) (int64, error) {
-	if s == nil || *s == "" {
-		return 0, nil
-	}
-	key, err := strconv.ParseInt(*s, 10, 64)
-	if err != nil {
-		return key, fmt.Errorf("failed to parse key: %w", err)
-	}
-	return key, nil
-}
-
 // TODO: implement turn off switch in regular usage
 func (s *Server) TestStartCpuProfile(ctx context.Context, request public.TestStartCpuProfileRequestObject) (public.TestStartCpuProfileResponseObject, error) {
 
@@ -168,10 +148,10 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 	items := make([]public.DmnResourceDefinitionSimple, 0)
 	for _, p := range definitions {
 		processDefinitionSimple := public.DmnResourceDefinitionSimple{
-			Key:                  fmt.Sprintf("%d", p.GetKey()),
-			Version:              int(p.GetVersion()),
-			DecisionDefinitionId: p.GetDecisionDefinitionId(),
-			ResourceName:         *p.ResourceName,
+			Key:                     p.GetKey(),
+			Version:                 int(p.GetVersion()),
+			DmnResourceDefinitionId: p.DmnResourceDefinitionId,
+			ResourceName:            *p.ResourceName,
 		}
 		items = append(items, processDefinitionSimple)
 	}
@@ -213,14 +193,7 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 }
 
 func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.GetDmnResourceDefinitionRequestObject) (public.GetDmnResourceDefinitionResponseObject, error) {
-	key, err := getKeyFromString(request.DmnResourceDefinitionKey)
-	if err != nil {
-		return public.GetDmnResourceDefinition400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	definition, err := s.node.GetDmnResourceDefinition(ctx, key)
+	definition, err := s.node.GetDmnResourceDefinition(ctx, request.DmnResourceDefinitionKey)
 	if err != nil {
 		return public.GetDmnResourceDefinition502JSONResponse{
 			Code:    "TODO",
@@ -229,10 +202,10 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 	}
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
-			DecisionDefinitionId: definition.GetDecisionDefinitionId(),
-			ResourceName:         definition.GetResourceName(),
-			Key:                  fmt.Sprintf("%d", definition.GetKey()),
-			Version:              int(definition.GetVersion()),
+			DmnResourceDefinitionId: definition.DmnResourceDefinitionId,
+			ResourceName:            definition.GetResourceName(),
+			Key:                     definition.GetKey(),
+			Version:                 int(definition.GetVersion()),
 		},
 		DmnData: ptr.To(string(definition.GetDefinition())),
 	}, nil
@@ -261,7 +234,7 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 	}
 
 	return public.CreateDmnResourceDefinition201JSONResponse{
-		DmnResourceDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
+		DmnResourceDefinitionKey: deployResult.Key,
 	}, nil
 }
 
@@ -356,8 +329,8 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			DecisionName:              evaluatedDecision.GetDecisionName(),
 			DecisionType:              evaluatedDecision.GetDecisionType(),
 			DecisionDefinitionVersion: int(evaluatedDecision.GetDmnResourceDefinitionVersion()),
-			DmnResourceDefinitionKey:  fmt.Sprintf("%d", evaluatedDecision.GetDmnResourceDefinitionKey()),
-			DecisionDefinitionId:      evaluatedDecision.GetDecisionDefinitionId(),
+			DmnResourceDefinitionKey:  evaluatedDecision.GetDmnResourceDefinitionKey(),
+			DecisionDefinitionId:      evaluatedDecision.GetDmnResourceDefinitionId(),
 			MatchedRules:              matchedRules,
 			DecisionOutput:            resultDecisionOutput,
 			EvaluatedInputs:           evaluatedInputs,
@@ -387,19 +360,12 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	}
 
 	return public.CreateProcessDefinition201JSONResponse{
-		ProcessDefinitionKey: fmt.Sprintf("%d", deployResult.Key),
+		ProcessDefinitionKey: deployResult.Key,
 	}, nil
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	key, err := getKeyFromString(request.Body.JobKey)
-	if err != nil {
-		return public.CompleteJob400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	err = s.node.CompleteJob(ctx, key, ptr.Deref(request.Body.Variables, map[string]any{}))
+	err := s.node.CompleteJob(ctx, request.Body.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
 		return public.CompleteJob502JSONResponse{
 			Code:    "TODO",
@@ -443,7 +409,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for i, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:           fmt.Sprintf("%d", p.GetKey()),
+			Key:           p.GetKey(),
 			Version:       int(p.GetVersion()),
 			BpmnProcessId: p.GetProcessId(),
 		}
@@ -458,14 +424,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
-	key, err := getKeyFromString(request.ProcessDefinitionKey)
-	if err != nil {
-		return public.GetProcessDefinition400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	definition, err := s.node.GetProcessDefinition(ctx, key)
+	definition, err := s.node.GetProcessDefinition(ctx, request.ProcessDefinitionKey)
 	if err != nil {
 		return public.GetProcessDefinition500JSONResponse{
 			Code:    "TODO",
@@ -475,7 +434,7 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	return public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: definition.GetProcessId(),
-			Key:           fmt.Sprintf("%d", definition.GetKey()),
+			Key:           definition.GetKey(),
 			Version:       int(definition.GetVersion()),
 		},
 		BpmnData: ptr.To(string(definition.GetDefinition())),
@@ -483,13 +442,6 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 }
 
 func (s *Server) CreateProcessInstance(ctx context.Context, request public.CreateProcessInstanceRequestObject) (public.CreateProcessInstanceResponseObject, error) {
-	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
-	if err != nil {
-		return public.CreateProcessInstance400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
@@ -506,7 +458,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		ttl = &parsedTTL
 	}
 
-	process, err := s.node.CreateInstance(ctx, key, variables, ttl, request.Body.BusinessKey)
+	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -523,8 +475,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}
 	return public.CreateProcessInstance201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-		Key:                  fmt.Sprintf("%d", process.GetKey()),
-		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+		Key:                  process.GetKey(),
+		ProcessDefinitionKey: process.GetDefinitionKey(),
 		// TODO: make sure its the same string
 		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
 		Variables: processVars,
@@ -532,18 +484,11 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 }
 
 func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request public.StartProcessInstanceOnElementsRequestObject) (public.StartProcessInstanceOnElementsResponseObject, error) {
-	key, err := getKeyFromString(request.Body.ProcessDefinitionKey)
-	if err != nil {
-		return public.StartProcessInstanceOnElements400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
 	}
-	process, err := s.node.StartProcessInstanceOnElements(ctx, key, request.Body.StartingElementIds, variables)
+	process, err := s.node.StartProcessInstanceOnElements(ctx, request.Body.ProcessDefinitionKey, request.Body.StartingElementIds, variables)
 	if err != nil {
 		return public.StartProcessInstanceOnElements502JSONResponse{
 			Code:    "TODO",
@@ -560,8 +505,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 	}
 	return public.StartProcessInstanceOnElements201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-		Key:                  fmt.Sprintf("%d", process.GetKey()),
-		ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+		Key:                  process.GetKey(),
+		ProcessDefinitionKey: process.GetDefinitionKey(),
 		// TODO: make sure its the same string
 		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
 		Variables: processVars,
@@ -578,21 +523,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		size = *request.Params.Size
 	}
 
-	definitionKey, err := getOptionalKeyFromString(request.Params.ProcessDefinitionKey)
-	if err != nil {
-		return public.GetProcessInstances400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-
-	parentInstanceKey, err := getOptionalKeyFromString(request.Params.ParentProcessInstanceKey)
-	if err != nil {
-		return public.GetProcessInstances400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
+	definitionKey := ptr.Deref(request.Params.ProcessDefinitionKey, int64(0))
+	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
@@ -635,14 +567,14 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
-				Key:                  fmt.Sprintf("%d", instance.GetKey()),
-				ProcessDefinitionKey: fmt.Sprintf("%d", instance.GetDefinitionKey()),
+				Key:                  instance.GetKey(),
+				ProcessDefinitionKey: instance.GetDefinitionKey(),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
 				BusinessKey:          instance.BusinessKey,
 				Variables:            vars,
 			}
 			if instance.GetParentKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(fmt.Sprintf("%d", instance.GetParentKey()))
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentKey())
 			}
 		}
 	}
@@ -651,14 +583,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
-	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
-	if err != nil {
-		return public.GetProcessInstance400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, instanceKey)
+	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -679,7 +604,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
-			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
 			State:              runtime.ActivityState(elementInstance.GetState()).String(),
 		})
 	}
@@ -687,23 +612,16 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 	return &public.GetProcessInstance200JSONResponse{
 		ActiveElementInstances: respActiveElementInstances,
 		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
-		Key:                    fmt.Sprintf("%d", instance.GetKey()),
+		Key:                    instance.GetKey(),
 		BusinessKey:            instance.BusinessKey,
-		ProcessDefinitionKey:   fmt.Sprintf("%d", instance.GetDefinitionKey()),
+		ProcessDefinitionKey:   instance.GetDefinitionKey(),
 		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
 		Variables:              vars,
 	}, nil
 }
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
-	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
-	if err != nil {
-		return public.GetHistory400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	flow, err := s.node.GetFlowElementHistory(ctx, instanceKey)
+	flow, err := s.node.GetFlowElementHistory(ctx, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetHistory502JSONResponse{
 			Code:    "TODO",
@@ -712,9 +630,9 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	}
 	resp := make([]public.FlowElementHistory, len(flow))
 	for i, flowNode := range flow {
-		key := fmt.Sprintf("%d", flowNode.GetKey())
+		key := flowNode.GetKey()
 		createdAt := time.UnixMilli(flowNode.GetCreatedAt())
-		processInstanceKey := fmt.Sprintf("%d", flowNode.GetProcessInstanceKey())
+		processInstanceKey := flowNode.GetProcessInstanceKey()
 		resp[i] = public.FlowElementHistory{
 			Key:                key,
 			CreatedAt:          createdAt,
@@ -733,14 +651,7 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 }
 
 func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetProcessInstanceJobsRequestObject) (public.GetProcessInstanceJobsResponseObject, error) {
-	instanceKey, err := getKeyFromString(request.ProcessInstanceKey)
-	if err != nil {
-		return public.GetProcessInstanceJobs400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	jobs, err := s.node.GetProcessInstanceJobs(ctx, instanceKey)
+	jobs, err := s.node.GetProcessInstanceJobs(ctx, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetProcessInstanceJobs502JSONResponse{
 			Code:    "TODO",
@@ -760,8 +671,8 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 		resp[i] = public.Job{
 			CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 			ElementId:          job.GetElementId(),
-			Key:                fmt.Sprintf("%d", job.GetKey()),
-			ProcessInstanceKey: fmt.Sprintf("%d", job.GetProcessInstanceKey()),
+			Key:                job.GetKey(),
+			ProcessInstanceKey: job.GetProcessInstanceKey(),
 			State:              getRestJobState(runtime.ActivityState(job.GetState())),
 			Type:               job.GetType(),
 			Variables:          vars,
@@ -836,11 +747,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
-				Key:                fmt.Sprintf("%d", job.GetKey()),
+				Key:                job.GetKey(),
 				State:              getRestJobState(runtime.ActivityState(job.GetState())),
 				Variables:          vars,
 				ElementId:          job.GetElementId(),
-				ProcessInstanceKey: fmt.Sprintf("%d", job.GetProcessInstanceKey()),
+				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
 			}
 		}
@@ -882,14 +793,7 @@ func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInst
 }
 
 func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {
-	incidentKey, err := getKeyFromString(request.ProcessInstanceKey)
-	if err != nil {
-		return public.GetIncidents400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-	incidents, err := s.node.GetIncidents(ctx, incidentKey)
+	incidents, err := s.node.GetIncidents(ctx, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetIncidents502JSONResponse{
 			Code:    "TODO",
@@ -900,8 +804,8 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	resp := make([]public.Incident, len(incidents))
 	for i, incident := range incidents {
 		resp[i] = public.Incident{
-			Key:                fmt.Sprintf("%d", incident.GetKey()),
-			ElementInstanceKey: fmt.Sprintf("%d", incident.GetElementInstanceKey()),
+			Key:                incident.GetKey(),
+			ElementInstanceKey: incident.GetElementInstanceKey(),
 			ElementId:          incident.GetElementId(),
 			CreatedAt:          time.UnixMilli(incident.GetCreatedAt()),
 			ResolvedAt: func() *time.Time {
@@ -910,9 +814,9 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 				}
 				return nil
 			}(),
-			ProcessInstanceKey: fmt.Sprintf("%d", incident.GetProcessInstanceKey()),
+			ProcessInstanceKey: incident.GetProcessInstanceKey(),
 			Message:            incident.GetMessage(),
-			ExecutionToken:     fmt.Sprintf("%d", incident.GetExecutionToken()),
+			ExecutionToken:     incident.GetExecutionToken(),
 		}
 	}
 	// TODO: Paging needs to be implemented properly
@@ -927,15 +831,7 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 }
 
 func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveIncidentRequestObject) (public.ResolveIncidentResponseObject, error) {
-	incidentKey, err := getKeyFromString(request.IncidentKey)
-	if err != nil {
-		return public.ResolveIncident400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
-
-	err = s.node.ResolveIncident(ctx, incidentKey)
+	err := s.node.ResolveIncident(ctx, request.IncidentKey)
 
 	if err != nil {
 		return public.ResolveIncident502JSONResponse{
@@ -948,13 +844,6 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 }
 
 func (s *Server) ModifyProcessInstance(ctx context.Context, request public.ModifyProcessInstanceRequestObject) (public.ModifyProcessInstanceResponseObject, error) {
-	key, err := getKeyFromString(request.Body.ProcessInstanceKey)
-	if err != nil {
-		return public.ModifyProcessInstance400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
-	}
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {
 		variables = *request.Body.Variables
@@ -972,18 +861,11 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 	if request.Body.ElementInstancesToTerminate != nil {
 		elementInstancesToTerminate = make([]int64, 0, len(*request.Body.ElementInstancesToTerminate))
 		for _, data := range *request.Body.ElementInstancesToTerminate {
-			executionTokenKey, err := getKeyFromString(data.ElementInstanceKey)
-			if err != nil {
-				return public.ModifyProcessInstance400JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-			elementInstancesToTerminate = append(elementInstancesToTerminate, executionTokenKey)
+			elementInstancesToTerminate = append(elementInstancesToTerminate, data.ElementInstanceKey)
 		}
 	}
 
-	process, activeElementInstances, err := s.node.ModifyProcessInstance(ctx, key, elementInstancesToTerminate, elementInstancesToStart, variables)
+	process, activeElementInstances, err := s.node.ModifyProcessInstance(ctx, request.Body.ProcessInstanceKey, elementInstancesToTerminate, elementInstancesToStart, variables)
 	if err != nil {
 		return public.ModifyProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -1005,7 +887,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 		respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
-			ElementInstanceKey: strconv.FormatInt(elementInstance.GetElementInstanceKey(), 10),
+			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
 			State:              runtime.ActivityState(elementInstance.GetState()).String(),
 		})
 	}
@@ -1013,8 +895,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 	return public.ModifyProcessInstance201JSONResponse{
 		ProcessInstance: &public.ProcessInstance{
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-			Key:                  fmt.Sprintf("%d", process.GetKey()),
-			ProcessDefinitionKey: fmt.Sprintf("%d", process.GetDefinitionKey()),
+			Key:                  process.GetKey(),
+			ProcessDefinitionKey: process.GetDefinitionKey(),
 			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
 			Variables:            processVars,
 		},

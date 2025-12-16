@@ -11,7 +11,7 @@ import (
 
 const findDecisionDefinitionByIdAndDmnResourceDefinitionKey = `-- name: FindDecisionDefinitionByIdAndDmnResourceDefinitionKey :one
 SELECT
-    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+    version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
@@ -31,7 +31,7 @@ func (q *Queries) FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx cont
 		&i.Version,
 		&i.DecisionID,
 		&i.VersionTag,
-		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionID,
 		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
@@ -39,7 +39,7 @@ func (q *Queries) FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx cont
 
 const findDecisionDefinitionsById = `-- name: FindDecisionDefinitionsById :many
 SELECT
-    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+    version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
@@ -61,7 +61,7 @@ func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, decisionID st
 			&i.Version,
 			&i.DecisionID,
 			&i.VersionTag,
-			&i.DecisionDefinitionID,
+			&i.DmnResourceDefinitionID,
 			&i.DmnResourceDefinitionKey,
 		); err != nil {
 			return nil, err
@@ -79,7 +79,7 @@ func (q *Queries) FindDecisionDefinitionsById(ctx context.Context, decisionID st
 
 const findLatestDecisionDefinitionById = `-- name: FindLatestDecisionDefinitionById :one
 SELECT
-    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+    version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
@@ -96,7 +96,7 @@ func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, decision
 		&i.Version,
 		&i.DecisionID,
 		&i.VersionTag,
-		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionID,
 		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
@@ -104,30 +104,30 @@ func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, decision
 
 const findLatestDecisionDefinitionByIdAndDecisionDefinitionId = `-- name: FindLatestDecisionDefinitionByIdAndDecisionDefinitionId :one
 SELECT
-    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+    version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
     decision_definition d
 WHERE
     decision_id = ?1
-    AND decision_definition_id = ?2
+    AND dmn_resource_definition_id = ?2
 ORDER BY
     version DESC
 LIMIT 1
 `
 
 type FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams struct {
-	DecisionID           string `json:"decision_id"`
-	DecisionDefinitionID string `json:"decision_definition_id"`
+	DecisionID              string `json:"decision_id"`
+	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
 }
 
 func (q *Queries) FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DecisionDefinitionID)
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DmnResourceDefinitionID)
 	var i DecisionDefinition
 	err := row.Scan(
 		&i.Version,
 		&i.DecisionID,
 		&i.VersionTag,
-		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionID,
 		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
@@ -135,7 +135,7 @@ func (q *Queries) FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx co
 
 const findLatestDecisionDefinitionByIdAndVersionTag = `-- name: FindLatestDecisionDefinitionByIdAndVersionTag :one
 SELECT
-    version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key
+    version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
     decision_definition
 WHERE
@@ -158,14 +158,14 @@ func (q *Queries) FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Cont
 		&i.Version,
 		&i.DecisionID,
 		&i.VersionTag,
-		&i.DecisionDefinitionID,
+		&i.DmnResourceDefinitionID,
 		&i.DmnResourceDefinitionKey,
 	)
 	return i, err
 }
 
 const saveDecisionDefinition = `-- name: SaveDecisionDefinition :exec
-INSERT INTO decision_definition(version, decision_id, version_tag, decision_definition_id, dmn_resource_definition_key)
+INSERT INTO decision_definition(version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key)
     VALUES (?, ?, ?, ?, ?)
 `
 
@@ -173,7 +173,7 @@ type SaveDecisionDefinitionParams struct {
 	Version                  int64  `json:"version"`
 	DecisionID               string `json:"decision_id"`
 	VersionTag               string `json:"version_tag"`
-	DecisionDefinitionID     string `json:"decision_definition_id"`
+	DmnResourceDefinitionID  string `json:"dmn_resource_definition_id"`
 	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
 }
 
@@ -182,7 +182,7 @@ func (q *Queries) SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDe
 		arg.Version,
 		arg.DecisionID,
 		arg.VersionTag,
-		arg.DecisionDefinitionID,
+		arg.DmnResourceDefinitionID,
 		arg.DmnResourceDefinitionKey,
 	)
 	return err

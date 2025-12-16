@@ -252,11 +252,11 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context) ([]proto.Dmn
 	resp := make([]proto.DmnResourceDefinition, 0, len(definitions))
 	for _, def := range definitions {
 		resp = append(resp, proto.DmnResourceDefinition{
-			Key:                  &def.Key,
-			Version:              ptr.To(int32(def.Version)),
-			DecisionDefinitionId: &def.DmnID,
-			Definition:           []byte(def.DmnData),
-			ResourceName:         &def.DmnResourceName,
+			Key:                     &def.Key,
+			Version:                 ptr.To(int32(def.Version)),
+			DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
+			Definition:              []byte(def.DmnData),
+			ResourceName:            &def.DmnResourceName,
 		})
 	}
 	return resp, nil
@@ -273,11 +273,11 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 		return proto.DmnResourceDefinition{}, fmt.Errorf("failed to read dmn resource definition by key: %d from database: %w", key, err)
 	}
 	return proto.DmnResourceDefinition{
-		Key:                  &def.Key,
-		Version:              ptr.To(int32(def.Version)),
-		DecisionDefinitionId: &def.DmnID,
-		Definition:           []byte(def.DmnData),
-		ResourceName:         &def.DmnResourceName,
+		Key:                     &def.Key,
+		Version:                 ptr.To(int32(def.Version)),
+		DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
+		Definition:              []byte(def.DmnData),
+		ResourceName:            &def.DmnResourceName,
 	}, nil
 }
 

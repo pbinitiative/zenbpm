@@ -148,11 +148,11 @@ func TestBusinessKey(t *testing.T) {
 	})
 }
 
-func createProcessInstance(t testing.TB, processDefinitionKey string, variables map[string]any) (public.ProcessInstance, error) {
+func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
 	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
 }
 
-func createProcessInstanceWithBusinessKey(t testing.TB, processDefinitionKey string, businessKey *string, variables map[string]any) (public.ProcessInstance, error) {
+func createProcessInstanceWithBusinessKey(t testing.TB, processDefinitionKey int64, businessKey *string, variables map[string]any) (public.ProcessInstance, error) {
 	req := public.CreateProcessInstanceJSONBody{
 		ProcessDefinitionKey: processDefinitionKey,
 		BusinessKey:          businessKey,
@@ -175,9 +175,9 @@ func createProcessInstanceWithBusinessKey(t testing.TB, processDefinitionKey str
 	return instance, nil
 }
 
-func getProcessInstance(t testing.TB, key string) (public.ProcessInstance, error) {
+func getProcessInstance(t testing.TB, key int64) (public.ProcessInstance, error) {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%s", key)).
+		WithPath(fmt.Sprintf("/v1/process-instances/%d", key)).
 		DoOk()
 	if err != nil {
 		return public.ProcessInstance{}, fmt.Errorf("failed to read process instance: %w", err)
@@ -191,9 +191,9 @@ func getProcessInstance(t testing.TB, key string) (public.ProcessInstance, error
 	return instance, nil
 }
 
-func getChildInstances(t testing.TB, key string) (public.ProcessInstancePage, error) {
+func getChildInstances(t testing.TB, key int64) (public.ProcessInstancePage, error) {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%s", key)).
+		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d", key)).
 		DoOk()
 	if err != nil {
 		return public.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)
@@ -207,9 +207,9 @@ func getChildInstances(t testing.TB, key string) (public.ProcessInstancePage, er
 	return page, nil
 }
 
-func getProcessInstanceJobs(t testing.TB, key string) ([]public.Job, error) {
+func getProcessInstanceJobs(t testing.TB, key int64) ([]public.Job, error) {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%s/jobs", key)).
+		WithPath(fmt.Sprintf("/v1/process-instances/%d/jobs", key)).
 		DoOk()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
@@ -223,9 +223,9 @@ func getProcessInstanceJobs(t testing.TB, key string) ([]public.Job, error) {
 	return jobPage.Items, nil
 }
 
-func getProcessInstanceIncidents(t testing.TB, key string) ([]public.Incident, error) {
+func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, error) {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%s/incidents", key)).
+		WithPath(fmt.Sprintf("/v1/process-instances/%d/incidents", key)).
 		DoOk()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read process instance incidents: %w", err)

@@ -55,10 +55,10 @@ type DmnResourceDefinitionDetail struct {
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
-	DecisionDefinitionId string `json:"decisionDefinitionId"`
-	Key                  string `json:"key"`
-	ResourceName         string `json:"resourceName"`
-	Version              int    `json:"version"`
+	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
+	Key                     int64   `json:"key"`
+	ResourceName            string  `json:"resourceName"`
+	Version                 int     `json:"version"`
 }
 
 // DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
@@ -73,7 +73,7 @@ type DmnResourceDefinitionsPage struct {
 type ElementInstance struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
-	ElementInstanceKey string    `json:"elementInstanceKey"`
+	ElementInstanceKey int64     `json:"elementInstanceKey"`
 	State              string    `json:"state"`
 }
 
@@ -112,7 +112,7 @@ type EvaluatedDecisionResult struct {
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
-	DmnResourceDefinitionKey  string                   `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
 }
@@ -128,8 +128,8 @@ type EvaluatedDecisionRule struct {
 type FlowElementHistory struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
-	Key                string    `json:"key"`
-	ProcessInstanceKey string    `json:"processInstanceKey"`
+	Key                int64     `json:"key"`
+	ProcessInstanceKey int64     `json:"processInstanceKey"`
 }
 
 // FlowElementHistoryPage defines model for FlowElementHistoryPage.
@@ -144,11 +144,11 @@ type FlowElementHistoryPage struct {
 type Incident struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	ElementId          string     `json:"elementId"`
-	ElementInstanceKey string     `json:"elementInstanceKey"`
-	ExecutionToken     string     `json:"executionToken"`
-	Key                string     `json:"key"`
+	ElementInstanceKey int64      `json:"elementInstanceKey"`
+	ExecutionToken     int64      `json:"executionToken"`
+	Key                int64      `json:"key"`
 	Message            string     `json:"message"`
-	ProcessInstanceKey string     `json:"processInstanceKey"`
+	ProcessInstanceKey int64      `json:"processInstanceKey"`
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
@@ -164,8 +164,8 @@ type IncidentPage struct {
 type Job struct {
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
-	Key                string                 `json:"key"`
-	ProcessInstanceKey string                 `json:"processInstanceKey"`
+	Key                int64                  `json:"key"`
+	ProcessInstanceKey int64                  `json:"processInstanceKey"`
 	State              JobState               `json:"state"`
 	Type               string                 `json:"type"`
 	Variables          map[string]interface{} `json:"variables"`
@@ -243,7 +243,7 @@ type ProcessDefinitionDetail struct {
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
 type ProcessDefinitionSimple struct {
 	BpmnProcessId string `json:"bpmnProcessId"`
-	Key           string `json:"key"`
+	Key           int64  `json:"key"`
 	Version       int    `json:"version"`
 }
 
@@ -260,9 +260,9 @@ type ProcessInstance struct {
 	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
 	BusinessKey              *string                `json:"businessKey,omitempty"`
 	CreatedAt                time.Time              `json:"createdAt"`
-	Key                      string                 `json:"key"`
-	ParentProcessInstanceKey *string                `json:"parentProcessInstanceKey,omitempty"`
-	ProcessDefinitionKey     string                 `json:"processDefinitionKey"`
+	Key                      int64                  `json:"key"`
+	ParentProcessInstanceKey *int64                 `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                  `json:"processDefinitionKey"`
 	State                    ProcessInstanceState   `json:"state"`
 	Variables                map[string]interface{} `json:"variables"`
 }
@@ -286,7 +286,7 @@ type StartElementInstanceData struct {
 
 // TerminateElementInstanceData defines model for TerminateElementInstanceData.
 type TerminateElementInstanceData struct {
-	ElementInstanceKey string `json:"elementInstanceKey"`
+	ElementInstanceKey int64 `json:"elementInstanceKey"`
 }
 
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
@@ -323,7 +323,7 @@ type GetJobsParams struct {
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey    string                  `json:"jobKey"`
+	JobKey    int64                   `json:"jobKey"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -341,7 +341,7 @@ type ModifyProcessInstanceJSONBody struct {
 
 	// ElementInstancesToTerminate Terminates execution token.
 	ElementInstancesToTerminate *[]TerminateElementInstanceData `json:"elementInstancesToTerminate,omitempty"`
-	ProcessInstanceKey          string                          `json:"processInstanceKey"`
+	ProcessInstanceKey          int64                           `json:"processInstanceKey"`
 
 	// Variables Sets process instance variables.
 	Variables *map[string]interface{} `json:"variables,omitempty"`
@@ -349,7 +349,7 @@ type ModifyProcessInstanceJSONBody struct {
 
 // StartProcessInstanceOnElementsJSONBody defines parameters for StartProcessInstanceOnElements.
 type StartProcessInstanceOnElementsJSONBody struct {
-	ProcessDefinitionKey string `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 
 	// StartingElementIds Allows for a start at chosen element id
 	StartingElementIds []string                `json:"startingElementIds"`
@@ -368,10 +368,10 @@ type GetProcessDefinitionsParams struct {
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
-	ProcessDefinitionKey *string `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+	ProcessDefinitionKey *int64 `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
 
 	// ParentProcessInstanceKey Key of the parent process instance
-	ParentProcessInstanceKey *string `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
+	ParentProcessInstanceKey *int64 `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
 
 	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
 	BusinessKey *string `form:"businessKey,omitempty" json:"businessKey,omitempty"`
@@ -390,7 +390,7 @@ type CreateProcessInstanceJSONBody struct {
 
 	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
-	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -452,10 +452,10 @@ type ServerInterface interface {
 	CreateDmnResourceDefinition(w http.ResponseWriter, r *http.Request)
 	// Get dmn resource definition
 	// (GET /dmn-resource-definitions/{dmnResourceDefinitionKey})
-	GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey string)
+	GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey int64)
 	// Resolve an incident
 	// (POST /incidents/{incidentKey}/resolve)
-	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string)
+	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64)
 	// Get list of jobs on partitions
 	// (GET /jobs)
 	GetJobs(w http.ResponseWriter, r *http.Request, params GetJobsParams)
@@ -479,7 +479,7 @@ type ServerInterface interface {
 	CreateProcessDefinition(w http.ResponseWriter, r *http.Request)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
-	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string)
+	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
 	// Get list of running process instances
 	// (GET /process-instances)
 	GetProcessInstances(w http.ResponseWriter, r *http.Request, params GetProcessInstancesParams)
@@ -488,16 +488,16 @@ type ServerInterface interface {
 	CreateProcessInstance(w http.ResponseWriter, r *http.Request)
 	// Get state of a process instance selected by processInstanceKey
 	// (GET /process-instances/{processInstanceKey})
-	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string)
+	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
-	GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetHistoryParams)
+	GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams)
 	// Get list of incidents for a process instance
 	// (GET /process-instances/{processInstanceKey}/incidents)
-	GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetIncidentsParams)
+	GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetIncidentsParams)
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
-	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetProcessInstanceJobsParams)
+	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams)
 	// start a cpu profiler
 	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
@@ -530,13 +530,13 @@ func (_ Unimplemented) CreateDmnResourceDefinition(w http.ResponseWriter, r *htt
 
 // Get dmn resource definition
 // (GET /dmn-resource-definitions/{dmnResourceDefinitionKey})
-func (_ Unimplemented) GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey string) {
+func (_ Unimplemented) GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Resolve an incident
 // (POST /incidents/{incidentKey}/resolve)
-func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string) {
+func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -584,7 +584,7 @@ func (_ Unimplemented) CreateProcessDefinition(w http.ResponseWriter, r *http.Re
 
 // Get process definition
 // (GET /process-definitions/{processDefinitionKey})
-func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string) {
+func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -602,25 +602,25 @@ func (_ Unimplemented) CreateProcessInstance(w http.ResponseWriter, r *http.Requ
 
 // Get state of a process instance selected by processInstanceKey
 // (GET /process-instances/{processInstanceKey})
-func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get list of visited flow elements for a process instance
 // (GET /process-instances/{processInstanceKey}/history)
-func (_ Unimplemented) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetHistoryParams) {
+func (_ Unimplemented) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get list of incidents for a process instance
 // (GET /process-instances/{processInstanceKey}/incidents)
-func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetIncidentsParams) {
+func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetIncidentsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
-func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetProcessInstanceJobsParams) {
+func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -725,7 +725,7 @@ func (siw *ServerInterfaceWrapper) GetDmnResourceDefinition(w http.ResponseWrite
 	var err error
 
 	// ------------- Path parameter "dmnResourceDefinitionKey" -------------
-	var dmnResourceDefinitionKey string
+	var dmnResourceDefinitionKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "dmnResourceDefinitionKey", chi.URLParam(r, "dmnResourceDefinitionKey"), &dmnResourceDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -750,7 +750,7 @@ func (siw *ServerInterfaceWrapper) ResolveIncident(w http.ResponseWriter, r *htt
 	var err error
 
 	// ------------- Path parameter "incidentKey" -------------
-	var incidentKey string
+	var incidentKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "incidentKey", chi.URLParam(r, "incidentKey"), &incidentKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -931,7 +931,7 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r
 	var err error
 
 	// ------------- Path parameter "processDefinitionKey" -------------
-	var processDefinitionKey string
+	var processDefinitionKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processDefinitionKey", chi.URLParam(r, "processDefinitionKey"), &processDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -1029,7 +1029,7 @@ func (siw *ServerInterfaceWrapper) GetProcessInstance(w http.ResponseWriter, r *
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey string
+	var processInstanceKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -1054,7 +1054,7 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey string
+	var processInstanceKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -1098,7 +1098,7 @@ func (siw *ServerInterfaceWrapper) GetIncidents(w http.ResponseWriter, r *http.R
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey string
+	var processInstanceKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -1142,7 +1142,7 @@ func (siw *ServerInterfaceWrapper) GetProcessInstanceJobs(w http.ResponseWriter,
 	var err error
 
 	// ------------- Path parameter "processInstanceKey" -------------
-	var processInstanceKey string
+	var processInstanceKey int64
 
 	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
@@ -1472,7 +1472,7 @@ type CreateDmnResourceDefinitionResponseObject interface {
 }
 
 type CreateDmnResourceDefinition201JSONResponse struct {
-	DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 }
 
 func (response CreateDmnResourceDefinition201JSONResponse) VisitCreateDmnResourceDefinitionResponse(w http.ResponseWriter) error {
@@ -1510,7 +1510,7 @@ func (response CreateDmnResourceDefinition502JSONResponse) VisitCreateDmnResourc
 }
 
 type GetDmnResourceDefinitionRequestObject struct {
-	DmnResourceDefinitionKey string `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 }
 
 type GetDmnResourceDefinitionResponseObject interface {
@@ -1545,7 +1545,7 @@ func (response GetDmnResourceDefinition502JSONResponse) VisitGetDmnResourceDefin
 }
 
 type ResolveIncidentRequestObject struct {
-	IncidentKey string `json:"incidentKey"`
+	IncidentKey int64 `json:"incidentKey"`
 }
 
 type ResolveIncidentResponseObject interface {
@@ -1807,7 +1807,7 @@ type CreateProcessDefinitionResponseObject interface {
 }
 
 type CreateProcessDefinition201JSONResponse struct {
-	ProcessDefinitionKey string `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 }
 
 func (response CreateProcessDefinition201JSONResponse) VisitCreateProcessDefinitionResponse(w http.ResponseWriter) error {
@@ -1845,7 +1845,7 @@ func (response CreateProcessDefinition502JSONResponse) VisitCreateProcessDefinit
 }
 
 type GetProcessDefinitionRequestObject struct {
-	ProcessDefinitionKey string `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 }
 
 type GetProcessDefinitionResponseObject interface {
@@ -1968,7 +1968,7 @@ func (response CreateProcessInstance502JSONResponse) VisitCreateProcessInstanceR
 }
 
 type GetProcessInstanceRequestObject struct {
-	ProcessInstanceKey string `json:"processInstanceKey"`
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
 }
 
 type GetProcessInstanceResponseObject interface {
@@ -2012,7 +2012,7 @@ func (response GetProcessInstance502JSONResponse) VisitGetProcessInstanceRespons
 }
 
 type GetHistoryRequestObject struct {
-	ProcessInstanceKey string `json:"processInstanceKey"`
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
 	Params             GetHistoryParams
 }
 
@@ -2048,7 +2048,7 @@ func (response GetHistory502JSONResponse) VisitGetHistoryResponse(w http.Respons
 }
 
 type GetIncidentsRequestObject struct {
-	ProcessInstanceKey string `json:"processInstanceKey"`
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
 	Params             GetIncidentsParams
 }
 
@@ -2084,7 +2084,7 @@ func (response GetIncidents502JSONResponse) VisitGetIncidentsResponse(w http.Res
 }
 
 type GetProcessInstanceJobsRequestObject struct {
-	ProcessInstanceKey string `json:"processInstanceKey"`
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
 	Params             GetProcessInstanceJobsParams
 }
 
@@ -2363,7 +2363,7 @@ func (sh *strictHandler) CreateDmnResourceDefinition(w http.ResponseWriter, r *h
 }
 
 // GetDmnResourceDefinition operation middleware
-func (sh *strictHandler) GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey string) {
+func (sh *strictHandler) GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey int64) {
 	var request GetDmnResourceDefinitionRequestObject
 
 	request.DmnResourceDefinitionKey = dmnResourceDefinitionKey
@@ -2389,7 +2389,7 @@ func (sh *strictHandler) GetDmnResourceDefinition(w http.ResponseWriter, r *http
 }
 
 // ResolveIncident operation middleware
-func (sh *strictHandler) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey string) {
+func (sh *strictHandler) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64) {
 	var request ResolveIncidentRequestObject
 
 	request.IncidentKey = incidentKey
@@ -2617,7 +2617,7 @@ func (sh *strictHandler) CreateProcessDefinition(w http.ResponseWriter, r *http.
 }
 
 // GetProcessDefinition operation middleware
-func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey string) {
+func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
 	var request GetProcessDefinitionRequestObject
 
 	request.ProcessDefinitionKey = processDefinitionKey
@@ -2700,7 +2700,7 @@ func (sh *strictHandler) CreateProcessInstance(w http.ResponseWriter, r *http.Re
 }
 
 // GetProcessInstance operation middleware
-func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey string) {
+func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
 	var request GetProcessInstanceRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -2726,7 +2726,7 @@ func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Reque
 }
 
 // GetHistory operation middleware
-func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetHistoryParams) {
+func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams) {
 	var request GetHistoryRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -2753,7 +2753,7 @@ func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, proc
 }
 
 // GetIncidents operation middleware
-func (sh *strictHandler) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetIncidentsParams) {
+func (sh *strictHandler) GetIncidents(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetIncidentsParams) {
 	var request GetIncidentsRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -2780,7 +2780,7 @@ func (sh *strictHandler) GetIncidents(w http.ResponseWriter, r *http.Request, pr
 }
 
 // GetProcessInstanceJobs operation middleware
-func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey string, params GetProcessInstanceJobsParams) {
+func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams) {
 	var request GetProcessInstanceJobsRequestObject
 
 	request.ProcessInstanceKey = processInstanceKey
@@ -2861,6 +2861,7 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
+<<<<<<< HEAD
 	"H4sIAAAAAAAC/+w9a1PburZ/RaN7Puw7Nw87kAKe6ZxDS7sv3X0whX0+tHA7iq0QFUfysWQgm8l/vyNZ",
 	"tmVbdpwQCt3lG8TyekjrpbWW5Dvos3nEKKaCQ+8Ocn+G50j9eTSnnzFnSezjIzwllAjC6BEWiITyMQrD",
 	"T1Pofb2D/4jxFHrwv4YFqKGGM7QCOSXzKMRw2buDUcwiHAuCFcpgTo+QQPJPsYgw9CAXMaGXcLnsZb+w",
@@ -2938,6 +2939,84 @@ var swaggerSpec = []string{
 	"RjSsLYvWWVoW3WdlJTZNn5z9x1zgDc/cSws8LR39mCyE/SvBK09AVKSKRdETu9hfLddKoZKvKBipDBQf",
 	"x/GGw5D5KJwxLrx9Z98ZXqcJOQ3hrhKJ9kvN0bWnRmHnzrhL1nqvpTnE8kUB4/F39SHL/N9sH2j8RIrP",
 	"Iue/Kd6XF8v/DwAA//83Ws8tFYkAAA==",
+=======
+	"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",
+>>>>>>> origin/main
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -123,7 +123,7 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 	})
 }
 
-func startProcessInstanceOnElements(t testing.TB, processDefinitionKey string, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
+func startProcessInstanceOnElements(t testing.TB, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
 	req := public.StartProcessInstanceOnElementsJSONBody{
 		ProcessDefinitionKey: processDefinitionKey,
 		StartingElementIds:   startingElementIds,
@@ -146,7 +146,7 @@ func startProcessInstanceOnElements(t testing.TB, processDefinitionKey string, s
 	return instance, nil
 }
 
-func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
+func modifyProcessInstanceTokens(t testing.TB, processInstanceKey int64, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
 	req := public.ModifyProcessInstanceJSONBody{
 		ElementInstancesToStart:     &ElementInstancesToStart,
 		ElementInstancesToTerminate: &ElementInstancesToTerminate,

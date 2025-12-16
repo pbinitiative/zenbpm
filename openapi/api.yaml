@@ -56,10 +56,10 @@ paths:
                   - dmnResourceDefinitionKey
                 properties:
                   dmnResourceDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                    type: integer
+                    format: int64
               example:
-                dmnResourceDefinitionKey: "4503599627370495"
+                dmnResourceDefinitionKey: 4503599627370495
         400:
           description: Bad request
           content:
@@ -144,9 +144,9 @@ paths:
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370495"
+            type: integer
+            format: int64
+          example: 4503599627370495
       responses:
         200:
           description: Dmn resource definition
@@ -232,7 +232,7 @@ paths:
                     decisionName: "Loan Approval"
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
-                    dmnResourceDefinitionKey: "4503599627370495"
+                    dmnResourceDefinitionKey: 4503599627370495
                     decisionDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
@@ -290,10 +290,10 @@ paths:
                   - processDefinitionKey
                 properties:
                   processDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                    type: integer
+                    format: int64
               example:
-                processDefinitionKey: "4503599627370498"
+                processDefinitionKey: 4503599627370498
         400:
           description: Bad request
           content:
@@ -377,9 +377,9 @@ paths:
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370498"
+            type: integer
+            format: int64
+          example: 4503599627370498
       responses:
         200:
           description: Process definition
@@ -427,8 +427,8 @@ paths:
                 - processDefinitionKey
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 historyTimeToLive:
@@ -439,7 +439,7 @@ paths:
                   type: string
                   description: Business key of the process instance used mainly for correlating process instance to the business entity.
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
@@ -487,17 +487,17 @@ paths:
         - name: processDefinitionKey
           in: query
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
+            type: integer
+            format: int64
           description: Key of the process definition
-          example: "4503599627370498"
+          example: 4503599627370498
         - name: parentProcessInstanceKey
           in: query
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
+            type: integer
+            format: int64
           description: Key of the parent process instance
-          example: "1603294627315478"
+          example: 1603294627315478
         - name: businessKey
           in: query
           schema:
@@ -593,9 +593,9 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
       responses:
         200:
           description: State of a process instance
@@ -645,9 +645,9 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -728,9 +728,9 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -799,9 +799,9 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -959,12 +959,12 @@ paths:
                 - jobKey
               properties:
                 jobKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
             example:
-              jobKey: "4503599627370540"
+              jobKey: 4503599627370540
               variables:
                 result: "success"
                 transactionId: "tx-789-xyz"
@@ -1003,13 +1003,12 @@ paths:
               properties:
                 correlationKey:
                   type: string
-                  pattern: '^\d{15,20}$'
                 messageName:
                   type: string
                 variables:
                   type: object
             example:
-              correlationKey: "4503599627370501"
+              correlationKey: "011-235-813"
               messageName: "payment-received"
               variables:
                 paymentId: "pay-123-abc"
@@ -1043,9 +1042,9 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370530"
+            type: integer
+            format: int64
+          example: 4503599627370530
       responses:
         201:
           description: Incident resolved
@@ -1080,8 +1079,8 @@ paths:
                 - startingElementIds
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 startingElementIds:
@@ -1090,7 +1089,7 @@ paths:
                   items:
                     type: string
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
@@ -1139,8 +1138,8 @@ paths:
                 - processInstanceKey
               properties:
                 processInstanceKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                   description: "Sets process instance variables."
@@ -1317,11 +1316,11 @@ components:
         - resourceName
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
         resourceName:
           type: string
@@ -1368,8 +1367,8 @@ components:
         decisionDefinitionVersion:
           type: integer
         dmnResourceDefinitionKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         decisionDefinitionId:
           type: string
         matchedRules:
@@ -1445,8 +1444,8 @@ components:
         - bpmnProcessId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
         bpmnProcessId:
@@ -1484,11 +1483,11 @@ components:
         - activeElementInstances
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processDefinitionKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         businessKey:
           type: string
         createdAt:
@@ -1501,8 +1500,8 @@ components:
             - completed
             - terminated
         parentProcessInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         variables:
           type: object
         activeElementInstances:
@@ -1557,15 +1556,15 @@ components:
         - variables
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         type:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         state:
           $ref: "#/components/schemas/JobState"
         createdAt:
@@ -1589,8 +1588,8 @@ components:
         - elementId
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1614,8 +1613,8 @@ components:
         - elementInstanceKey
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
       example:
         elementId: "flow-node-1"
     StartElementInstanceData:
@@ -1637,11 +1636,11 @@ components:
         - elementId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1671,16 +1670,16 @@ components:
         - executionToken
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         message:
           type: string
         createdAt:
@@ -1690,7 +1689,8 @@ components:
           type: string
           format: date-time
         executionToken:
-          type: string
+          type: integer
+          format: int64
     Error:
       type: object
       required:

@@ -543,6 +543,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		ProcessDefinitionKey: 0,
 		ParentInstanceKey:    0,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
 		Offst:                0,
 		Size:                 20,
 	})
@@ -552,6 +553,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    0,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
 		Offst:                0,
 		Size:                 20,
 	})
@@ -561,6 +563,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    tok1.Key,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
 		Offst:                0,
 		Size:                 20,
 	})
@@ -570,6 +573,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	subProcesses, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
 		ProcessDefinitionKey: inst2.Definition.Key,
 		ParentInstanceKey:    inst1.GetInstanceKey(),
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
 		Offst:                0,
 		Size:                 20,
 	})

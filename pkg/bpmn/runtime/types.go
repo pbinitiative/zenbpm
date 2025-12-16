@@ -27,6 +27,7 @@ type CatchEvent struct {
 type ProcessInstance struct {
 	Definition                  *ProcessDefinition
 	Key                         int64
+	BusinessKey                 *string // TODO: introduce cluster data layer and remove this from the engine
 	VariableHolder              VariableHolder
 	CreatedAt                   time.Time
 	State                       ActivityState

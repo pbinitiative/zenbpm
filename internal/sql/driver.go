@@ -242,15 +242,15 @@ func Scan(ctx context.Context, columns []string, values *proto.Values, dest ...a
 				return fmt.Errorf("invalid []byte col:%d type:%T val:%v", n, src, src)
 			}
 
-		// case *NullString:
-		// 	switch src := src.(type) {
-		// 	case string:
-		// 		*d = gorqlite.NullString{Valid: true, String: src}
-		// 	case nil:
-		// 		*d = NullString{Valid: false}
-		// 	default:
-		// 		return fmt.Errorf("invalid string col:%d type:%T val:%v", n, src, src)
-		// 	}
+		case *sql.NullString:
+			switch src := src.GetValue().(type) {
+			case *proto.Parameter_S:
+				*d = sql.NullString{Valid: true, String: src.S}
+			case nil:
+				*d = sql.NullString{Valid: false}
+			default:
+				return fmt.Errorf("invalid string col:%d type:%T val:%v", n, src, src)
+			}
 		case *sql.NullInt64:
 			switch x := src.GetValue().(type) {
 			case *proto.Parameter_D:

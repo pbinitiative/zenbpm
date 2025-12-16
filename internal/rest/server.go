@@ -457,7 +457,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		}
 		ttl = &parsedTTL
 	}
-	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, variables, ttl)
+
+	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
 		return public.CreateProcessInstance502JSONResponse{
 			Code:    "TODO",
@@ -527,7 +528,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
-		definitionKey,
+		&definitionKey,
+		request.Params.BusinessKey,
 		parentInstanceKey,
 		page,
 		size,
@@ -568,6 +570,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				Key:                  instance.GetKey(),
 				ProcessDefinitionKey: instance.GetDefinitionKey(),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
+				BusinessKey:          instance.BusinessKey,
 				Variables:            vars,
 			}
 			if instance.GetParentKey() != 0 {
@@ -610,6 +613,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		ActiveElementInstances: respActiveElementInstances,
 		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 		Key:                    instance.GetKey(),
+		BusinessKey:            instance.BusinessKey,
 		ProcessDefinitionKey:   instance.GetDefinitionKey(),
 		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
 		Variables:              vars,

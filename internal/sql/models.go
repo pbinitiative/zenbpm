@@ -108,14 +108,15 @@ type ProcessDefinition struct {
 }
 
 type ProcessInstance struct {
-	Key                         int64         `json:"key"`
-	ProcessDefinitionKey        int64         `json:"process_definition_key"`
-	CreatedAt                   int64         `json:"created_at"`
-	State                       int64         `json:"state"`
-	Variables                   string        `json:"variables"`
-	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
-	HistoryTtlSec               sql.NullInt64 `json:"history_ttl_sec"`
-	HistoryDeleteSec            sql.NullInt64 `json:"history_delete_sec"`
+	Key                         int64          `json:"key"`
+	ProcessDefinitionKey        int64          `json:"process_definition_key"`
+	BusinessKey                 sql.NullString `json:"business_key"`
+	CreatedAt                   int64          `json:"created_at"`
+	State                       int64          `json:"state"`
+	Variables                   string         `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
+	HistoryTtlSec               sql.NullInt64  `json:"history_ttl_sec"`
+	HistoryDeleteSec            sql.NullInt64  `json:"history_delete_sec"`
 }
 
 type Timer struct {

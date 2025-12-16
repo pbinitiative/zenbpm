@@ -234,6 +234,7 @@ message ProcessInstance {
   int64 created_at = 5;
   int64 definition_key = 6;
   int64 parent_key = 7;
+  string business_key = 8;
 }
 
 message ExecutionToken {
@@ -381,6 +382,7 @@ message CreateInstanceRequest {
   }
   bytes variables = 3;
   int64 historyTTL = 4;
+  string business_key = 5;
 }
 
 message CreateInstanceResponse {
@@ -418,6 +420,7 @@ message GetProcessInstancesRequest {
   repeated uint32 partitions = 3;
   int64 definition_key = 4;
   int64 parent_key = 5;
+  string business_key = 6;
 }
 
 message PartitionedProcessInstances {

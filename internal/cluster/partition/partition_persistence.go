@@ -826,9 +826,15 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 		}
 	}
 
+	var businessKey *string
+	if dbInstance.BusinessKey.Valid {
+		businessKey = ptr.To(dbInstance.BusinessKey.String)
+	}
+
 	res = bpmnruntime.ProcessInstance{
 		Definition:                  &definition,
 		Key:                         dbInstance.Key,
+		BusinessKey:                 businessKey,
 		VariableHolder:              bpmnruntime.NewVariableHolder(nil, variables),
 		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
 		State:                       bpmnruntime.ActivityState(dbInstance.State),
@@ -869,11 +875,15 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
+
+	businessKey, bkFound := appcontext.BusinessKeyFromContext(ctx)
+
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
 		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
 		State:                int64(processInstance.State),
+		BusinessKey:          ssql.NullString{String: businessKey, Valid: bkFound},
 		Variables:            string(varStr),
 		ParentProcessExecutionToken: ssql.NullInt64{
 			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, bpmnruntime.ExecutionToken{}).Key,

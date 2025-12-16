@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS migration(
 CREATE TABLE IF NOT EXISTS process_instance(
     key INTEGER PRIMARY KEY, -- int64 snowflake id where node is partition id which handles the process instance
     process_definition_key integer NOT NULL, -- int64 reference to process definition
+    business_key text, -- string business key
     created_at integer NOT NULL, -- unix millis of when the process instance was created
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     variables text NOT NULL, -- serialized json variables of the process instance

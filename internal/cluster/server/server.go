@@ -282,6 +282,10 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	if req.HistoryTTL != nil {
 		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
 	}
+
+	if req.BusinessKey != nil {
+		ctx = appcontext.WithBusinessKey(ctx, ptr.Deref(req.BusinessKey, ""))
+	}
 	var instance *runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
@@ -316,6 +320,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			State:         ptr.To(int64(instance.State)),
 			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
 			DefinitionKey: &instance.Definition.Key,
+			BusinessKey:   instance.BusinessKey,
 		},
 	}, nil
 }
@@ -696,6 +701,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 			State:         ptr.To(int64(instance.State)),
 			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
 			DefinitionKey: &instance.Definition.Key,
+			BusinessKey:   instance.BusinessKey,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -850,8 +856,12 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),
 			ParentInstanceKey:    req.GetParentKey(),
-			Offst:                int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:                 int64(req.GetSize()),
+			BusinessKey: ssql.NullString{
+				String: ptr.Deref(req.BusinessKey, ""),
+				Valid:  req.BusinessKey != nil,
+			},
+			Offst: int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:  int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)
@@ -884,6 +894,11 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		}
 		procInstances := make([]*proto.ProcessInstance, len(instances))
 		for i, inst := range instances {
+			var businessKey *string
+			if inst.BusinessKey.Valid {
+				businessKey = &inst.BusinessKey.String
+			}
+
 			procInstances[i] = &proto.ProcessInstance{
 				Key:           &inst.Key,
 				ProcessId:     ptr.To(definitionMap[inst.ProcessDefinitionKey].BpmnProcessID),
@@ -891,6 +906,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				State:         ptr.To(int64(inst.State)),
 				CreatedAt:     &inst.CreatedAt,
 				DefinitionKey: &inst.ProcessDefinitionKey,
+				BusinessKey:   businessKey,
 			}
 			if inst.ParentProcessExecutionToken.Valid {
 				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})

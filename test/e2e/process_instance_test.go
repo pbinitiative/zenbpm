@@ -3,9 +3,12 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/rand"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -102,9 +105,57 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 	})
 }
 
+func TestBusinessKey(t *testing.T) {
+	var instance public.ProcessInstance
+	var definition public.ProcessDefinitionSimple
+	err := deployDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	defintitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range defintitions {
+		if def.BpmnProcessId == "service-task-input-output" {
+			definition = def
+			break
+		}
+	}
+
+	randNum := fmt.Sprintf("%d", rand.Intn(10000000000))
+	bk := "testBusinessKey-" + randNum
+
+	t.Run("create process instance", func(t *testing.T) {
+		instance, err = createProcessInstanceWithBusinessKey(t, definition.Key, &bk, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+	})
+
+	t.Run("read instance state", func(t *testing.T) {
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		log.Printf("instance: %+v", fetchedInstance)
+		assert.Equal(t, bk, ptr.Deref(fetchedInstance.BusinessKey, ""))
+	})
+
+	t.Run("find process instances by business key", func(t *testing.T) {
+		processInstances, err := getProcessInstances(t, bk)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, processInstances)
+		for _, pi := range processInstances {
+			assert.Equal(t, bk, ptr.Deref(pi.BusinessKey, ""))
+			assert.NotEmpty(t, pi.Key)
+		}
+	})
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
+	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
+}
+
+func createProcessInstanceWithBusinessKey(t testing.TB, processDefinitionKey int64, businessKey *string, variables map[string]any) (public.ProcessInstance, error) {
 	req := public.CreateProcessInstanceJSONBody{
 		ProcessDefinitionKey: processDefinitionKey,
+		BusinessKey:          businessKey,
 		Variables:            &variables,
 	}
 	resp, err := app.NewRequest(t).
@@ -186,4 +237,26 @@ func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, er
 		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)
 	}
 	return incidentPage.Items, nil
+}
+
+func getProcessInstances(t testing.TB, key string) ([]public.ProcessInstance, error) {
+	resp, err := app.NewRequest(t).
+		WithPath(fmt.Sprintf("/v1/process-instances?businessKey=%s", key)).
+		DoOk()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
+	}
+	processInstancePage := public.ProcessInstancePage{}
+
+	err = json.Unmarshal(resp, &processInstancePage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal job page: %w", err)
+	}
+
+	instances := make([]public.ProcessInstance, 0, len(processInstancePage.Partitions))
+
+	for _, part := range processInstancePage.Partitions {
+		instances = append(instances, part.Items...)
+	}
+	return instances, nil
 }

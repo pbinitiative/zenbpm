@@ -182,7 +182,7 @@ WHERE
         1
     END
     AND
-    CASE WHEN ?3 <> 0 THEN
+    CASE WHEN ?3 IS NOT NULL THEN
         process_instance.business_key = ?3
     ELSE
         1

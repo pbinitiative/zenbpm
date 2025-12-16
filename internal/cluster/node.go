@@ -614,9 +614,9 @@ func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte,
 func (node *ZenNode) CreateInstance(
 	ctx context.Context,
 	processDefinitionKey int64,
+	businessKey *string,
 	variables map[string]any,
 	timeToLive *types.TTL,
-	businessKey *string,
 ) (*proto.ProcessInstance, error) {
 	state := node.store.ClusterState()
 	candidateNode, err := state.GetLeastStressedPartitionLeader()

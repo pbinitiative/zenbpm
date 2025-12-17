@@ -177,6 +177,7 @@ type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {
@@ -184,13 +185,13 @@ type TokenStorageWriter interface {
 }
 
 type FlowElementInstanceReader interface {
-	GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstanceItem, error)
+	GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error)
 	GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int, error)
-	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstanceItem, error)
+	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error)
 }
 
 type FlowElementInstanceWriter interface {
-	SaveFlowElementInstance(ctx context.Context, item bpmnruntime.FlowElementInstanceItem) error
+	SaveFlowElementInstance(ctx context.Context, item bpmnruntime.FlowElementInstance) error
 }
 
 type IncidentStorageReader interface {

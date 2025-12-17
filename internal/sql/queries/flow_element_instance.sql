@@ -3,8 +3,7 @@ INSERT INTO flow_element_instance(key, element_id, process_instance_key, created
     VALUES (?, ? ,? ,?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
-       process_instance_key = excluded.process_instance_key,
-       element_id = excluded.element_id;
+       output_variables = excluded.output_variables;
 
 -- name: DeleteFlowElementInstance :exec
 DELETE FROM flow_element_instance

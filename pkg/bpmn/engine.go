@@ -375,14 +375,19 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch storage.Ba
 	return executionTokens, nil
 }
 
-func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (output *runtime.ProcessInstance, err error) {
+func (engine *Engine) createInstance(
+	ctx context.Context,
+	process *runtime.ProcessDefinition,
+	variableHolder runtime.VariableHolder,
+	subProcessMetadata *runtime.SubProcessParentMetadata,
+) (output *runtime.ProcessInstance, err error) {
 	processInstance := runtime.ProcessInstance{
-		Definition:                  process,
-		Key:                         engine.generateKey(),
-		VariableHolder:              variableHolder,
-		CreatedAt:                   time.Now(),
-		State:                       runtime.ActivityStateReady,
-		ParentProcessExecutionToken: parentToken,
+		Definition:               process,
+		Key:                      engine.generateKey(),
+		VariableHolder:           variableHolder,
+		CreatedAt:                time.Now(),
+		State:                    runtime.ActivityStateReady,
+		SubProcessParentMetadata: subProcessMetadata,
 	}
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
@@ -429,15 +434,20 @@ func (engine *Engine) createInstance(ctx context.Context, process *runtime.Proce
 	return &processInstance, nil
 }
 
-func (engine *Engine) createInstanceWithStartingElements(ctx context.Context, processDefinition *runtime.ProcessDefinition, startingFlowNodes []bpmn20.FlowNode, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken, subprocessTargetElementId *string) (output *runtime.ProcessInstance, err error) {
+func (engine *Engine) createInstanceWithStartingElements(
+	ctx context.Context,
+	processDefinition *runtime.ProcessDefinition,
+	startingFlowNodes []bpmn20.FlowNode,
+	variableHolder runtime.VariableHolder,
+	subProcessMetadata *runtime.SubProcessParentMetadata,
+) (output *runtime.ProcessInstance, err error) {
 	processInstance := runtime.ProcessInstance{
-		Definition:                  processDefinition,
-		Key:                         engine.generateKey(),
-		VariableHolder:              variableHolder,
-		CreatedAt:                   time.Now(),
-		State:                       runtime.ActivityStateReady,
-		ParentProcessExecutionToken: parentToken,
-		SubprocessTargetElementId:   subprocessTargetElementId,
+		Definition:               processDefinition,
+		Key:                      engine.generateKey(),
+		VariableHolder:           variableHolder,
+		CreatedAt:                time.Now(),
+		State:                    runtime.ActivityStateReady,
+		SubProcessParentMetadata: subProcessMetadata,
 	}
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
@@ -584,8 +594,8 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 
 		//sub process ended
-		if instance.State == runtime.ActivityStateCompleted && instance.ParentProcessExecutionToken != nil {
-			err := engine.handleParentProcessContinuation(ctx, batch, *instance, ptr.Deref(instance.ParentProcessExecutionToken, runtime.ExecutionToken{}))
+		if instance.State == runtime.ActivityStateCompleted && instance.SubProcessParentMetadata != nil {
+			err := engine.handleParentProcessContinuation(ctx, *instance)
 			if err != nil {
 				return err
 			}
@@ -653,8 +663,8 @@ func (engine *Engine) getExecutionTokenActivity(
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
 	var currentFlowNode bpmn20.FlowNode
-	if instance.ParentProcessExecutionToken != nil {
-		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
+	if instance.SubProcessParentMetadata != nil {
+		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(instance.SubProcessParentMetadata.ParentProcessTargetElementId)
 		switch parentActivityDefinition.(type) {
 		case *bpmn20.TSubProcess:
 			currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
@@ -699,7 +709,7 @@ func (engine *Engine) processFlowNode(
 	}()
 
 	err = batch.SaveFlowElementInstance(ctx,
-		runtime.FlowElementInstanceItem{
+		runtime.FlowElementInstance{
 			Key:                engine.generateKey(),
 			ProcessInstanceKey: instance.GetInstanceKey(),
 			ElementId:          activity.element.GetId(),
@@ -712,7 +722,8 @@ func (engine *Engine) processFlowNode(
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
-		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.element, currentToken)
+		//TODO: input output Variables
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.element, nil, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
@@ -727,7 +738,7 @@ func (engine *Engine) processFlowNode(
 		return []runtime.ExecutionToken{currentToken}, nil
 	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess:
 		if element := activity.Element().(*bpmn20.TActivity); element.MultiInstance != nil {
-			tokens, err := engine.handleMultiInstanceActivity(ctx, batch, instance, activity, currentToken)
+			tokens, err := engine.handleMultiInstanceActivity(ctx, batch, instance, *element, activity, currentToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to process MultiInstance%d: %w", activity.GetKey(), err)
 			}
@@ -816,7 +827,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		}
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.Element(), currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -882,7 +893,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 ) (runtime.ActivityState, error) {
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
 	if len(element.GetInputMapping()) > 0 {
-		if err := variableHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+		if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 		}
@@ -902,7 +913,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 
 	if len(element.GetOutputMapping()) > 0 {
 		variableHolder.SetLocalVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
-		if err := variableHolder.PropagateLocalVariables(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
+		if err := variableHolder.PropagateLocalVariablesToParent(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
 		}
@@ -1045,19 +1056,54 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	return resTokens, nil
 }
 
-func (engine *Engine) handleSimpleTransition(
+func (engine *Engine) handleElementTransition(
 	ctx context.Context,
 	batch storage.Batch,
 	instance *runtime.ProcessInstance,
 	element bpmn20.FlowNode,
+	outputVariables map[string]any,
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
+	if element.(*bpmn20.TActivity).MultiInstance != nil {
+		if instance.SubProcessParentMetadata != nil {
+			// multi instance or subprocess or multi instance subprocess
+			tokens, err := engine.handleDefaultElementTransition(ctx, batch, instance, element, outputVariables, currentToken)
+			if err != nil {
+				return nil, err
+			}
+			if element.(*bpmn20.TActivity).MultiInstance.IsSequential == true {
+				//sequential
+			} else {
+				//parallel
+			}
+		} else {
+			//
+			if element.(*bpmn20.TActivity).MultiInstance.IsSequential == true {
+				//sequential
 
-	if multiInstance {
+			} else {
+				//parallel
 
+			}
+		}
 	}
+	//normal process instance
+	return engine.handleDefaultElementTransition(ctx, batch, instance, element, outputVariables, currentToken)
+}
 
+func (engine *Engine) handleDefaultElementTransition(
+	ctx context.Context,
+	batch storage.Batch,
+	instance *runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	outputVariables map[string]any,
+	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
+
+	instance.VariableHolder.PropagateVariables(outputVariables)
+	batch.SaveProcessInstance(ctx, *instance)
+
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions
@@ -1075,12 +1121,14 @@ func (engine *Engine) handleSimpleTransition(
 			})
 		}
 
+		//this saves only transitions between nodes
 		err := batch.SaveFlowElementInstance(ctx,
-			runtime.FlowElementInstanceItem{
+			runtime.FlowElementInstance{
 				Key:                engine.generateKey(),
 				ProcessInstanceKey: instance.GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),
+				ExecutionToken:     resTokens[i],
 			},
 		)
 		if err != nil {
@@ -1099,7 +1147,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 		token, err := engine.createTimerCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TTimerEventDefinition), ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
-		tokens, err := engine.handleSimpleTransition(ctx, batch, instance, ice, currentToken)
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
 		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))

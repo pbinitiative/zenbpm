@@ -24,14 +24,20 @@ type CatchEvent struct {
 	Variables  map[string]interface{}
 }
 
+type SubProcessParentMetadata struct {
+	ParentProcessExecutionToken           ExecutionToken
+	ParentProcessDefinitionKey            int64
+	ParentProcessTargetElementInstanceKey int64
+	ParentProcessTargetElementId          string
+}
+
 type ProcessInstance struct {
-	Definition                  *ProcessDefinition
-	Key                         int64
-	VariableHolder              VariableHolder
-	CreatedAt                   time.Time
-	State                       ActivityState
-	ParentProcessExecutionToken *ExecutionToken
-	SubprocessTargetElementId   *string
+	Definition               *ProcessDefinition
+	Key                      int64
+	VariableHolder           VariableHolder
+	CreatedAt                time.Time
+	State                    ActivityState
+	SubProcessParentMetadata *SubProcessParentMetadata
 }
 
 func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
@@ -269,7 +275,7 @@ type ExecutionToken struct {
 	CreatedAt          time.Time
 }
 
-type FlowElementInstanceItem struct {
+type FlowElementInstance struct {
 	Key                int64
 	ProcessInstanceKey int64
 	ElementId          string

@@ -47,7 +47,12 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 // CreateInstance creates a new instance for a process with given processKey
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (*runtime.ProcessInstance, error) {
-	return engine.createInstance(ctx, process, runtime.NewVariableHolder(nil, variableContext), nil)
+	return engine.createInstance(
+		ctx,
+		process,
+		runtime.NewVariableHolder(nil, variableContext),
+		nil,
+	)
 }
 
 func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {

@@ -517,7 +517,7 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t 
 	return func(t *testing.T) {
 		r := s.GenerateId()
 
-		historyItem := bpmnruntime.FlowElementInstanceItem{
+		historyItem := bpmnruntime.FlowElementInstance{
 			Key:                r,
 			ProcessInstanceKey: r,
 			ElementId:          "test-elem",

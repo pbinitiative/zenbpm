@@ -804,13 +804,13 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 	}
 
 	res = bpmnruntime.ProcessInstance{
-		Definition:                  &definition,
-		Key:                         dbInstance.Key,
-		VariableHolder:              bpmnruntime.NewVariableHolder(nil, variables),
-		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
-		State:                       bpmnruntime.ActivityState(dbInstance.State),
-		ParentProcessExecutionToken: parentToken,
-		SubprocessTargetElementId:   SubprocessTargetElementID,
+		Definition:                   &definition,
+		Key:                          dbInstance.Key,
+		VariableHolder:               bpmnruntime.NewVariableHolder(nil, variables),
+		CreatedAt:                    time.UnixMilli(dbInstance.CreatedAt),
+		State:                        bpmnruntime.ActivityState(dbInstance.State),
+		ParentProcessExecutionToken:  parentToken,
+		ParentProcessTargetElementId: SubprocessTargetElementID,
 	}
 
 	return res, nil
@@ -847,7 +847,6 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
 	}
-	var SubprocessTargetElementID string
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
 		Key:                  processInstance.Key,
 		ProcessDefinitionKey: processInstance.Definition.Key,
@@ -859,8 +858,8 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Valid: processInstance.ParentProcessExecutionToken != nil,
 		},
 		SubprocessTargetElementID: ssql.NullString{
-			String: ptr.Deref(processInstance.SubprocessTargetElementId, SubprocessTargetElementID),
-			Valid:  processInstance.SubprocessTargetElementId != nil,
+			String: processInstance.ParentProcessTargetElementId,
+			Valid:  true,
 		},
 	})
 	if err != nil {
@@ -1603,25 +1602,36 @@ func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.Execution
 	})
 }
 
-func (rq *DB) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstanceItem, error) {
+func (rq *DB) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
 	key, err := rq.Queries.GetFlowElementInstanceByTokenKey(ctx, token.Key)
 	if err != nil {
-		return bpmnruntime.FlowElementInstanceItem{}, err
+		return bpmnruntime.FlowElementInstance{}, err
 	}
 }
 
-func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstanceItem) error {
-	return SaveFlowElementHistoryWith(ctx, rq.Queries, flowElementInstance)
+func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	return SaveFlowElementInstanceWith(ctx, rq.Queries, flowElementInstance)
 }
 
-func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem bpmnruntime.FlowElementInstanceItem) error {
+func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element bpmnruntime.FlowElementInstance) error {
+	inputVariablesString, err := json.Marshal(element.InputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", element.Key, err)
+	}
+	outputVariablesString, err := json.Marshal(element.OutputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", element.Key, err)
+	}
 	return db.SaveFlowElementInstance(
 		ctx,
 		sql.SaveFlowElementInstanceParams{
-			Key:                historyItem.Key,
-			ElementID:          historyItem.ElementId,
-			ProcessInstanceKey: historyItem.ProcessInstanceKey,
-			CreatedAt:          historyItem.CreatedAt.UnixMilli(),
+			Key:                element.Key,
+			ElementID:          element.ElementId,
+			ProcessInstanceKey: element.ProcessInstanceKey,
+			CreatedAt:          element.CreatedAt.UnixMilli(),
+			ExecutionTokenKey:  element.ExecutionToken.Key,
+			InputVariables:     string(inputVariablesString),
+			OutputVariables:    string(outputVariablesString),
 		},
 	)
 }
@@ -1906,8 +1916,8 @@ func (b *DBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToke
 	return SaveToken(ctx, b.queries, token)
 }
 
-func (b *DBBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementInstanceItem) error {
-	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
+func (b *DBBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
+	return SaveFlowElementInstanceWith(ctx, b.queries, historyItem)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

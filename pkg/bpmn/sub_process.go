@@ -9,13 +9,12 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 )
 
 func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-	if err := variableHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
@@ -30,7 +29,11 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 			ctx, todoSpan := engine.tracer.Start(ctx, fmt.Sprintf("callActivity:%s", element.Id), trace.WithAttributes(
 				attribute.Int64("parentProcessInstanceKey", instance.Key),
 			))
-			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &currentToken)
+			calledProcessInstance, err := engine.createInstance(ctx, &processDefinition, variableHolder, &runtime.SubProcessParentMetadata{
+				ParentProcessExecutionToken:  currentToken,
+				ParentProcessDefinitionKey:   instance.Definition.Key,
+				ParentProcessTargetElementId: element.Id,
+			})
 			if err != nil {
 				engine.runningInstances.lockInstance(instance)
 				engine.handleIncident(ctx, currentToken, err, todoSpan)
@@ -46,7 +49,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch storage.Batc
 
 func (engine *Engine) createSubProcess(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TSubProcess, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
-	if err := variableHolder.EvaluateAndSetInputMappings(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
 	}
@@ -64,7 +67,17 @@ func (engine *Engine) createSubProcess(ctx context.Context, batch storage.Batch,
 				attribute.String("targetParentActivityID", element.Id),
 			))
 
-			_, err := engine.createInstanceWithStartingElements(ctx, instance.Definition, startingFlowNodes, variableHolder, &currentToken, &element.Id)
+			_, err := engine.createInstanceWithStartingElements(
+				ctx,
+				instance.Definition,
+				startingFlowNodes,
+				variableHolder,
+				&runtime.SubProcessParentMetadata{
+					ParentProcessExecutionToken:  currentToken,
+					ParentProcessDefinitionKey:   instance.Definition.Key,
+					ParentProcessTargetElementId: element.Id,
+				},
+			)
 			if err != nil {
 				engine.runningInstances.lockInstance(instance)
 				engine.handleIncident(ctx, currentToken, err, todoSpan)
@@ -80,7 +93,7 @@ func (engine *Engine) createSubProcess(ctx context.Context, batch storage.Batch,
 }
 
 func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.TActivity, activity runtime.Activity, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
-	if instance.ParentProcessExecutionToken == nil {
+	if instance.SubProcessParentMetadata == nil {
 		if element.MultiInstance.IsSequential {
 			tokens, err := engine.startParallelMultiInstance(ctx, batch, instance, activity, &element, currentToken)
 			if err != nil {
@@ -95,35 +108,20 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch sto
 		return tokens, nil
 	}
 
-	elementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, instance.ParentProcessExecutionToken.ElementInstanceKey)
+	parentElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, instance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey)
 	if err != nil {
 		return nil, err
 	}
-	inputCollection := elementInstance.InputVariables[element.MultiInstance.InputElementName].([]interface{})
 
+	inputCollection := parentElementInstance.InputVariables[element.MultiInstance.InputElementName].([]interface{})
 	multiInstancesAlreadyStarted, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.Key)
 	if err != nil {
 		return nil, err
 	}
 	if multiInstancesAlreadyStarted > len(inputCollection) {
-		return nil, fmt.Errorf("there is more instances started in MultiInstance than was supposed to, token key:  %d", instance.ParentProcessExecutionToken.Key)
+		return nil, fmt.Errorf("there is more instances started in MultiInstance than was supposed to, token key:  %d", instance.SubProcessParentMetadata.ParentProcessExecutionTokenKey)
 	}
 	instance.VariableHolder.SetLocalVariable(element.MultiInstance.InputElementName, inputCollection[multiInstancesAlreadyStarted+1])
-
-	//TODO: move to each method
-	newFlowElementInstance := runtime.FlowElementInstanceItem{
-		Key:                currentToken.ElementInstanceKey,
-		ProcessInstanceKey: instance.Key,
-		ElementId:          element.GetId(),
-		CreatedAt:          time.Now(),
-		ExecutionToken:     currentToken,
-		InputVariables:     instance.VariableHolder.LocalVariables(),
-		OutputVariables:    nil,
-	}
-	err = engine.persistence.SaveFlowElementInstance(ctx, newFlowElementInstance)
-	if err != nil {
-		return nil, err
-	}
 
 	var activityResult runtime.ActivityState
 	switch element := activity.Element().(type) {
@@ -151,12 +149,6 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch sto
 		currentToken.State = runtime.TokenStateWaiting
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		//TODO: move to each method
-		newFlowElementInstance.OutputVariables = output
-		err = engine.persistence.SaveFlowElementInstance(ctx, newFlowElementInstance)
-		if err != nil {
-			return nil, err
-		}
 		if element.MultiInstance.IsSequential {
 			currentToken.State = runtime.TokenStateRunning
 			currentToken.ElementInstanceKey = engine.generateKey()
@@ -247,62 +239,73 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch st
 	return []runtime.ExecutionToken{currentToken}, nil
 }
 
-func (engine *Engine) handleParentProcessContinuation(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token runtime.ExecutionToken) error {
-	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+func (engine *Engine) handleParentProcessContinuation(ctx context.Context, instance runtime.ProcessInstance) error {
+	ppi, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.SubProcessParentMetadata.ParentProcessExecutionToken.ProcessInstanceKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey), err)
+		return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.SubProcessParentMetadata.ParentProcessExecutionToken.ProcessInstanceKey), err)
 	}
 	parentInstance := &ppi
 
 	engine.runningInstances.lockInstance(parentInstance)
+	instanceUnlocked := false
+	defer func() {
+		if instanceUnlocked == false {
+			engine.runningInstances.unlockInstance(parentInstance)
+		}
+	}()
+	batch := engine.persistence.NewBatch()
 
-	element := ppi.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+	//TODO: refactor lock instance
+	ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.SubProcessParentMetadata.ParentProcessExecutionToken.ProcessInstanceKey)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find parent process instance %d", instance.SubProcessParentMetadata.ParentProcessExecutionToken.ProcessInstanceKey), err)
+	}
+	parentInstance = &ppi
+
+	parentToken, err := engine.persistence.GetTokenByKey(ctx, instance.SubProcessParentMetadata.ParentProcessExecutionToken.Key)
+	if err != nil {
+		return fmt.Errorf("failed to get token by key: %w", err)
+	}
+	if parentToken.ElementInstanceKey != instance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey {
+		engine.logger.Error("failed to handleParentProcessContinuation for instance %d: parent token is no longer waiting at target element instance key %d", instance.Key, instance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey)
+	}
+
+	element := ppi.Definition.Definitions.Process.GetFlowNodeById(instance.SubProcessParentMetadata.ParentProcessTargetElementId)
 
 	variableHolder := runtime.NewVariableHolder(&parentInstance.VariableHolder, instance.VariableHolder.LocalVariables())
 	// map the variables back to the parent
 	switch element.(type) {
 	case *bpmn20.TSubProcess:
-		if err := variableHolder.PropagateLocalVariables(element.(*bpmn20.TSubProcess).GetOutputMapping(), engine.evaluateExpression); err != nil {
+		if err := variableHolder.PropagateLocalVariablesToParent(element.(*bpmn20.TSubProcess).GetOutputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 		}
 	case *bpmn20.TCallActivity:
-		if err := variableHolder.PropagateLocalVariables(element.(*bpmn20.TCallActivity).GetOutputMapping(), engine.evaluateExpression); err != nil {
+		if err := variableHolder.PropagateLocalVariablesToParent(element.(*bpmn20.TCallActivity).GetOutputMapping(), engine.evaluateExpression); err != nil {
 			instance.State = runtime.ActivityStateFailed
 			return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 		}
 	}
 
-	// unblock token of the parent
-	ppi, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ParentProcessExecutionToken.ProcessInstanceKey)
+	tokens, err := engine.handleElementTransition(ctx, batch, parentInstance, element, nil, parentToken)
 	if err != nil {
-		return fmt.Errorf("failed to find parent process instance %d", instance.ParentProcessExecutionToken.ProcessInstanceKey)
+		return errors.Join(newEngineErrorf("failed to handle simple transition for call activity: %s", instance.SubProcessParentMetadata.ParentProcessExecutionToken.ElementId), err)
 	}
-
-	element = ppi.Definition.Definitions.Process.GetFlowNodeById(instance.ParentProcessExecutionToken.ElementId)
-
-	tokens, err := engine.handleSimpleTransition(ctx, batch, parentInstance, element, *instance.ParentProcessExecutionToken)
-	if err != nil {
-		return errors.Join(newEngineErrorf("failed to handle simple transition for call activity: %s", instance.ParentProcessExecutionToken.ElementId), err)
-	}
-
 	for _, tok := range tokens {
 		batch.SaveToken(ctx, tok)
 	}
 
-	err = batch.SaveProcessInstance(ctx, *parentInstance)
+	err = batch.Flush(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to save updated parent process instance: %w", err)
+		return fmt.Errorf("failed to flush batch: %w", err)
 	}
-	batch.AddPostFlushAction(ctx, func() {
-		go func() {
-			engine.runningInstances.unlockInstance(parentInstance)
-			err = engine.runProcessInstance(ctx, parentInstance, tokens)
-			if err != nil {
-				engine.logger.Error("failed to continue with parent process instance: %w", err)
-			}
-		}()
-	})
+	engine.runningInstances.unlockInstance(&ppi)
 
+	go func() {
+		err = engine.runProcessInstance(ctx, parentInstance, tokens)
+		if err != nil {
+			engine.logger.Error("failed to continue with parent process instance: %w", err)
+		}
+	}()
 	return nil
 }

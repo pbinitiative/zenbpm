@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS process_instance(
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     variables text NOT NULL, -- serialized json variables of the process instance
     parent_process_execution_token integer, -- key of the execution_token of the parent process
-    subprocess_target_element_id text, -- if its not empty the process is a sub process with a specific activity to execute in parent process definition
+    parent_process_target_element_id text, -- if its not empty the process is a sub process with a specific activity to execute in parent process definition
+    parent_process_target_element_instance_key integer,
+    parent_process_definition_key integer,
     history_ttl_sec integer, -- seconds after completion for data to be deleted
     history_delete_sec integer, -- unix millis when the data should be deleted
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- process definition that describes this process instance

@@ -777,12 +777,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 		return res, fmt.Errorf("failed to find process definition for process instance: %w", err)
 	}
 
-	var parentToken *bpmnruntime.ExecutionToken
-
-	var SubprocessTargetElementID *string
-	if dbInstance.SubprocessTargetElementID.Valid {
-		SubprocessTargetElementID = &dbInstance.SubprocessTargetElementID.String
-	}
+	var subProcessParentMetadata *bpmnruntime.SubProcessParentMetadata
 
 	if dbInstance.ParentProcessExecutionToken.Valid {
 		tokens, err := rq.Queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
@@ -793,24 +788,33 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 			return res, fmt.Errorf("more than one token found for parent process instance key (%d): %w", dbInstance.Key, err)
 		}
 		if len(tokens) == 1 {
-			parentToken = &bpmnruntime.ExecutionToken{
-				Key:                tokens[0].Key,
-				ElementInstanceKey: tokens[0].ElementInstanceKey,
-				ElementId:          tokens[0].ElementID,
-				ProcessInstanceKey: tokens[0].ProcessInstanceKey,
-				State:              bpmnruntime.TokenState(tokens[0].State),
+			if !dbInstance.ParentProcessDefinitionKey.Valid || !dbInstance.ParentProcessTargetElementInstanceKey.Valid || !dbInstance.ParentProcessTargetElementID.Valid {
+				return res, fmt.Errorf("invalid parent process definition key (%v): %w", dbInstance.ParentProcessDefinitionKey, err)
 			}
+
+			subProcessParentMetadata = &bpmnruntime.SubProcessParentMetadata{
+				ParentProcessExecutionToken: bpmnruntime.ExecutionToken{
+					Key:                tokens[0].Key,
+					ElementInstanceKey: tokens[0].ElementInstanceKey,
+					ElementId:          tokens[0].ElementID,
+					ProcessInstanceKey: tokens[0].ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(tokens[0].State),
+				},
+				ParentProcessDefinitionKey:            dbInstance.ParentProcessDefinitionKey.Int64,
+				ParentProcessTargetElementInstanceKey: dbInstance.ParentProcessTargetElementInstanceKey.Int64,
+				ParentProcessTargetElementId:          dbInstance.ParentProcessTargetElementID.String,
+			}
+
 		}
 	}
 
 	res = bpmnruntime.ProcessInstance{
-		Definition:                   &definition,
-		Key:                          dbInstance.Key,
-		VariableHolder:               bpmnruntime.NewVariableHolder(nil, variables),
-		CreatedAt:                    time.UnixMilli(dbInstance.CreatedAt),
-		State:                        bpmnruntime.ActivityState(dbInstance.State),
-		ParentProcessExecutionToken:  parentToken,
-		ParentProcessTargetElementId: SubprocessTargetElementID,
+		Definition:               &definition,
+		Key:                      dbInstance.Key,
+		VariableHolder:           bpmnruntime.NewVariableHolder(nil, variables),
+		CreatedAt:                time.UnixMilli(dbInstance.CreatedAt),
+		State:                    bpmnruntime.ActivityState(dbInstance.State),
+		SubProcessParentMetadata: subProcessParentMetadata,
 	}
 
 	return res, nil
@@ -854,12 +858,20 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		State:                int64(processInstance.State),
 		Variables:            string(varStr),
 		ParentProcessExecutionToken: ssql.NullInt64{
-			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, bpmnruntime.ExecutionToken{}).Key,
-			Valid: processInstance.ParentProcessExecutionToken != nil,
+			Int64: processInstance.SubProcessParentMetadata.ParentProcessExecutionToken.Key,
+			Valid: processInstance.SubProcessParentMetadata != nil,
 		},
-		SubprocessTargetElementID: ssql.NullString{
-			String: processInstance.ParentProcessTargetElementId,
-			Valid:  true,
+		ParentProcessTargetElementID: ssql.NullString{
+			String: processInstance.SubProcessParentMetadata.ParentProcessTargetElementId,
+			Valid:  processInstance.SubProcessParentMetadata != nil,
+		},
+		ParentProcessTargetElementInstanceKey: ssql.NullInt64{
+			Int64: processInstance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey,
+			Valid: processInstance.SubProcessParentMetadata != nil,
+		},
+		ParentProcessDefinitionKey: ssql.NullInt64{
+			Int64: processInstance.SubProcessParentMetadata.ParentProcessDefinitionKey,
+			Valid: processInstance.SubProcessParentMetadata != nil,
 		},
 	})
 	if err != nil {
@@ -1524,7 +1536,30 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 	return nil
 }
 
-var _ storage.TokenStorageReader = &DB{}
+var _ storage.TokenStorageReader =  &DB{}
+
+func (rq *DB) GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	return GetTokensForProcessInstance(ctx, rq.Queries, rq.Partition, processInstanceKey, []int64{int64(bpmnruntime.TokenStateCompleted)})
+}
+
+func (rq *DB) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
+	token, err := rq.Queries.GetTokens(ctx, []int64{key})
+	if err != nil {
+		return bpmnruntime.ExecutionToken{}, err
+	}
+	if len(token) != 1 {
+		return bpmnruntime.ExecutionToken{}, fmt.Errorf("invalid key %d", key)
+	}
+
+	return bpmnruntime.ExecutionToken{
+		Key:                token[0].Key,
+		ElementInstanceKey: token[0].ElementInstanceKey,
+		ElementId:          token[0].ElementID,
+		ProcessInstanceKey: token[0].ProcessInstanceKey,
+		State:              bpmnruntime.TokenState(token[0].State),
+		CreatedAt:          time.UnixMilli(token[0].CreatedAt),
+	}, nil
+}
 
 func (rq *DB) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
 	return GetActiveTokens(ctx, rq.Queries, rq.Partition)
@@ -1602,12 +1637,44 @@ func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.Execution
 	})
 }
 
-func (rq *DB) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
-	key, err := rq.Queries.GetFlowElementInstanceByTokenKey(ctx, token.Key)
-	if err != nil {
-		return bpmnruntime.FlowElementInstance{}, err
-	}
+var _ storage.FlowElementInstanceReader = &DB{}
+
+func (rq *DB) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int, error) {
+	//TODO implement me
+	panic("implement me")
 }
+
+func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (rq *DB) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
+	flowElementInstances, err := rq.Queries.GetFlowElementInstanceByTokenKey(ctx, token.Key)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]bpmnruntime.FlowElementInstance, len(flowElementInstances))
+	for _, instance := range flowElementInstances {
+		result = append(result, bpmnruntime.FlowElementInstance{
+			Key:                instance.Key,
+			ProcessInstanceKey: instance.ProcessInstanceKey,
+			ElementId:          instance.ElementID,
+			CreatedAt:          instance.CreatedAt,
+			ExecutionToken: ,
+			InputVariables:     nil,
+			OutputVariables:    nil,
+		})
+	}
+	return result, nil
+}
+
+var _ storage.FlowElementInstanceWriter = &DB{}
 
 func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	return SaveFlowElementInstanceWith(ctx, rq.Queries, flowElementInstance)

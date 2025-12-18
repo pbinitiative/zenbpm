@@ -116,7 +116,7 @@ INSERT INTO flow_element_instance(key, element_id, process_instance_key, created
     VALUES (?, ? ,? ,?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
-		output_variables = excluded.output_variables;
+       output_variables = excluded.output_variables
 `
 
 type SaveFlowElementInstanceParams struct {

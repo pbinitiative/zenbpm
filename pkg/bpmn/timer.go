@@ -118,7 +118,7 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		timer.TimerState = runtime.TimerStateTriggered
 		batch.SaveTimer(ctx, timer)
 		//TODO: BUG ? Tokens are never saved
-		tokens, err = engine.handleElementTransition(ctx, batch, instance, nodeT, timer.Token)
+		tokens, err = engine.handleElementTransition(ctx, batch, instance, nodeT, nil, timer.Token)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
@@ -200,7 +200,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
 		}
 	}
-	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, timer.Token)
+	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, nil, timer.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to handle boundary timer transition %+v: %w", timer, err)
 	}

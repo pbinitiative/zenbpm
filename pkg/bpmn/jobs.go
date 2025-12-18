@@ -106,18 +106,10 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 }
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) error {
-	instance, job, err := engine.completeJob(ctx, jobKey, variables)
+	err := engine.completeJob(ctx, jobKey, variables)
 	if err != nil {
 		return fmt.Errorf("failed to complete job %d: %w", jobKey, err)
 	}
-
-	go func() {
-		err := engine.runProcessInstance(ctx, instance, []runtime.ExecutionToken{job.Token})
-		if err != nil {
-			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.Key, err.Error()))
-		}
-	}()
-
 	return nil
 }
 
@@ -126,10 +118,14 @@ func (engine *Engine) completeJob(
 	jobKey int64,
 	variables map[string]interface{},
 ) (
-	instance *runtime.ProcessInstance,
-	job *runtime.Job,
 	retErr error,
 ) {
+	j, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+	}
+	job := &j
+
 	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
 		attribute.Int64("key", job.Key),
 	))
@@ -146,47 +142,41 @@ func (engine *Engine) completeJob(
 		completeJobSpan.End()
 	}()
 
-	j, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
-	}
-	job = &j
-
 	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
 	}
-	instance = &inst
+	instance := &inst
 
 	batch := engine.persistence.NewBatch()
-	engine.runningInstances.lockInstance(instance)
+	engine.runningInstances.lockInstance(instance.Key)
 	instanceUnlocked := false
 	defer func() {
 		if instanceUnlocked == false {
-			engine.runningInstances.unlockInstance(instance)
+			engine.runningInstances.unlockInstance(instance.Key)
 		}
 	}()
 
 	//TODO: change runningInstanceCache to use only keys so we dont have to pull instance twice
 	inst, err = engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
 	}
 	instance = &inst
 
 	if job.State == runtime.ActivityStateCompleted {
 		engine.logger.Error("job %d is already completed", job.Key)
-		return nil, nil, nil
+		return nil
 	}
 
 	parentVariableHolder := runtime.NewVariableHolder(nil, variables)
 	outputVariableHolder := runtime.NewVariableHolder(&parentVariableHolder, nil)
 	task := instance.Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
-		return instance, job, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
+		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
 	}
 	if err := outputVariableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetOutputMapping(), engine.evaluateExpression); err != nil {
-		return instance, job, errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
+		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}
 	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             job.Token.ElementInstanceKey,
@@ -195,12 +185,12 @@ func (engine *Engine) completeJob(
 
 	err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &job.Token)
 	if err != nil {
-		return instance, job, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.Key, err)
 	}
 
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, task, outputVariableHolder.LocalVariables(), job.Token)
 	if err != nil {
-		return instance, job, fmt.Errorf("failed to complete job %+v: %w", job, err)
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
 
 	job.State = runtime.ActivityStateCompleted
@@ -208,17 +198,35 @@ func (engine *Engine) completeJob(
 	for _, token := range tokens {
 		batch.SaveToken(ctx, token)
 	}
+	batch.SaveProcessInstance(ctx, *instance)
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return instance, job, fmt.Errorf("failed to complete job %+v: %w", job, err)
+		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
-	engine.runningInstances.unlockInstance(instance)
+	engine.runningInstances.unlockInstance(instance.Key)
 	instanceUnlocked = true
+
+	if instance.State == runtime.ActivityStateCompleted {
+		if instance.SubProcessParentMetadata != nil {
+			//sub process ended
+			engine.handleParentProcessContinuation(ctx, *instance)
+			return nil
+		} else {
+			return nil
+		}
+	}
 
 	engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 
-	return instance, job, nil
+	go func() {
+		err := engine.runProcessInstance(ctx, instance, tokens)
+		if err != nil {
+			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.Key, err.Error()))
+		}
+	}()
+
+	return nil
 }
 
 // JobFailByKey is used to mark external jobs as failed

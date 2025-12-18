@@ -57,6 +57,7 @@ type Batch interface {
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
+
 	// AddPreFlushAction registers a function f that will be called after a before flush. If error is returned flush is not performed
 	AddPreFlushAction(ctx context.Context, f func() error)
 	// AddPostFlushAction registers a function f that will be called after a successful flush has been performed
@@ -176,6 +177,7 @@ type MessageStorageWriter interface {
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error)
 }
@@ -187,6 +189,7 @@ type TokenStorageWriter interface {
 type FlowElementInstanceReader interface {
 	GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error)
 	GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int, error)
+	GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error)
 }
 

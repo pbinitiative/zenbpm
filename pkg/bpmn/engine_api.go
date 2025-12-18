@@ -62,7 +62,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
 	}
 	// Check if process is root
-	if instance.ParentProcessExecutionToken != nil {
+	if instance.SubProcessParentMetadata != nil {
 		// Cancel all child process instances
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.Key)
 	}
@@ -82,11 +82,11 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	processInstance := runtime.ProcessInstance{
 		Key: processInstanceKey,
 	}
-	engine.runningInstances.lockInstance(&processInstance)
+	engine.runningInstances.lockInstance(processInstance.Key)
 	instanceUnlocked := false
 	defer func() {
 		if instanceUnlocked == false {
-			engine.runningInstances.unlockInstance(&processInstance)
+			engine.runningInstances.unlockInstance(processInstance.Key)
 		}
 	}()
 
@@ -138,7 +138,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 		return &processInstance, activeTokens, fmt.Errorf("failed to modify process instance %d: %w", processInstance.Key, err)
 	}
 
-	engine.runningInstances.unlockInstance(&processInstance)
+	engine.runningInstances.unlockInstance(processInstance.Key)
 	instanceUnlocked = true
 	err = engine.runProcessInstance(ctx, &processInstance, activeTokens)
 	if err != nil {
@@ -175,5 +175,5 @@ func (engine *Engine) StartInstanceOnElementsByKey(ctx context.Context, processD
 		startingFlowNodes = append(startingFlowNodes, startNode)
 	}
 
-	return engine.createInstanceWithStartingElements(ctx, &processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), nil, nil)
+	return engine.createInstanceWithStartingElements(ctx, &processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), nil)
 }

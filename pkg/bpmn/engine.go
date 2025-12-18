@@ -510,8 +510,8 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
 		))
 	}()
-	engine.runningInstances.lockInstance(instance)
-	defer engine.runningInstances.unlockInstance(instance)
+	engine.runningInstances.lockInstance(instance.Key)
+	defer engine.runningInstances.unlockInstance(instance.Key)
 
 	// we have to load the instance from DB because previous run could change it
 	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
@@ -593,14 +593,6 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			}
 		}
 
-		//sub process ended
-		if instance.State == runtime.ActivityStateCompleted && instance.SubProcessParentMetadata != nil {
-			err := engine.handleParentProcessContinuation(ctx, *instance)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = batch.Flush(ctx)
 		if err != nil {
 			engine.handleIncident(ctx, currentToken, err, tokenSpan)
@@ -610,6 +602,17 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			tokenSpan.End()
 		}
 		tokenSpan.End()
+
+		if instance.State == runtime.ActivityStateCompleted {
+			if instance.SubProcessParentMetadata != nil {
+				//sub process ended
+				engine.handleParentProcessContinuation(ctx, *instance, activity.Element())
+				break
+			} else {
+				//process ended
+				break
+			}
+		}
 	}
 
 	// if we encounter any error we switch the instance to failed state
@@ -623,6 +626,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
 		))
 	}
+	//TODO: THIS WILL CAUSE PROBLEMS IT SHOULD BE SAVED EVERY TIME TOKEN UPDATES
 	err = engine.persistence.SaveProcessInstance(ctx, *instance)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to save process instance %d", instance.Key), err)
@@ -663,6 +667,7 @@ func (engine *Engine) getExecutionTokenActivity(
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
 	var currentFlowNode bpmn20.FlowNode
+	//TODO: use ParentProcessDefinitionKey to figure out where to get GetFlowNodeById
 	if instance.SubProcessParentMetadata != nil {
 		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(instance.SubProcessParentMetadata.ParentProcessTargetElementId)
 		switch parentActivityDefinition.(type) {
@@ -827,7 +832,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 		}
 		return []runtime.ExecutionToken{currentToken}, nil
 	case runtime.ActivityStateCompleted:
-		tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.Element(), currentToken)
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.Element(), nil, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -1056,6 +1061,7 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	return resTokens, nil
 }
 
+// TODO: check each use of this method and add change to how variables are added to process instance
 func (engine *Engine) handleElementTransition(
 	ctx context.Context,
 	batch storage.Batch,
@@ -1064,26 +1070,53 @@ func (engine *Engine) handleElementTransition(
 	outputVariables map[string]any,
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
-	if element.(*bpmn20.TActivity).MultiInstance != nil {
-		if instance.SubProcessParentMetadata != nil {
-			// multi instance or subprocess or multi instance subprocess
-			tokens, err := engine.handleDefaultElementTransition(ctx, batch, instance, element, outputVariables, currentToken)
+	if element, ok := element.(*bpmn20.TActivity); !ok && element.MultiInstance != nil {
+		if instance.SubProcessParentMetadata == nil {
+			currentToken.State = runtime.TokenStateFailed
+			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("sub-process parent metadata cannot be nil for multi instance process :%d", instance.Key)
+		}
+
+		multiInstanceElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, instance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey)
+		if err != nil {
+			currentToken.State = runtime.TokenStateFailed
+			return []runtime.ExecutionToken{currentToken}, err
+		}
+		multiInstanceInputCollectionLength := len(multiInstanceElementInstance.InputVariables[element.MultiInstance.InputElementName].([]interface{}))
+
+		if element.MultiInstance.IsSequential == true {
+			//TODO: Optimize this query to use some kind of counter instead
+			count, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.Key)
 			if err != nil {
-				return nil, err
+				currentToken.State = runtime.TokenStateFailed
+				return []runtime.ExecutionToken{currentToken}, err
 			}
-			if element.(*bpmn20.TActivity).MultiInstance.IsSequential == true {
-				//sequential
+			if count == multiInstanceInputCollectionLength {
+				currentToken.State = runtime.TokenStateCompleted
+				instance.State = runtime.ActivityStateCompleted
+			} else if count > multiInstanceInputCollectionLength {
+				currentToken.State = runtime.TokenStateFailed
+				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("")
 			} else {
-				//parallel
+				currentToken.State = runtime.TokenStateRunning
+				currentToken.ElementInstanceKey = engine.generateKey()
+				return []runtime.ExecutionToken{currentToken}, nil
 			}
 		} else {
-			//
-			if element.(*bpmn20.TActivity).MultiInstance.IsSequential == true {
-				//sequential
-
+			//TODO: Optimize this query to use some kind of counter instead
+			tokens, err := engine.persistence.GetCompletedTokensForProcessInstance(ctx, instance.Key)
+			if err != nil {
+				currentToken.State = runtime.TokenStateFailed
+				return []runtime.ExecutionToken{currentToken}, err
+			}
+			if len(tokens) == multiInstanceInputCollectionLength {
+				currentToken.State = runtime.TokenStateCompleted
+				instance.State = runtime.ActivityStateCompleted
+			} else if len(tokens) > multiInstanceInputCollectionLength {
+				currentToken.State = runtime.TokenStateFailed
+				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("")
 			} else {
-				//parallel
-
+				currentToken.State = runtime.TokenStateCompleted
+				return []runtime.ExecutionToken{currentToken}, nil
 			}
 		}
 	}
@@ -1102,7 +1135,6 @@ func (engine *Engine) handleDefaultElementTransition(
 	var resTokens = []runtime.ExecutionToken{currentToken}
 
 	instance.VariableHolder.PropagateVariables(outputVariables)
-	batch.SaveProcessInstance(ctx, *instance)
 
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
@@ -1147,7 +1179,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 		token, err := engine.createTimerCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TTimerEventDefinition), ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
-		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, currentToken)
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, nil, currentToken)
 		return tokens, err
 	default:
 		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))
@@ -1156,7 +1188,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 
 func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.ProcessInstance) error {
 	activeSubscriptions := false
-	// FIXME: check if this is correct to seems wrong i need to check if there are any tokens in this process not only messages subscriptions but elements also
+
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load active subscriptions"), err)
@@ -1164,6 +1196,7 @@ func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.Proc
 	if len(activeSubs) > 0 {
 		activeSubscriptions = true
 	}
+
 	readySubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateReady)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load ready subscriptions"), err)
@@ -1177,6 +1210,14 @@ func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.Proc
 		return errors.Join(newEngineErrorf("failed to load pending process instance jobs for key: %d", instance.Key), err)
 	}
 	if len(jobs) > 0 {
+		activeSubscriptions = true
+	}
+
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.Key)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to load active tokens for key: %d", instance.Key), err)
+	}
+	if len(tokens) > 1 {
 		activeSubscriptions = true
 	}
 

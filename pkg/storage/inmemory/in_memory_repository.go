@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"strings"
 	"time"
 
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
@@ -277,6 +278,77 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 	}
 	slices.SortFunc(res, func(a, b bpmnruntime.ProcessDefinition) int {
 		return int(a.Version - b.Version)
+	})
+
+	return res, nil
+}
+
+func (mem *Storage) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool) ([]storage.ProcessDefinitionList, error) {
+	res := make([]storage.ProcessDefinitionList, 0)
+
+	// If onlyLatest is true, we need to find the max version for each bpmn_process_id first
+	var maxVersions map[string]int32
+	if onlyLatest {
+		maxVersions = make(map[string]int32)
+		for _, def := range mem.ProcessDefinitions {
+			if bpmnProcessId == nil || def.BpmnProcessId == *bpmnProcessId {
+				if currentMax, exists := maxVersions[def.BpmnProcessId]; !exists || def.Version > currentMax {
+					maxVersions[def.BpmnProcessId] = def.Version
+				}
+			}
+		}
+	}
+
+	for _, def := range mem.ProcessDefinitions {
+		if bpmnProcessId != nil && def.BpmnProcessId != *bpmnProcessId {
+			continue
+		}
+
+		// If onlyLatest is true, only include definitions with the maximum version for their bpmn_process_id
+		if onlyLatest {
+			if maxVersion, exists := maxVersions[def.BpmnProcessId]; !exists || def.Version != maxVersion {
+				continue
+			}
+		}
+
+		res = append(res, storage.ProcessDefinitionList{
+			BpmnProcessId:    def.BpmnProcessId,
+			Version:          def.Version,
+			Key:              def.Key,
+			BpmnResourceName: def.BpmnResourceName,
+		})
+	}
+
+	slices.SortFunc(res, func(a, b storage.ProcessDefinitionList) int {
+		var cmp int
+
+		if sortBy != nil {
+			switch *sortBy {
+			case "bpmnProcessId":
+				cmp = strings.Compare(a.BpmnProcessId, b.BpmnProcessId)
+
+			case "bpmnResourceName":
+				cmp = strings.Compare(a.BpmnResourceName, b.BpmnResourceName)
+
+			case "version":
+				cmp = int(a.Version - b.Version)
+
+			case "key":
+				cmp = int(a.Key - b.Key)
+
+			default:
+				cmp = int(a.Key - b.Key)
+			}
+		} else {
+			cmp = int(a.Key - b.Key)
+		}
+
+		// Reverse if descending
+		if sortOrder != nil && *sortOrder == storage.DESC {
+			return -cmp
+		}
+
+		return cmp
 	})
 
 	return res, nil

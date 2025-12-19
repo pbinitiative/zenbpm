@@ -101,23 +101,48 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 
 const findProcessDefinitions = `-- name: FindProcessDefinitions :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
-FROM
-    process_definition
+  pd."key",
+  pd.version,
+  pd.bpmn_process_id,
+  pd.bpmn_data,
+  pd.bpmn_checksum,
+  pd.bpmn_resource_name
+FROM process_definition AS pd
 WHERE
-    COALESCE(?1, "key") = "key"
-    AND COALESCE(?2, bpmn_process_id) = bpmn_process_id
+  CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
+  AND (CAST(?2 AS TEXT) IS NULL OR pd.bpmn_process_id = CAST(?2 AS TEXT))
+  AND (
+    CAST(?3 AS INTEGER) = 0
+    OR pd.version = (
+      SELECT MAX(pd2.version)
+      FROM process_definition AS pd2
+      WHERE pd2.bpmn_process_id = pd.bpmn_process_id
+        AND (CAST(?2 AS TEXT) IS NULL OR pd2.bpmn_process_id = CAST(?2 AS TEXT))
+    )
+  )
+  
 ORDER BY
-    version DESC
+  CASE CAST(?1 AS TEXT) WHEN 'version_asc'  THEN pd.version END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'version_desc' THEN pd.version END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pd."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pd."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_asc' THEN pd.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_desc' THEN pd.bpmn_process_id END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
+  pd."key" DESC
 `
 
 type FindProcessDefinitionsParams struct {
-	Key           sql.NullInt64  `json:"key"`
-	BpmnProcessID sql.NullString `json:"bpmn_process_id"`
+	Sort                sql.NullString `json:"sort"`
+	BpmnProcessIDFilter sql.NullString `json:"bpmn_process_id_filter"`
+	OnlyLatest          int64          `json:"only_latest"`
 }
 
+// force sqlc to keep sort param
+// workaround for sqlc does not replace params in order by
 func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessDefinitions, arg.Key, arg.BpmnProcessID)
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitions, arg.Sort, arg.BpmnProcessIDFilter, arg.OnlyLatest)
 	if err != nil {
 		return nil, err
 	}

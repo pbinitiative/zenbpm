@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iancoleman/strcase"
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -757,6 +758,45 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 		}
 
 		rq.pdCache.Add(def.Key, res[i])
+	}
+	return res, nil
+}
+
+func sortString(sortOrder *storage.SortOrder, sortBy *string) string {
+	if sortOrder == nil {
+		return ""
+	}
+	if sortBy == nil {
+		return ""
+	}
+
+	return strcase.ToSnake(*sortBy) + "_" + strings.ToLower(string(*sortOrder))
+}
+
+func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool) ([]storage.ProcessDefinitionList, error) {
+
+	dbDefinitions, err := rq.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
+		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
+		Sort:                ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortOrder != nil || sortBy != nil},
+		OnlyLatest: func() int64 {
+			if onlyLatest {
+				return 1
+			}
+			return 0
+		}(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find process definitions list %w", err)
+	}
+
+	res := make([]storage.ProcessDefinitionList, len(dbDefinitions))
+	for i, def := range dbDefinitions {
+		res[i] = storage.ProcessDefinitionList{
+			BpmnProcessId:    def.BpmnProcessID,
+			Version:          int32(def.Version),
+			Key:              def.Key,
+			BpmnResourceName: def.BpmnResourceName,
+		}
 	}
 	return res, nil
 }

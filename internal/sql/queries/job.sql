@@ -46,11 +46,13 @@ WHERE
 
 -- name: FindProcessInstanceJobs :many
 SELECT
-    *
+    *,
+    COUNT(*) OVER () AS total_count
 FROM
     job
 WHERE
-    process_instance_key = @process_instance_key;
+    process_instance_key = @process_instance_key
+LIMIT @size OFFSET @offset;
 
 -- name: FindProcessInstanceJobsInState :many
 SELECT
@@ -70,13 +72,14 @@ LIMIT @size offset @offset;
 
 -- name: FindJobsFilter :many
 SELECT
-    *
+    *,
+    count(*) OVER () AS total_count
 FROM
     job
 WHERE
     COALESCE(sqlc.narg('type'), type) = type
     AND COALESCE(sqlc.narg('state'), state) = state
-LIMIT @size offset @offset;
+LIMIT @size OFFSET @offset;
 
 -- name: FindWaitingJobs :many
 SELECT

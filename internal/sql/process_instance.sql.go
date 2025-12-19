@@ -161,7 +161,8 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec,
+    COUNT(*) OVER () AS total_count
 FROM
     process_instance
 WHERE
@@ -196,25 +197,38 @@ type FindProcessInstancesPageParams struct {
 	ProcessDefinitionKey interface{} `json:"process_definition_key"`
 	ParentInstanceKey    interface{} `json:"parent_instance_key"`
 	BusinessKey          interface{} `json:"business_key"`
-	Offst                int64       `json:"offst"`
+	Offset               int64       `json:"offset"`
 	Size                 int64       `json:"size"`
 }
 
-func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]ProcessInstance, error) {
+type FindProcessInstancesPageRow struct {
+	Key                         int64          `json:"key"`
+	ProcessDefinitionKey        int64          `json:"process_definition_key"`
+	BusinessKey                 sql.NullString `json:"business_key"`
+	CreatedAt                   int64          `json:"created_at"`
+	State                       int64          `json:"state"`
+	Variables                   string         `json:"variables"`
+	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
+	HistoryTtlSec               sql.NullInt64  `json:"history_ttl_sec"`
+	HistoryDeleteSec            sql.NullInt64  `json:"history_delete_sec"`
+	TotalCount                  int64          `json:"total_count"`
+}
+
+func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage,
 		arg.ProcessDefinitionKey,
 		arg.ParentInstanceKey,
 		arg.BusinessKey,
-		arg.Offst,
+		arg.Offset,
 		arg.Size,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ProcessInstance{}
+	items := []FindProcessInstancesPageRow{}
 	for rows.Next() {
-		var i ProcessInstance
+		var i FindProcessInstancesPageRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ProcessDefinitionKey,
@@ -225,6 +239,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.ParentProcessExecutionToken,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

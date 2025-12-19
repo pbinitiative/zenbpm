@@ -507,9 +507,9 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
 	}
-	totalCount, err := db.Queries.GetProcessDefinitionsCount(ctx)
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get count of process definitions from database: %w", err)
+	totalCount := int32(0)
+	if len(definitions) > 0 {
+		totalCount = int32(definitions[0].TotalCount)
 	}
 
 	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
@@ -798,8 +798,8 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 	return resp.Processes, resp.ExecutionTokens, nil
 }
 
-// GetProcessInstance will contact follower node of partition that contains process instance
-func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]*proto.Job, error) {
+// GetProcessInstanceJobs will contact follower node of partition that contains process instance jobs
+func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetProcessInstanceJobsResponse, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
@@ -812,6 +812,8 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 	}
 	resp, err := client.GetProcessInstanceJobs(ctx, &proto.GetProcessInstanceJobsRequest{
 		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance jobs from partition %d", partitionId)
@@ -821,12 +823,11 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, processInstance
 			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
-
-	return resp.Jobs, nil
+	return resp, nil
 }
 
 // GetFlowElementHistory will contact follower node of partition that contains process instance
-func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]*proto.FlowElement, error) {
+func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetFlowElementHistoryResponse, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
@@ -839,6 +840,8 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceK
 	}
 	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
 		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance flow element history from partition %d", partitionId)
@@ -848,11 +851,11 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, processInstanceK
 			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
-	return resp.Flow, nil
+	return resp, nil
 }
 
 // GetIncidents will contact follower node of partition that contains process instance
-func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64) ([]*proto.Incident, error) {
+func (node *ZenNode) GetIncidents(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetIncidentsResponse, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
@@ -865,6 +868,8 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 	}
 	resp, err := client.GetIncidents(ctx, &proto.GetIncidentsRequest{
 		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
 	})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to get incidents from partition %d", partitionId)
@@ -874,7 +879,7 @@ func (node *ZenNode) GetIncidents(ctx context.Context, processInstanceKey int64)
 			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
-	return resp.Incidents, nil
+	return resp, nil
 }
 
 func (node *ZenNode) GetStatus() state.Cluster {

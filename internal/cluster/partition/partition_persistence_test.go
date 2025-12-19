@@ -544,7 +544,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: 0,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offst:                0,
+		Offset:                0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -554,7 +554,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offst:                0,
+		Offset:                0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -564,7 +564,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    tok1.Key,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offst:                0,
+		Offset:                0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -574,7 +574,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: inst2.Definition.Key,
 		ParentInstanceKey:    inst1.GetInstanceKey(),
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offst:                0,
+		Offset:                0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)

@@ -32,27 +32,44 @@ func (q *Queries) DeleteFlowElementHistory(ctx context.Context, keys []int64) er
 
 const getFlowElementHistory = `-- name: GetFlowElementHistory :many
 SELECT
-    "key", element_id, process_instance_key, created_at
+    "key", element_id, process_instance_key, created_at,
+    COUNT(*) OVER() AS total_count
 FROM
     flow_element_history
 WHERE
     process_instance_key = ?1
+LIMIT ?3 OFFSET ?2
 `
 
-func (q *Queries) GetFlowElementHistory(ctx context.Context, processInstanceKey int64) ([]FlowElementHistory, error) {
-	rows, err := q.db.QueryContext(ctx, getFlowElementHistory, processInstanceKey)
+type GetFlowElementHistoryParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	Offset             int64 `json:"offset"`
+	Limit              int64 `json:"limit"`
+}
+
+type GetFlowElementHistoryRow struct {
+	Key                int64  `json:"key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	CreatedAt          int64  `json:"created_at"`
+	TotalCount         int64  `json:"total_count"`
+}
+
+func (q *Queries) GetFlowElementHistory(ctx context.Context, arg GetFlowElementHistoryParams) ([]GetFlowElementHistoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getFlowElementHistory, arg.ProcessInstanceKey, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FlowElementHistory{}
+	items := []GetFlowElementHistoryRow{}
 	for rows.Next() {
-		var i FlowElementHistory
+		var i GetFlowElementHistoryRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ElementID,
 			&i.ProcessInstanceKey,
 			&i.CreatedAt,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

@@ -24,6 +24,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const (
+	PaginationDefaultPage int32 = 1
+	PaginationDefaultSize int32 = 10
+)
+
 type Server struct {
 	sync.RWMutex
 	node   *cluster.ZenNode
@@ -136,14 +141,9 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		}, nil
 	}
 
-	page := 1
-	if request.Params.Page != nil {
-		page = int(*request.Params.Page)
-	}
-	size := 10
-	if request.Params.Size != nil {
-		size = int(*request.Params.Size)
-	}
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	page := int(*request.Params.Page)
+	size := int(*request.Params.Size)
 
 	items := make([]public.DmnResourceDefinitionSimple, 0)
 	for _, p := range definitions {
@@ -387,16 +387,9 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 }
 
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
-	page := int32(1)
-	if request.Params.Page != nil {
-		page = *request.Params.Page
-	}
-	size := int32(100)
-	if request.Params.Size != nil {
-		size = *request.Params.Size
-	}
+	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	definitionsPage, err := s.node.GetProcessDefinitions(ctx, page, size)
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx, *request.Params.Page, *request.Params.Size)
 	if err != nil {
 		return public.GetProcessDefinitions500JSONResponse{
 			Code:    "TODO",
@@ -416,9 +409,10 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		items[i] = processDefinitionSimple
 	}
 	result.Items = items
-	result.Count = int(*definitionsPage.TotalCount)
-	result.Page = 1
-	result.Size = len(items)
+	result.Count = len(items)
+	result.Page = int(*request.Params.Page)
+	result.Size = int(*request.Params.Size)
+	result.TotalCount = int(*definitionsPage.TotalCount)
 
 	return public.GetProcessDefinitions200JSONResponse(result), nil
 }
@@ -514,14 +508,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
-	page := int32(1)
-	if request.Params.Page != nil {
-		page = *request.Params.Page
-	}
-	size := int32(100)
-	if request.Params.Size != nil {
-		size = *request.Params.Size
-	}
+	defaultPagination(&request.Params.Page, &request.Params.Size)
 
 	definitionKey := ptr.Deref(request.Params.ProcessDefinitionKey, int64(0))
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
@@ -531,8 +518,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		&definitionKey,
 		request.Params.BusinessKey,
 		parentInstanceKey,
-		page,
-		size,
+		*request.Params.Page,
+		*request.Params.Size,
 	)
 	if err != nil {
 		return public.GetProcessInstances502JSONResponse{
@@ -544,18 +531,20 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	processInstancesPage := public.GetProcessInstances200JSONResponse{
 		Partitions: make([]public.PartitionProcessInstances, len(partitionedInstances)),
 		PartitionedPageMetadata: public.PartitionedPageMetadata{
-			Page: int(page),
-			Size: int(size),
+			Page: int(*request.Params.Page),
+			Size: int(*request.Params.Size),
 		},
 	}
 
 	count := 0
+	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
 			Items:     make([]public.ProcessInstance, len(partitionInstances.GetInstances())),
 			Partition: int(partitionInstances.GetPartitionId()),
 		}
 		count += len(partitionInstances.GetInstances())
+		totalCount += int(partitionInstances.GetTotalCount())
 		for k, instance := range partitionInstances.GetInstances() {
 			vars := map[string]any{}
 			err = json.Unmarshal(instance.GetVariables(), &vars)
@@ -579,6 +568,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		}
 	}
 	processInstancesPage.Count = count
+	processInstancesPage.TotalCount = totalCount
 	return processInstancesPage, nil
 }
 
@@ -621,15 +611,16 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 }
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
-	flow, err := s.node.GetFlowElementHistory(ctx, request.ProcessInstanceKey)
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetHistory502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	resp := make([]public.FlowElementHistory, len(flow))
-	for i, flowNode := range flow {
+	resp := make([]public.FlowElementHistory, len(flow.Flow))
+	for i, flowNode := range flow.Flow {
 		key := flowNode.GetKey()
 		createdAt := time.UnixMilli(flowNode.GetCreatedAt())
 		processInstanceKey := flowNode.GetProcessInstanceKey()
@@ -643,23 +634,25 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{
 		Items: &resp,
 		PageMetadata: public.PageMetadata{
-			Count: len(resp),
-			Page:  0,
-			Size:  len(resp),
+			Count:      len(resp),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(*flow.TotalCount),
 		},
 	}), nil
 }
 
 func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetProcessInstanceJobsRequestObject) (public.GetProcessInstanceJobsResponseObject, error) {
-	jobs, err := s.node.GetProcessInstanceJobs(ctx, request.ProcessInstanceKey)
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	jobs, err := s.node.GetProcessInstanceJobs(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetProcessInstanceJobs502JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	resp := make([]public.Job, len(jobs))
-	for i, job := range jobs {
+	resp := make([]public.Job, len(jobs.Jobs))
+	for i, job := range jobs.Jobs {
 		vars := map[string]any{}
 		err := json.Unmarshal(job.GetVariables(), &vars)
 		if err != nil {
@@ -682,23 +675,16 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count: len(resp),
-			Page:  0,
-			Size:  len(resp),
+			Count:      len(resp),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(*jobs.TotalCount),
 		},
 	}, nil
 }
 
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
-	page := int32(1)
-	if request.Params.Page != nil {
-		page = *request.Params.Page
-	}
-	size := int32(100)
-	if request.Params.Size != nil {
-		size = *request.Params.Size
-	}
-
+	defaultPagination(&request.Params.Page, &request.Params.Size)
 	var reqState *runtime.ActivityState
 	if request.Params.State != nil {
 		switch *request.Params.State {
@@ -712,7 +698,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, page, size, request.Params.JobType, reqState)
+	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState)
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -723,18 +709,20 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	jobsPage := public.GetJobs200JSONResponse{
 		Partitions: make([]public.PartitionJobs, len(jobs)),
 		PartitionedPageMetadata: public.PartitionedPageMetadata{
-			Page: int(page),
-			Size: int(size),
+			Page: int(*request.Params.Page),
+			Size: int(*request.Params.Size),
 		},
 	}
 
 	count := 0
+	totalCount := int32(0)
 	for i, partitionJobs := range jobs {
 		jobsPage.Partitions[i] = public.PartitionJobs{
 			Items:     make([]public.Job, len(partitionJobs.GetJobs())),
 			Partition: int(partitionJobs.GetPartitionId()),
 		}
 		count += len(partitionJobs.GetJobs())
+		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
 			vars := map[string]any{}
 			err = json.Unmarshal(job.GetVariables(), &vars)
@@ -757,6 +745,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		}
 	}
 	jobsPage.Count = count
+	jobsPage.TotalCount = int(totalCount)
 	return jobsPage, nil
 }
 
@@ -793,7 +782,8 @@ func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInst
 }
 
 func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {
-	incidents, err := s.node.GetIncidents(ctx, request.ProcessInstanceKey)
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	incidents, err := s.node.GetIncidents(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
 	if err != nil {
 		return public.GetIncidents502JSONResponse{
 			Code:    "TODO",
@@ -801,8 +791,8 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 		}, nil
 	}
 
-	resp := make([]public.Incident, len(incidents))
-	for i, incident := range incidents {
+	resp := make([]public.Incident, len(incidents.Incidents))
+	for i, incident := range incidents.Incidents {
 		resp[i] = public.Incident{
 			Key:                incident.GetKey(),
 			ElementInstanceKey: incident.GetElementInstanceKey(),
@@ -819,13 +809,13 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 			ExecutionToken:     incident.GetExecutionToken(),
 		}
 	}
-	// TODO: Paging needs to be implemented properly
 	return public.GetIncidents200JSONResponse{
 		Items: resp,
 		PageMetadata: public.PageMetadata{
-			Count: len(resp),
-			Page:  0,
-			Size:  len(resp),
+			Count:      len(resp),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(*incidents.TotalCount),
 		},
 	}, nil
 }
@@ -911,5 +901,16 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, resp interfa
 		log.Error("Server error: %s", err)
 	} else {
 		w.Write(body)
+	}
+}
+
+func defaultPagination(page **int32, size **int32) {
+	if *page == nil {
+		p := PaginationDefaultPage
+		*page = &p
+	}
+	if *size == nil {
+		s := PaginationDefaultSize
+		*size = &s
 	}
 }

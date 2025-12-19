@@ -53,7 +53,8 @@ WHERE key IN (sqlc.slice('keys'));
 
 -- name: FindProcessInstancesPage :many
 SELECT
-    *
+    *,
+    COUNT(*) OVER () AS total_count
 FROM
     process_instance
 WHERE
@@ -81,7 +82,7 @@ WHERE
     END
 ORDER BY
     created_at DESC
-LIMIT @size OFFSET @offst;
+LIMIT @size OFFSET @offset;
 
 -- name: FindProcessByParentExecutionToken :many
 SELECT

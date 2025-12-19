@@ -253,23 +253,10 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	return key, err
 }
 
-const getProcessDefinitionsCount = `-- name: GetProcessDefinitionsCount :one
-SELECT
-    COUNT(1)
-FROM
-    process_definition
-`
-
-func (q *Queries) GetProcessDefinitionsCount(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getProcessDefinitionsCount)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const getProcessDefinitionsPage = `-- name: GetProcessDefinitionsPage :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name,
+    COUNT(*) OVER() AS total_count
 FROM
     process_definition
 ORDER BY
@@ -283,15 +270,25 @@ type GetProcessDefinitionsPageParams struct {
 	Limit  int64 `json:"limit"`
 }
 
-func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]ProcessDefinition, error) {
+type GetProcessDefinitionsPageRow struct {
+	Key              int64  `json:"key"`
+	Version          int64  `json:"version"`
+	BpmnProcessID    string `json:"bpmn_process_id"`
+	BpmnData         string `json:"bpmn_data"`
+	BpmnChecksum     []byte `json:"bpmn_checksum"`
+	BpmnResourceName string `json:"bpmn_resource_name"`
+	TotalCount       int64  `json:"total_count"`
+}
+
+func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]GetProcessDefinitionsPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, getProcessDefinitionsPage, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ProcessDefinition{}
+	items := []GetProcessDefinitionsPageRow{}
 	for rows.Next() {
-		var i ProcessDefinition
+		var i GetProcessDefinitionsPageRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.Version,
@@ -299,6 +296,7 @@ func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessD
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

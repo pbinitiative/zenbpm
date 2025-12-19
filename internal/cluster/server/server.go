@@ -719,7 +719,11 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			},
 		}, err
 	}
-	jobs, err := queries.FindProcessInstanceJobs(ctx, req.GetProcessInstanceKey())
+	result, err := queries.FindProcessInstanceJobs(ctx, sql.FindProcessInstanceJobsParams{
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:               int64(req.GetSize()),
+		ProcessInstanceKey: req.GetProcessInstanceKey(),
+	})
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceJobsResponse{
@@ -729,21 +733,26 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			},
 		}, err
 	}
-	result := make([]*proto.Job, len(jobs))
-	for i, job := range jobs {
-		result[i] = &proto.Job{
+	jobs := make([]*proto.Job, len(result))
+	totalCount := int32(0)
+	if len(result) > 0 {
+		totalCount = int32(result[0].TotalCount)
+	}
+	for i, job := range result {
+		jobs[i] = &proto.Job{
 			Key:                &job.Key,
 			ElementInstanceKey: &job.ElementInstanceKey,
 			ElementId:          &job.ElementID,
 			ProcessInstanceKey: &job.ProcessInstanceKey,
 			Type:               &job.Type,
-			State:              ptr.To(int64(job.State)),
+			State:              ptr.To(job.State),
 			CreatedAt:          &job.CreatedAt,
 			Variables:          []byte(job.Variables),
 		}
 	}
 	return &proto.GetProcessInstanceJobsResponse{
-		Jobs: result,
+		Jobs:       jobs,
+		TotalCount: &totalCount,
 	}, nil
 }
 
@@ -759,7 +768,11 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			},
 		}, err
 	}
-	flowElements, err := queries.GetFlowElementHistory(ctx, req.GetProcessInstanceKey())
+	flowElements, err := queries.GetFlowElementHistory(ctx, sql.GetFlowElementHistoryParams{
+		ProcessInstanceKey: *req.ProcessInstanceKey,
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Limit:              int64(req.GetSize()),
+	})
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetFlowElementHistoryResponse{
@@ -770,6 +783,10 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		}, err
 	}
 	result := make([]*proto.FlowElement, len(flowElements))
+	totalCount := int32(0)
+	if len(flowElements) > 0 {
+		totalCount = int32(flowElements[0].TotalCount)
+	}
 	for i, flowElement := range flowElements {
 		result[i] = &proto.FlowElement{
 			Key:                &flowElement.Key,
@@ -779,7 +796,8 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		}
 	}
 	return &proto.GetFlowElementHistoryResponse{
-		Flow: result,
+		Flow:       result,
+		TotalCount: ptr.To(totalCount),
 	}, nil
 }
 
@@ -817,6 +835,10 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				},
 			}, err
 		}
+		totalCount := int32(0)
+		if len(jobs) > 0 {
+			totalCount = int32(jobs[0].TotalCount)
+		}
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{
@@ -833,6 +855,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
+			TotalCount:  ptr.To(totalCount),
 		})
 	}
 	return &proto.GetJobsResponse{
@@ -860,7 +883,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				String: ptr.Deref(req.BusinessKey, ""),
 				Valid:  req.BusinessKey != nil,
 			},
-			Offst: int64(req.GetSize()) * int64(req.GetPage()-1),
+			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
 			Size:  int64(req.GetSize()),
 		})
 		if err != nil {
@@ -871,6 +894,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 					Message: ptr.To(err.Error()),
 				},
 			}, err
+		}
+		totalCount := int32(0)
+		if len(instances) > 0 {
+			totalCount = int32(instances[0].TotalCount)
 		}
 		definitionsToLoad := make([]int64, 0)
 		for _, inst := range instances {
@@ -903,7 +930,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				Key:           &inst.Key,
 				ProcessId:     ptr.To(definitionMap[inst.ProcessDefinitionKey].BpmnProcessID),
 				Variables:     []byte(inst.Variables),
-				State:         ptr.To(int64(inst.State)),
+				State:         ptr.To(inst.State),
 				CreatedAt:     &inst.CreatedAt,
 				DefinitionKey: &inst.ProcessDefinitionKey,
 				BusinessKey:   businessKey,
@@ -926,6 +953,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		resp = append(resp, &proto.PartitionedProcessInstances{
 			PartitionId: &partitionId,
 			Instances:   procInstances,
+			TotalCount:  ptr.To(totalCount),
 		})
 	}
 	return &proto.GetProcessInstancesResponse{
@@ -1080,7 +1108,11 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
-	incidents, err := queries.FindIncidentsByProcessInstanceKey(ctx, req.GetProcessInstanceKey())
+	incidents, err := queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
+		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:               int64(req.GetSize()),
+	})
 	if err != nil {
 		err := fmt.Errorf("failed to find incidents for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetIncidentsResponse{
@@ -1089,6 +1121,10 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 				Message: ptr.To(err.Error()),
 			},
 		}, err
+	}
+	totalCount := int32(0)
+	if len(incidents) > 0 {
+		totalCount = int32(incidents[0].TotalCount)
 	}
 	results := make([]*proto.Incident, len(incidents))
 	for i, incident := range incidents {
@@ -1109,7 +1145,8 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 		}
 	}
 	return &proto.GetIncidentsResponse{
-		Incidents: results,
+		Incidents:  results,
+		TotalCount: &totalCount,
 	}, nil
 }
 

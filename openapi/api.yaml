@@ -1552,62 +1552,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /jobs/{key}/retry:
-    post:
-      operationId: retryJob
-      summary: Retry a failed job
-      tags:
-        - job
-      parameters:
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-          example: 4503599627370540
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - retries
-              properties:
-                retries:
-                  type: integer
-                  minimum: 1
-                  description: Number of retries to set
-                variables:
-                  type: object
-                  description: Optional variables to update before retry
-            example:
-              retries: 3
-              variables:
-                apiEndpoint: "https://backup-api.example.com"
-      responses:
-        204:
-          description: Job retry initiated
-        400:
-          description: Bad request (invalid state or parameters)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        404:
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /jobs/{jobKey}:
     get:
       operationId: getJob

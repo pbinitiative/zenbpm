@@ -754,10 +754,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /process-definitions/{processDefinitionKey}/activity-counts:
+  /process-definitions/{processDefinitionKey}/statistics:
     get:
-      operationId: getProcessDefinitionActivityCounts
-      summary: Get running and failed instance counts per activity
+      operationId: getProcessDefinitionElementStatistics
+      summary: Get running and incident counts per BPMN element
       tags:
         - process-definition
       parameters:
@@ -770,33 +770,33 @@ paths:
           example: 4503599627370498
       responses:
         200:
-          description: Activity counts as a map of activityId to counts
+          description: Element statistics as a map of elementId to counts
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ActivityCounts"
+                $ref: "#/components/schemas/ElementStatistics"
               example:
                 StartEvent_1:
-                  runningCount: 0
-                  failedCount: 0
+                  activeCount: 0
+                  incidentCount: 0
                 Task_SubmitApplication:
-                  runningCount: 5
-                  failedCount: 0
+                  activeCount: 5
+                  incidentCount: 0
                 Task_ReviewApplication:
-                  runningCount: 12
-                  failedCount: 2
+                  activeCount: 12
+                  incidentCount: 2
                 Task_CreditCheck:
-                  runningCount: 3
-                  failedCount: 1
+                  activeCount: 3
+                  incidentCount: 1
                 Gateway_Approved:
-                  runningCount: 0
-                  failedCount: 0
+                  activeCount: 0
+                  incidentCount: 0
                 Task_ProcessPayment:
-                  runningCount: 8
-                  failedCount: 0
+                  activeCount: 8
+                  incidentCount: 0
                 EndEvent_Approved:
-                  runningCount: 0
-                  failedCount: 0
+                  activeCount: 0
+                  incidentCount: 0
         500:
           description: Internal server error
           content:
@@ -2314,19 +2314,21 @@ components:
           properties:
             bpmnData:
               type: string
-    ActivityCounts:
+    ElementStatistics:
       type: object
-      description: Map of activityId to running/failed counts
+      description: Map of elementId to active/incident counts
       additionalProperties:
         type: object
         required:
-          - runningCount
-          - failedCount
+          - activeCount
+          - incidentCount
         properties:
-          runningCount:
+          activeCount:
             type: integer
-          failedCount:
+            description: Number of active element instances
+          incidentCount:
             type: integer
+            description: Number of incidents on this element
     ProcessInstancePage:
       type: object
       allOf:

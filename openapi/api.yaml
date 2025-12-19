@@ -954,11 +954,6 @@ paths:
           schema:
             type: string
           description: Filter by current activity element ID
-        - name: hasIncident
-          in: query
-          schema:
-            type: boolean
-          description: Filter instances that have active incidents
 
       responses:
         200:

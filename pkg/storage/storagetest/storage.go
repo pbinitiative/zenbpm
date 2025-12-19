@@ -13,6 +13,7 @@ import (
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
 )
@@ -148,6 +149,38 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
+
+		//TODO: make this from now on a separate test
+		listDefinitions, err := s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false)
+		assert.NoError(t, err)
+		assert.Len(t, listDefinitions, 1)
+
+		def2 := getProcessDefinition(r)
+		def2.Key = r + 1
+		def2.Version = def2.Version + 1
+		err = s.SaveProcessDefinition(t.Context(), def2)
+		assert.NoError(t, err)
+
+		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false)
+		assert.NoError(t, err)
+		assert.Len(t, listDefinitions, 2)
+
+		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, true)
+		assert.NoError(t, err)
+		assert.Len(t, listDefinitions, 1)
+
+		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.ASC), ptr.To("version"), false)
+		assert.NoError(t, err)
+		assert.Len(t, listDefinitions, 2)
+		assert.Equal(t, int32(1), listDefinitions[0].Version)
+		assert.Equal(t, int32(2), listDefinitions[1].Version)
+
+		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.DESC), ptr.To("version"), false)
+		assert.NoError(t, err)
+		assert.Len(t, listDefinitions, 2)
+		assert.Equal(t, int32(2), listDefinitions[0].Version)
+		assert.Equal(t, int32(1), listDefinitions[1].Version)
+
 	}
 }
 

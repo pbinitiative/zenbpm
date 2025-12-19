@@ -34,6 +34,13 @@ type Storage interface {
 	NewBatch() Batch
 }
 
+type SortOrder string
+
+const (
+	ASC  SortOrder = "ASC"
+	DESC SortOrder = "DESC"
+)
+
 type DecisionStorage interface {
 	DmnResourceDefinitionStorageReader
 	DmnResourceDefinitionStorageWriter
@@ -110,8 +117,18 @@ type ProcessDefinitionStorageReader interface {
 	FindProcessDefinitionByKey(ctx context.Context, ProcessDefinitionKey int64) (bpmnruntime.ProcessDefinition, error)
 
 	// FindProcessDefinitionsById return zero or many registered processes with given ID
+	FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *SortOrder, sortBy *string, onlyLatest bool) ([]ProcessDefinitionList, error)
+
 	// result array is ordered by version number, from 1 (first) and largest version (last)
 	FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
+}
+
+type ProcessDefinitionList struct {
+	Key              int64  // The engines key for this given process with version
+	Version          int32  // A version of the process, default=1, incremented, when another process with the same ID is loaded
+	BpmnProcessId    string // The ID as defined in the BPMN file
+	BpmnProcessName  string // The name as defined in the BPMN file
+	BpmnResourceName string // some name for the resource
 }
 
 type ProcessDefinitionStorageWriter interface {

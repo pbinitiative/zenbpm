@@ -2359,7 +2359,7 @@ components:
           type: integer
         bpmnProcessId:
           type: string
-        name:
+        bpmnProcessName:
           type: string
           description: Process name from BPMN
         bpmnResourceName:

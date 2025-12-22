@@ -16,7 +16,7 @@ require (
 	github.com/hashicorp/raft v1.7.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea
 	github.com/ilyakaznacheev/cleanenv v1.5.0
-	github.com/oapi-codegen/runtime v1.1.1
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rqlite/rqlite/v8 v8.36.12
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46

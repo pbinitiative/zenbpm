@@ -187,7 +187,9 @@ release:
 		--rm \
 		--env-file .release-env \
 		-e BUILDX_BUILDER \
+		-e DOCKER_BUILDKIT=1 \
 		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(HOME)/.docker:/root/.docker \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \

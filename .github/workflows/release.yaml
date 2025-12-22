@@ -18,6 +18,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
+          install: true
       # - name: release dry run
       #   run: make release-dry-run
       - name: setup release environment

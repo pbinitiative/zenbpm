@@ -14,7 +14,7 @@ jobs:
       - run: git fetch --prune --unshallow
       - name: setup dependencies
         uses: actions/setup-go@v2
-      - uses: docker/setup-docker-action@v3
+      - uses: docker/setup-docker-action@v4
         with: 
           daemon-config: |
             {

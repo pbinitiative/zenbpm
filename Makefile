@@ -186,6 +186,7 @@ release:
 	docker run \
 		--rm \
 		--env-file .release-env \
+		-e BUILDX_BUILDER \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \

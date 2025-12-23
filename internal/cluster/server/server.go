@@ -609,7 +609,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.GetKey())
+		_, err = engine.LoadFromBytes(req.GetData(), req.GetResourceName(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{
@@ -884,7 +884,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				Valid:  req.BusinessKey != nil,
 			},
 			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:  int64(req.GetSize()),
+			Size:   int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)

@@ -1,6 +1,6 @@
 -- name: SaveProcessDefinition :exec
-INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
-    VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: FindProcessDefinitions :many
 SELECT
@@ -10,6 +10,7 @@ SELECT
   pd.bpmn_data,
   pd.bpmn_checksum,
   pd.bpmn_resource_name,
+  pd.bpmn_process_name,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
@@ -37,7 +38,7 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
   pd."key" DESC
-  
+
 LIMIT @limit
 OFFSET @offset;
 

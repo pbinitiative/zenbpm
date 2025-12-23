@@ -87,11 +87,11 @@ func deployDefinition(t testing.TB, filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
+
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/process-definitions").
 		WithMethod("POST").
-		WithBody(file).
-		WithHeader("Content-Type", "application/xml").
+		WithMultipartBody(file, filename).
 		DoOk()
 	if err != nil {
 		if strings.Contains(err.Error(), "DUPLICATE") {

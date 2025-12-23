@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"time"
 
@@ -358,7 +357,7 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (DeployResult, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
@@ -377,8 +376,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
 		resp, err := client.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-			Key:  ptr.To(definitionKey.Int64()),
-			Data: data,
+			Key:          ptr.To(definitionKey.Int64()),
+			Data:         data,
+			ResourceName: &resourceName,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("client call to deploy process definition failed")
@@ -500,24 +500,10 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 	// Get a random partition that this node is not a leader of, or fallback to first partition
 	state := node.store.ClusterState()
 	var selectedPartition uint32
-	var nonLeaderPartitions []uint32
 
-	// Collect all partitions where this node is not a leader
 	for partitionId := range state.Partitions {
-		if !node.IsPartitionLeader(ctx, partitionId) {
-			nonLeaderPartitions = append(nonLeaderPartitions, partitionId)
-		}
-	}
-
-	// If we have non-leader partitions, pick a random one
-	if len(nonLeaderPartitions) > 0 {
-		selectedPartition = nonLeaderPartitions[rand.Intn(len(nonLeaderPartitions))]
-	} else {
-		// Otherwise, use the first partition available
-		for partitionId := range state.Partitions {
-			selectedPartition = partitionId
-			break
-		}
+		selectedPartition = partitionId
+		break
 	}
 
 	// Get storage for the selected partition
@@ -544,9 +530,11 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 	resp := make([]*proto.ProcessDefinition, 0, len(items))
 	for _, def := range items {
 		resp = append(resp, &proto.ProcessDefinition{
-			Key:       &def.Key,
-			Version:   ptr.To(int32(def.Version)),
-			ProcessId: &def.BpmnProcessId,
+			Key:          &def.Key,
+			Version:      ptr.To(int32(def.Version)),
+			ProcessId:    &def.BpmnProcessId,
+			ResourceName: &def.BpmnResourceName,
+			ProcessName:  &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{

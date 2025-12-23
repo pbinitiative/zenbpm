@@ -802,6 +802,7 @@ func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string,
 			Version:          int32(def.Version),
 			Key:              def.Key,
 			BpmnResourceName: def.BpmnResourceName,
+			BpmnProcessName:  def.BpmnProcessName,
 		}
 	}
 	return res, totalCount, nil
@@ -821,6 +822,7 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 		BpmnData:         definition.BpmnData,
 		BpmnChecksum:     definition.BpmnChecksum[:],
 		BpmnResourceName: definition.BpmnResourceName,
+		BpmnProcessName:  definition.BpmnProcessName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process definition: %w", err)

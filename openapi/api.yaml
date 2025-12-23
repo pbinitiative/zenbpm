@@ -268,17 +268,20 @@ paths:
       requestBody:
         required: true
         content:
-          application/xml:
+          multipart/form-data:
             schema:
-              type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <bpmn:definitions>
-                <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
-                  ...
-                </bpmn:process>
-              </bpmn:definitions>
+              type: object
+              required:
+                - resource
+              properties:
+                resource:
+                  type: string
+                  format: binary
+                  description: BPMN process definition file (.bpmn format only, max 4MB)
+            encoding:
+              resource:
+                contentType: application/octet-stream
+
       responses:
         201:
           description: Process definition deployed

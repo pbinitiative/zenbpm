@@ -773,7 +773,7 @@ func sortString(sortOrder *storage.SortOrder, sortBy *string) string {
 	return strcase.ToSnake(*sortBy) + "_" + strings.ToLower(string(*sortOrder))
 }
 
-func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool) ([]storage.ProcessDefinitionList, error) {
+func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool, offset int64, limit int64) ([]storage.ProcessDefinitionList, int, error) {
 
 	dbDefinitions, err := rq.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
 		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
@@ -784,13 +784,19 @@ func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string,
 			}
 			return 0
 		}(),
+		Offset: offset,
+		Limit:  limit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to find process definitions list %w", err)
+		return nil, 0, fmt.Errorf("failed to find process definitions list %w", err)
 	}
 
 	res := make([]storage.ProcessDefinitionList, len(dbDefinitions))
+	totalCount := 0
 	for i, def := range dbDefinitions {
+		if i == 0 {
+			totalCount = int(def.TotalCount)
+		}
 		res[i] = storage.ProcessDefinitionList{
 			BpmnProcessId:    def.BpmnProcessID,
 			Version:          int32(def.Version),
@@ -798,7 +804,7 @@ func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string,
 			BpmnResourceName: def.BpmnResourceName,
 		}
 	}
-	return res, nil
+	return res, totalCount, nil
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &DB{}

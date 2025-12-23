@@ -283,7 +283,7 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 	return res, nil
 }
 
-func (mem *Storage) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool) ([]storage.ProcessDefinitionList, error) {
+func (mem *Storage) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool, offset int64, limit int64) ([]storage.ProcessDefinitionList, int, error) {
 	res := make([]storage.ProcessDefinitionList, 0)
 
 	// If onlyLatest is true, we need to find the max version for each bpmn_process_id first
@@ -351,7 +351,14 @@ func (mem *Storage) FindProcessDefinitions(ctx context.Context, bpmnProcessId *s
 		return cmp
 	})
 
-	return res, nil
+	if offset > 0 {
+		res = res[offset:]
+	}
+	if limit > 0 && len(res) > int(limit) {
+		res = res[:limit]
+	}
+
+	return res, len(res), nil
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}

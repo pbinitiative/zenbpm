@@ -9,7 +9,8 @@ SELECT
   pd.bpmn_process_id,
   pd.bpmn_data,
   pd.bpmn_checksum,
-  pd.bpmn_resource_name
+  pd.bpmn_resource_name,
+  COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
 -- force sqlc to keep sort param
@@ -35,7 +36,10 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_desc' THEN pd.bpmn_process_id END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
-  pd."key" DESC;
+  pd."key" DESC
+  
+LIMIT @limit
+OFFSET @offset;
 
 -- name: FindAllProcessDefinitions :many
 SELECT
@@ -45,16 +49,7 @@ FROM
 ORDER BY
     version DESC;
 
--- name: GetProcessDefinitionsPage :many
-SELECT
-    *,
-    COUNT(*) OVER() AS total_count
-FROM
-    process_definition
-ORDER BY
-    version DESC
-LIMIT @limit
-OFFSET @offset;
+
 
 -- name: FindProcessDefinitionByKey :one
 SELECT

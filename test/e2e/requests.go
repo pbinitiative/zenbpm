@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 )
 
@@ -67,6 +69,33 @@ func (r *request) WithMethod(method string) *request {
 
 func (r *request) WithPath(path string) *request {
 	r.path = path
+	return r
+}
+
+func (r *request) WithMultipartBody(file []byte, filename string) *request {
+
+	// Create multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Create the resource field as required by the OpenAPI spec
+	part, err := writer.CreateFormFile("resource", filename)
+	if err != nil {
+		log.Errorf(context.TODO(), "failed to create form file: %v", err)
+	}
+
+	_, err = part.Write(file)
+	if err != nil {
+		log.Errorf(context.TODO(), "failed to write file to multipart form: %v", err)
+	}
+
+	err = writer.Close()
+	if err != nil {
+		log.Errorf(context.TODO(), "failed to close multipart writer: %v", err)
+	}
+
+	r.requestBody = requestBody.Bytes()
+	r.headers.Set("Content-Type", writer.FormDataContentType())
 	return r
 }
 

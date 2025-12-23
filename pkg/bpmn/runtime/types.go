@@ -13,7 +13,8 @@ type ProcessDefinition struct {
 	Key              int64               // The engines key for this given process with version
 	Definitions      bpmn20.TDefinitions // parsed file content
 	BpmnData         string              // the raw source data, compressed and encoded via ascii85
-	BpmnResourceName string              // some name for the resource
+	BpmnResourceName string              // deployed resource name for example file name
+	BpmnProcessName  string              // the name of the process
 	BpmnChecksum     [16]byte            // internal checksum to identify different versions
 }
 

@@ -13,7 +13,7 @@ import (
 
 const findAllProcessDefinitions = `-- name: FindAllProcessDefinitions :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name
 FROM
     process_definition
 ORDER BY
@@ -36,6 +36,7 @@ func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefin
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.BpmnProcessName,
 		); err != nil {
 			return nil, err
 		}
@@ -52,7 +53,7 @@ func (q *Queries) FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefin
 
 const findLatestProcessDefinitionById = `-- name: FindLatestProcessDefinitionById :one
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name
 FROM
     process_definition
 WHERE
@@ -72,13 +73,14 @@ func (q *Queries) FindLatestProcessDefinitionById(ctx context.Context, bpmnProce
 		&i.BpmnData,
 		&i.BpmnChecksum,
 		&i.BpmnResourceName,
+		&i.BpmnProcessName,
 	)
 	return i, err
 }
 
 const findProcessDefinitionByKey = `-- name: FindProcessDefinitionByKey :one
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name
 FROM
     process_definition
 WHERE
@@ -95,6 +97,7 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 		&i.BpmnData,
 		&i.BpmnChecksum,
 		&i.BpmnResourceName,
+		&i.BpmnProcessName,
 	)
 	return i, err
 }
@@ -107,6 +110,7 @@ SELECT
   pd.bpmn_data,
   pd.bpmn_checksum,
   pd.bpmn_resource_name,
+  pd.bpmn_process_name,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
@@ -132,7 +136,7 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
   pd."key" DESC
-  
+
 LIMIT ?5
 OFFSET ?4
 `
@@ -152,6 +156,7 @@ type FindProcessDefinitionsRow struct {
 	BpmnData         string `json:"bpmn_data"`
 	BpmnChecksum     []byte `json:"bpmn_checksum"`
 	BpmnResourceName string `json:"bpmn_resource_name"`
+	BpmnProcessName  string `json:"bpmn_process_name"`
 	TotalCount       int64  `json:"total_count"`
 }
 
@@ -179,6 +184,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.BpmnProcessName,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -196,7 +202,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 
 const findProcessDefinitionsById = `-- name: FindProcessDefinitionsById :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name
 FROM
     process_definition
 WHERE
@@ -221,6 +227,7 @@ func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.BpmnProcessName,
 		); err != nil {
 			return nil, err
 		}
@@ -237,7 +244,7 @@ func (q *Queries) FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds
 
 const findProcessDefinitionsByKeys = `-- name: FindProcessDefinitionsByKeys :many
 SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name
+    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name
 FROM
     process_definition
 WHERE
@@ -270,6 +277,7 @@ func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.BpmnProcessName,
 		); err != nil {
 			return nil, err
 		}
@@ -302,8 +310,8 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 }
 
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
-INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveProcessDefinitionParams struct {
@@ -313,6 +321,7 @@ type SaveProcessDefinitionParams struct {
 	BpmnData         string `json:"bpmn_data"`
 	BpmnChecksum     []byte `json:"bpmn_checksum"`
 	BpmnResourceName string `json:"bpmn_resource_name"`
+	BpmnProcessName  string `json:"bpmn_process_name"`
 }
 
 func (q *Queries) SaveProcessDefinition(ctx context.Context, arg SaveProcessDefinitionParams) error {
@@ -323,6 +332,7 @@ func (q *Queries) SaveProcessDefinition(ctx context.Context, arg SaveProcessDefi
 		arg.BpmnData,
 		arg.BpmnChecksum,
 		arg.BpmnResourceName,
+		arg.BpmnProcessName,
 	)
 	return err
 }

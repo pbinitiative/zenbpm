@@ -151,7 +151,7 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		assert.Equal(t, definitions[0].Key, definition.Key)
 
 		//TODO: make this from now on a separate test
-		listDefinitions, err := s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false)
+		listDefinitions, count, err := s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false, 0, 20)
 		assert.NoError(t, err)
 		assert.Len(t, listDefinitions, 1)
 
@@ -161,23 +161,23 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		err = s.SaveProcessDefinition(t.Context(), def2)
 		assert.NoError(t, err)
 
-		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false)
+		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false, 0, 20)
 		assert.NoError(t, err)
 		assert.Len(t, listDefinitions, 2)
 
-		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, true)
+		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, true, 0, 20)
 		assert.NoError(t, err)
 		assert.Len(t, listDefinitions, 1)
 
-		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.ASC), ptr.To("version"), false)
+		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.ASC), ptr.To("version"), false, 0, 20)
 		assert.NoError(t, err)
 		assert.Len(t, listDefinitions, 2)
 		assert.Equal(t, int32(1), listDefinitions[0].Version)
 		assert.Equal(t, int32(2), listDefinitions[1].Version)
 
-		listDefinitions, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.DESC), ptr.To("version"), false)
+		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.DESC), ptr.To("version"), false, 0, 20)
 		assert.NoError(t, err)
-		assert.Len(t, listDefinitions, 2)
+		assert.Equal(t, 2, count)
 		assert.Equal(t, int32(2), listDefinitions[0].Version)
 		assert.Equal(t, int32(1), listDefinitions[1].Version)
 

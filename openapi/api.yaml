@@ -318,6 +318,33 @@ paths:
       tags:
         - process-definition
       parameters:
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each process definition grouped by bpmnProcessId"
+
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, bpmnProcessId, bpmnResourceName, version, key]
+          description: "Sort field"
+
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: "Sort direction"
+
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: "Filter by BPMN process ID to get all versions of a specific process"
+
         - name: page
           in: query
           schema:
@@ -327,6 +354,7 @@ paths:
             default: 1
           description: Page number (1-based indexing)
           example: 1
+
         - name: size
           in: query
           schema:
@@ -1450,6 +1478,12 @@ components:
           type: integer
         bpmnProcessId:
           type: string
+        bpmnProcessName:
+          type: string
+          description: "Process name from BPMN"
+        bpmnResourceName:
+          type: string
+          description: "resource file name"
     ProcessDefinitionDetail:
       type: object
       required:

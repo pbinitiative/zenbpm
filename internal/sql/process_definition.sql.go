@@ -106,7 +106,8 @@ SELECT
   pd.bpmn_process_id,
   pd.bpmn_data,
   pd.bpmn_checksum,
-  pd.bpmn_resource_name
+  pd.bpmn_resource_name,
+  COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
   CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
@@ -131,25 +132,46 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
   pd."key" DESC
+  
+LIMIT ?5
+OFFSET ?4
 `
 
 type FindProcessDefinitionsParams struct {
 	Sort                sql.NullString `json:"sort"`
 	BpmnProcessIDFilter sql.NullString `json:"bpmn_process_id_filter"`
 	OnlyLatest          int64          `json:"only_latest"`
+	Offset              int64          `json:"offset"`
+	Limit               int64          `json:"limit"`
+}
+
+type FindProcessDefinitionsRow struct {
+	Key              int64  `json:"key"`
+	Version          int64  `json:"version"`
+	BpmnProcessID    string `json:"bpmn_process_id"`
+	BpmnData         string `json:"bpmn_data"`
+	BpmnChecksum     []byte `json:"bpmn_checksum"`
+	BpmnResourceName string `json:"bpmn_resource_name"`
+	TotalCount       int64  `json:"total_count"`
 }
 
 // force sqlc to keep sort param
 // workaround for sqlc does not replace params in order by
-func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessDefinitions, arg.Sort, arg.BpmnProcessIDFilter, arg.OnlyLatest)
+func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitions,
+		arg.Sort,
+		arg.BpmnProcessIDFilter,
+		arg.OnlyLatest,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ProcessDefinition{}
+	items := []FindProcessDefinitionsRow{}
 	for rows.Next() {
-		var i ProcessDefinition
+		var i FindProcessDefinitionsRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.Version,
@@ -157,6 +179,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 			&i.BpmnData,
 			&i.BpmnChecksum,
 			&i.BpmnResourceName,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -276,64 +299,6 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	var key int64
 	err := row.Scan(&key)
 	return key, err
-}
-
-const getProcessDefinitionsPage = `-- name: GetProcessDefinitionsPage :many
-SELECT
-    "key", version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name,
-    COUNT(*) OVER() AS total_count
-FROM
-    process_definition
-ORDER BY
-    version DESC
-LIMIT ?2
-OFFSET ?1
-`
-
-type GetProcessDefinitionsPageParams struct {
-	Offset int64 `json:"offset"`
-	Limit  int64 `json:"limit"`
-}
-
-type GetProcessDefinitionsPageRow struct {
-	Key              int64  `json:"key"`
-	Version          int64  `json:"version"`
-	BpmnProcessID    string `json:"bpmn_process_id"`
-	BpmnData         string `json:"bpmn_data"`
-	BpmnChecksum     []byte `json:"bpmn_checksum"`
-	BpmnResourceName string `json:"bpmn_resource_name"`
-	TotalCount       int64  `json:"total_count"`
-}
-
-func (q *Queries) GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]GetProcessDefinitionsPageRow, error) {
-	rows, err := q.db.QueryContext(ctx, getProcessDefinitionsPage, arg.Offset, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetProcessDefinitionsPageRow{}
-	for rows.Next() {
-		var i GetProcessDefinitionsPageRow
-		if err := rows.Scan(
-			&i.Key,
-			&i.Version,
-			&i.BpmnProcessID,
-			&i.BpmnData,
-			&i.BpmnChecksum,
-			&i.BpmnResourceName,
-			&i.TotalCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"time"
 
@@ -495,35 +496,62 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
-	db, err := node.GetReadOnlyDB(ctx)
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
-	}
-	definitions, err := db.Queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
-		Offset: int64((page - 1) * size),
-		Limit:  int64(size),
-	})
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
-	}
-	totalCount := int32(0)
-	if len(definitions) > 0 {
-		totalCount = int32(definitions[0].TotalCount)
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
+	// Get a random partition that this node is not a leader of, or fallback to first partition
+	state := node.store.ClusterState()
+	var selectedPartition uint32
+	var nonLeaderPartitions []uint32
+
+	// Collect all partitions where this node is not a leader
+	for partitionId := range state.Partitions {
+		if !node.IsPartitionLeader(ctx, partitionId) {
+			nonLeaderPartitions = append(nonLeaderPartitions, partitionId)
+		}
 	}
 
-	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
-	for _, def := range definitions {
+	// If we have non-leader partitions, pick a random one
+	if len(nonLeaderPartitions) > 0 {
+		selectedPartition = nonLeaderPartitions[rand.Intn(len(nonLeaderPartitions))]
+	} else {
+		// Otherwise, use the first partition available
+		for partitionId := range state.Partitions {
+			selectedPartition = partitionId
+			break
+		}
+	}
+
+	// Get storage for the selected partition
+	str, err := node.GetPartitionStore(ctx, selectedPartition)
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
+	}
+
+	var order *storage.SortOrder
+	if sortOrder != nil {
+		order = (*storage.SortOrder)(sortOrder)
+	}
+
+	latest := false
+	if onlyLatest != nil {
+		latest = *onlyLatest
+	}
+
+	items, count, err := str.FindProcessDefinitions(ctx, bpmnProcessId, order, sortBy, latest, int64((page-1)*size), int64(size))
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to find process definitions: %w", err)
+	}
+
+	resp := make([]*proto.ProcessDefinition, 0, len(items))
+	for _, def := range items {
 		resp = append(resp, &proto.ProcessDefinition{
-			Key:        &def.Key,
-			Version:    ptr.To(int32(def.Version)),
-			ProcessId:  &def.BpmnProcessID,
-			Definition: []byte(def.BpmnData),
+			Key:       &def.Key,
+			Version:   ptr.To(int32(def.Version)),
+			ProcessId: &def.BpmnProcessId,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: ptr.To(int32(count)),
 	}, nil
 }
 

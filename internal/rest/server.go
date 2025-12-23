@@ -389,7 +389,25 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	definitionsPage, err := s.node.GetProcessDefinitions(ctx, *request.Params.Page, *request.Params.Size)
+	var sortBy *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		sortBy = &s
+	}
+
+	var sortOrder *string
+	if request.Params.SortOrder != nil {
+		s := string(*request.Params.SortOrder)
+		sortOrder = &s
+	}
+
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
+		request.Params.BpmnProcessId,
+		request.Params.OnlyLatest,
+		sortBy,
+		sortOrder,
+		*request.Params.Page, *request.Params.Size)
+
 	if err != nil {
 		return public.GetProcessDefinitions500JSONResponse{
 			Code:    "TODO",

@@ -219,7 +219,7 @@ message ProcessDefinition {
   int32 version = 2;
   string process_id = 3;
   bytes definition = 4;
-  string resourceName = 5;
+  string resource_name = 5;
   string process_name = 6;
 }
 

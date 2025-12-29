@@ -497,7 +497,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
 func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
-	// Get a random partition that this node is not a leader of, or fallback to first partition
+	// Get a partition
 	state := node.store.ClusterState()
 	var selectedPartition uint32
 

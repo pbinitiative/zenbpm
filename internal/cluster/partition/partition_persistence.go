@@ -777,7 +777,7 @@ func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string,
 
 	dbDefinitions, err := rq.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
 		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
-		Sort:                ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortOrder != nil || sortBy != nil},
+		Sort:                ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortString(sortOrder, sortBy) != ""},
 		OnlyLatest: func() int64 {
 			if onlyLatest {
 				return 1

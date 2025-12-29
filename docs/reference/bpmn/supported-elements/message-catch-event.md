@@ -3,6 +3,24 @@ sidebar_position: 100
 ---
 
 A Message Catch Event is used to model the recipient of a message from an external participant or process.
+
+## Key characteristics
+
+- **Catching behavior:**  
+  A Message Catch Event waits for an incoming message that matches its message definition.
+
+- **Pauses process execution:**  
+  When reached, the process execution is suspended until the message is received.
+
+- **Incoming and outgoing sequence flows:**  
+  A Message Catch Event must have at least one incoming sequence flow and typically has one outgoing sequence flow.
+
+- **Message correlation:**  
+  The received message is correlated to the correct process instance based on the message definition and correlation data.
+
+- **Subscription lifecycle:**  
+  At runtime, the engine creates a message subscription when the token reaches the Message Catch Event. The subscription is removed after the message is received and the process continues.
+
 It indicates that the execution flow will pause until the specified message is received.
 **ZenBPM implementation** of the engine tries to provide guarantees that only one message is active in the system with the same name and correlation key.
 
@@ -58,6 +76,18 @@ flowchart LR
     L_n2_n5_0@{ animation: fast }
     L_n5_n3_0@{ animation: fast }
 ```
+## Supported message catch event types
+
+The following Message Catch Event types are supported:
+
+- **Intermediate Message Catch Event:**  
+  Waits for a message during process execution and continues the flow when the message is received.
+
+- **Message Boundary Event:**  
+  Catches a message while the attached activity is active and reacts according to interrupting or non-interrupting behavior.
+
+- **Message Start Event:**  
+  Starts a new process instance when a message is received.
 
 #### Usage
 

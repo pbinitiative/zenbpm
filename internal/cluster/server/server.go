@@ -878,7 +878,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		}
 		var sortOrder *storage.SortOrder
 		if req.SortOrder != nil {
-			sortOrder = (*storage.SortOrder)(req.SortOrder)
+			order := storage.SortOrder(*req.SortOrder)
+			sortOrder = &order
 		}
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),

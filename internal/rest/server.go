@@ -599,18 +599,15 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	}
 	var sortByDbColumn *string
 	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
 		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByCreatedAt:
-			sortByDbColumn = (*string)(ptr.To(public.GetProcessInstancesParamsSortByCreatedAt))
-		case public.GetProcessInstancesParamsSortByKey:
-			sortByDbColumn = (*string)(ptr.To(public.GetProcessInstancesParamsSortByKey))
-		case public.GetProcessInstancesParamsSortByState:
-			sortByDbColumn = (*string)(ptr.To(public.GetProcessInstancesParamsSortByState))
+		case public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState:
+			sortByDbColumn = &s
 		default:
 			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
 			return public.GetProcessInstances400JSONResponse{
 				Code:    "TODO",
-				Message: *ptr.To(fmt.Sprintf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)),
+				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
 			}, nil
 		}
 	}

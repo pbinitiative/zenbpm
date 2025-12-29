@@ -552,7 +552,41 @@ paths:
             default: 10
           description: Number of items per page
           example: 10
-
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: Filter by BPMN process ID (returns instances across all versions)
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, key, state]
+          description: Sort field (applies globally across partitions)
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
+        - name: createdFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: created after this date"
+        - name: createdTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: created before this date"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, terminated, failed]
+          description: Filter by state
       responses:
         200:
           description: List of running process instances
@@ -1525,6 +1559,8 @@ components:
         processDefinitionKey:
           type: integer
           format: int64
+        bpmnProcessId:
+          type: string
         businessKey:
           type: string
         createdAt:

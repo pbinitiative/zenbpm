@@ -544,7 +544,12 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: 0,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -554,7 +559,12 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -564,7 +574,12 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    tok1.Key,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -574,7 +589,12 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: inst2.Definition.Key,
 		ParentInstanceKey:    inst1.GetInstanceKey(),
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)

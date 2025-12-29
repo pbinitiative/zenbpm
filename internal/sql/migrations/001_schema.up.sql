@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS job(
     created_at integer NOT NULL, -- unix millis of when the instance of the job was created
     variables text NOT NULL, -- serialized json variables of the process instance
     execution_token integer NOT NULL, -- key of the execution_token that created job
+    assignee text, -- assignee of the job
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 

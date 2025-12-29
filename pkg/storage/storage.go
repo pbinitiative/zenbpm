@@ -163,6 +163,17 @@ type TimerStorageWriter interface {
 	SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error
 }
 
+type JobList struct {
+	Key                int64
+	ElementId          string
+	ElementInstanceKey int64
+	Type               string
+	ProcessInstanceKey int64
+	CreatedAt          time.Time
+	State              bpmnruntime.ActivityState
+	Assignee           *string
+}
+
 type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
@@ -174,6 +185,8 @@ type JobStorageReader interface {
 	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
 
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
+
+	FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *SortOrder, sortBy *string, offset int64, limit int64) ([]JobList, int, error)
 }
 
 type JobStorageWriter interface {

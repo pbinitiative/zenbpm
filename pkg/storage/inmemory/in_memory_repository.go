@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -511,6 +512,73 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		res = append(res, job)
 	}
 	return res, nil
+}
+
+func (mem *Storage) FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+
+	res := make([]storage.JobList, 0)
+
+	for _, job := range mem.Jobs {
+		if processInstanceKey != nil && job.ProcessInstanceKey != *processInstanceKey {
+			continue
+		}
+
+		if assignee != nil && ptr.Deref(job.Assignee, "") != *assignee {
+			continue
+		}
+
+		res = append(res, storage.JobList{
+			Key:                job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			ElementId:          job.ElementId,
+			ElementInstanceKey: job.ElementInstanceKey,
+			Type:               job.Type,
+			CreatedAt:          job.CreatedAt,
+			State:              job.State,
+			Assignee:           job.Assignee,
+		})
+	}
+
+	slices.SortFunc(res, func(a, b storage.JobList) int {
+		var cmp int
+
+		if sortBy != nil {
+			switch *sortBy {
+			case "state":
+				cmp = int(a.State - b.State)
+			case "type":
+				cmp = strings.Compare(a.Type, b.Type)
+
+			case "createdAt":
+				cmp = int(a.CreatedAt.Sub(b.CreatedAt).Milliseconds())
+
+			case "key":
+				cmp = int(a.Key - b.Key)
+
+			default:
+				cmp = int(a.Key - b.Key)
+			}
+		} else {
+			cmp = int(a.Key - b.Key)
+		}
+
+		// Reverse if descending
+		if sortOrder != nil && *sortOrder == storage.DESC {
+			return -cmp
+		}
+
+		return cmp
+	})
+
+	if offset > 0 {
+		res = res[offset:]
+	}
+	if limit > 0 && len(res) > int(limit) {
+		res = res[:limit]
+	}
+
+	return res, len(res), nil
+
 }
 
 var _ storage.JobStorageWriter = &Storage{}

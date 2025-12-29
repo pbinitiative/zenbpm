@@ -1,10 +1,11 @@
 -- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token, assignee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-        variables = excluded.variables;
+        variables = excluded.variables,
+        assignee = excluded.assignee;
 
 -- name: DeleteProcessInstancesJobs :exec
 DELETE FROM job
@@ -110,3 +111,29 @@ FROM
     job
 WHERE
     state = 1;
+
+-- name: FindJobs :many
+SELECT
+  j.*,
+  COUNT(*) OVER() AS total_count
+FROM job AS j
+WHERE
+-- force sqlc to keep sort param
+  CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+  AND (CAST(sqlc.narg('process_instance_key') AS INTEGER) IS NULL OR j.process_instance_key = CAST(sqlc.narg('process_instance_key') AS TEXT)) 
+  AND (CAST(sqlc.narg('assignee') AS TEXT) IS NULL OR j.assignee = CAST(sqlc.narg('assignee') AS TEXT)) 
+  
+ORDER BY
+-- workaround for sqlc does not replace params in order by
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN j.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_desc' THEN j.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN j."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN j."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'type_asc' THEN j."type" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'type_desc' THEN j."type" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN j.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN j.state END DESC,
+  j."key" DESC
+
+LIMIT @limit
+OFFSET @offset;

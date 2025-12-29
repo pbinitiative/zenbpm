@@ -1307,6 +1307,43 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 	return res, nil
 }
 
+func (rq *DB) FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+	dbJobs, err := rq.Queries.FindJobs(ctx, sql.FindJobsParams{
+		Assignee:           NullString(assignee),
+		ProcessInstanceKey: NullInt64(processInstanceKey),
+		Sort:               ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortString(sortOrder, sortBy) != ""},
+		Offset:             offset,
+		Limit:              limit,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find process definitions list %w", err)
+	}
+
+	res := make([]storage.JobList, len(dbJobs))
+	totalCount := 0
+	for i, job := range dbJobs {
+		if i == 0 {
+			totalCount = int(job.TotalCount)
+		}
+
+		var a *string
+		if job.Assignee.Valid {
+			a = &job.Assignee.String
+		}
+		res[i] = storage.JobList{
+			Key:                job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			ElementId:          job.ElementID,
+			ElementInstanceKey: job.ElementInstanceKey,
+			Type:               job.Type,
+			CreatedAt:          time.UnixMilli(job.CreatedAt),
+			State:              bpmnruntime.ActivityState(job.State),
+			Assignee:           a,
+		}
+	}
+	return res, totalCount, nil
+}
+
 var _ storage.JobStorageWriter = &DB{}
 
 func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
@@ -1328,6 +1365,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		CreatedAt:          job.CreatedAt.UnixMilli(),
 		Variables:          string(variableBytes),
 		ExecutionToken:     job.Token.Key,
+		Assignee:           NullString(job.Assignee),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

@@ -225,6 +225,96 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 	return i, err
 }
 
+const findJobs = `-- name: FindJobs :many
+SELECT
+  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.variables, j.execution_token, j.assignee,
+  COUNT(*) OVER() AS total_count
+FROM job AS j
+WHERE
+  CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
+  AND (CAST(?2 AS INTEGER) IS NULL OR j.process_instance_key = CAST(?2 AS TEXT)) 
+  AND (CAST(?3 AS TEXT) IS NULL OR j.assignee = CAST(?3 AS TEXT)) 
+  
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN j.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_desc' THEN j.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN j."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN j."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'type_asc' THEN j."type" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'type_desc' THEN j."type" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN j.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN j.state END DESC,
+  j."key" DESC
+
+LIMIT ?5
+OFFSET ?4
+`
+
+type FindJobsParams struct {
+	Sort               sql.NullString `json:"sort"`
+	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
+	Assignee           sql.NullString `json:"assignee"`
+	Offset             int64          `json:"offset"`
+	Limit              int64          `json:"limit"`
+}
+
+type FindJobsRow struct {
+	Key                int64          `json:"key"`
+	ElementInstanceKey int64          `json:"element_instance_key"`
+	ElementID          string         `json:"element_id"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	Type               string         `json:"type"`
+	State              int64          `json:"state"`
+	CreatedAt          int64          `json:"created_at"`
+	Variables          string         `json:"variables"`
+	ExecutionToken     int64          `json:"execution_token"`
+	Assignee           sql.NullString `json:"assignee"`
+	TotalCount         int64          `json:"total_count"`
+}
+
+// force sqlc to keep sort param
+// workaround for sqlc does not replace params in order by
+func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error) {
+	rows, err := q.db.QueryContext(ctx, findJobs,
+		arg.Sort,
+		arg.ProcessInstanceKey,
+		arg.Assignee,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindJobsRow{}
+	for rows.Next() {
+		var i FindJobsRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.Type,
+			&i.State,
+			&i.CreatedAt,
+			&i.Variables,
+			&i.ExecutionToken,
+			&i.Assignee,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findJobsFilter = `-- name: FindJobsFilter :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee,
@@ -560,24 +650,26 @@ func (q *Queries) FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams
 }
 
 const saveJob = `-- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token, assignee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-        variables = excluded.variables
+        variables = excluded.variables,
+        assignee = excluded.assignee
 `
 
 type SaveJobParams struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ElementInstanceKey int64  `json:"element_instance_key"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	Type               string `json:"type"`
-	State              int64  `json:"state"`
-	CreatedAt          int64  `json:"created_at"`
-	Variables          string `json:"variables"`
-	ExecutionToken     int64  `json:"execution_token"`
+	Key                int64          `json:"key"`
+	ElementID          string         `json:"element_id"`
+	ElementInstanceKey int64          `json:"element_instance_key"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	Type               string         `json:"type"`
+	State              int64          `json:"state"`
+	CreatedAt          int64          `json:"created_at"`
+	Variables          string         `json:"variables"`
+	ExecutionToken     int64          `json:"execution_token"`
+	Assignee           sql.NullString `json:"assignee"`
 }
 
 func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
@@ -591,6 +683,7 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.CreatedAt,
 		arg.Variables,
 		arg.ExecutionToken,
+		arg.Assignee,
 	)
 	return err
 }

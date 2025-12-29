@@ -866,6 +866,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
 	resp := make([]*proto.PartitionedProcessInstances, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
+		s.controller.GetPartition(ctx, partitionId)
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
 			err := fmt.Errorf("queries for partition %d not found", partitionId)

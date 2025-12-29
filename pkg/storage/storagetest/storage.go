@@ -396,6 +396,69 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		assert.Equal(t, 1, len(storeJobs))
 		assert.Equal(t, job, storeJobs[0])
 		assert.NotEmpty(t, storeJobs[0].Type)
+
+		t.Run("Test find jobs by supported query params", func(t *testing.T) {
+			r := s.GenerateId()
+			token := bpmnruntime.ExecutionToken{
+				Key:                r,
+				ElementInstanceKey: r,
+				ProcessInstanceKey: st.processInstance.Key,
+				State:              bpmnruntime.TokenStateWaiting,
+			}
+			s.SaveToken(t.Context(), token)
+			time.Sleep(5 * time.Millisecond)
+
+			job := getJob(r, st.processInstance.Key, token)
+			job.Assignee = ptr.To("assignee")
+			err := s.SaveJob(t.Context(), job)
+			assert.NoError(t, err)
+
+			t.Run("Test sorting by createdAt", func(t *testing.T) {
+
+				storeJobs, count, err := s.FindJobs(t.Context(), nil, nil, ptr.To(storage.ASC), ptr.To("createdAt"), 0, 20)
+				assert.NoError(t, err)
+				assert.Equal(t, 2, count)
+				assert.True(t, storeJobs[0].CreatedAt.Before(storeJobs[1].CreatedAt), "expected first job to be created before second job")
+
+				storeJobs, count, err = s.FindJobs(t.Context(), nil, nil, ptr.To(storage.DESC), ptr.To("createdAt"), 0, 20)
+				assert.NoError(t, err)
+				assert.Equal(t, 2, count)
+				assert.True(t, storeJobs[0].CreatedAt.After(storeJobs[1].CreatedAt), "expected first job to be created after second job")
+			})
+
+			t.Run("Test filtering by assignee", func(t *testing.T) {
+				storeJobs, count, err := s.FindJobs(t.Context(), nil, ptr.To("assignee"), nil, nil, 0, 20)
+				assert.NoError(t, err)
+				assert.Equal(t, 1, count)
+				assert.Equal(t, "assignee", ptr.Deref(storeJobs[0].Assignee, ""))
+			})
+
+			t.Run("Test filtering by processInstanceKey", func(t *testing.T) {
+				pi := getProcessInstance(r, st.processDefinition)
+				err = s.SaveProcessInstance(t.Context(), pi)
+				assert.NoError(t, err)
+
+				r := s.GenerateId()
+				token := bpmnruntime.ExecutionToken{
+					Key:                r,
+					ElementInstanceKey: r,
+					ProcessInstanceKey: st.processInstance.Key,
+					State:              bpmnruntime.TokenStateWaiting,
+				}
+				s.SaveToken(t.Context(), token)
+
+				job := getJob(r, pi.Key, token)
+				err := s.SaveJob(t.Context(), job)
+				assert.NoError(t, err)
+
+				storeJobs, count, err := s.FindJobs(t.Context(), ptr.To(pi.Key), nil, nil, nil, 0, 20)
+				assert.NoError(t, err)
+				assert.Equal(t, 1, count)
+				assert.Equal(t, pi.Key, storeJobs[0].ProcessInstanceKey)
+
+			})
+
+		})
 	}
 }
 

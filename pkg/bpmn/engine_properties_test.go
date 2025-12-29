@@ -35,13 +35,13 @@ func TestFindProcessesByIdResultIsOrderedByVersion(t *testing.T) {
 	// setup
 	dataV1, err := os.ReadFile("./test-cases/simple_task.bpmn")
 	assert.Nil(t, err)
-	_, err = bpmnEngine.LoadFromBytes(dataV1, bpmnEngine.generateKey())
+	_, err = bpmnEngine.LoadFromBytes(dataV1, "simple_task.bpmn", bpmnEngine.generateKey())
 	assert.Nil(t, err)
 
 	// given
 	dataV2 := strings.Replace(string(dataV1), "StartEvent_1", "StartEvent_2", -1)
 	assert.NotEqual(t, dataV2, string(dataV1))
-	_, err = bpmnEngine.LoadFromBytes([]byte(dataV2), bpmnEngine.generateKey())
+	_, err = bpmnEngine.LoadFromBytes([]byte(dataV2), "simple_task.bpmn", bpmnEngine.generateKey())
 	assert.Nil(t, err)
 
 	// when

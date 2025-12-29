@@ -357,7 +357,7 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (DeployResult, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
@@ -376,8 +376,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
 		resp, err := client.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-			Key:  ptr.To(definitionKey.Int64()),
-			Data: data,
+			Key:          ptr.To(definitionKey.Int64()),
+			Data:         data,
+			ResourceName: &resourceName,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("client call to deploy process definition failed")
@@ -495,35 +496,50 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
-	db, err := node.GetReadOnlyDB(ctx)
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
-	}
-	definitions, err := db.Queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
-		Offset: int64((page - 1) * size),
-		Limit:  int64(size),
-	})
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
-	}
-	totalCount := int32(0)
-	if len(definitions) > 0 {
-		totalCount = int32(definitions[0].TotalCount)
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
+	// Get a partition
+	state := node.store.ClusterState()
+	var selectedPartition uint32
+
+	for partitionId := range state.Partitions {
+		selectedPartition = partitionId
+		break
 	}
 
-	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
-	for _, def := range definitions {
+	// Get storage for the selected partition
+	str, err := node.GetPartitionStore(ctx, selectedPartition)
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
+	}
+
+	var order *storage.SortOrder
+	if sortOrder != nil {
+		order = (*storage.SortOrder)(sortOrder)
+	}
+
+	latest := false
+	if onlyLatest != nil {
+		latest = *onlyLatest
+	}
+
+	items, count, err := str.FindProcessDefinitions(ctx, bpmnProcessId, order, sortBy, latest, int64((page-1)*size), int64(size))
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to find process definitions: %w", err)
+	}
+
+	resp := make([]*proto.ProcessDefinition, 0, len(items))
+	for _, def := range items {
 		resp = append(resp, &proto.ProcessDefinition{
-			Key:        &def.Key,
-			Version:    ptr.To(int32(def.Version)),
-			ProcessId:  &def.BpmnProcessID,
-			Definition: []byte(def.BpmnData),
+			Key:          &def.Key,
+			Version:      ptr.To(int32(def.Version)),
+			ProcessId:    &def.BpmnProcessId,
+			ResourceName: &def.BpmnResourceName,
+			ProcessName:  &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: ptr.To(int32(count)),
 	}, nil
 }
 

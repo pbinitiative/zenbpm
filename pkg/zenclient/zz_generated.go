@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for JobState.
@@ -37,6 +38,21 @@ const (
 	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
 	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
 	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortBy.
+const (
+	BpmnProcessId    GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
+	BpmnResourceName GetProcessDefinitionsParamsSortBy = "bpmnResourceName"
+	Key              GetProcessDefinitionsParamsSortBy = "key"
+	Name             GetProcessDefinitionsParamsSortBy = "name"
+	Version          GetProcessDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortOrder.
+const (
+	Asc  GetProcessDefinitionsParamsSortOrder = "asc"
+	Desc GetProcessDefinitionsParamsSortOrder = "desc"
 )
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -271,15 +287,27 @@ type PartitionedPageMetadata struct {
 type ProcessDefinitionDetail struct {
 	BpmnData      *string `json:"bpmnData,omitempty"`
 	BpmnProcessId string  `json:"bpmnProcessId"`
-	Key           int64   `json:"key"`
-	Version       int     `json:"version"`
+
+	// BpmnProcessName Process name from BPMN
+	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
+
+	// BpmnResourceName resource file name
+	BpmnResourceName *string `json:"bpmnResourceName,omitempty"`
+	Key              int64   `json:"key"`
+	Version          int     `json:"version"`
 }
 
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
 type ProcessDefinitionSimple struct {
 	BpmnProcessId string `json:"bpmnProcessId"`
-	Key           int64  `json:"key"`
-	Version       int    `json:"version"`
+
+	// BpmnProcessName Process name from BPMN
+	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
+
+	// BpmnResourceName resource file name
+	BpmnResourceName *string `json:"bpmnResourceName,omitempty"`
+	Key              int64   `json:"key"`
+	Version          int     `json:"version"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.
@@ -409,11 +437,35 @@ type StartProcessInstanceOnElementsJSONBody struct {
 
 // GetProcessDefinitionsParams defines parameters for GetProcessDefinitions.
 type GetProcessDefinitionsParams struct {
+	// OnlyLatest If true, returns only the latest version of each process definition grouped by bpmnProcessId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetProcessDefinitionsParamsSortBy defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortBy string
+
+// GetProcessDefinitionsParamsSortOrder defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortOrder string
+
+// CreateProcessDefinitionMultipartBody defines parameters for CreateProcessDefinition.
+type CreateProcessDefinitionMultipartBody struct {
+	// Resource BPMN process definition file (.bpmn format only, max 4MB)
+	Resource openapi_types.File `json:"resource"`
 }
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
@@ -486,6 +538,9 @@ type ModifyProcessInstanceJSONRequestBody ModifyProcessInstanceJSONBody
 
 // StartProcessInstanceOnElementsJSONRequestBody defines body for StartProcessInstanceOnElements for application/json ContentType.
 type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElementsJSONBody
+
+// CreateProcessDefinitionMultipartRequestBody defines body for CreateProcessDefinition for multipart/form-data ContentType.
+type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipartBody
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
@@ -1450,6 +1505,70 @@ func NewGetProcessDefinitionsRequest(server string, params *GetProcessDefinition
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.OnlyLatest != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, *params.BpmnProcessId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Page != nil {
 

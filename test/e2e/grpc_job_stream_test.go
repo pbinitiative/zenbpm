@@ -215,12 +215,10 @@ func deployDefinitionWithJobType(t testing.TB, filename string, processId string
 	}
 
 	// fmt.Println("deployed process", string(file))
-
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/process-definitions").
 		WithMethod("POST").
-		WithBody(file).
-		WithHeader("Content-Type", "application/xml").
+		WithMultipartBody(file, filename).
 		DoOk()
 	if err != nil {
 		return result, fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)

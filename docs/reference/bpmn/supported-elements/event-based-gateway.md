@@ -46,17 +46,6 @@ Outgoing sequence flows from an Event-Based Gateway may lead to the following ca
 
 > **Note:** Throwing events are not allowed after an Event-Based Gateway.
 
-## Behavioral rules (BPMN 2.0)
-- All outgoing events are enabled simultaneously.
-- Only the **first occurring event** is taken.
-- All other waiting events are canceled immediately.
-- The gateway itself does not evaluate expressions or data conditions.
-
-## Typical use cases
-- Waiting for either a customer response **or** a timeout.
-- Handling alternative external triggers (e.g. approval received vs. cancellation received).
-- Modeling asynchronous, event-driven process behavior.
-
 ## Graphical notation
 
 A diamond shape with a **pentagon event marker** inside.

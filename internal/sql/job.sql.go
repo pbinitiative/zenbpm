@@ -232,8 +232,10 @@ SELECT
 FROM job AS j
 WHERE
   CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
-  AND (CAST(?2 AS INTEGER) IS NULL OR j.process_instance_key = CAST(?2 AS TEXT)) 
-  AND (CAST(?3 AS TEXT) IS NULL OR j.assignee = CAST(?3 AS TEXT)) 
+  AND COALESCE(?2, type) = type
+  AND COALESCE(?3, state) = state
+  AND (CAST(?4 AS INTEGER) IS NULL OR j.process_instance_key = CAST(?4 AS TEXT)) 
+  AND (CAST(?5 AS TEXT) IS NULL OR j.assignee = CAST(?5 AS TEXT)) 
   
 ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN j.created_at END ASC,
@@ -246,12 +248,14 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN j.state END DESC,
   j."key" DESC
 
-LIMIT ?5
-OFFSET ?4
+LIMIT ?7
+OFFSET ?6
 `
 
 type FindJobsParams struct {
 	Sort               sql.NullString `json:"sort"`
+	Type               sql.NullString `json:"type"`
+	State              sql.NullInt64  `json:"state"`
 	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
 	Assignee           sql.NullString `json:"assignee"`
 	Offset             int64          `json:"offset"`
@@ -277,6 +281,8 @@ type FindJobsRow struct {
 func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error) {
 	rows, err := q.db.QueryContext(ctx, findJobs,
 		arg.Sort,
+		arg.Type,
+		arg.State,
 		arg.ProcessInstanceKey,
 		arg.Assignee,
 		arg.Offset,
@@ -289,79 +295,6 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 	items := []FindJobsRow{}
 	for rows.Next() {
 		var i FindJobsRow
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementInstanceKey,
-			&i.ElementID,
-			&i.ProcessInstanceKey,
-			&i.Type,
-			&i.State,
-			&i.CreatedAt,
-			&i.Variables,
-			&i.ExecutionToken,
-			&i.Assignee,
-			&i.TotalCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const findJobsFilter = `-- name: FindJobsFilter :many
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee,
-    count(*) OVER () AS total_count
-FROM
-    job
-WHERE
-    COALESCE(?1, type) = type
-    AND COALESCE(?2, state) = state
-LIMIT ?4 OFFSET ?3
-`
-
-type FindJobsFilterParams struct {
-	Type   sql.NullString `json:"type"`
-	State  sql.NullInt64  `json:"state"`
-	Offset int64          `json:"offset"`
-	Size   int64          `json:"size"`
-}
-
-type FindJobsFilterRow struct {
-	Key                int64          `json:"key"`
-	ElementInstanceKey int64          `json:"element_instance_key"`
-	ElementID          string         `json:"element_id"`
-	ProcessInstanceKey int64          `json:"process_instance_key"`
-	Type               string         `json:"type"`
-	State              int64          `json:"state"`
-	CreatedAt          int64          `json:"created_at"`
-	Variables          string         `json:"variables"`
-	ExecutionToken     int64          `json:"execution_token"`
-	Assignee           sql.NullString `json:"assignee"`
-	TotalCount         int64          `json:"total_count"`
-}
-
-func (q *Queries) FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]FindJobsFilterRow, error) {
-	rows, err := q.db.QueryContext(ctx, findJobsFilter,
-		arg.Type,
-		arg.State,
-		arg.Offset,
-		arg.Size,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []FindJobsFilterRow{}
-	for rows.Next() {
-		var i FindJobsFilterRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ElementInstanceKey,

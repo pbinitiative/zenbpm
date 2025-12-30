@@ -169,7 +169,7 @@ type JobList struct {
 	ElementInstanceKey int64
 	Type               string
 	ProcessInstanceKey int64
-	CreatedAt          time.Time
+	CreatedAt          int64
 	State              bpmnruntime.ActivityState
 	Assignee           *string
 }
@@ -186,7 +186,7 @@ type JobStorageReader interface {
 
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
 
-	FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *SortOrder, sortBy *string, offset int64, limit int64) ([]JobList, int, error)
+	FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *SortOrder, sortBy *string, offset int64, limit int64) ([]JobList, int, error)
 }
 
 type JobStorageWriter interface {

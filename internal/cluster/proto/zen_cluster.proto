@@ -257,6 +257,7 @@ message Job {
   int64 state = 6;
   int64 created_at = 7;
   bytes variables = 8;
+  string assignee = 9;
 }
 
 message FlowElement {
@@ -489,6 +490,10 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  string assignee = 6;
+  int64 processInstanceKey = 7;
+  string sortOrder = 8;
+  string sortBy = 9;
 }
 
 message PartitionedJobs {

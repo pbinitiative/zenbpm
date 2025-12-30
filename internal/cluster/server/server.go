@@ -27,6 +27,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
@@ -804,28 +805,21 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto.GetJobsResponse, error) {
 	resp := make([]*proto.PartitionedJobs, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
-		queries := s.controller.PartitionQueries(ctx, partitionId)
-		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+		db := s.controller.GetPartition(ctx, partitionId).DB
+		sortOrder := storage.ASC
+		if req.SortOrder != nil {
+			sortOrder = storage.SortOrder(ptr.Deref(req.SortOrder, ""))
 		}
-		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			Type: ssql.NullString{
-				String: ptr.Deref(req.JobType, ""),
-				Valid:  req.JobType != nil,
-			},
-		})
+		jobs, count, err := db.FindJobs(ctx,
+			req.JobType,
+			req.State,
+			req.ProcessInstanceKey,
+			req.Assignee,
+			&sortOrder,
+			req.SortBy,
+			int64(req.GetSize()),
+			int64(req.GetSize())*int64(req.GetPage()-1))
+
 		if err != nil {
 			err := fmt.Errorf("failed to find jobs with filter %+v", req)
 			return &proto.GetJobsResponse{
@@ -835,27 +829,24 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				},
 			}, err
 		}
-		totalCount := int32(0)
-		if len(jobs) > 0 {
-			totalCount = int32(jobs[0].TotalCount)
-		}
+
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{
 				Key:                &job.Key,
-				Variables:          []byte(job.Variables),
 				State:              ptr.To(int64(job.State)),
 				CreatedAt:          &job.CreatedAt,
 				ElementInstanceKey: &job.ElementInstanceKey,
-				ElementId:          &job.ElementID,
+				ElementId:          &job.ElementId,
 				ProcessInstanceKey: &job.ProcessInstanceKey,
 				Type:               &job.Type,
+				Assignee:           job.Assignee,
 			}
 		}
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  ptr.To(int32(count)),
 		})
 	}
 	return &proto.GetJobsResponse{

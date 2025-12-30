@@ -1307,8 +1307,10 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 	return res, nil
 }
 
-func (rq *DB) FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+func (rq *DB) FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
 	dbJobs, err := rq.Queries.FindJobs(ctx, sql.FindJobsParams{
+		State:              NullInt64(State),
+		Type:               NullString(JobType),
 		Assignee:           NullString(assignee),
 		ProcessInstanceKey: NullInt64(processInstanceKey),
 		Sort:               ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortString(sortOrder, sortBy) != ""},
@@ -1336,7 +1338,7 @@ func (rq *DB) FindJobs(ctx context.Context, processInstanceKey *int64, assignee 
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
 			Type:               job.Type,
-			CreatedAt:          time.UnixMilli(job.CreatedAt),
+			CreatedAt:          job.CreatedAt,
 			State:              bpmnruntime.ActivityState(job.State),
 			Assignee:           a,
 		}

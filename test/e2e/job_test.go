@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestRestApiJob(t *testing.T) {
 	var jobToComplete public.Job
 	var jobsProcessInstance public.ProcessInstance
 	t.Run("read waiting jobs", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "input-task-1")
+		jobsPartitionPage, err := getJobs(t, "input-task-1")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobsPartitionPage)
 		jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
@@ -59,21 +60,74 @@ func TestRestApiJob(t *testing.T) {
 
 }
 
-func readWaitingJobs(t testing.TB, jobType string) (public.JobPartitionPage, error) {
+// JobsOptions holds all available parameters for the getJobs function
+type JobsOptions struct {
+	JobType            string
+	State              string
+	Assignee           string
+	ProcessInstanceKey int64
+	Page               int32
+	Size               int32
+	SortBy             string // enum: [createdAt, key, type, state]
+	SortOrder          string // enum: [asc, desc]
+}
+
+func getJobs(t testing.TB, jobType string) (public.JobPartitionPage, error) {
+	return getJobsWithOptions(t, JobsOptions{
+		JobType: jobType,
+		State:   string(public.JobStateActive),
+	})
+}
+
+func getJobsWithOptions(t testing.TB, options JobsOptions) (public.JobPartitionPage, error) {
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
+
+	// Build query parameters
+	queryParams := make([]string, 0)
+
+	if options.JobType != "" {
+		queryParams = append(queryParams, fmt.Sprintf("jobType=%s", options.JobType))
+	}
+	if options.State != "" {
+		queryParams = append(queryParams, fmt.Sprintf("state=%s", options.State))
+	}
+	if options.Assignee != "" {
+		queryParams = append(queryParams, fmt.Sprintf("assignee=%s", options.Assignee))
+	}
+	if options.ProcessInstanceKey > 0 {
+		queryParams = append(queryParams, fmt.Sprintf("processInstanceKey=%d", options.ProcessInstanceKey))
+	}
+	if options.Page > 0 {
+		queryParams = append(queryParams, fmt.Sprintf("page=%d", options.Page))
+	}
+	if options.Size > 0 {
+		queryParams = append(queryParams, fmt.Sprintf("size=%d", options.Size))
+	}
+	if options.SortBy != "" {
+		queryParams = append(queryParams, fmt.Sprintf("sortBy=%s", options.SortBy))
+	}
+	if options.SortOrder != "" {
+		queryParams = append(queryParams, fmt.Sprintf("sortOrder=%s", options.SortOrder))
+	}
+
+	path := "/v1/jobs"
+	if len(queryParams) > 0 {
+		path = fmt.Sprintf("%s?%s", path, strings.Join(queryParams, "&"))
+	}
+
 	respBytes, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/jobs?jobType=%s&state=%s", jobType, public.JobStateActive)).
+		WithPath(path).
 		WithMethod("GET").
 		WithContext(ctx).
 		DoOk()
 	if err != nil {
-		return public.JobPartitionPage{}, fmt.Errorf("failed to activate job: %w", err)
+		return public.JobPartitionPage{}, fmt.Errorf("failed to get jobs: %w", err)
 	}
 	resp := public.JobPartitionPage{}
 	err = json.Unmarshal(respBytes, &resp)
 	if err != nil {
-		return resp, fmt.Errorf("failed to unmarshal activated jobs: %w", err)
+		return resp, fmt.Errorf("failed to unmarshal jobs response: %w", err)
 	}
 	return resp, nil
 }

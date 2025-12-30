@@ -71,17 +71,6 @@ FROM
     job
 LIMIT @size offset @offset;
 
--- name: FindJobsFilter :many
-SELECT
-    *,
-    count(*) OVER () AS total_count
-FROM
-    job
-WHERE
-    COALESCE(sqlc.narg('type'), type) = type
-    AND COALESCE(sqlc.narg('state'), state) = state
-LIMIT @size OFFSET @offset;
-
 -- name: FindWaitingJobs :many
 SELECT
     *
@@ -120,6 +109,8 @@ FROM job AS j
 WHERE
 -- force sqlc to keep sort param
   CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+  AND COALESCE(sqlc.narg('type'), type) = type
+  AND COALESCE(sqlc.narg('state'), state) = state
   AND (CAST(sqlc.narg('process_instance_key') AS INTEGER) IS NULL OR j.process_instance_key = CAST(sqlc.narg('process_instance_key') AS TEXT)) 
   AND (CAST(sqlc.narg('assignee') AS TEXT) IS NULL OR j.assignee = CAST(sqlc.narg('assignee') AS TEXT)) 
   

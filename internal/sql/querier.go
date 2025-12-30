@@ -42,7 +42,6 @@ type Querier interface {
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error)
-	FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]FindJobsFilterRow, error)
 	FindLatestDecisionDefinitionById(ctx context.Context, decisionID string) (DecisionDefinition, error)
 	FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error)
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)

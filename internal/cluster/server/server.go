@@ -817,8 +817,8 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 			req.Assignee,
 			&sortOrder,
 			req.SortBy,
-			int64(req.GetSize()),
-			int64(req.GetSize())*int64(req.GetPage()-1))
+			int64(req.GetSize())*int64(req.GetPage()-1),
+			int64(req.GetSize()))
 
 		if err != nil {
 			err := fmt.Errorf("failed to find jobs with filter %+v", req)

@@ -754,7 +754,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey)
+	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey, (*string)(request.Params.SortBy), (*string)(request.Params.SortOrder))
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -780,20 +780,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
-			vars := map[string]any{}
-			err = json.Unmarshal(job.GetVariables(), &vars)
-			if err != nil {
-				return public.GetJobs500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
 
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
 				State:              getRestJobState(runtime.ActivityState(job.GetState())),
-				Variables:          vars,
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),

@@ -514,7 +514,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 	return res, nil
 }
 
-func (mem *Storage) FindJobs(ctx context.Context, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+func (mem *Storage) FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
 
 	res := make([]storage.JobList, 0)
 
@@ -533,7 +533,7 @@ func (mem *Storage) FindJobs(ctx context.Context, processInstanceKey *int64, ass
 			ElementId:          job.ElementId,
 			ElementInstanceKey: job.ElementInstanceKey,
 			Type:               job.Type,
-			CreatedAt:          job.CreatedAt,
+			CreatedAt:          job.CreatedAt.UnixMilli(),
 			State:              job.State,
 			Assignee:           job.Assignee,
 		})
@@ -550,7 +550,7 @@ func (mem *Storage) FindJobs(ctx context.Context, processInstanceKey *int64, ass
 				cmp = strings.Compare(a.Type, b.Type)
 
 			case "createdAt":
-				cmp = int(a.CreatedAt.Sub(b.CreatedAt).Milliseconds())
+				cmp = int(a.CreatedAt - b.CreatedAt)
 
 			case "key":
 				cmp = int(a.Key - b.Key)

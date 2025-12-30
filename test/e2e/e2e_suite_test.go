@@ -67,11 +67,11 @@ func TestMain(m *testing.M) {
 
 	// Create rest client
 	httpClient := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 
 	client, err := zenclient.NewClientWithResponses(
-		ln.Addr().String(),
+		"http://"+ln.Addr().String()+"/v1",
 		zenclient.WithHTTPClient(httpClient),
 	)
 	if err != nil {

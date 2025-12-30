@@ -415,19 +415,19 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 
 			t.Run("Test sorting by createdAt", func(t *testing.T) {
 
-				storeJobs, count, err := s.FindJobs(t.Context(), nil, nil, ptr.To(storage.ASC), ptr.To("createdAt"), 0, 20)
+				storeJobs, count, err := s.FindJobs(t.Context(), nil, nil, nil, nil, ptr.To(storage.ASC), ptr.To("createdAt"), 0, 20)
 				assert.NoError(t, err)
 				assert.Equal(t, 2, count)
-				assert.True(t, storeJobs[0].CreatedAt.Before(storeJobs[1].CreatedAt), "expected first job to be created before second job")
+				assert.True(t, storeJobs[0].CreatedAt < storeJobs[1].CreatedAt, "expected first job to be created before second job")
 
-				storeJobs, count, err = s.FindJobs(t.Context(), nil, nil, ptr.To(storage.DESC), ptr.To("createdAt"), 0, 20)
+				storeJobs, count, err = s.FindJobs(t.Context(), nil, nil, nil, nil, ptr.To(storage.DESC), ptr.To("createdAt"), 0, 20)
 				assert.NoError(t, err)
 				assert.Equal(t, 2, count)
-				assert.True(t, storeJobs[0].CreatedAt.After(storeJobs[1].CreatedAt), "expected first job to be created after second job")
+				assert.True(t, storeJobs[0].CreatedAt > storeJobs[1].CreatedAt, "expected first job to be created after second job")
 			})
 
 			t.Run("Test filtering by assignee", func(t *testing.T) {
-				storeJobs, count, err := s.FindJobs(t.Context(), nil, ptr.To("assignee"), nil, nil, 0, 20)
+				storeJobs, count, err := s.FindJobs(t.Context(), nil, nil, nil, ptr.To("assignee"), nil, nil, 0, 20)
 				assert.NoError(t, err)
 				assert.Equal(t, 1, count)
 				assert.Equal(t, "assignee", ptr.Deref(storeJobs[0].Assignee, ""))
@@ -451,7 +451,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 				err := s.SaveJob(t.Context(), job)
 				assert.NoError(t, err)
 
-				storeJobs, count, err := s.FindJobs(t.Context(), ptr.To(pi.Key), nil, nil, nil, 0, 20)
+				storeJobs, count, err := s.FindJobs(t.Context(), nil, nil, ptr.To(pi.Key), nil, nil, nil, 0, 20)
 				assert.NoError(t, err)
 				assert.Equal(t, 1, count)
 				assert.Equal(t, pi.Key, storeJobs[0].ProcessInstanceKey)

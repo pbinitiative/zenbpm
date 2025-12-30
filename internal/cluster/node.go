@@ -706,7 +706,7 @@ func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceK
 }
 
 // GetJobs will contact follower nodes and return jobs in partitions they are following
-func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, assignee *string, processInstanceKey *int64) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, assignee *string, processInstanceKey *int64, sortBy *string, sortOrder *string) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -732,6 +732,8 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 			State:              reqState,
 			Assignee:           assignee,
 			ProcessInstanceKey: processInstanceKey,
+			SortOrder:          sortOrder,
+			SortBy:             sortBy,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)

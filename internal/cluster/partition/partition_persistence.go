@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iancoleman/strcase"
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -761,6 +762,52 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 	return res, nil
 }
 
+func sortString(sortOrder *storage.SortOrder, sortBy *string) string {
+	if sortOrder == nil {
+		return ""
+	}
+	if sortBy == nil {
+		return ""
+	}
+
+	return strcase.ToSnake(*sortBy) + "_" + strings.ToLower(string(*sortOrder))
+}
+
+func (rq *DB) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool, offset int64, limit int64) ([]storage.ProcessDefinitionList, int, error) {
+
+	dbDefinitions, err := rq.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
+		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
+		Sort:                ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortString(sortOrder, sortBy) != ""},
+		OnlyLatest: func() int64 {
+			if onlyLatest {
+				return 1
+			}
+			return 0
+		}(),
+		Offset: offset,
+		Limit:  limit,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find process definitions list %w", err)
+	}
+
+	res := make([]storage.ProcessDefinitionList, len(dbDefinitions))
+	totalCount := 0
+	for i, def := range dbDefinitions {
+		if i == 0 {
+			totalCount = int(def.TotalCount)
+		}
+		res[i] = storage.ProcessDefinitionList{
+			BpmnProcessId:    def.BpmnProcessID,
+			Version:          int32(def.Version),
+			Key:              def.Key,
+			BpmnResourceName: def.BpmnResourceName,
+			BpmnProcessName:  def.BpmnProcessName,
+		}
+	}
+	return res, totalCount, nil
+}
+
 var _ storage.ProcessDefinitionStorageWriter = &DB{}
 
 func (rq *DB) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
@@ -775,6 +822,7 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 		BpmnData:         definition.BpmnData,
 		BpmnChecksum:     definition.BpmnChecksum[:],
 		BpmnResourceName: definition.BpmnResourceName,
+		BpmnProcessName:  definition.BpmnProcessName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process definition: %w", err)
@@ -1259,6 +1307,45 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 	return res, nil
 }
 
+func (rq *DB) FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+	dbJobs, err := rq.Queries.FindJobs(ctx, sql.FindJobsParams{
+		State:              NullInt64(State),
+		Type:               NullString(JobType),
+		Assignee:           NullString(assignee),
+		ProcessInstanceKey: NullInt64(processInstanceKey),
+		Sort:               ssql.NullString{String: sortString(sortOrder, sortBy), Valid: sortString(sortOrder, sortBy) != ""},
+		Offset:             offset,
+		Limit:              limit,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find process definitions list %w", err)
+	}
+
+	res := make([]storage.JobList, len(dbJobs))
+	totalCount := 0
+	for i, job := range dbJobs {
+		if i == 0 {
+			totalCount = int(job.TotalCount)
+		}
+
+		var a *string
+		if job.Assignee.Valid {
+			a = &job.Assignee.String
+		}
+		res[i] = storage.JobList{
+			Key:                job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			ElementId:          job.ElementID,
+			ElementInstanceKey: job.ElementInstanceKey,
+			Type:               job.Type,
+			CreatedAt:          job.CreatedAt,
+			State:              bpmnruntime.ActivityState(job.State),
+			Assignee:           a,
+		}
+	}
+	return res, totalCount, nil
+}
+
 var _ storage.JobStorageWriter = &DB{}
 
 func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
@@ -1280,6 +1367,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		CreatedAt:          job.CreatedAt.UnixMilli(),
 		Variables:          string(variableBytes),
 		ExecutionToken:     job.Token.Key,
+		Assignee:           NullString(job.Assignee),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

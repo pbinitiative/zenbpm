@@ -136,7 +136,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	assert.Equal(t, "", cp.CallPath)
 }
 
-func TestBooleanExpressionEvaluates(t *testing.T) {
+func TestBooleanExpressionWithoutEqualShouldBeTreatedAsConstant(t *testing.T) {
 	variables := map[string]interface{}{
 		"aValue": 3,
 	}
@@ -144,7 +144,7 @@ func TestBooleanExpressionEvaluates(t *testing.T) {
 	result, err := bpmnEngine.evaluateExpression("aValue > 1", variables)
 	assert.NoError(t, err)
 
-	assert.True(t, result.(bool))
+	assert.Equal(t, "aValue > 1", result)
 }
 
 func TestBooleanExpressionWithEqualSignEvaluates(t *testing.T) {
@@ -165,7 +165,7 @@ func TestMathematicalExpressionEvaluates(t *testing.T) {
 		"sum": 10,
 	}
 
-	result, err := bpmnEngine.evaluateExpression("sum >= foo + bar", variables)
+	result, err := bpmnEngine.evaluateExpression("=sum >= foo + bar", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))

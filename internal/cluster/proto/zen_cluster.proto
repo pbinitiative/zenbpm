@@ -65,6 +65,7 @@ service ZenService {
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -80,7 +81,12 @@ service ZenService {
 
 // TODO: do we want to keep custom error struct or use the default error handling?
 message ErrorResult {
-  uint32 code = 1;
+   enum Code {
+    UNSPECIFIED = 0;
+    NOT_FOUND = 1;
+    CLUSTER_ERROR = 2;
+  }
+  Code code = 1;
   string message = 2;
 }
 
@@ -219,6 +225,8 @@ message ProcessDefinition {
   int32 version = 2;
   string process_id = 3;
   bytes definition = 4;
+  string resource_name = 5;
+  string process_name = 6;
 }
 
 message ProcessDefinitionsPage {
@@ -255,6 +263,7 @@ message Job {
   int64 state = 6;
   int64 created_at = 7;
   bytes variables = 8;
+  string assignee = 9;
 }
 
 message FlowElement {
@@ -287,6 +296,7 @@ message DeployDmnResourceDefinitionResponse {
 message DeployProcessDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
+  string resource_name = 3;
 }
 
 message DeployProcessDefinitionResponse {
@@ -486,6 +496,14 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  string assignee = 6;
+  int64 processInstanceKey = 7;
+  string sortOrder = 8;
+  string sortBy = 9;
+}
+
+message GetJobRequest{
+  int64 job_key = 1;
 }
 
 message PartitionedJobs {
@@ -497,6 +515,11 @@ message PartitionedJobs {
 message GetJobsResponse {
   ErrorResult error = 1;
   repeated PartitionedJobs partitions = 2;
+}
+
+message GetJobResponse {
+  ErrorResult error = 1;
+  Job job = 2;
 }
 
 message ResolveIncidentRequest {

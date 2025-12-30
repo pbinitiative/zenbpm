@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"strings"
 	"time"
 
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -282,6 +284,84 @@ func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId st
 	return res, nil
 }
 
+func (mem *Storage) FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *storage.SortOrder, sortBy *string, onlyLatest bool, offset int64, limit int64) ([]storage.ProcessDefinitionList, int, error) {
+	res := make([]storage.ProcessDefinitionList, 0)
+
+	// If onlyLatest is true, we need to find the max version for each bpmn_process_id first
+	var maxVersions map[string]int32
+	if onlyLatest {
+		maxVersions = make(map[string]int32)
+		for _, def := range mem.ProcessDefinitions {
+			if bpmnProcessId == nil || def.BpmnProcessId == *bpmnProcessId {
+				if currentMax, exists := maxVersions[def.BpmnProcessId]; !exists || def.Version > currentMax {
+					maxVersions[def.BpmnProcessId] = def.Version
+				}
+			}
+		}
+	}
+
+	for _, def := range mem.ProcessDefinitions {
+		if bpmnProcessId != nil && def.BpmnProcessId != *bpmnProcessId {
+			continue
+		}
+
+		// If onlyLatest is true, only include definitions with the maximum version for their bpmn_process_id
+		if onlyLatest {
+			if maxVersion, exists := maxVersions[def.BpmnProcessId]; !exists || def.Version != maxVersion {
+				continue
+			}
+		}
+
+		res = append(res, storage.ProcessDefinitionList{
+			BpmnProcessId:    def.BpmnProcessId,
+			Version:          def.Version,
+			Key:              def.Key,
+			BpmnResourceName: def.BpmnResourceName,
+		})
+	}
+
+	slices.SortFunc(res, func(a, b storage.ProcessDefinitionList) int {
+		var cmp int
+
+		if sortBy != nil {
+			switch *sortBy {
+			case "bpmnProcessId":
+				cmp = strings.Compare(a.BpmnProcessId, b.BpmnProcessId)
+
+			case "bpmnResourceName":
+				cmp = strings.Compare(a.BpmnResourceName, b.BpmnResourceName)
+
+			case "version":
+				cmp = int(a.Version - b.Version)
+
+			case "key":
+				cmp = int(a.Key - b.Key)
+
+			default:
+				cmp = int(a.Key - b.Key)
+			}
+		} else {
+			cmp = int(a.Key - b.Key)
+		}
+
+		// Reverse if descending
+		if sortOrder != nil && *sortOrder == storage.DESC {
+			return -cmp
+		}
+
+		return cmp
+	})
+
+	if offset > 0 {
+		res = res[offset:]
+	}
+	if limit > 0 && len(res) > int(limit) {
+		res = res[:limit]
+	}
+
+	return res, len(res), nil
+}
+
 var _ storage.ProcessDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
@@ -432,6 +512,73 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		res = append(res, job)
 	}
 	return res, nil
+}
+
+func (mem *Storage) FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *storage.SortOrder, sortBy *string, offset int64, limit int64) ([]storage.JobList, int, error) {
+
+	res := make([]storage.JobList, 0)
+
+	for _, job := range mem.Jobs {
+		if processInstanceKey != nil && job.ProcessInstanceKey != *processInstanceKey {
+			continue
+		}
+
+		if assignee != nil && ptr.Deref(job.Assignee, "") != *assignee {
+			continue
+		}
+
+		res = append(res, storage.JobList{
+			Key:                job.Key,
+			ProcessInstanceKey: job.ProcessInstanceKey,
+			ElementId:          job.ElementId,
+			ElementInstanceKey: job.ElementInstanceKey,
+			Type:               job.Type,
+			CreatedAt:          job.CreatedAt.UnixMilli(),
+			State:              job.State,
+			Assignee:           job.Assignee,
+		})
+	}
+
+	slices.SortFunc(res, func(a, b storage.JobList) int {
+		var cmp int
+
+		if sortBy != nil {
+			switch *sortBy {
+			case "state":
+				cmp = int(a.State - b.State)
+			case "type":
+				cmp = strings.Compare(a.Type, b.Type)
+
+			case "createdAt":
+				cmp = int(a.CreatedAt - b.CreatedAt)
+
+			case "key":
+				cmp = int(a.Key - b.Key)
+
+			default:
+				cmp = int(a.Key - b.Key)
+			}
+		} else {
+			cmp = int(a.Key - b.Key)
+		}
+
+		// Reverse if descending
+		if sortOrder != nil && *sortOrder == storage.DESC {
+			return -cmp
+		}
+
+		return cmp
+	})
+
+	if offset > 0 {
+		res = res[offset:]
+	}
+	if limit > 0 && len(res) > int(limit) {
+		res = res[:limit]
+	}
+
+	return res, len(res), nil
+
 }
 
 var _ storage.JobStorageWriter = &Storage{}

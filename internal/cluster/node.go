@@ -357,7 +357,7 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (DeployResult, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
 		log.Error("Failed to get definition key by bytes: %s", err)
@@ -376,8 +376,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 			errJoin = errors.Join(errJoin, fmt.Errorf("failed to get client: %w", err))
 		}
 		resp, err := client.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-			Key:  ptr.To(definitionKey.Int64()),
-			Data: data,
+			Key:          ptr.To(definitionKey.Int64()),
+			Data:         data,
+			ResourceName: &resourceName,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("client call to deploy process definition failed")
@@ -495,35 +496,50 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
-	db, err := node.GetReadOnlyDB(ctx)
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get process definitions: %w", err)
-	}
-	definitions, err := db.Queries.GetProcessDefinitionsPage(ctx, sql.GetProcessDefinitionsPageParams{
-		Offset: int64((page - 1) * size),
-		Limit:  int64(size),
-	})
-	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to read process definitions from database: %w", err)
-	}
-	totalCount := int32(0)
-	if len(definitions) > 0 {
-		totalCount = int32(definitions[0].TotalCount)
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
+	// Get a partition
+	state := node.store.ClusterState()
+	var selectedPartition uint32
+
+	for partitionId := range state.Partitions {
+		selectedPartition = partitionId
+		break
 	}
 
-	resp := make([]*proto.ProcessDefinition, 0, len(definitions))
-	for _, def := range definitions {
+	// Get storage for the selected partition
+	str, err := node.GetPartitionStore(ctx, selectedPartition)
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
+	}
+
+	var order *storage.SortOrder
+	if sortOrder != nil {
+		order = (*storage.SortOrder)(sortOrder)
+	}
+
+	latest := false
+	if onlyLatest != nil {
+		latest = *onlyLatest
+	}
+
+	items, count, err := str.FindProcessDefinitions(ctx, bpmnProcessId, order, sortBy, latest, int64((page-1)*size), int64(size))
+	if err != nil {
+		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to find process definitions: %w", err)
+	}
+
+	resp := make([]*proto.ProcessDefinition, 0, len(items))
+	for _, def := range items {
 		resp = append(resp, &proto.ProcessDefinition{
-			Key:        &def.Key,
-			Version:    ptr.To(int32(def.Version)),
-			ProcessId:  &def.BpmnProcessID,
-			Definition: []byte(def.BpmnData),
+			Key:          &def.Key,
+			Version:      ptr.To(int32(def.Version)),
+			ProcessId:    &def.BpmnProcessId,
+			ResourceName: &def.BpmnResourceName,
+			ProcessName:  &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(totalCount)),
+		TotalCount: ptr.To(int32(count)),
 	}, nil
 }
 
@@ -690,7 +706,7 @@ func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceK
 }
 
 // GetJobs will contact follower nodes and return jobs in partitions they are following
-func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, assignee *string, processInstanceKey *int64, sortBy *string, sortOrder *string) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -709,11 +725,15 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 			reqState = ptr.To(int64(*jobState))
 		}
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
-			Page:       &page,
-			Size:       &size,
-			Partitions: []uint32{partitionID},
-			JobType:    jobType,
-			State:      reqState,
+			Page:               &page,
+			Size:               &size,
+			Partitions:         []uint32{partitionID},
+			JobType:            jobType,
+			State:              reqState,
+			Assignee:           assignee,
+			ProcessInstanceKey: processInstanceKey,
+			SortOrder:          sortOrder,
+			SortBy:             sortBy,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)
@@ -726,6 +746,36 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 		result = append(result, resp.Partitions...)
 	}
 	return result, nil
+}
+
+func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(jobKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		message := fmt.Sprintf("failed to get follower node to get job: %v", err)
+		return nil, New(&proto.ErrorResult{
+			Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
+			Message: &message,
+		})
+
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get job: %w", err)
+	}
+	resp, err := client.GetJob(ctx, &proto.GetJobRequest{
+		JobKey: &jobKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get job from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, New(resp.Error)
+		}
+	}
+	return resp.Job, nil
 }
 
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following

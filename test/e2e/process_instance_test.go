@@ -17,7 +17,7 @@ import (
 func TestRestApiProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition public.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -64,9 +64,9 @@ func TestRestApiProcessInstance(t *testing.T) {
 func TestRestApiParentProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition public.ProcessDefinitionSimple
-	err := deployDefinition(t, "call-activity-simple.bpmn")
+	_, err := deployDefinition(t, "call-activity-simple.bpmn", false)
 	assert.NoError(t, err)
-	err = deployDefinition(t, "simple_task.bpmn")
+	_, err = deployDefinition(t, "simple_task.bpmn", false)
 	assert.NoError(t, err)
 
 	definitions, err := listProcessDefinitions(t)
@@ -110,7 +110,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 func TestBusinessKey(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition public.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -153,12 +153,12 @@ func TestBusinessKey(t *testing.T) {
 func TestCreatedAt(t *testing.T) {
 	var instance1, instance2 public.ProcessInstance
 	var definition public.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	uniqueDefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.BpmnProcessId == "service-task-input-output" {
+		if def.BpmnProcessId == *uniqueDefinitionName {
 			definition = def
 			break
 		}
@@ -182,10 +182,10 @@ func TestCreatedAt(t *testing.T) {
 	const dateFormat = "2006-01-02" // yyyyMMdd
 	now := time.Now()
 	t.Run("find process instances by createdAt in past sorted desc", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?createdFrom="+now.Format(dateFormat)+"&sortBy=createdAt&sortOrder=desc")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*uniqueDefinitionName+"&createdFrom="+now.Format(dateFormat)+"&sortBy=createdAt&sortOrder=desc")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 2) // there are more processInstances created during all the tests in this file
+		assert.True(t, len(processInstances) == 2) // there are more processInstances created during all the tests in this file
 		createdAtSlice := make([]int64, 0, len(processInstances))
 		for _, part := range processInstances {
 			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
@@ -193,67 +193,66 @@ func TestCreatedAt(t *testing.T) {
 		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] > createdAtSlice[q] })) // createdAt's are sorted desc
 	})
 	t.Run("find process instances by createdAt in past sorted asc", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?createdFrom="+now.Format(dateFormat)+"&sortBy=createdAt&sortOrder=asc")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*uniqueDefinitionName+"&createdFrom="+now.Format(dateFormat)+"&sortBy=createdAt&sortOrder=asc")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 2)
+		assert.True(t, len(processInstances) == 2)
 		createdAtSlice := make([]int64, 0, len(processInstances))
 		for _, part := range processInstances {
 			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
 		}
-		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] <= createdAtSlice[q] }))
+		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] < createdAtSlice[q] }))
 	})
 	t.Run("find process instances by createdAt in past by default created_at desc", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?createdFrom="+now.Format(dateFormat))
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*uniqueDefinitionName+"&createdFrom="+now.Format(dateFormat))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 2)
+		assert.True(t, len(processInstances) == 2)
 		createdAtSlice := make([]int64, 0, len(processInstances))
 		for _, part := range processInstances {
 			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
 		}
-		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] >= createdAtSlice[q] }))
+		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] > createdAtSlice[q] }))
 	})
 	t.Run("find process instances by createdAt in future", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?createdFrom="+now.AddDate(0, 0, 1).Format(dateFormat))
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*uniqueDefinitionName+"&createdFrom="+now.AddDate(0, 0, 1).Format(dateFormat))
 		assert.NoError(t, err)
 		assert.Empty(t, processInstances)
 	})
 }
 
 func TestBpmnProcessId(t *testing.T) {
-	var instance1, instance2 public.ProcessInstance
-	var definition1, definition2 public.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	var serviceTaskIODefinition, simpleCountLoopDefinition public.ProcessDefinitionSimple
+	serviceTaskIODefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.BpmnProcessId == "service-task-input-output" {
-			definition1 = def
+		if def.BpmnProcessId == *serviceTaskIODefinitionName {
+			serviceTaskIODefinition = def
 			break
 		}
 	}
-	err = deployDefinition(t, "simple-count-loop.bpmn")
+	simpleCountLoopDefinitionName, err := deployDefinition(t, "simple-count-loop.bpmn", true)
 	assert.NoError(t, err)
 	definitions, err = listProcessDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.BpmnProcessId == "simple-count-loop" {
-			definition2 = def
+		if def.BpmnProcessId == *simpleCountLoopDefinitionName {
+			simpleCountLoopDefinition = def
 			break
 		}
 	}
 
 	t.Run("create process instance1 for service-task-input-output.bpmn", func(t *testing.T) {
-		instance1, err = createProcessInstance(t, definition1.Key, map[string]any{
+		instance1, err := createProcessInstance(t, serviceTaskIODefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 	})
 	t.Run("create process instance2 for simple-count-loop.bpmn", func(t *testing.T) {
-		instance2, err = createProcessInstance(t, definition2.Key, map[string]any{
+		instance2, err := createProcessInstance(t, simpleCountLoopDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -261,49 +260,53 @@ func TestBpmnProcessId(t *testing.T) {
 	})
 
 	t.Run("find process instances by bpmnProcessId=simple-count-loop", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?bpmnProcessId=simple-count-loop")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*simpleCountLoopDefinitionName)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 1)
+		assert.True(t, len(processInstances) == 1)
 		for _, part := range processInstances {
-			assert.Equal(t, "simple-count-loop", *part.BpmnProcessId)
+			assert.Equal(t, *simpleCountLoopDefinitionName, *part.BpmnProcessId)
 		}
 	})
 }
 
 func TestState(t *testing.T) {
-	var instance, invalidInstance public.ProcessInstance
-	var definition1, definition2 public.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	var validDefinition, invalidDefinition public.ProcessDefinitionSimple
+	validDefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.BpmnProcessId == "service-task-input-output" {
-			definition1 = def
+		if def.BpmnProcessId == *validDefinitionName {
+			validDefinition = def
 			break
 		}
 	}
-	err = deployDefinition(t, "service-task-invalid-input.bpmn")
+	invalidDefinitionName, err := deployDefinition(t, "service-task-invalid-input.bpmn", true)
 	assert.NoError(t, err)
 	definitions, err = listProcessDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.BpmnProcessId == "service-task-invalid-input" {
-			definition2 = def
+		if def.BpmnProcessId == *invalidDefinitionName {
+			invalidDefinition = def
 			break
 		}
 	}
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition1.Key, map[string]any{
+		instance1, err := createProcessInstance(t, validDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
-		assert.NotEmpty(t, instance.Key)
+		assert.NotEmpty(t, instance1.Key)
+		instance2, err := createProcessInstance(t, validDefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance2.Key)
 	})
 	t.Run("create process instance for service-task-invalid-input.bpmn", func(t *testing.T) {
-		invalidInstance, err = createProcessInstance(t, definition2.Key, map[string]any{
+		invalidInstance, err := createProcessInstance(t, invalidDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.Error(t, err)
@@ -311,19 +314,19 @@ func TestState(t *testing.T) {
 	})
 
 	t.Run("find process instances by state=failed", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?state=failed")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*invalidDefinitionName+"&state=failed")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 1)
+		assert.True(t, len(processInstances) == 1)
 		for _, part := range processInstances {
 			assert.Equal(t, public.ProcessInstanceState("ActivityStateFailed"), part.State)
 		}
 	})
 	t.Run("find process instances sorted by state asc", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?sortBy=state&sortOrder=asc")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*validDefinitionName+"&sortBy=state&sortOrder=asc")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 2)
+		assert.True(t, len(processInstances) == 2)
 		stateSlice := make([]string, 0, len(processInstances))
 		for _, part := range processInstances {
 			stateSlice = append(stateSlice, (string)(part.State))
@@ -331,10 +334,10 @@ func TestState(t *testing.T) {
 		assert.True(t, sort.SliceIsSorted(stateSlice, func(p, q int) bool { return stateSlice[p] < stateSlice[q] }))
 	})
 	t.Run("find process instances sorted by state desc", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, "?sortBy=state&sortOrder=desc")
+		processInstances, err := getProcessInstances(t, "?bpmnProcessId="+*validDefinitionName+"&sortBy=state&sortOrder=desc")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, processInstances)
-		assert.True(t, len(processInstances) >= 2)
+		assert.True(t, len(processInstances) == 2)
 		stateSlice := make([]string, 0, len(processInstances))
 		for _, part := range processInstances {
 			stateSlice = append(stateSlice, (string)(part.State))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/otel"
 	"github.com/pbinitiative/zenbpm/internal/rest"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 )
 
 var app Application
@@ -63,9 +65,24 @@ func TestMain(m *testing.M) {
 	svr := rest.NewServer(zenNode, conf)
 	ln := svr.Start()
 
+	// Create rest client
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	client, err := zenclient.NewClientWithResponses(
+		ln.Addr().String(),
+		zenclient.WithHTTPClient(httpClient),
+	)
+	if err != nil {
+		log.Error("failed to create rest client: %s", err)
+		os.Exit(1)
+	}
+
 	app = Application{
-		httpAddr: ln.Addr().String(),
-		node:     zenNode,
+		httpAddr:   ln.Addr().String(),
+		node:       zenNode,
+		restClient: client,
 	}
 
 	// Start ZenBpm GRPC API

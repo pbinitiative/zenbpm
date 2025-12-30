@@ -1,0 +1,13 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer circle -->
+  <circle cx="60" cy="60" r="45" fill="white" stroke="black" stroke-width="2"></circle>
+
+  <!-- Inner circle -->
+  <circle cx="60" cy="60" r="38" fill="white" stroke="black" stroke-width="2"></circle>
+
+  <!-- Envelope (open) -->
+  <rect x="38" y="50" width="44" height="26" fill="white" stroke="black" stroke-width="2"></rect>
+
+  <!-- Envelope flap -->
+  <polyline points="38,50 60,66 82,50" fill="none" stroke="black" stroke-width="2"></polyline>
+</svg>

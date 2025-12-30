@@ -89,11 +89,16 @@ The following Message Catch Event types are supported:
 - **Message Start Event:**  
   Starts a new process instance when a message is received.
 
-#### Usage
+## Graphic Notation
+![Message catch event usage example](./../../assets/bpmn/message_catch.svg)
+
+A double-lined circle containing a message (envelope) icon.
+
+## Usage
 
 Messages can be published through API or by triggering [Intermediate throw event](/reference/bpmn-engine/supported-elements/message-throw-event).
 <!-- <ApiOperation id="api" pointer="#/paths/~1messages/post" example={true} />-->
 
-:::note[Future plans]
+Future plans:
 We plan to implement message start event along with timer start events in the future
 :::

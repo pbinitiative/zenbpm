@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -100,6 +102,48 @@ func TestRestApiJob(t *testing.T) {
 		assert.True(t, items[0].Key > items[1].Key)
 	})
 
+	t.Run("test getting job by key - ok", func(t *testing.T) {
+		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: ptr.To("input-task-1")})
+		assert.NoError(t, err)
+		assert.Equal(t, 200, jobs.StatusCode())
+		assert.NotEmpty(t, jobs.JSON200)
+		assert.NotEmpty(t, jobs.JSON200.Partitions)
+		assert.NotEmpty(t, jobs.JSON200.Partitions[0].Items)
+
+		jobKey := jobs.JSON200.Partitions[0].Items[0].Key
+
+		job, err := app.restClient.GetJobWithResponse(t.Context(), jobKey)
+		assert.NoError(t, err)
+		assert.Equal(t, 200, job.StatusCode())
+		assert.Equal(t, jobKey, job.JSON200.Key)
+	})
+
+	t.Run("test getting job by key - not found", func(t *testing.T) {
+		jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{JobType: ptr.To("input-task-1")})
+		assert.NoError(t, err)
+		assert.Equal(t, 200, jobs.StatusCode())
+		assert.NotEmpty(t, jobs.JSON200)
+		assert.NotEmpty(t, jobs.JSON200.Partitions)
+		assert.NotEmpty(t, jobs.JSON200.Partitions[0].Items)
+
+		jobKey := jobs.JSON200.Partitions[0].Items[0].Key
+		node := zenflake.GetPartitionId(jobKey)
+		gen, _ := snowflake.NewNode(int64(node))
+		key := gen.Generate()
+
+		assert.Equal(t, zenflake.GetPartitionId(jobKey), zenflake.GetPartitionId(key.Int64()))
+
+		job, err := app.restClient.GetJobWithResponse(t.Context(), key.Int64())
+		assert.NoError(t, err)
+		assert.Equal(t, 404, job.StatusCode())
+	})
+
+	t.Run("test getting job by key - nonexistent partition", func(t *testing.T) {
+
+		job, err := app.restClient.GetJobWithResponse(t.Context(), 0)
+		assert.NoError(t, err)
+		assert.Equal(t, 502, job.StatusCode())
+	})
 }
 
 func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {

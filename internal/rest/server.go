@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -794,6 +796,59 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	jobsPage.Count = count
 	jobsPage.TotalCount = int(totalCount)
 	return jobsPage, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject) (public.GetJobResponseObject, error) {
+	job, err := s.node.GetJob(ctx, request.JobKey)
+	if err != nil {
+		var cerr *cluster.Error
+		if errors.As(err, &cerr) && cerr != nil && cerr.Result != nil {
+			switch cerr.Result.GetCode() {
+			case proto.ErrorResult_NOT_FOUND:
+				return public.GetJob404JSONResponse{
+					Code:    proto.ErrorResult_NOT_FOUND.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+
+			case proto.ErrorResult_CLUSTER_ERROR:
+				return public.GetJob502JSONResponse{
+					Code:    proto.ErrorResult_CLUSTER_ERROR.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+
+			default:
+				return public.GetJob500JSONResponse{
+					Code:    proto.ErrorResult_UNSPECIFIED.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+			}
+		}
+
+		// Not your cluster error type → treat as internal (or map generically)
+		return public.GetJob500JSONResponse{
+			Code:    proto.ErrorResult_UNSPECIFIED.String(),
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobVars := make(map[string]any)
+	err = json.Unmarshal(job.GetVariables(), &jobVars)
+	if err != nil {
+		return public.GetJob500JSONResponse{
+			Code:    proto.ErrorResult_UNSPECIFIED.String(),
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.GetJob200JSONResponse{
+		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+		ElementId:          job.GetElementId(),
+		Key:                job.GetKey(),
+		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		Type:               job.GetType(),
+		Variables:          jobVars,
+	}, nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

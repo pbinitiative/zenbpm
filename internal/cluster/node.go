@@ -748,6 +748,36 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 	return result, nil
 }
 
+func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(jobKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		message := fmt.Sprintf("failed to get follower node to get job: %v", err)
+		return nil, New(&proto.ErrorResult{
+			Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
+			Message: &message,
+		})
+
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get job: %w", err)
+	}
+	resp, err := client.GetJob(ctx, &proto.GetJobRequest{
+		JobKey: &jobKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get job from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, New(resp.Error)
+		}
+	}
+	return resp.Job, nil
+}
+
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
 func (node *ZenNode) GetProcessInstances(
 	ctx context.Context,

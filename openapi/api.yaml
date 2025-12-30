@@ -1038,6 +1038,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}:
+    get:
+      operationId: getJob
+      summary: "Get job details"
+      tags:
+        - job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /messages:
     post:

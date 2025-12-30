@@ -675,6 +675,9 @@ type ClientInterface interface {
 
 	CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetJob request
+	GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -824,6 +827,18 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, contentType string, bo
 
 func (c *Client) CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCompleteJobRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetJobRequest(c.Server, jobKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1456,6 +1471,40 @@ func NewCompleteJobRequestWithBody(server string, contentType string, body io.Re
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetJobRequest generates requests for GetJob
+func NewGetJobRequest(server string, jobKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2311,6 +2360,9 @@ type ClientWithResponsesInterface interface {
 
 	CompleteJobWithResponse(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
+	// GetJobWithResponse request
+	GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error)
+
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
 
@@ -2523,6 +2575,31 @@ func (r CompleteJobResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CompleteJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Job
+	JSON404      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetJobResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2953,6 +3030,15 @@ func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, body 
 	return ParseCompleteJobResponse(rsp)
 }
 
+// GetJobWithResponse request returning *GetJobResponse
+func (c *ClientWithResponses) GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error) {
+	rsp, err := c.GetJob(ctx, jobKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetJobResponse(rsp)
+}
+
 // PublishMessageWithBodyWithResponse request with arbitrary body returning *PublishMessageResponse
 func (c *ClientWithResponses) PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error) {
 	rsp, err := c.PublishMessageWithBody(ctx, contentType, body, reqEditors...)
@@ -3359,6 +3445,53 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetJobResponse parses an HTTP response from a GetJobWithResponse call
+func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error

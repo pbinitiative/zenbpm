@@ -631,7 +631,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("engine with partition %d was not found", partitionId)
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -641,7 +641,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_NOT_FOUND.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -652,7 +652,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("queries for partition %d not found", partitionId)
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -667,7 +667,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -852,6 +852,61 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 	return &proto.GetJobsResponse{
 		Partitions: resp,
 	}, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetJobKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	job, err := queries.FindJobByJobKey(ctx, *req.JobKey)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("failed to find job %d", req.GetJobKey())
+			return &proto.GetJobResponse{
+				Error: &proto.ErrorResult{
+					Code:    proto.ErrorResult_NOT_FOUND.Enum(),
+					Message: ptr.To(err.Error()),
+				},
+			}, nil
+		}
+		err := fmt.Errorf("failed to find job %d", req.GetJobKey())
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	var assignee *string
+	if job.Assignee.Valid {
+		assignee = &job.Assignee.String
+	}
+
+	return &proto.GetJobResponse{
+		Job: &proto.Job{
+			Key:                &job.Key,
+			ElementInstanceKey: &job.ElementInstanceKey,
+			ElementId:          &job.ElementID,
+			ProcessInstanceKey: &job.ProcessInstanceKey,
+			Type:               &job.Type,
+			State:              &job.State,
+			CreatedAt:          &job.CreatedAt,
+			Assignee:           assignee,
+			Variables:          []byte(job.Variables),
+		},
+	}, nil
+
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {

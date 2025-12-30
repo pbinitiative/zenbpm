@@ -65,6 +65,7 @@ service ZenService {
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -80,7 +81,12 @@ service ZenService {
 
 // TODO: do we want to keep custom error struct or use the default error handling?
 message ErrorResult {
-  uint32 code = 1;
+   enum Code {
+    UNSPECIFIED = 0;
+    NOT_FOUND = 1;
+    CLUSTER_ERROR = 2;
+  }
+  Code code = 1;
   string message = 2;
 }
 
@@ -496,6 +502,10 @@ message GetJobsRequest {
   string sortBy = 9;
 }
 
+message GetJobRequest{
+  int64 job_key = 1;
+}
+
 message PartitionedJobs {
   uint32 partition_id = 1;
   repeated Job jobs = 2;
@@ -505,6 +515,11 @@ message PartitionedJobs {
 message GetJobsResponse {
   ErrorResult error = 1;
   repeated PartitionedJobs partitions = 2;
+}
+
+message GetJobResponse {
+  ErrorResult error = 1;
+  Job job = 2;
 }
 
 message ResolveIncidentRequest {

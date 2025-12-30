@@ -38,7 +38,7 @@ A Timer Intermediate Catch Event can be configured using one of the following ti
   Triggers repeatedly based on a defined cycle (for example, every day at midnight).
 
 ## Graphical notation
-![End event usage example](./../../assets/bpmn/timer_intermediate_catch_event.svg)
+![Timer-intermediate-catch-event usage example](./../../assets/bpmn/timer_intermediate_catch_event.svg)
 
 A double-lined circle with a clock icon inside the event.
 

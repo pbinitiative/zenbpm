@@ -53,18 +53,22 @@ WHERE key IN (sqlc.slice('keys'));
 
 -- name: FindProcessInstancesPage :many
 SELECT
-    *,
+    pi.*, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
-    process_instance
+    process_instance AS pi
+    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
 WHERE
+    -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+    CASE WHEN @sort_by_order IS NULL THEN 1 ELSE 1 END
+    AND
     CASE WHEN @process_definition_key <> 0 THEN
-        process_instance.process_definition_key = @process_definition_key
+        pi.process_definition_key = @process_definition_key
     ELSE
         1
     END
     AND CASE WHEN @parent_instance_key <> 0 THEN
-        process_instance.parent_process_execution_token IN (
+        pi.parent_process_execution_token IN (
             SELECT
                 execution_token.key
             FROM
@@ -76,12 +80,44 @@ WHERE
     END
     AND
     CASE WHEN @business_key IS NOT NULL THEN
-        process_instance.business_key = @business_key
+        pi.business_key = @business_key
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN @bpmn_process_id IS NOT NULL THEN
+        pd.bpmn_process_id = @bpmn_process_id
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN @created_from IS NOT NULL THEN
+       pi.created_at >= @created_from
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN @created_to IS NOT NULL THEN
+       pi.created_at <= @created_to
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN @state IS NOT NULL THEN
+       pi.state = @state
     ELSE
         1
     END
 ORDER BY
-    created_at DESC
+-- workaround for sqlc which does not replace params in order by
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN pi.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'created_at_desc' THEN pi.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
+  pi.created_at DESC
+
 LIMIT @size OFFSET @offset;
 
 -- name: FindProcessByParentExecutionToken :many

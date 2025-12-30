@@ -7,14 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiProcessDefinition(t *testing.T) {
 	t.Run("deploy process definition", func(t *testing.T) {
-		err := deployDefinition(t, "service-task-input-output.bpmn")
+		_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
 		assert.NoError(t, err)
 	})
 
@@ -22,11 +24,11 @@ func TestRestApiProcessDefinition(t *testing.T) {
 	stDefinitionCount := 0
 
 	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
-		err := deployDefinition(t, "service-task-input-output.bpmn")
+		_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
 		assert.NoError(t, err)
-		defintitions, err := listProcessDefinitions(t)
+		definitions, err := listProcessDefinitions(t)
 		assert.NoError(t, err)
-		for _, def := range defintitions {
+		for _, def := range definitions {
 			if def.BpmnProcessId == "service-task-input-output" {
 				definition = def
 				stDefinitionCount++
@@ -76,16 +78,26 @@ func getDefinitionDetail(t testing.TB, key int64) (public.ProcessDefinitionDetai
 	return detail, nil
 }
 
-func deployDefinition(t testing.TB, filename string) error {
+func deployDefinition(t testing.TB, filename string, isReplace bool) (replacedDefinitionId *string, err error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	loc := filepath.Join(wd, "pkg", "bpmn", "test-cases", filename)
 	file, err := os.ReadFile(loc)
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+	if isReplace {
+		stringFile := string(file)
+		oldDefinitionId, found := getStringInBetweenTwoString(stringFile, "bpmn:process id=\"", "\"")
+		if !found {
+			return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
+		}
+		replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixMilli()))
+		fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
+		file = []byte(fileString)
 	}
 
 	resp, err := app.NewRequest(t).
@@ -95,16 +107,16 @@ func deployDefinition(t testing.TB, filename string) error {
 		DoOk()
 	if err != nil {
 		if strings.Contains(err.Error(), "DUPLICATE") {
-			return nil
+			return nil, nil
 		}
-		return fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
+		return nil, fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
 	}
 	definition := public.CreateProcessDefinition201JSONResponse{}
 	err = json.Unmarshal(resp, &definition)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal create definition response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal create definition response: %w", err)
 	}
-	return nil
+	return replacedDefinitionId, nil
 }
 
 func listProcessDefinitions(t testing.TB) ([]public.ProcessDefinitionSimple, error) {
@@ -120,8 +132,19 @@ func listProcessDefinitions(t testing.TB) ([]public.ProcessDefinitionSimple, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal process definitions: %w", err)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to list process definitions: %v %w", resp, err)
-	}
 	return resp.Items, nil
+}
+
+func getStringInBetweenTwoString(str string, startS string, endS string) (result string, found bool) {
+	s := strings.Index(str, startS)
+	if s == -1 {
+		return result, false
+	}
+	newS := str[s+len(startS):]
+	e := strings.Index(newS, endS)
+	if e == -1 {
+		return result, false
+	}
+	result = newS[:e]
+	return result, true
 }

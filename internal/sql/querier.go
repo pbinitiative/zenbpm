@@ -59,6 +59,7 @@ type Querier interface {
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error)
+	// workaround for sqlc which does not replace params in order by
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error)
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
 	FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error)

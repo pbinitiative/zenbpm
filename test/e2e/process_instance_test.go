@@ -346,6 +346,79 @@ func TestState(t *testing.T) {
 	})
 }
 
+func TestUpdateProcessInstanceVariables(t *testing.T) {
+	var processInstanceKey int64
+	var definition public.ProcessDefinitionSimple
+	definitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *definitionName {
+			definition = def
+			break
+		}
+	}
+
+	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
+		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+			"var1": "var1 value",
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+		processInstanceKey = instance.Key
+	})
+
+	t.Run("testUpdateProcessInstanceVariables", func(t *testing.T) {
+		err := updateProcessInstanceVariables(t, processInstanceKey, map[string]any{
+			"var1":    "var1 value changed",
+			"newVar2": "var2 value",
+		})
+		assert.NoError(t, err)
+		fetchedInstance, err := getProcessInstance(t, processInstanceKey)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]any{"var1": "var1 value changed", "newVar2": "var2 value"}, fetchedInstance.Variables)
+	})
+}
+
+func TestDeleteProcessInstanceVariable(t *testing.T) {
+	var processInstanceKey int64
+	var definition public.ProcessDefinitionSimple
+	definitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *definitionName {
+			definition = def
+			break
+		}
+	}
+
+	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
+		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+			"var1": "var1 value",
+			"var2": "var2 value",
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+		processInstanceKey = instance.Key
+	})
+
+	t.Run("TestDeleteProcessInstanceVariable for existing variable", func(t *testing.T) {
+		err := deleteProcessInstanceVariable(t, processInstanceKey, "var1")
+		assert.NoError(t, err)
+		fetchedInstance, err := getProcessInstance(t, processInstanceKey)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]any{"var2": "var2 value"}, fetchedInstance.Variables)
+	})
+
+	t.Run("TestDeleteProcessInstanceVariable for non-existing variable", func(t *testing.T) {
+		err := deleteProcessInstanceVariable(t, processInstanceKey, "non-existing-variable")
+		assert.Error(t, err)
+	})
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
 	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
 }
@@ -457,4 +530,28 @@ func getProcessInstances(t testing.TB, filteringUrlPart string) ([]public.Proces
 		instances = append(instances, part.Items...)
 	}
 	return instances, nil
+}
+
+func updateProcessInstanceVariables(t testing.TB, processInstanceKey int64, variables map[string]any) error {
+	req := public.UpdateProcessInstanceVariablesJSONRequestBody{Variables: variables}
+	err := app.NewRequest(t).
+		WithPath(fmt.Sprintf("/v1/process-instances/%v/variables", processInstanceKey)).
+		WithMethod("PATCH").
+		WithBody(req).
+		DoOkNoBody()
+	if err != nil {
+		return fmt.Errorf("failed to update process instance variables: %w", err)
+	}
+	return nil
+}
+
+func deleteProcessInstanceVariable(t testing.TB, processInstanceKey int64, variable string) error {
+	err := app.NewRequest(t).
+		WithPath(fmt.Sprintf("/v1/process-instances/%v/variables/%v", processInstanceKey, variable)).
+		WithMethod("DELETE").
+		DoOkNoBody()
+	if err != nil {
+		return fmt.Errorf("failed to delete process instance variable: %w", err)
+	}
+	return nil
 }

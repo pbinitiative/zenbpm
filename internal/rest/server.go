@@ -729,6 +729,71 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 	}, nil
 }
 
+func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request public.UpdateProcessInstanceVariablesRequestObject) (public.UpdateProcessInstanceVariablesResponseObject, error) {
+	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.UpdateProcessInstanceVariables502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	if process.GetState() != int64(runtime.ActivityStateActive) {
+		return public.UpdateProcessInstanceVariables400JSONResponse{
+			Code:    "INVALID_STATE",
+			Message: "Can update variables only for process instances in active state",
+		}, nil
+	}
+	err = s.node.UpdateProcessInstanceVariables(ctx, request.ProcessInstanceKey, request.Body.Variables)
+	if err != nil {
+		return public.UpdateProcessInstanceVariables502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.UpdateProcessInstanceVariables204Response{}, nil
+}
+
+func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request public.DeleteProcessInstanceVariableRequestObject) (public.DeleteProcessInstanceVariableResponseObject, error) {
+	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	existingVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &existingVars)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	_, exists := existingVars[request.VariableName]
+	if !exists {
+		return public.DeleteProcessInstanceVariable404JSONResponse{
+			Code:    "NOT_FOUND",
+			Message: fmt.Sprintf("Variable %v does not exist for process instance with key=%v", request.VariableName, request.ProcessInstanceKey),
+		}, nil
+	}
+	if process.GetState() != int64(runtime.ActivityStateActive) {
+		return public.DeleteProcessInstanceVariable400JSONResponse{
+			Code:    "INVALID_STATE",
+			Message: "Can delete variables only for process instances in active state",
+		}, nil
+	}
+	err = s.node.DeleteProcessInstanceVariable(ctx, request.ProcessInstanceKey, request.VariableName)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.DeleteProcessInstanceVariable204Response{}, nil
+}
+
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)

@@ -8,9 +8,14 @@ Accept: application/json
 
 ### DeployProcessDefinition
 POST {{host}}/v1/process-definitions
+Content-Type: multipart/form-data; boundary="boundary"
+
+--boundary--
+Content-Disposition: form-data; name="resource"; filename="service-task-input-output.bpmn"
 Content-Type: application/xml
 
 < pkg/bpmn/test-cases/service-task-input-output.bpmn
+--boundary--
 
 ### StartProcessInstance
 POST {{host}}/v1/process-instances
@@ -29,6 +34,20 @@ GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
 
 ### GetProcessInstance
 GET {{host}}/v1/process-instances/{{instance_key}}
+
+### UpdateProcessInstanceVariables
+PATCH {{host}}/v1/process-instances/{{instance_key}}/variables
+Content-Type: application/json
+
+{
+  "variables":{
+    "name": "Test name changed",
+    "totalSum": 10.5
+  }
+}
+
+### DeleteProcessInstanceVariable
+DELETE {{host}}/v1/process-instances/{{instance_key}}/variables/name
 
 ### GetProcessInstanceJobs
 GET {{host}}/v1/process-instances/{{instance_key}}/jobs

@@ -517,6 +517,11 @@ type GetProcessInstanceJobsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// UpdateProcessInstanceVariablesJSONBody defines parameters for UpdateProcessInstanceVariables.
+type UpdateProcessInstanceVariablesJSONBody struct {
+	Variables map[string]interface{} `json:"variables"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
@@ -537,6 +542,9 @@ type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipar
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
+type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -597,6 +605,12 @@ type ServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams)
+	// Update process instance variables
+	// (PATCH /process-instances/{processInstanceKey}/variables)
+	UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	// Delete a process instance variable
+	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+	DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string)
 	// start a cpu profiler
 	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
@@ -720,6 +734,18 @@ func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, proc
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
 func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update process instance variables
+// (PATCH /process-instances/{processInstanceKey}/variables)
+func (_ Unimplemented) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a process instance variable
+// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+func (_ Unimplemented) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1359,6 +1385,65 @@ func (siw *ServerInterfaceWrapper) GetProcessInstanceJobs(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateProcessInstanceVariables operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProcessInstanceVariables(w, r, processInstanceKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProcessInstanceVariable operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variableName" -------------
+	var variableName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variableName", chi.URLParam(r, "variableName"), &variableName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variableName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProcessInstanceVariable(w, r, processInstanceKey, variableName)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TestStartCpuProfile operation middleware
 func (siw *ServerInterfaceWrapper) TestStartCpuProfile(w http.ResponseWriter, r *http.Request) {
 
@@ -1578,6 +1663,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetProcessInstanceJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/process-instances/{processInstanceKey}/variables", wrapper.UpdateProcessInstanceVariables)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/process-instances/{processInstanceKey}/variables/{variableName}", wrapper.DeleteProcessInstanceVariable)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tests/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
@@ -2307,6 +2398,85 @@ func (response GetProcessInstanceJobs502JSONResponse) VisitGetProcessInstanceJob
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateProcessInstanceVariablesRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	Body               *UpdateProcessInstanceVariablesJSONRequestBody
+}
+
+type UpdateProcessInstanceVariablesResponseObject interface {
+	VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error
+}
+
+type UpdateProcessInstanceVariables204Response struct {
+}
+
+func (response UpdateProcessInstanceVariables204Response) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateProcessInstanceVariables400JSONResponse Error
+
+func (response UpdateProcessInstanceVariables400JSONResponse) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProcessInstanceVariables502JSONResponse Error
+
+func (response UpdateProcessInstanceVariables502JSONResponse) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariableRequestObject struct {
+	ProcessInstanceKey int64  `json:"processInstanceKey"`
+	VariableName       string `json:"variableName"`
+}
+
+type DeleteProcessInstanceVariableResponseObject interface {
+	VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error
+}
+
+type DeleteProcessInstanceVariable204Response struct {
+}
+
+func (response DeleteProcessInstanceVariable204Response) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProcessInstanceVariable400JSONResponse Error
+
+func (response DeleteProcessInstanceVariable400JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariable404JSONResponse Error
+
+func (response DeleteProcessInstanceVariable404JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariable502JSONResponse Error
+
+func (response DeleteProcessInstanceVariable502JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type TestStartCpuProfileRequestObject struct {
 	NodeId string `json:"nodeId"`
 }
@@ -2419,6 +2589,12 @@ type StrictServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(ctx context.Context, request GetProcessInstanceJobsRequestObject) (GetProcessInstanceJobsResponseObject, error)
+	// Update process instance variables
+	// (PATCH /process-instances/{processInstanceKey}/variables)
+	UpdateProcessInstanceVariables(ctx context.Context, request UpdateProcessInstanceVariablesRequestObject) (UpdateProcessInstanceVariablesResponseObject, error)
+	// Delete a process instance variable
+	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+	DeleteProcessInstanceVariable(ctx context.Context, request DeleteProcessInstanceVariableRequestObject) (DeleteProcessInstanceVariableResponseObject, error)
 	// start a cpu profiler
 	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(ctx context.Context, request TestStartCpuProfileRequestObject) (TestStartCpuProfileResponseObject, error)
@@ -2990,6 +3166,66 @@ func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.R
 	}
 }
 
+// UpdateProcessInstanceVariables operation middleware
+func (sh *strictHandler) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	var request UpdateProcessInstanceVariablesRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+
+	var body UpdateProcessInstanceVariablesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProcessInstanceVariables(ctx, request.(UpdateProcessInstanceVariablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProcessInstanceVariables")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProcessInstanceVariablesResponseObject); ok {
+		if err := validResponse.VisitUpdateProcessInstanceVariablesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProcessInstanceVariable operation middleware
+func (sh *strictHandler) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string) {
+	var request DeleteProcessInstanceVariableRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+	request.VariableName = variableName
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProcessInstanceVariable(ctx, request.(DeleteProcessInstanceVariableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProcessInstanceVariable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProcessInstanceVariableResponseObject); ok {
+		if err := validResponse.VisitDeleteProcessInstanceVariableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // TestStartCpuProfile operation middleware
 func (sh *strictHandler) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
 	var request TestStartCpuProfileRequestObject
@@ -3045,90 +3281,92 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"jgAA",
+	"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",
+	"++Jq8d8AAAD//zZQMnH5lAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

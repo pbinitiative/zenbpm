@@ -161,6 +161,20 @@ func (r *request) DoOk() ([]byte, error) {
 	return respBody, nil
 }
 
+func (r *request) DoOkNoBody() error {
+	respBody, _, resp, err := r.Do()
+	if err != nil {
+		return fmt.Errorf("failed to perform request: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		err = fmt.Errorf("expected status code 2XX, got %v", resp.StatusCode)
+	}
+	if err != nil {
+		return fmt.Errorf("error during response %s validation: %w", string(respBody), err)
+	}
+	return nil
+}
+
 // AssertCommon will check if status code is 2XX and that the content-type header is set to application/json; charset=utf-8
 func AssertCommon(t testing.TB, resp *http.Response) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

@@ -450,6 +450,51 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 	}, nil
 }
 
+func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return &proto.DeleteProcessInstanceVariableResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	var instance *runtime.ProcessInstance
+	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
+	if err != nil {
+		err := fmt.Errorf("failed to modify process instance: %w", err)
+		return &proto.DeleteProcessInstanceVariableResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return &proto.DeleteProcessInstanceVariableResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+	}, nil
+}
+
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {

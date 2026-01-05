@@ -464,7 +464,7 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 	var instance *runtime.ProcessInstance
 	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
 	if err != nil {
-		err := fmt.Errorf("failed to modify process instance: %w", err)
+		err := fmt.Errorf("failed to delete process instance variable: %w", err)
 		return &proto.DeleteProcessInstanceVariableResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,

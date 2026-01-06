@@ -34,6 +34,13 @@ type Storage interface {
 	NewBatch() Batch
 }
 
+type SortOrder string
+
+const (
+	ASC  SortOrder = "ASC"
+	DESC SortOrder = "DESC"
+)
+
 type DecisionStorage interface {
 	DmnResourceDefinitionStorageReader
 	DmnResourceDefinitionStorageWriter
@@ -104,12 +111,22 @@ type DecisionInstanceStorageReader interface {
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error)
 }
 
+type ProcessDefinitionList struct {
+	Key              int64  // The engines key for this given process with version
+	Version          int32  // A version of the process, default=1, incremented, when another process with the same ID is loaded
+	BpmnProcessId    string // The ID as defined in the BPMN file
+	BpmnProcessName  string // The name as defined in the BPMN file
+	BpmnResourceName string // some name for the resource
+}
+
 type ProcessDefinitionStorageReader interface {
 	FindLatestProcessDefinitionById(ctx context.Context, ProcessDefinitionId string) (bpmnruntime.ProcessDefinition, error)
 
 	FindProcessDefinitionByKey(ctx context.Context, ProcessDefinitionKey int64) (bpmnruntime.ProcessDefinition, error)
 
 	// FindProcessDefinitionsById return zero or many registered processes with given ID
+	FindProcessDefinitions(ctx context.Context, bpmnProcessId *string, sortOrder *SortOrder, sortBy *string, onlyLatest bool, offset int64, limit int64) ([]ProcessDefinitionList, int, error)
+
 	// result array is ordered by version number, from 1 (first) and largest version (last)
 	FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
 }
@@ -146,6 +163,17 @@ type TimerStorageWriter interface {
 	SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error
 }
 
+type JobList struct {
+	Key                int64
+	ElementId          string
+	ElementInstanceKey int64
+	Type               string
+	ProcessInstanceKey int64
+	CreatedAt          int64
+	State              bpmnruntime.ActivityState
+	Assignee           *string
+}
+
 type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
@@ -157,6 +185,8 @@ type JobStorageReader interface {
 	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
 
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
+
+	FindJobs(ctx context.Context, JobType *string, State *int64, processInstanceKey *int64, assignee *string, sortOrder *SortOrder, sortBy *string, offset int64, limit int64) ([]JobList, int, error)
 }
 
 type JobStorageWriter interface {

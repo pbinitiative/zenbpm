@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -344,14 +346,50 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
-	data, err := io.ReadAll(request.Body)
-	if err != nil {
+	var data []byte
+	var filename string
+	var found bool
+
+	// Iterate through multipart parts to find the "resource" field
+	for {
+		part, err := request.Body.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return public.CreateProcessDefinition400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("Failed to read multipart form: %s", err.Error()),
+			}, nil
+		}
+
+		if part.FormName() == "resource" {
+			found = true
+			filename = part.FileName()
+
+			// Read file data
+			data, err = io.ReadAll(part)
+			if err != nil {
+				return public.CreateProcessDefinition400JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			part.Close()
+			break
+		}
+		part.Close()
+	}
+
+	if !found {
 		return public.CreateProcessDefinition400JSONResponse{
 			Code:    "TODO",
-			Message: err.Error(),
+			Message: "Resource file is required",
 		}, nil
 	}
-	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
+
+	// Deploy with filename
+	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
 		return public.CreateProcessDefinition502JSONResponse{
 			Code:    "TODO",
@@ -389,7 +427,25 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	definitionsPage, err := s.node.GetProcessDefinitions(ctx, *request.Params.Page, *request.Params.Size)
+	var sortBy *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		sortBy = &s
+	}
+
+	var sortOrder *string
+	if request.Params.SortOrder != nil {
+		s := string(*request.Params.SortOrder)
+		sortOrder = &s
+	}
+
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
+		request.Params.BpmnProcessId,
+		request.Params.OnlyLatest,
+		sortBy,
+		sortOrder,
+		*request.Params.Page, *request.Params.Size)
+
 	if err != nil {
 		return public.GetProcessDefinitions500JSONResponse{
 			Code:    "TODO",
@@ -402,9 +458,11 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for i, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:           p.GetKey(),
-			Version:       int(p.GetVersion()),
-			BpmnProcessId: p.GetProcessId(),
+			Key:              p.GetKey(),
+			Version:          int(p.GetVersion()),
+			BpmnProcessId:    p.GetProcessId(),
+			BpmnResourceName: ptr.To(p.GetResourceName()),
+			BpmnProcessName:  ptr.To(p.GetProcessName()),
 		}
 		items[i] = processDefinitionSimple
 	}
@@ -698,7 +756,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState)
+	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey, (*string)(request.Params.SortBy), (*string)(request.Params.SortOrder))
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -724,20 +782,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
-			vars := map[string]any{}
-			err = json.Unmarshal(job.GetVariables(), &vars)
-			if err != nil {
-				return public.GetJobs500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
 
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
 				State:              getRestJobState(runtime.ActivityState(job.GetState())),
-				Variables:          vars,
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
@@ -747,6 +796,59 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 	jobsPage.Count = count
 	jobsPage.TotalCount = int(totalCount)
 	return jobsPage, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject) (public.GetJobResponseObject, error) {
+	job, err := s.node.GetJob(ctx, request.JobKey)
+	if err != nil {
+		var cerr *cluster.Error
+		if errors.As(err, &cerr) && cerr != nil && cerr.Result != nil {
+			switch cerr.Result.GetCode() {
+			case proto.ErrorResult_NOT_FOUND:
+				return public.GetJob404JSONResponse{
+					Code:    proto.ErrorResult_NOT_FOUND.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+
+			case proto.ErrorResult_CLUSTER_ERROR:
+				return public.GetJob502JSONResponse{
+					Code:    proto.ErrorResult_CLUSTER_ERROR.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+
+			default:
+				return public.GetJob500JSONResponse{
+					Code:    proto.ErrorResult_UNSPECIFIED.String(),
+					Message: cerr.Result.GetMessage(),
+				}, nil
+			}
+		}
+
+		// Not your cluster error type → treat as internal (or map generically)
+		return public.GetJob500JSONResponse{
+			Code:    proto.ErrorResult_UNSPECIFIED.String(),
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobVars := make(map[string]any)
+	err = json.Unmarshal(job.GetVariables(), &jobVars)
+	if err != nil {
+		return public.GetJob500JSONResponse{
+			Code:    proto.ErrorResult_UNSPECIFIED.String(),
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.GetJob200JSONResponse{
+		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+		ElementId:          job.GetElementId(),
+		Key:                job.GetKey(),
+		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		Type:               job.GetType(),
+		Variables:          jobVars,
+	}, nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

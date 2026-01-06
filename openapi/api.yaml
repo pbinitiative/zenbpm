@@ -268,17 +268,20 @@ paths:
       requestBody:
         required: true
         content:
-          application/xml:
+          multipart/form-data:
             schema:
-              type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <bpmn:definitions>
-                <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
-                  ...
-                </bpmn:process>
-              </bpmn:definitions>
+              type: object
+              required:
+                - resource
+              properties:
+                resource:
+                  type: string
+                  format: binary
+                  description: BPMN process definition file (.bpmn format only, max 4MB)
+            encoding:
+              resource:
+                contentType: application/octet-stream
+
       responses:
         201:
           description: Process definition deployed
@@ -318,6 +321,33 @@ paths:
       tags:
         - process-definition
       parameters:
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each process definition grouped by bpmnProcessId"
+
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, bpmnProcessId, bpmnResourceName, version, key]
+          description: "Sort field"
+
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: "Sort direction"
+
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: "Filter by BPMN process ID to get all versions of a specific process"
+
         - name: page
           in: query
           schema:
@@ -327,6 +357,7 @@ paths:
             default: 1
           description: Page number (1-based indexing)
           example: 1
+
         - name: size
           in: query
           schema:
@@ -881,6 +912,17 @@ paths:
           schema:
             $ref: "#/components/schemas/JobState"
           example: "active"
+        - name: assignee
+          in: query
+          schema:
+            type: string
+          description: Filter by assignee
+        - name: processInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by process instance
         - name: page
           in: query
           schema:
@@ -895,6 +937,18 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, key, type, state]
+          description: Sort field
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of jobs on partitions
@@ -980,6 +1034,44 @@ paths:
                 $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}:
+    get:
+      operationId: getJob
+      summary: "Get job details"
+      tags:
+        - job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
@@ -1450,6 +1542,12 @@ components:
           type: integer
         bpmnProcessId:
           type: string
+        bpmnProcessName:
+          type: string
+          description: "Process name from BPMN"
+        bpmnResourceName:
+          type: string
+          description: "resource file name"
     ProcessDefinitionDetail:
       type: object
       required:

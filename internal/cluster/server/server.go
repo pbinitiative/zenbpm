@@ -27,6 +27,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"go.opentelemetry.io/otel"
 	otelpropagation "go.opentelemetry.io/otel/propagation"
@@ -609,7 +610,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.GetKey())
+		_, err = engine.LoadFromBytes(req.GetData(), req.GetResourceName(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{
@@ -630,7 +631,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("engine with partition %d was not found", partitionId)
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -640,7 +641,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_NOT_FOUND.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -651,7 +652,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("queries for partition %d not found", partitionId)
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -666,7 +667,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
 			Error: &proto.ErrorResult{
-				Code:    nil,
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
 				Message: ptr.To(err.Error()),
 			},
 		}, err
@@ -804,28 +805,21 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto.GetJobsResponse, error) {
 	resp := make([]*proto.PartitionedJobs, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
-		queries := s.controller.PartitionQueries(ctx, partitionId)
-		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+		db := s.controller.GetPartition(ctx, partitionId).DB
+		sortOrder := storage.ASC
+		if req.SortOrder != nil {
+			sortOrder = storage.SortOrder(ptr.Deref(req.SortOrder, ""))
 		}
-		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			Type: ssql.NullString{
-				String: ptr.Deref(req.JobType, ""),
-				Valid:  req.JobType != nil,
-			},
-		})
+		jobs, count, err := db.FindJobs(ctx,
+			req.JobType,
+			req.State,
+			req.ProcessInstanceKey,
+			req.Assignee,
+			&sortOrder,
+			req.SortBy,
+			int64(req.GetSize())*int64(req.GetPage()-1),
+			int64(req.GetSize()))
+
 		if err != nil {
 			err := fmt.Errorf("failed to find jobs with filter %+v", req)
 			return &proto.GetJobsResponse{
@@ -835,27 +829,24 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				},
 			}, err
 		}
-		totalCount := int32(0)
-		if len(jobs) > 0 {
-			totalCount = int32(jobs[0].TotalCount)
-		}
+
 		partitionJobs := make([]*proto.Job, len(jobs))
 		for i, job := range jobs {
 			partitionJobs[i] = &proto.Job{
 				Key:                &job.Key,
-				Variables:          []byte(job.Variables),
 				State:              ptr.To(int64(job.State)),
 				CreatedAt:          &job.CreatedAt,
 				ElementInstanceKey: &job.ElementInstanceKey,
-				ElementId:          &job.ElementID,
+				ElementId:          &job.ElementId,
 				ProcessInstanceKey: &job.ProcessInstanceKey,
 				Type:               &job.Type,
+				Assignee:           job.Assignee,
 			}
 		}
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  ptr.To(int32(count)),
 		})
 	}
 	return &proto.GetJobsResponse{
@@ -863,9 +854,65 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 	}, nil
 }
 
+func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetJobKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    proto.ErrorResult_CLUSTER_ERROR.Enum(),
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	job, err := queries.FindJobByJobKey(ctx, *req.JobKey)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("failed to find job %d", req.GetJobKey())
+			return &proto.GetJobResponse{
+				Error: &proto.ErrorResult{
+					Code:    proto.ErrorResult_NOT_FOUND.Enum(),
+					Message: ptr.To(err.Error()),
+				},
+			}, nil
+		}
+		err := fmt.Errorf("failed to find job %d", req.GetJobKey())
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    proto.ErrorResult_UNSPECIFIED.Enum(),
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	var assignee *string
+	if job.Assignee.Valid {
+		assignee = &job.Assignee.String
+	}
+
+	return &proto.GetJobResponse{
+		Job: &proto.Job{
+			Key:                &job.Key,
+			ElementInstanceKey: &job.ElementInstanceKey,
+			ElementId:          &job.ElementID,
+			ProcessInstanceKey: &job.ProcessInstanceKey,
+			Type:               &job.Type,
+			State:              &job.State,
+			CreatedAt:          &job.CreatedAt,
+			Assignee:           assignee,
+			Variables:          []byte(job.Variables),
+		},
+	}, nil
+
+}
+
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
 	resp := make([]*proto.PartitionedProcessInstances, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {
+		s.controller.GetPartition(ctx, partitionId)
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
 			err := fmt.Errorf("queries for partition %d not found", partitionId)
@@ -884,7 +931,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				Valid:  req.BusinessKey != nil,
 			},
 			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:  int64(req.GetSize()),
+			Size:   int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)

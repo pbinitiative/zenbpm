@@ -1,9 +1,13 @@
 package bpmn
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,6 +24,34 @@ func TestUserTasksCanBeHandled(t *testing.T) {
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
 	assert.Equal(t, "user-task", cp.CallPath)
+}
+
+func TestUserTaskAssigneeMapping(t *testing.T) {
+	// setup
+	process, err := bpmnEngine.LoadFromFile("./test-cases/usertask-assignee-mapping.bpmn")
+	assert.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// 8-digit number: 10,000,000 to 99,999,999
+	num := rng.Intn(90000000) + 10000000
+
+	randomString := "dynamic" + fmt.Sprint(num)
+
+	variables := map[string]interface{}{
+		"assignee": randomString,
+	}
+	bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+
+	for _, job := range engineStorage.Jobs {
+		if job.ElementId == "user-task-static" {
+			assert.Equal(t, "static", ptr.Deref(job.Assignee, ""))
+		}
+		if job.ElementId == "user-task-dynamic" {
+			assert.Equal(t, randomString, ptr.Deref(job.Assignee, ""))
+		}
+	}
+
 }
 
 func TestUserTasksCanBeContinue(t *testing.T) {

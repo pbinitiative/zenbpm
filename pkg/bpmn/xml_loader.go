@@ -25,8 +25,8 @@ func (engine *Engine) LoadFromFile(filename string) (*runtime.ProcessDefinition,
 
 // LoadFromBytes loads a given BPMN file by xmlData byte array into the engine
 // and returns ProcessInfo details for the deployed workflow
-func (engine *Engine) LoadFromBytes(xmlData []byte, key int64) (*runtime.ProcessDefinition, error) {
-	def, err := engine.load(xmlData, "", key)
+func (engine *Engine) LoadFromBytes(xmlData []byte, resourceName string, key int64) (*runtime.ProcessDefinition, error) {
+	def, err := engine.load(xmlData, resourceName, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load from bytes: %w", err)
 	}
@@ -44,6 +44,7 @@ func (engine *Engine) load(xmlData []byte, resourceName string, key int64) (*run
 	processInfo := runtime.ProcessDefinition{
 		Version:          1,
 		BpmnProcessId:    definitions.Process.Id,
+		BpmnProcessName:  definitions.Process.Name,
 		Key:              key,
 		Definitions:      definitions,
 		BpmnData:         string(xmlData),

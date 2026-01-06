@@ -373,6 +373,20 @@ func TestModifyProcessInstance(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), definition.Key, variableContext)
 	assert.NoError(t, err)
 
+	// wait for activity instance to be created (TODO: the fact that this needs to be here is an issue)
+	assert.Eventually(t, func() bool {
+		inMem := bpmnEngine.persistence.(*inmemory.Storage)
+		for _, inst := range inMem.ProcessInstances {
+			if inst.ParentProcessExecutionToken != nil {
+				// wait till instance is already created
+				if inst.ParentProcessExecutionToken.ProcessInstanceKey == instance.Key {
+					return true
+				}
+			}
+		}
+		return false
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
 	var executionTokens []runtime.ExecutionToken
 	assert.Eventually(t, func() bool {
 		executionTokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
@@ -398,9 +412,7 @@ func TestModifyProcessInstance(t *testing.T) {
 
 	modifiedInstance, runningTokens, err := bpmnEngine.ModifyInstance(t.Context(), instance.GetInstanceKey(), elementInstancesToTerminate, elementIdsToStartInstance, map[string]any{
 		"order": map[string]any{"name": "test-order-name"}})
-	if err != nil {
-		return
-	}
+
 	assert.NoError(t, err)
 	assert.Equal(t, definition.Key, modifiedInstance.Definition.Key)
 	assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.VariableHolder.LocalVariables()["order"])

@@ -347,7 +347,6 @@ func (engine *Engine) terminateExecutionTokens(
 				if err != nil {
 					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
-				fmt.Println("termination - called processes", len(calledProcesses))
 				for _, calledProcess := range calledProcesses {
 					calledProcessInstance := runtime.ProcessInstance{
 						Key: calledProcess.Key,

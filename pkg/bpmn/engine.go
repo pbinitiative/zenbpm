@@ -347,7 +347,18 @@ func (engine *Engine) terminateExecutionTokens(
 				if err != nil {
 					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
+				fmt.Println("termination - called processes", len(calledProcesses))
 				for _, calledProcess := range calledProcesses {
+					calledProcessInstance := runtime.ProcessInstance{
+						Key: calledProcess.Key,
+					}
+					engine.runningInstances.lockInstance(&calledProcessInstance)
+					calledInstanceUnlocked := false
+					defer func() {
+						if calledInstanceUnlocked == false {
+							engine.runningInstances.unlockInstance(&calledProcessInstance)
+						}
+					}()
 					err = engine.cancelInstance(ctx, calledProcess, batch)
 					if err != nil {
 						return nil, fmt.Errorf("failed to cancel called process for token %d: %w", activeToken.Key, err)

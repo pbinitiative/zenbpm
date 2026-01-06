@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 var (
@@ -36,10 +36,10 @@ func SetupOtel(conf config.Tracing) (*Otel, error) {
 	var err error
 
 	o.meterProvider, err = setupMeterProvider(conf.Name)
-	otel.SetMeterProvider(o.meterProvider)
 	if err != nil {
 		return nil, err
 	}
+	otel.SetMeterProvider(o.meterProvider)
 	if conf.Enabled {
 		o.tracerprovider, err = setupTraceProvider(conf)
 		otel.SetTracerProvider(o.tracerprovider)

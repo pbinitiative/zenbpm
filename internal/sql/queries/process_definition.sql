@@ -31,10 +31,10 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'version_desc' THEN pd.version END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pd."key" END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pd."key" END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_asc' THEN pd.bpmn_process_id END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_desc' THEN pd.bpmn_process_id END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_asc' THEN pd.bpmn_resource_name END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_desc' THEN pd.bpmn_resource_name END DESC,
   pd."key" DESC
 
 LIMIT @limit

@@ -19,6 +19,7 @@ import (
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -425,23 +426,12 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	var sortBy *string
-	if request.Params.SortBy != nil {
-		s := string(*request.Params.SortBy)
-		sortBy = &s
-	}
-
-	var sortOrder *string
-	if request.Params.SortOrder != nil {
-		s := string(*request.Params.SortOrder)
-		sortOrder = &s
-	}
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 
 	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
 		request.Params.BpmnProcessId,
 		request.Params.OnlyLatest,
-		sortBy,
-		sortOrder,
+		sort,
 		*request.Params.Page, *request.Params.Size)
 
 	if err != nil {

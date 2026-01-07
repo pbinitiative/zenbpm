@@ -107,8 +107,6 @@ SELECT
   pd."key",
   pd.version,
   pd.bpmn_process_id,
-  pd.bpmn_data,
-  pd.bpmn_checksum,
   pd.bpmn_resource_name,
   pd.bpmn_process_name,
   COUNT(*) OVER() AS total_count
@@ -131,10 +129,10 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'version_desc' THEN pd.version END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pd."key" END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pd."key" END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_asc' THEN pd.bpmn_process_id END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_process_id_desc' THEN pd.bpmn_process_id END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_asc' THEN pd.bpmn_resource_name END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmn_resource_name_desc' THEN pd.bpmn_resource_name END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_asc' THEN pd.bpmn_resource_name END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_desc' THEN pd.bpmn_resource_name END DESC,
   pd."key" DESC
 
 LIMIT ?5
@@ -153,8 +151,6 @@ type FindProcessDefinitionsRow struct {
 	Key              int64  `json:"key"`
 	Version          int64  `json:"version"`
 	BpmnProcessID    string `json:"bpmn_process_id"`
-	BpmnData         string `json:"bpmn_data"`
-	BpmnChecksum     []byte `json:"bpmn_checksum"`
 	BpmnResourceName string `json:"bpmn_resource_name"`
 	BpmnProcessName  string `json:"bpmn_process_name"`
 	TotalCount       int64  `json:"total_count"`
@@ -181,8 +177,6 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 			&i.Key,
 			&i.Version,
 			&i.BpmnProcessID,
-			&i.BpmnData,
-			&i.BpmnChecksum,
 			&i.BpmnResourceName,
 			&i.BpmnProcessName,
 			&i.TotalCount,

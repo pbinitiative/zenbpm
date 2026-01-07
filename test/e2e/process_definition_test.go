@@ -95,7 +95,7 @@ func TestRestApiProcessDefinition(t *testing.T) {
 	t.Run("test sorting", func(t *testing.T) {
 		onlyLatest := false
 		sortBy := zenclient.Version
-		sortOrder := zenclient.Desc
+		sortOrder := zenclient.GetProcessDefinitionsParamsSortOrderDesc
 
 		response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
 			BpmnProcessId: &bpmnId,
@@ -108,7 +108,7 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.Equal(t, 2, response.JSON200.TotalCount)
 		assert.Greater(t, response.JSON200.Items[0].Version, response.JSON200.Items[1].Version)
 
-		sortOrder = zenclient.Asc
+		sortOrder = zenclient.GetProcessDefinitionsParamsSortOrderAsc
 
 		response, err = app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
 			BpmnProcessId: &bpmnId,

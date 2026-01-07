@@ -33,6 +33,12 @@ const (
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
 )
 
+// Defines values for SortOrder.
+const (
+	SortOrderAsc  SortOrder = "asc"
+	SortOrderDesc SortOrder = "desc"
+)
+
 // Defines values for EvaluateDecisionJSONBodyBindingType.
 const (
 	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
@@ -51,8 +57,8 @@ const (
 
 // Defines values for GetProcessDefinitionsParamsSortOrder.
 const (
-	Asc  GetProcessDefinitionsParamsSortOrder = "asc"
-	Desc GetProcessDefinitionsParamsSortOrder = "desc"
+	GetProcessDefinitionsParamsSortOrderAsc  GetProcessDefinitionsParamsSortOrder = "asc"
+	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
 )
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -367,6 +373,9 @@ type StartElementInstanceData struct {
 type TerminateElementInstanceData struct {
 	ElementInstanceKey int64 `json:"elementInstanceKey"`
 }
+
+// SortOrder defines model for sortOrder.
+type SortOrder string
 
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBody struct {

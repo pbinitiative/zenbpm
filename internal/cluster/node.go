@@ -9,8 +9,6 @@ import (
 	"net"
 	"time"
 
-	ssql "database/sql"
-
 	"github.com/pbinitiative/zenbpm/internal/log"
 
 	"github.com/bwmarrin/snowflake"
@@ -498,16 +496,11 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sort *sql.Sort, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
 	// Get storage for the selected partition
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
-	}
-
-	var order *storage.SortOrder
-	if sortOrder != nil {
-		order = (*storage.SortOrder)(sortOrder)
 	}
 
 	latest := 0
@@ -516,8 +509,8 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 	}
 
 	dbDefinitions, err := db.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
-		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
-		Sort:                ssql.NullString{String: partition.SortString(order, sortBy), Valid: partition.SortString(order, sortBy) != ""},
+		BpmnProcessIDFilter: sql.ToNullString(bpmnProcessId),
+		Sort:                sql.ToNullString(sort),
 		OnlyLatest:          int64(latest),
 		Offset:              int64((page - 1) * size),
 		Limit:               int64(size),

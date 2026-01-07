@@ -15,7 +15,6 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/raft v1.7.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20210409134258-03c10cc3d4ea
-	github.com/iancoleman/strcase v0.3.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/prometheus/client_golang v1.22.0

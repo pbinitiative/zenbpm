@@ -335,12 +335,7 @@ paths:
             enum: [name, bpmnProcessId, bpmnResourceName, version, key]
           description: "Sort field"
 
-        - name: sortOrder
-          in: query
-          schema:
-            type: string
-            enum: [asc, desc]
-          description: "Sort direction"
+        - $ref: "#/components/parameters/sortOrder"
 
         - name: bpmnProcessId
           in: query
@@ -1741,3 +1736,11 @@ components:
       example:
         code: "NOT_FOUND"
         message: "Process instance with key 4503599627370501 not found"
+  parameters:
+    sortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+      description: "Sort direction"

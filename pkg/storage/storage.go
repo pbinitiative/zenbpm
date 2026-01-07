@@ -34,13 +34,6 @@ type Storage interface {
 	NewBatch() Batch
 }
 
-type SortOrder string
-
-const (
-	ASC  SortOrder = "ASC"
-	DESC SortOrder = "DESC"
-)
-
 type DecisionStorage interface {
 	DmnResourceDefinitionStorageReader
 	DmnResourceDefinitionStorageWriter

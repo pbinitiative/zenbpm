@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iancoleman/strcase"
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -760,17 +759,6 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 		rq.pdCache.Add(def.Key, res[i])
 	}
 	return res, nil
-}
-
-func SortString(sortOrder *storage.SortOrder, sortBy *string) string {
-	if sortOrder == nil {
-		return ""
-	}
-	if sortBy == nil {
-		return ""
-	}
-
-	return strcase.ToSnake(*sortBy) + "_" + strings.ToLower(string(*sortOrder))
 }
 
 var _ storage.ProcessDefinitionStorageWriter = &DB{}

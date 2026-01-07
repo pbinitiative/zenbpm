@@ -1,14 +1,17 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,14 +22,8 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	// Deploy data for filtering and sorting testing in the subtests
-	err := deployDefinition(t, "service-task-input-output.bpmn")
-	assert.NoError(t, err)
-	err = deployDefinition(t, "service-task-input-output-v2.bpmn")
-	assert.NoError(t, err)
-
 	bpmnId := "service-task-input-output"
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	stDefinitionCount := 0
 
 	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
@@ -43,11 +40,17 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.Equal(t, 1, stDefinitionCount)
 	})
 
+	// Deploy data for filtering and sorting testing in the subtests
+	err := deployDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	err = deployDefinition(t, "service-task-input-output-v2.bpmn")
+	assert.NoError(t, err)
+
 	t.Run("listing deployed definitions", func(t *testing.T) {
 		list, err := listProcessDefinitions(t)
 		assert.NoError(t, err)
 		assert.Greater(t, len(list), 0)
-		var deployedDefinition public.ProcessDefinitionSimple
+		var deployedDefinition zenclient.ProcessDefinitionSimple
 		for _, def := range list {
 			if def.BpmnProcessId == "service-task-input-output" {
 				deployedDefinition = def
@@ -147,40 +150,50 @@ func deployDefinition(t testing.TB, filename string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/process-definitions").
-		WithMethod("POST").
-		WithMultipartBody(file, filename).
-		DoOk()
+	// Create multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Create the resource field as required by the OpenAPI spec
+	part, err := writer.CreateFormFile("resource", filename)
 	if err != nil {
-		if strings.Contains(err.Error(), "DUPLICATE") {
-			return nil
-		}
-		return fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
+		return fmt.Errorf("failed to create form file: %w", err)
 	}
+
+	_, err = part.Write(file)
+	if err != nil {
+		return fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+
+	err = writer.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to deploy process definition: %w", err)
+	}
+
+	if resp.StatusCode() >= 400 {
+		return fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
+	}
+
 	definition := public.CreateProcessDefinition201JSONResponse{}
-	err = json.Unmarshal(resp, &definition)
+	err = json.Unmarshal(resp.Body, &definition)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal create definition response: %w", err)
 	}
 	return nil
 }
 
-func listProcessDefinitions(t testing.TB) ([]public.ProcessDefinitionSimple, error) {
-	respBytes, err := app.NewRequest(t).
-		WithPath("/v1/process-definitions").
-		WithMethod("GET").
-		DoOk()
+func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, error) {
+
+	resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+		Size: ptr.To(int32(100)),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list process definitions: %w", err)
 	}
-	resp := public.GetProcessDefinitions200JSONResponse{}
-	err = json.Unmarshal(respBytes, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal process definitions: %w", err)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to list process definitions: %v %w", resp, err)
-	}
-	return resp.Items, nil
+	return resp.JSON200.Items, nil
 }

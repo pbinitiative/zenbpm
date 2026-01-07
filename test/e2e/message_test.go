@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 // TODO: Test with multiple partitions/nodes
 func TestRestApiMessage(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
 	assert.NoError(t, err)
 	defintitions, err := listProcessDefinitions(t)

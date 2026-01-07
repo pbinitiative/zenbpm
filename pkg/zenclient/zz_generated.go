@@ -48,11 +48,11 @@ const (
 
 // Defines values for GetProcessDefinitionsParamsSortBy.
 const (
-	BpmnProcessId    GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
-	BpmnResourceName GetProcessDefinitionsParamsSortBy = "bpmnResourceName"
-	Key              GetProcessDefinitionsParamsSortBy = "key"
-	Name             GetProcessDefinitionsParamsSortBy = "name"
-	Version          GetProcessDefinitionsParamsSortBy = "version"
+	BpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
+	BpmnProcessName GetProcessDefinitionsParamsSortBy = "bpmnProcessName"
+	Key             GetProcessDefinitionsParamsSortBy = "key"
+	Name            GetProcessDefinitionsParamsSortBy = "name"
+	Version         GetProcessDefinitionsParamsSortBy = "version"
 )
 
 // Defines values for GetProcessDefinitionsParamsSortOrder.
@@ -296,11 +296,8 @@ type ProcessDefinitionDetail struct {
 
 	// BpmnProcessName Process name from BPMN
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
-
-	// BpmnResourceName resource file name
-	BpmnResourceName *string `json:"bpmnResourceName,omitempty"`
-	Key              int64   `json:"key"`
-	Version          int     `json:"version"`
+	Key             int64   `json:"key"`
+	Version         int     `json:"version"`
 }
 
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
@@ -309,11 +306,8 @@ type ProcessDefinitionSimple struct {
 
 	// BpmnProcessName Process name from BPMN
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
-
-	// BpmnResourceName resource file name
-	BpmnResourceName *string `json:"bpmnResourceName,omitempty"`
-	Key              int64   `json:"key"`
-	Version          int     `json:"version"`
+	Key             int64   `json:"key"`
+	Version         int     `json:"version"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.

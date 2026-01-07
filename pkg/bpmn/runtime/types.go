@@ -8,14 +8,13 @@ import (
 )
 
 type ProcessDefinition struct {
-	BpmnProcessId    string              // The ID as defined in the BPMN file
-	Version          int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
-	Key              int64               // The engines key for this given process with version
-	Definitions      bpmn20.TDefinitions // parsed file content
-	BpmnData         string              // the raw source data, compressed and encoded via ascii85
-	BpmnResourceName string              // deployed resource name for example file name
-	BpmnProcessName  string              // the name of the process
-	BpmnChecksum     [16]byte            // internal checksum to identify different versions
+	BpmnProcessId   string              // The ID as defined in the BPMN file
+	Version         int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
+	Key             int64               // The engines key for this given process with version
+	Definitions     bpmn20.TDefinitions // parsed file content
+	BpmnData        string              // the raw source data, compressed and encoded via ascii85
+	BpmnProcessName string              // the name of the process
+	BpmnChecksum    [16]byte            // internal checksum to identify different versions
 }
 
 type CatchEvent struct {

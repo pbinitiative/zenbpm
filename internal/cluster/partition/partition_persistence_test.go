@@ -157,12 +157,11 @@ func TestDataCleanup(t *testing.T) {
 
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err = db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
@@ -377,12 +376,11 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err := db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
@@ -491,12 +489,11 @@ func testInstanceParent(t *testing.T, db *DB) {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err := db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
@@ -544,7 +541,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: 0,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -554,7 +551,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -564,7 +561,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: dbInst2.Definition.Key,
 		ParentInstanceKey:    tok1.Key,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)
@@ -574,7 +571,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		ProcessDefinitionKey: inst2.Definition.Key,
 		ParentInstanceKey:    inst1.GetInstanceKey(),
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
-		Offset:                0,
+		Offset:               0,
 		Size:                 20,
 	})
 	assert.NoError(t, err)

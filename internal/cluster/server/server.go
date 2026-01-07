@@ -609,7 +609,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.GetResourceName(), req.GetKey())
+		_, err = engine.LoadFromBytes(req.GetData(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{

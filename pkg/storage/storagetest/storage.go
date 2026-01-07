@@ -68,12 +68,11 @@ func getFunctionName(i any) string {
 func getProcessDefinition(r int64) bpmnruntime.ProcessDefinition {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	return bpmnruntime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 }
 

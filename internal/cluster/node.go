@@ -526,11 +526,10 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 			totalCount = int(def.TotalCount)
 		}
 		resp = append(resp, &proto.ProcessDefinition{
-			Key:          &def.Key,
-			Version:      ptr.To(int32(def.Version)),
-			ProcessId:    &def.BpmnProcessID,
-			ResourceName: &def.BpmnResourceName,
-			ProcessName:  &def.BpmnProcessName,
+			Key:         &def.Key,
+			Version:     ptr.To(int32(def.Version)),
+			ProcessId:   &def.BpmnProcessID,
+			ProcessName: &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{

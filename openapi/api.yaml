@@ -332,7 +332,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [name, bpmnProcessId, bpmnResourceName, version, key]
+            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
           description: "Sort field"
 
         - $ref: "#/components/parameters/sortOrder"
@@ -1479,9 +1479,6 @@ components:
         bpmnProcessName:
           type: string
           description: "Process name from BPMN"
-        bpmnResourceName:
-          type: string
-          description: "resource file name"
     ProcessDefinitionDetail:
       type: object
       required:

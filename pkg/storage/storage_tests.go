@@ -39,12 +39,11 @@ func TestSaveProcessDefinition(s Storage, t *testing.T) func(t *testing.T) {
 		r := rand.Int63()
 
 		def := runtime.ProcessDefinition{
-			BpmnProcessId:    fmt.Sprintf("id-%d", r),
-			Version:          1,
-			Key:              r,
-			BpmnData:         fmt.Sprintf("data-%d", r),
-			BpmnChecksum:     [16]byte{1},
-			BpmnResourceName: fmt.Sprintf("resource-%d", r),
+			BpmnProcessId: fmt.Sprintf("id-%d", r),
+			Version:       1,
+			Key:           r,
+			BpmnData:      fmt.Sprintf("data-%d", r),
+			BpmnChecksum:  [16]byte{1},
 		}
 
 		err := s.SaveProcessDefinition(ctx, def)

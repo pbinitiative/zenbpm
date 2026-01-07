@@ -11,14 +11,13 @@ func (engine *Engine) AddEventExporter(exporter exporter.EventExporter) {
 	engine.exporters = append(engine.exporters, exporter)
 }
 
-func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, resourceName string, checksum string) {
+func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, checksum string) {
 	event := exporter.ProcessEvent{
-		ProcessId:    processInfo.BpmnProcessId,
-		ProcessKey:   processInfo.Key,
-		Version:      processInfo.Version,
-		XmlData:      xmlData,
-		ResourceName: resourceName,
-		Checksum:     checksum,
+		ProcessId:  processInfo.BpmnProcessId,
+		ProcessKey: processInfo.Key,
+		Version:    processInfo.Version,
+		XmlData:    xmlData,
+		Checksum:   checksum,
 	}
 	for _, exp := range engine.exporters {
 		exp.NewProcessEvent(&event)

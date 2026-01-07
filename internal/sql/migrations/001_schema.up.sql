@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS process_definition(
     bpmn_process_id text NOT NULL, -- id of the process from xml definition
     bpmn_data text NOT NULL, -- raw string of the process definition
     bpmn_checksum BLOB NOT NULL, -- md5 checksum of the process definition
-    bpmn_resource_name text NOT NULL, -- resource name from deployment
     bpmn_process_name text NOT NULL -- name of the process from xml definition
 );
 

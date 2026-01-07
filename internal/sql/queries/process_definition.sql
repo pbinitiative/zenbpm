@@ -1,13 +1,12 @@
 -- name: SaveProcessDefinition :exec
-INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum, bpmn_resource_name, bpmn_process_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name)
+    VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: FindProcessDefinitions :many
 SELECT
   pd."key",
   pd.version,
   pd.bpmn_process_id,
-  pd.bpmn_resource_name,
   pd.bpmn_process_name,
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
@@ -33,8 +32,8 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pd."key" END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_asc' THEN pd.bpmn_resource_name END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnResourceName_desc' THEN pd.bpmn_resource_name END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_asc' THEN pd.bpmn_process_name END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_desc' THEN pd.bpmn_process_name END DESC,
   pd."key" DESC
 
 LIMIT @limit

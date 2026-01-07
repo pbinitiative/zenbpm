@@ -446,11 +446,10 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for i, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:              p.GetKey(),
-			Version:          int(p.GetVersion()),
-			BpmnProcessId:    p.GetProcessId(),
-			BpmnResourceName: ptr.To(p.GetResourceName()),
-			BpmnProcessName:  ptr.To(p.GetProcessName()),
+			Key:             p.GetKey(),
+			Version:         int(p.GetVersion()),
+			BpmnProcessId:   p.GetProcessId(),
+			BpmnProcessName: ptr.To(p.GetProcessName()),
 		}
 		items[i] = processDefinitionSimple
 	}

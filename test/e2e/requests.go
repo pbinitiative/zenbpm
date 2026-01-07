@@ -12,12 +12,14 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 )
 
 type Application struct {
-	httpAddr string
-	grpcAddr string
-	node     *cluster.ZenNode
+	httpAddr   string
+	grpcAddr   string
+	node       *cluster.ZenNode
+	restClient *zenclient.ClientWithResponses
 }
 
 type request struct {
@@ -31,6 +33,7 @@ type request struct {
 	transport   http.RoundTripper
 }
 
+// Deprecated: use restClient instead
 func (app *Application) NewRequest(t testing.TB) *request {
 	return &request{
 		t:           t,

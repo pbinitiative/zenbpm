@@ -13,7 +13,6 @@ import (
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/stretchr/testify/assert"
 )
@@ -32,7 +31,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 	functions := []StorageTestFunc{
 		st.TestProcessDefinitionStorageWriter,
 		st.TestProcessDefinitionStorageReaderBasic,
-		st.TestProcessDefinitionStorageReaderFind,
+		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
 		st.TestTimerStorageWriter,
@@ -151,47 +150,6 @@ func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Stora
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
 
-	}
-}
-
-func (st *StorageTester) TestProcessDefinitionStorageReaderFind(s storage.Storage, t *testing.T) func(t *testing.T) {
-	return func(t *testing.T) {
-		r := s.GenerateId()
-
-		def := getProcessDefinition(r)
-
-		err := s.SaveProcessDefinition(t.Context(), def)
-		assert.NoError(t, err)
-
-		listDefinitions, count, err := s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false, 0, 20)
-		assert.NoError(t, err)
-		assert.Len(t, listDefinitions, 1)
-
-		def2 := getProcessDefinition(r)
-		def2.Key = r + 1
-		def2.Version = def2.Version + 1
-		err = s.SaveProcessDefinition(t.Context(), def2)
-		assert.NoError(t, err)
-
-		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, false, 0, 20)
-		assert.NoError(t, err)
-		assert.Len(t, listDefinitions, 2)
-
-		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, nil, nil, true, 0, 20)
-		assert.NoError(t, err)
-		assert.Len(t, listDefinitions, 1)
-
-		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.ASC), ptr.To("version"), false, 0, 20)
-		assert.NoError(t, err)
-		assert.Len(t, listDefinitions, 2)
-		assert.Equal(t, int32(1), listDefinitions[0].Version)
-		assert.Equal(t, int32(2), listDefinitions[1].Version)
-
-		listDefinitions, count, err = s.FindProcessDefinitions(t.Context(), &def.BpmnProcessId, ptr.To(storage.DESC), ptr.To("version"), false, 0, 20)
-		assert.NoError(t, err)
-		assert.Equal(t, 2, count)
-		assert.Equal(t, int32(2), listDefinitions[0].Version)
-		assert.Equal(t, int32(1), listDefinitions[1].Version)
 	}
 }
 

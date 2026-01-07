@@ -7,8 +7,6 @@ SELECT
   pd."key",
   pd.version,
   pd.bpmn_process_id,
-  pd.bpmn_data,
-  pd.bpmn_checksum,
   pd.bpmn_resource_name,
   pd.bpmn_process_name,
   COUNT(*) OVER() AS total_count

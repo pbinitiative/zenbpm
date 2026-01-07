@@ -9,6 +9,8 @@ import (
 	"net"
 	"time"
 
+	ssql "database/sql"
+
 	"github.com/pbinitiative/zenbpm/internal/log"
 
 	"github.com/bwmarrin/snowflake"
@@ -497,17 +499,8 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
 func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sortBy *string, sortOrder *string, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
-	// Get a partition
-	state := node.store.ClusterState()
-	var selectedPartition uint32
-
-	for partitionId := range state.Partitions {
-		selectedPartition = partitionId
-		break
-	}
-
 	// Get storage for the selected partition
-	str, err := node.GetPartitionStore(ctx, selectedPartition)
+	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
 	}
@@ -517,29 +510,39 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 		order = (*storage.SortOrder)(sortOrder)
 	}
 
-	latest := false
-	if onlyLatest != nil {
-		latest = *onlyLatest
+	latest := 0
+	if onlyLatest != nil && *onlyLatest {
+		latest = 1
 	}
 
-	items, count, err := str.FindProcessDefinitions(ctx, bpmnProcessId, order, sortBy, latest, int64((page-1)*size), int64(size))
+	dbDefinitions, err := db.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
+		BpmnProcessIDFilter: ssql.NullString{String: ptr.Deref(bpmnProcessId, ""), Valid: bpmnProcessId != nil},
+		Sort:                ssql.NullString{String: partition.SortString(order, sortBy), Valid: partition.SortString(order, sortBy) != ""},
+		OnlyLatest:          int64(latest),
+		Offset:              int64((page - 1) * size),
+		Limit:               int64(size),
+	})
 	if err != nil {
 		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to find process definitions: %w", err)
 	}
 
-	resp := make([]*proto.ProcessDefinition, 0, len(items))
-	for _, def := range items {
+	resp := make([]*proto.ProcessDefinition, 0, len(dbDefinitions))
+	totalCount := 0
+	for i, def := range dbDefinitions {
+		if i == 0 {
+			totalCount = int(def.TotalCount)
+		}
 		resp = append(resp, &proto.ProcessDefinition{
 			Key:          &def.Key,
 			Version:      ptr.To(int32(def.Version)),
-			ProcessId:    &def.BpmnProcessId,
+			ProcessId:    &def.BpmnProcessID,
 			ResourceName: &def.BpmnResourceName,
 			ProcessName:  &def.BpmnProcessName,
 		})
 	}
 	return proto.ProcessDefinitionsPage{
 		Items:      resp,
-		TotalCount: ptr.To(int32(count)),
+		TotalCount: ptr.To(int32(totalCount)),
 	}, nil
 }
 

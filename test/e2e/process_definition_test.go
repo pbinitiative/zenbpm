@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,6 +19,13 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	// Deploy data for filtering and sorting testing in the subtests
+	err := deployDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	err = deployDefinition(t, "service-task-input-output-v2.bpmn")
+	assert.NoError(t, err)
+
+	bpmnId := "service-task-input-output"
 	var definition public.ProcessDefinitionSimple
 	stDefinitionCount := 0
 
@@ -58,6 +66,57 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "service-task-input-output", detail.BpmnProcessId)
 		assert.NotNil(t, detail.BpmnData)
+	})
+
+	t.Run("test latest version filter", func(t *testing.T) {
+		onlyLatest := false
+
+		response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			BpmnProcessId: &bpmnId,
+			OnlyLatest:    &onlyLatest,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, response.JSON200.TotalCount)
+
+		onlyLatest = true
+		response, err = app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			BpmnProcessId: &bpmnId,
+			OnlyLatest:    &onlyLatest,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, response.JSON200.TotalCount)
+	})
+
+	t.Run("test sorting", func(t *testing.T) {
+		onlyLatest := false
+		sortBy := zenclient.Version
+		sortOrder := zenclient.Desc
+
+		response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			BpmnProcessId: &bpmnId,
+			OnlyLatest:    &onlyLatest,
+			SortBy:        &sortBy,
+			SortOrder:     &sortOrder,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, response.JSON200.TotalCount)
+		assert.Greater(t, response.JSON200.Items[0].Version, response.JSON200.Items[1].Version)
+
+		sortOrder = zenclient.Asc
+
+		response, err = app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			BpmnProcessId: &bpmnId,
+			OnlyLatest:    &onlyLatest,
+			SortBy:        &sortBy,
+			SortOrder:     &sortOrder,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, response.JSON200.TotalCount)
+		assert.Less(t, response.JSON200.Items[0].Version, response.JSON200.Items[1].Version)
 	})
 }
 

@@ -13,11 +13,11 @@ import (
 func TestRestApiMessage(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
+	_, err := deployDefinition(t, "message-intermediate-catch-event.bpmn", false)
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "message-intermediate-catch-event" {
 			definition = def
 			break

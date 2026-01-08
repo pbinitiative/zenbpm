@@ -8,9 +8,14 @@ Accept: application/json
 
 ### DeployProcessDefinition
 POST {{host}}/v1/process-definitions
+Content-Type: multipart/form-data; boundary="boundary"
+
+--boundary--
+Content-Disposition: form-data; name="resource"; filename="service-task-input-output.bpmn"
 Content-Type: application/xml
 
 < pkg/bpmn/test-cases/service-task-input-output.bpmn
+--boundary--
 
 ### StartProcessInstance
 POST {{host}}/v1/process-instances

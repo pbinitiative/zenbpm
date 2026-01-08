@@ -13,11 +13,11 @@ import (
 func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "fork-uncontrolled-join.bpmn")
+	_, err := deployDefinition(t, "fork-uncontrolled-join.bpmn", false)
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "fork-uncontrolled-join" {
 			definition = def
 			break
@@ -57,11 +57,11 @@ func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 func TestRestApiModifyProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "service-task-input-output" {
 			definition = def
 			break

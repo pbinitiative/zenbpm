@@ -9,8 +9,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/log"
-
 	"github.com/bwmarrin/snowflake"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
@@ -24,6 +22,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -742,15 +741,14 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following
 func (node *ZenNode) GetProcessInstances(
 	ctx context.Context,
-	processDefinitionKey *int64, businessKey *string,
-	parentProcessInstanceKey int64,
-	page int32,
-	size int32,
+	getProcessInstancesRequest *proto.GetProcessInstancesRequest,
 ) ([]*proto.PartitionedProcessInstances, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
 
 	for partitionId := range state.Partitions {
+		completeGetProcessInstancesRequest := *getProcessInstancesRequest
+		completeGetProcessInstancesRequest.Partitions = []uint32{partitionId}
 		// TODO: we can smack these into goroutines
 		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
@@ -760,14 +758,7 @@ func (node *ZenNode) GetProcessInstances(
 		if err != nil {
 			return result, fmt.Errorf("failed to get client to get process instances: %w", err)
 		}
-		resp, err := client.GetProcessInstances(ctx, &proto.GetProcessInstancesRequest{
-			Page:          &page,
-			Size:          &size,
-			Partitions:    []uint32{partitionId},
-			DefinitionKey: processDefinitionKey,
-			ParentKey:     &parentProcessInstanceKey,
-			BusinessKey:   businessKey,
-		})
+		resp, err := client.GetProcessInstances(ctx, &completeGetProcessInstancesRequest)
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process instances from partition %d", partitionId)
 			if err != nil {

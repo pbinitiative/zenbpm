@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"runtime/pprof"
-	"slices"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -883,8 +882,25 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				String: ptr.Deref(req.BusinessKey, ""),
 				Valid:  req.BusinessKey != nil,
 			},
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
+			BpmnProcessID: ssql.NullString{
+				String: ptr.Deref(req.ProcessId, ""),
+				Valid:  req.ProcessId != nil,
+			},
+			CreatedFrom: ssql.NullInt64{
+				Int64: ptr.Deref(req.CreatedFrom, 0),
+				Valid: req.CreatedFrom != nil,
+			},
+			CreatedTo: ssql.NullInt64{
+				Int64: ptr.Deref(req.CreatedTo, 0),
+				Valid: req.CreatedTo != nil,
+			},
+			State: ssql.NullInt64{
+				Int64: ptr.Deref(req.State, 0),
+				Valid: req.State != nil,
+			},
+			SortByOrder: ssql.NullString{String: ptr.Deref(req.SortByOrder, ""), Valid: req.SortByOrder != nil},
+			Offset:      int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:        int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)
@@ -899,26 +915,6 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		if len(instances) > 0 {
 			totalCount = int32(instances[0].TotalCount)
 		}
-		definitionsToLoad := make([]int64, 0)
-		for _, inst := range instances {
-			if !slices.Contains(definitionsToLoad, inst.ProcessDefinitionKey) {
-				definitionsToLoad = append(definitionsToLoad, inst.ProcessDefinitionKey)
-			}
-		}
-		definitions, err := queries.FindProcessDefinitionsByKeys(ctx, definitionsToLoad)
-		if err != nil {
-			err := fmt.Errorf("failed to find process definitions with definition keys %v", definitionsToLoad)
-			return &proto.GetProcessInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
-		}
-		definitionMap := make(map[int64]sql.ProcessDefinition, len(definitions))
-		for _, definition := range definitions {
-			definitionMap[definition.Key] = definition
-		}
 		procInstances := make([]*proto.ProcessInstance, len(instances))
 		for i, inst := range instances {
 			var businessKey *string
@@ -928,7 +924,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 
 			procInstances[i] = &proto.ProcessInstance{
 				Key:           &inst.Key,
-				ProcessId:     ptr.To(definitionMap[inst.ProcessDefinitionKey].BpmnProcessID),
+				ProcessId:     &inst.BpmnProcessID,
 				Variables:     []byte(inst.Variables),
 				State:         ptr.To(inst.State),
 				CreatedAt:     &inst.CreatedAt,

@@ -219,6 +219,7 @@ message ProcessDefinition {
   int32 version = 2;
   string process_id = 3;
   bytes definition = 4;
+  string process_name = 5;
 }
 
 message ProcessDefinitionsPage {
@@ -287,6 +288,7 @@ message DeployDmnResourceDefinitionResponse {
 message DeployProcessDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
+  string resource_name = 3;
 }
 
 message DeployProcessDefinitionResponse {

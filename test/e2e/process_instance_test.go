@@ -9,12 +9,13 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	defintitions, err := listProcessDefinitions(t)
@@ -61,7 +62,7 @@ func TestRestApiProcessInstance(t *testing.T) {
 
 func TestRestApiParentProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "call-activity-simple.bpmn")
 	assert.NoError(t, err)
 	err = deployDefinition(t, "simple_task.bpmn")
@@ -107,7 +108,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 
 func TestBusinessKey(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	defintitions, err := listProcessDefinitions(t)

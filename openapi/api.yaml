@@ -268,17 +268,20 @@ paths:
       requestBody:
         required: true
         content:
-          application/xml:
+          multipart/form-data:
             schema:
-              type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <bpmn:definitions>
-                <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
-                  ...
-                </bpmn:process>
-              </bpmn:definitions>
+              type: object
+              required:
+                - resource
+              properties:
+                resource:
+                  type: string
+                  format: binary
+                  description: BPMN process definition file (.bpmn format only, max 4MB)
+            encoding:
+              resource:
+                contentType: application/octet-stream
+
       responses:
         201:
           description: Process definition deployed
@@ -318,6 +321,28 @@ paths:
       tags:
         - process-definition
       parameters:
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each process definition grouped by bpmnProcessId"
+
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
+          description: "Sort field"
+
+        - $ref: "#/components/parameters/sortOrder"
+
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: "Filter by BPMN process ID to get all versions of a specific process"
+
         - name: page
           in: query
           schema:
@@ -327,6 +352,7 @@ paths:
             default: 1
           description: Page number (1-based indexing)
           example: 1
+
         - name: size
           in: query
           schema:
@@ -1450,6 +1476,9 @@ components:
           type: integer
         bpmnProcessId:
           type: string
+        bpmnProcessName:
+          type: string
+          description: "Process name from BPMN"
     ProcessDefinitionDetail:
       type: object
       required:
@@ -1704,3 +1733,11 @@ components:
       example:
         code: "NOT_FOUND"
         message: "Process instance with key 4503599627370501 not found"
+  parameters:
+    sortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+      description: "Sort direction"

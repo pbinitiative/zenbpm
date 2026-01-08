@@ -884,7 +884,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				Valid:  req.BusinessKey != nil,
 			},
 			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:  int64(req.GetSize()),
+			Size:   int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiJob(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)

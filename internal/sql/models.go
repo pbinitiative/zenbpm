@@ -99,12 +99,12 @@ type Migration struct {
 }
 
 type ProcessDefinition struct {
-	Key              int64  `json:"key"`
-	Version          int64  `json:"version"`
-	BpmnProcessID    string `json:"bpmn_process_id"`
-	BpmnData         string `json:"bpmn_data"`
-	BpmnChecksum     []byte `json:"bpmn_checksum"`
-	BpmnResourceName string `json:"bpmn_resource_name"`
+	Key             int64  `json:"key"`
+	Version         int64  `json:"version"`
+	BpmnProcessID   string `json:"bpmn_process_id"`
+	BpmnData        string `json:"bpmn_data"`
+	BpmnChecksum    []byte `json:"bpmn_checksum"`
+	BpmnProcessName string `json:"bpmn_process_name"`
 }
 
 type ProcessInstance struct {

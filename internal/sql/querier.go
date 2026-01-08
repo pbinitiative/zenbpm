@@ -50,7 +50,9 @@ type Querier interface {
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
-	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]ProcessDefinition, error)
+	// force sqlc to keep sort param
+	// workaround for sqlc does not replace params in order by
+	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)
 	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
 	FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error)
 	FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error)
@@ -71,7 +73,6 @@ type Querier interface {
 	GetFlowElementHistory(ctx context.Context, arg GetFlowElementHistoryParams) ([]GetFlowElementHistoryRow, error)
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
-	GetProcessDefinitionsPage(ctx context.Context, arg GetProcessDefinitionsPageParams) ([]GetProcessDefinitionsPageRow, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)

@@ -30,7 +30,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 	// all test functions need to be registered here
 	functions := []StorageTestFunc{
 		st.TestProcessDefinitionStorageWriter,
-		st.TestProcessDefinitionStorageReader,
+		st.TestProcessDefinitionStorageReaderBasic,
+		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
 		st.TestTimerStorageWriter,
@@ -67,12 +68,11 @@ func getFunctionName(i any) string {
 func getProcessDefinition(r int64) bpmnruntime.ProcessDefinition {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	return bpmnruntime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 }
 
@@ -126,7 +126,7 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 	}
 }
 
-func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -148,6 +148,7 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
+
 	}
 }
 

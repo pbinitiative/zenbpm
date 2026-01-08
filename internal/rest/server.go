@@ -19,6 +19,7 @@ import (
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -344,14 +345,50 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 }
 
 func (s *Server) CreateProcessDefinition(ctx context.Context, request public.CreateProcessDefinitionRequestObject) (public.CreateProcessDefinitionResponseObject, error) {
-	data, err := io.ReadAll(request.Body)
-	if err != nil {
+	var data []byte
+	var filename string
+	var found bool
+
+	// Iterate through multipart parts to find the "resource" field
+	for {
+		part, err := request.Body.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return public.CreateProcessDefinition400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("Failed to read multipart form: %s", err.Error()),
+			}, nil
+		}
+
+		if part.FormName() == "resource" {
+			found = true
+			filename = part.FileName()
+
+			// Read file data
+			data, err = io.ReadAll(part)
+			if err != nil {
+				return public.CreateProcessDefinition400JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			part.Close()
+			break
+		}
+		part.Close()
+	}
+
+	if !found {
 		return public.CreateProcessDefinition400JSONResponse{
 			Code:    "TODO",
-			Message: err.Error(),
+			Message: "Resource file is required",
 		}, nil
 	}
-	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data)
+
+	// Deploy with filename
+	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
 		return public.CreateProcessDefinition502JSONResponse{
 			Code:    "TODO",
@@ -389,7 +426,14 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
-	definitionsPage, err := s.node.GetProcessDefinitions(ctx, *request.Params.Page, *request.Params.Size)
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+
+	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
+		request.Params.BpmnProcessId,
+		request.Params.OnlyLatest,
+		sort,
+		*request.Params.Page, *request.Params.Size)
+
 	if err != nil {
 		return public.GetProcessDefinitions500JSONResponse{
 			Code:    "TODO",
@@ -402,9 +446,10 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 	}
 	for i, p := range definitionsPage.Items {
 		processDefinitionSimple := public.ProcessDefinitionSimple{
-			Key:           p.GetKey(),
-			Version:       int(p.GetVersion()),
-			BpmnProcessId: p.GetProcessId(),
+			Key:             p.GetKey(),
+			Version:         int(p.GetVersion()),
+			BpmnProcessId:   p.GetProcessId(),
+			BpmnProcessName: ptr.To(p.GetProcessName()),
 		}
 		items[i] = processDefinitionSimple
 	}

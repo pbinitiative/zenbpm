@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,6 +22,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+// Defines values for EvaluatedDecisionDecisionType.
+const (
+	DECISIONTABLE     EvaluatedDecisionDecisionType = "DECISION_TABLE"
+	LITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
+)
+
+// Defines values for IncidentState.
+const (
+	IncidentStateResolved   IncidentState = "resolved"
+	IncidentStateUnresolved IncidentState = "unresolved"
 )
 
 // Defines values for JobState.
@@ -35,7 +49,14 @@ const (
 const (
 	ProcessInstanceStateActive     ProcessInstanceState = "active"
 	ProcessInstanceStateCompleted  ProcessInstanceState = "completed"
+	ProcessInstanceStateFailed     ProcessInstanceState = "failed"
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
+)
+
+// Defines values for SortOrder.
+const (
+	SortOrderAsc  SortOrder = "asc"
+	SortOrderDesc SortOrder = "desc"
 )
 
 // Defines values for EvaluateDecisionJSONBodyBindingType.
@@ -44,6 +65,171 @@ const (
 	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
 	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
+
+// Defines values for GetDecisionInstancesParamsSortBy.
+const (
+	GetDecisionInstancesParamsSortByEvaluatedAt GetDecisionInstancesParamsSortBy = "evaluatedAt"
+	GetDecisionInstancesParamsSortByKey         GetDecisionInstancesParamsSortBy = "key"
+)
+
+// Defines values for GetDecisionInstancesParamsSortOrder.
+const (
+	GetDecisionInstancesParamsSortOrderAsc  GetDecisionInstancesParamsSortOrder = "asc"
+	GetDecisionInstancesParamsSortOrderDesc GetDecisionInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetDmnResourceDefinitionsParamsSortBy.
+const (
+	GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId GetDmnResourceDefinitionsParamsSortBy = "dmnResourceDefinitionId"
+	GetDmnResourceDefinitionsParamsSortByKey                     GetDmnResourceDefinitionsParamsSortBy = "key"
+	GetDmnResourceDefinitionsParamsSortByName                    GetDmnResourceDefinitionsParamsSortBy = "name"
+	GetDmnResourceDefinitionsParamsSortByResourceName            GetDmnResourceDefinitionsParamsSortBy = "resourceName"
+	GetDmnResourceDefinitionsParamsSortByVersion                 GetDmnResourceDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetDmnResourceDefinitionsParamsSortOrder.
+const (
+	GetDmnResourceDefinitionsParamsSortOrderAsc  GetDmnResourceDefinitionsParamsSortOrder = "asc"
+	GetDmnResourceDefinitionsParamsSortOrderDesc GetDmnResourceDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetGlobalIncidentsParamsState.
+const (
+	GetGlobalIncidentsParamsStateResolved   GetGlobalIncidentsParamsState = "resolved"
+	GetGlobalIncidentsParamsStateUnresolved GetGlobalIncidentsParamsState = "unresolved"
+)
+
+// Defines values for GetGlobalIncidentsParamsSortBy.
+const (
+	GetGlobalIncidentsParamsSortByCreatedAt GetGlobalIncidentsParamsSortBy = "createdAt"
+	GetGlobalIncidentsParamsSortByErrorType GetGlobalIncidentsParamsSortBy = "errorType"
+	GetGlobalIncidentsParamsSortByKey       GetGlobalIncidentsParamsSortBy = "key"
+)
+
+// Defines values for GetGlobalIncidentsParamsSortOrder.
+const (
+	GetGlobalIncidentsParamsSortOrderAsc  GetGlobalIncidentsParamsSortOrder = "asc"
+	GetGlobalIncidentsParamsSortOrderDesc GetGlobalIncidentsParamsSortOrder = "desc"
+)
+
+// Defines values for GetJobsParamsSortBy.
+const (
+	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
+	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
+	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
+	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
+)
+
+// Defines values for GetJobsParamsSortOrder.
+const (
+	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
+	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortBy.
+const (
+	GetProcessDefinitionsParamsSortByBpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionsParamsSortByBpmnProcessName GetProcessDefinitionsParamsSortBy = "bpmnProcessName"
+	GetProcessDefinitionsParamsSortByKey             GetProcessDefinitionsParamsSortBy = "key"
+	GetProcessDefinitionsParamsSortByName            GetProcessDefinitionsParamsSortBy = "name"
+	GetProcessDefinitionsParamsSortByVersion         GetProcessDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortOrder.
+const (
+	GetProcessDefinitionsParamsSortOrderAsc  GetProcessDefinitionsParamsSortOrder = "asc"
+	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessDefinitionStatisticsParamsSortBy.
+const (
+	GetProcessDefinitionStatisticsParamsSortByBpmnProcessId GetProcessDefinitionStatisticsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionStatisticsParamsSortByIncidentCount GetProcessDefinitionStatisticsParamsSortBy = "incidentCount"
+	GetProcessDefinitionStatisticsParamsSortByInstanceCount GetProcessDefinitionStatisticsParamsSortBy = "instanceCount"
+	GetProcessDefinitionStatisticsParamsSortByName          GetProcessDefinitionStatisticsParamsSortBy = "name"
+	GetProcessDefinitionStatisticsParamsSortByVersion       GetProcessDefinitionStatisticsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionStatisticsParamsSortOrder.
+const (
+	GetProcessDefinitionStatisticsParamsSortOrderAsc  GetProcessDefinitionStatisticsParamsSortOrder = "asc"
+	GetProcessDefinitionStatisticsParamsSortOrderDesc GetProcessDefinitionStatisticsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsSortBy.
+const (
+	CreatedAt GetProcessInstancesParamsSortBy = "createdAt"
+	Key       GetProcessInstancesParamsSortBy = "key"
+	State     GetProcessInstancesParamsSortBy = "state"
+)
+
+// Defines values for GetProcessInstancesParamsSortOrder.
+const (
+	GetProcessInstancesParamsSortOrderAsc  GetProcessInstancesParamsSortOrder = "asc"
+	GetProcessInstancesParamsSortOrderDesc GetProcessInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsState.
+const (
+	Active     GetProcessInstancesParamsState = "active"
+	Completed  GetProcessInstancesParamsState = "completed"
+	Failed     GetProcessInstancesParamsState = "failed"
+	Terminated GetProcessInstancesParamsState = "terminated"
+)
+
+// Defines values for GetIncidentsParamsState.
+const (
+	Resolved   GetIncidentsParamsState = "resolved"
+	Unresolved GetIncidentsParamsState = "unresolved"
+)
+
+// DecisionInstanceDetail defines model for DecisionInstanceDetail.
+type DecisionInstanceDetail struct {
+	// DecisionOutput Final output of the requested decision
+	DecisionOutput *map[string]interface{} `json:"decisionOutput,omitempty"`
+
+	// DecisionRequirementsId ID of the DRD
+	DecisionRequirementsId *string `json:"decisionRequirementsId,omitempty"`
+
+	// DecisionRequirementsKey Key of the DRD
+	DecisionRequirementsKey      *int64              `json:"decisionRequirementsKey,omitempty"`
+	DmnResourceDefinitionId      string              `json:"dmnResourceDefinitionId"`
+	DmnResourceDefinitionKey     int64               `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionVersion *int                `json:"dmnResourceDefinitionVersion,omitempty"`
+	EvaluatedAt                  time.Time           `json:"evaluatedAt"`
+	EvaluatedDecisions           []EvaluatedDecision `json:"evaluatedDecisions"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
+}
+
+// DecisionInstancePartitionPage defines model for DecisionInstancePartitionPage.
+type DecisionInstancePartitionPage struct {
+	// Embedded fields due to inline allOf schema
+	Partitions []PartitionDecisionInstances `json:"partitions"`
+	// Embedded struct due to allOf(#/components/schemas/PartitionedPageMetadata)
+	PartitionedPageMetadata `yaml:",inline"`
+}
+
+// DecisionInstanceSummary defines model for DecisionInstanceSummary.
+type DecisionInstanceSummary struct {
+	DmnResourceDefinitionId  string    `json:"dmnResourceDefinitionId"`
+	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time `json:"evaluatedAt"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+
+	// InputCount Number of input variables
+	InputCount *int  `json:"inputCount,omitempty"`
+	Key        int64 `json:"key"`
+
+	// OutputCount Number of output variables
+	OutputCount        *int   `json:"outputCount,omitempty"`
+	ProcessInstanceKey *int64 `json:"processInstanceKey,omitempty"`
+}
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
@@ -55,10 +241,15 @@ type DmnResourceDefinitionDetail struct {
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
-	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
-	Key                     int64   `json:"key"`
-	ResourceName            string  `json:"resourceName"`
-	Version                 int     `json:"version"`
+	DmnResourceDefinitionId string `json:"dmnResourceDefinitionId"`
+	Key                     int64  `json:"key"`
+
+	// Name Decision name from DMN
+	Name *string `json:"name,omitempty"`
+
+	// ResourceName DMN resource file name
+	ResourceName *string `json:"resourceName,omitempty"`
+	Version      int     `json:"version"`
 }
 
 // DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
@@ -77,6 +268,15 @@ type ElementInstance struct {
 	State              string    `json:"state"`
 }
 
+// ElementStatistics Map of elementId to active/incident counts
+type ElementStatistics map[string]struct {
+	// ActiveCount Number of active element instances
+	ActiveCount int `json:"activeCount"`
+
+	// IncidentCount Number of incidents on this element
+	IncidentCount int `json:"incidentCount"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
@@ -88,6 +288,24 @@ type EvaluatedDRDResult struct {
 	DecisionOutput     interface{}               `json:"decisionOutput"`
 	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
+
+// EvaluatedDecision defines model for EvaluatedDecision.
+type EvaluatedDecision struct {
+	DecisionId   *string                        `json:"decisionId,omitempty"`
+	DecisionName *string                        `json:"decisionName,omitempty"`
+	DecisionType *EvaluatedDecisionDecisionType `json:"decisionType,omitempty"`
+
+	// EvaluationOrder Order in which this decision was evaluated
+	EvaluationOrder *int              `json:"evaluationOrder,omitempty"`
+	Inputs          *[]EvaluatedInput `json:"inputs,omitempty"`
+
+	// MatchedRules For DECISION_TABLE type only
+	MatchedRules *[]MatchedRule     `json:"matchedRules,omitempty"`
+	Outputs      *[]EvaluatedOutput `json:"outputs,omitempty"`
+}
+
+// EvaluatedDecisionDecisionType defines model for EvaluatedDecision.DecisionType.
+type EvaluatedDecisionDecisionType string
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
@@ -124,6 +342,25 @@ type EvaluatedDecisionRule struct {
 	RuleIndex        int                       `json:"ruleIndex"`
 }
 
+// EvaluatedInput defines model for EvaluatedInput.
+type EvaluatedInput struct {
+	InputExpression *string `json:"inputExpression,omitempty"`
+	InputId         *string `json:"inputId,omitempty"`
+	InputName       *string `json:"inputName,omitempty"`
+
+	// InputValue The evaluated input value (any type)
+	InputValue *interface{} `json:"inputValue,omitempty"`
+}
+
+// EvaluatedOutput defines model for EvaluatedOutput.
+type EvaluatedOutput struct {
+	OutputId   *string `json:"outputId,omitempty"`
+	OutputName *string `json:"outputName,omitempty"`
+
+	// OutputValue The output value (any type)
+	OutputValue *interface{} `json:"outputValue,omitempty"`
+}
+
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
 	CreatedAt          time.Time `json:"createdAt"`
@@ -142,6 +379,8 @@ type FlowElementHistoryPage struct {
 
 // Incident defines model for Incident.
 type Incident struct {
+	// BpmnProcessId BPMN process ID
+	BpmnProcessId      *string    `json:"bpmnProcessId,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	ElementId          string     `json:"elementId"`
 	ElementInstanceKey int64      `json:"elementInstanceKey"`
@@ -150,6 +389,21 @@ type Incident struct {
 	Message            string     `json:"message"`
 	ProcessInstanceKey int64      `json:"processInstanceKey"`
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
+
+	// State Incident state (computed from resolvedAt)
+	State *IncidentState `json:"state,omitempty"`
+}
+
+// IncidentState Incident state (computed from resolvedAt)
+type IncidentState string
+
+// IncidentCounts defines model for IncidentCounts.
+type IncidentCounts struct {
+	// Total Total number of incidents
+	Total int `json:"total"`
+
+	// Unresolved Number of unresolved incidents
+	Unresolved int `json:"unresolved"`
 }
 
 // IncidentPage defines model for IncidentPage.
@@ -160,15 +414,46 @@ type IncidentPage struct {
 	PageMetadata `yaml:",inline"`
 }
 
+// IncidentPartitionPage defines model for IncidentPartitionPage.
+type IncidentPartitionPage struct {
+	// Embedded fields due to inline allOf schema
+	Partitions []PartitionIncidents `json:"partitions"`
+	// Embedded struct due to allOf(#/components/schemas/PartitionedPageMetadata)
+	PartitionedPageMetadata `yaml:",inline"`
+}
+
+// InstanceCounts defines model for InstanceCounts.
+type InstanceCounts struct {
+	// Active Number of active instances
+	Active int `json:"active"`
+
+	// Completed Number of completed instances
+	Completed int `json:"completed"`
+
+	// Failed Number of failed instances
+	Failed int `json:"failed"`
+
+	// Terminated Number of terminated instances
+	Terminated int `json:"terminated"`
+
+	// Total Total number of process instances
+	Total int `json:"total"`
+}
+
 // Job defines model for Job.
 type Job struct {
-	CreatedAt          time.Time              `json:"createdAt"`
-	ElementId          string                 `json:"elementId"`
-	Key                int64                  `json:"key"`
-	ProcessInstanceKey int64                  `json:"processInstanceKey"`
-	State              JobState               `json:"state"`
-	Type               string                 `json:"type"`
-	Variables          map[string]interface{} `json:"variables"`
+	// Assignee Assignee (user assigned to this job)
+	Assignee           *string   `json:"assignee,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	Key                int64     `json:"key"`
+	ProcessInstanceKey int64     `json:"processInstanceKey"`
+
+	// Retries Remaining retries
+	Retries   *int                   `json:"retries,omitempty"`
+	State     JobState               `json:"state"`
+	Type      string                 `json:"type"`
+	Variables map[string]interface{} `json:"variables"`
 }
 
 // JobPage defines model for JobPage.
@@ -190,6 +475,13 @@ type JobPartitionPage struct {
 // JobState defines model for JobState.
 type JobState string
 
+// MatchedRule defines model for MatchedRule.
+type MatchedRule struct {
+	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
+	RuleId           *string            `json:"ruleId,omitempty"`
+	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
 // PageMetadata defines model for PageMetadata.
 type PageMetadata struct {
 	// Count Number of items returned in the current page
@@ -205,6 +497,22 @@ type PageMetadata struct {
 	TotalCount int `json:"totalCount"`
 }
 
+// PartitionDecisionInstances defines model for PartitionDecisionInstances.
+type PartitionDecisionInstances struct {
+	// Count Total decision instances in this partition
+	Count     *int                      `json:"count,omitempty"`
+	Items     []DecisionInstanceSummary `json:"items"`
+	Partition int                       `json:"partition"`
+}
+
+// PartitionIncidents defines model for PartitionIncidents.
+type PartitionIncidents struct {
+	// Count Total incidents in this partition
+	Count     *int       `json:"count,omitempty"`
+	Items     []Incident `json:"items"`
+	Partition int        `json:"partition"`
+}
+
 // PartitionJobs defines model for PartitionJobs.
 type PartitionJobs struct {
 	Items     []Job `json:"items"`
@@ -213,6 +521,8 @@ type PartitionJobs struct {
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
+	// Count Total instances in this partition
+	Count     *int              `json:"count,omitempty"`
 	Items     []ProcessInstance `json:"items"`
 	Partition int               `json:"partition"`
 }
@@ -243,8 +553,41 @@ type ProcessDefinitionDetail struct {
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
 type ProcessDefinitionSimple struct {
 	BpmnProcessId string `json:"bpmnProcessId"`
-	Key           int64  `json:"key"`
-	Version       int    `json:"version"`
+
+	// BpmnProcessName Process name from BPMN
+	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
+
+	// BpmnResourceName BPMN resource file name
+	BpmnResourceName *string `json:"bpmnResourceName,omitempty"`
+	Key              int64   `json:"key"`
+	Version          int     `json:"version"`
+}
+
+// ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
+type ProcessDefinitionStatistics struct {
+	BpmnProcessId string `json:"bpmnProcessId"`
+
+	// BpmnResourceName BPMN resource file name
+	BpmnResourceName *string        `json:"bpmnResourceName,omitempty"`
+	IncidentCounts   IncidentCounts `json:"incidentCounts"`
+	InstanceCounts   InstanceCounts `json:"instanceCounts"`
+	Key              int64          `json:"key"`
+
+	// Name Process name from BPMN
+	Name    *string `json:"name,omitempty"`
+	Version int     `json:"version"`
+}
+
+// ProcessDefinitionStatisticsPage defines model for ProcessDefinitionStatisticsPage.
+type ProcessDefinitionStatisticsPage struct {
+	// Count Number of items in current page
+	Count int                           `json:"count"`
+	Items []ProcessDefinitionStatistics `json:"items"`
+	Page  int                           `json:"page"`
+	Size  int                           `json:"size"`
+
+	// TotalCount Total number of items across all pages
+	TotalCount int `json:"totalCount"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.
@@ -257,7 +600,10 @@ type ProcessDefinitionsPage struct {
 
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
-	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
+	ActiveElementInstances []ElementInstance `json:"activeElementInstances"`
+
+	// BpmnProcessId BPMN process ID
+	BpmnProcessId            *string                `json:"bpmnProcessId,omitempty"`
 	BusinessKey              *string                `json:"businessKey,omitempty"`
 	CreatedAt                time.Time              `json:"createdAt"`
 	Key                      int64                  `json:"key"`
@@ -289,6 +635,9 @@ type TerminateElementInstanceData struct {
 	ElementInstanceKey int64 `json:"elementInstanceKey"`
 }
 
+// SortOrder defines model for sortOrder.
+type SortOrder string
+
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
@@ -304,6 +653,42 @@ type EvaluateDecisionJSONBody struct {
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBodyBindingType string
 
+// GetDecisionInstancesParams defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParams struct {
+	// DmnResourceDefinitionKey Filter by DMN resource definition key
+	DmnResourceDefinitionKey *int64 `form:"dmnResourceDefinitionKey,omitempty" json:"dmnResourceDefinitionKey,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// EvaluatedFrom Filter: evaluated after this date
+	EvaluatedFrom *time.Time `form:"evaluatedFrom,omitempty" json:"evaluatedFrom,omitempty"`
+
+	// EvaluatedTo Filter: evaluated before this date
+	EvaluatedTo *time.Time `form:"evaluatedTo,omitempty" json:"evaluatedTo,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetDecisionInstancesParamsSortBy defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortBy string
+
+// GetDecisionInstancesParamsSortOrder defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortOrder string
+
 // GetDmnResourceDefinitionsParams defines parameters for GetDmnResourceDefinitions.
 type GetDmnResourceDefinitionsParams struct {
 	// Page Page number (1-based indexing)
@@ -311,19 +696,117 @@ type GetDmnResourceDefinitionsParams struct {
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDmnResourceDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDmnResourceDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// Name Filter by name (partial match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
 }
+
+// GetDmnResourceDefinitionsParamsSortBy defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortBy string
+
+// GetDmnResourceDefinitionsParamsSortOrder defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortOrder string
+
+// GetGlobalIncidentsParams defines parameters for GetGlobalIncidents.
+type GetGlobalIncidentsParams struct {
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// ProcessDefinitionKey Filter by process definition key
+	ProcessDefinitionKey *int64 `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// State Filter by state (omit to get all incidents)
+	State *GetGlobalIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// CreatedFrom Filter: created after this date
+	CreatedFrom *time.Time `form:"createdFrom,omitempty" json:"createdFrom,omitempty"`
+
+	// CreatedTo Filter: created before this date
+	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetGlobalIncidentsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetGlobalIncidentsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetGlobalIncidentsParamsState defines parameters for GetGlobalIncidents.
+type GetGlobalIncidentsParamsState string
+
+// GetGlobalIncidentsParamsSortBy defines parameters for GetGlobalIncidents.
+type GetGlobalIncidentsParamsSortBy string
+
+// GetGlobalIncidentsParamsSortOrder defines parameters for GetGlobalIncidents.
+type GetGlobalIncidentsParamsSortOrder string
 
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
-	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
-	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// JobType Filter by job type
+	JobType *string `form:"jobType,omitempty" json:"jobType,omitempty"`
+
+	// Assignee Filter by assignee
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// State Filter by job state
+	State *JobState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetJobsParamsSortBy defines parameters for GetJobs.
+type GetJobsParamsSortBy string
+
+// GetJobsParamsSortOrder defines parameters for GetJobs.
+type GetJobsParamsSortOrder string
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
 	JobKey    int64                   `json:"jobKey"`
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
+// AssignJobJSONBody defines parameters for AssignJob.
+type AssignJobJSONBody struct {
+	Assignee string `json:"assignee"`
+}
+
+// CompleteJobByKeyJSONBody defines parameters for CompleteJobByKey.
+type CompleteJobByKeyJSONBody struct {
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -363,7 +846,61 @@ type GetProcessDefinitionsParams struct {
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each process definition grouped by bpmnProcessId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
 }
+
+// GetProcessDefinitionsParamsSortBy defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortBy string
+
+// GetProcessDefinitionsParamsSortOrder defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortOrder string
+
+// CreateProcessDefinitionMultipartBody defines parameters for CreateProcessDefinition.
+type CreateProcessDefinitionMultipartBody struct {
+	// Resource BPMN process definition file (.bpmn format only, max 4MB)
+	Resource openapi_types.File `json:"resource"`
+}
+
+// GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each process definition
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// Name Filter by name (partial match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetProcessDefinitionStatisticsParamsSortBy defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortBy string
+
+// GetProcessDefinitionStatisticsParamsSortOrder defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortOrder string
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
@@ -381,7 +918,37 @@ type GetProcessInstancesParams struct {
 
 	// Size Number of items per page
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID (returns instances across all versions)
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// SortBy Sort field (applies globally across partitions)
+	SortBy *GetProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// CreatedFrom Filter: created after this date
+	CreatedFrom *time.Time `form:"createdFrom,omitempty" json:"createdFrom,omitempty"`
+
+	// CreatedTo Filter: created before this date
+	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
+
+	// State Filter by state
+	State *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// ActivityId Filter by current activity element ID
+	ActivityId *string `form:"activityId,omitempty" json:"activityId,omitempty"`
 }
+
+// GetProcessInstancesParamsSortBy defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortBy string
+
+// GetProcessInstancesParamsSortOrder defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortOrder string
+
+// GetProcessInstancesParamsState defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsState string
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
@@ -405,12 +972,18 @@ type GetHistoryParams struct {
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
+	// State Filter by incident state (omit to get all incidents)
+	State *GetIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetIncidentsParamsState defines parameters for GetIncidents.
+type GetIncidentsParamsState string
 
 // GetProcessInstanceJobsParams defines parameters for GetProcessInstanceJobs.
 type GetProcessInstanceJobsParams struct {
@@ -421,11 +994,22 @@ type GetProcessInstanceJobsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// UpdateProcessInstanceVariablesJSONBody defines parameters for UpdateProcessInstanceVariables.
+type UpdateProcessInstanceVariablesJSONBody struct {
+	Variables map[string]interface{} `json:"variables"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
+
+// AssignJobJSONRequestBody defines body for AssignJob for application/json ContentType.
+type AssignJobJSONRequestBody AssignJobJSONBody
+
+// CompleteJobByKeyJSONRequestBody defines body for CompleteJobByKey for application/json ContentType.
+type CompleteJobByKeyJSONRequestBody CompleteJobByKeyJSONBody
 
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
@@ -436,14 +1020,26 @@ type ModifyProcessInstanceJSONRequestBody ModifyProcessInstanceJSONBody
 // StartProcessInstanceOnElementsJSONRequestBody defines body for StartProcessInstanceOnElements for application/json ContentType.
 type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElementsJSONBody
 
+// CreateProcessDefinitionMultipartRequestBody defines body for CreateProcessDefinition for multipart/form-data ContentType.
+type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipartBody
+
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
+type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Evaluate latest version of decision definition directly in engine
 	// (POST /decision-definitions/{decisionId}/evaluate)
 	EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string)
+	// Get list of decision instances
+	// (GET /decision-instances)
+	GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams)
+	// Get decision instance details
+	// (GET /decision-instances/{decisionInstanceKey})
+	GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64)
 	// Get list of dmn resource definitions
 	// (GET /dmn-resource-definitions)
 	GetDmnResourceDefinitions(w http.ResponseWriter, r *http.Request, params GetDmnResourceDefinitionsParams)
@@ -453,6 +1049,9 @@ type ServerInterface interface {
 	// Get dmn resource definition
 	// (GET /dmn-resource-definitions/{dmnResourceDefinitionKey})
 	GetDmnResourceDefinition(w http.ResponseWriter, r *http.Request, dmnResourceDefinitionKey int64)
+	// Get list of incidents across all process instances
+	// (GET /incidents)
+	GetGlobalIncidents(w http.ResponseWriter, r *http.Request, params GetGlobalIncidentsParams)
 	// Resolve an incident
 	// (POST /incidents/{incidentKey}/resolve)
 	ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64)
@@ -462,6 +1061,15 @@ type ServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(w http.ResponseWriter, r *http.Request)
+	// Get job details
+	// (GET /jobs/{jobKey})
+	GetJob(w http.ResponseWriter, r *http.Request, jobKey int64)
+	// Assign a job to a user
+	// (POST /jobs/{jobKey}/assign)
+	AssignJob(w http.ResponseWriter, r *http.Request, jobKey int64)
+	// Complete a job with variables (improved API)
+	// (POST /jobs/{jobKey}/complete)
+	CompleteJobByKey(w http.ResponseWriter, r *http.Request, jobKey int64)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(w http.ResponseWriter, r *http.Request)
@@ -477,9 +1085,15 @@ type ServerInterface interface {
 	// Deploy a new process definition
 	// (POST /process-definitions)
 	CreateProcessDefinition(w http.ResponseWriter, r *http.Request)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
+	// Get running and incident counts per BPMN element
+	// (GET /process-definitions/{processDefinitionKey}/statistics)
+	GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
 	// Get list of running process instances
 	// (GET /process-instances)
 	GetProcessInstances(w http.ResponseWriter, r *http.Request, params GetProcessInstancesParams)
@@ -498,6 +1112,12 @@ type ServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams)
+	// Update process instance variables
+	// (PUT /process-instances/{processInstanceKey}/variables)
+	UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	// Delete a process instance variable
+	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+	DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string)
 	// start a cpu profiler
 	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
@@ -513,6 +1133,18 @@ type Unimplemented struct{}
 // Evaluate latest version of decision definition directly in engine
 // (POST /decision-definitions/{decisionId}/evaluate)
 func (_ Unimplemented) EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get list of decision instances
+// (GET /decision-instances)
+func (_ Unimplemented) GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get decision instance details
+// (GET /decision-instances/{decisionInstanceKey})
+func (_ Unimplemented) GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -534,6 +1166,12 @@ func (_ Unimplemented) GetDmnResourceDefinition(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get list of incidents across all process instances
+// (GET /incidents)
+func (_ Unimplemented) GetGlobalIncidents(w http.ResponseWriter, r *http.Request, params GetGlobalIncidentsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Resolve an incident
 // (POST /incidents/{incidentKey}/resolve)
 func (_ Unimplemented) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64) {
@@ -549,6 +1187,24 @@ func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, params Ge
 // Complete a job
 // (POST /jobs)
 func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get job details
+// (GET /jobs/{jobKey})
+func (_ Unimplemented) GetJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Assign a job to a user
+// (POST /jobs/{jobKey}/assign)
+func (_ Unimplemented) AssignJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Complete a job with variables (improved API)
+// (POST /jobs/{jobKey}/complete)
+func (_ Unimplemented) CompleteJobByKey(w http.ResponseWriter, r *http.Request, jobKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -582,9 +1238,21 @@ func (_ Unimplemented) CreateProcessDefinition(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get process definition statistics
+// (GET /process-definitions/statistics)
+func (_ Unimplemented) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Get process definition
 // (GET /process-definitions/{processDefinitionKey})
 func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get running and incident counts per BPMN element
+// (GET /process-definitions/{processDefinitionKey}/statistics)
+func (_ Unimplemented) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -621,6 +1289,18 @@ func (_ Unimplemented) GetIncidents(w http.ResponseWriter, r *http.Request, proc
 // Get list of jobs for a process instance
 // (GET /process-instances/{processInstanceKey}/jobs)
 func (_ Unimplemented) GetProcessInstanceJobs(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceJobsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update process instance variables
+// (PUT /process-instances/{processInstanceKey}/variables)
+func (_ Unimplemented) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a process instance variable
+// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+func (_ Unimplemented) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -670,6 +1350,122 @@ func (siw *ServerInterfaceWrapper) EvaluateDecision(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetDecisionInstances operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionInstances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDecisionInstancesParams
+
+	// ------------- Optional query parameter "dmnResourceDefinitionKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dmnResourceDefinitionKey", r.URL.Query(), &params.DmnResourceDefinitionKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dmnResourceDefinitionKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "dmnResourceDefinitionId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dmnResourceDefinitionId", r.URL.Query(), &params.DmnResourceDefinitionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dmnResourceDefinitionId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "processInstanceKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processInstanceKey", r.URL.Query(), &params.ProcessInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "evaluatedFrom" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "evaluatedFrom", r.URL.Query(), &params.EvaluatedFrom)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "evaluatedFrom", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "evaluatedTo" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "evaluatedTo", r.URL.Query(), &params.EvaluatedTo)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "evaluatedTo", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionInstances(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDecisionInstance operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "decisionInstanceKey" -------------
+	var decisionInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "decisionInstanceKey", chi.URLParam(r, "decisionInstanceKey"), &decisionInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decisionInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionInstance(w, r, decisionInstanceKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDmnResourceDefinitions operation middleware
 func (siw *ServerInterfaceWrapper) GetDmnResourceDefinitions(w http.ResponseWriter, r *http.Request) {
 
@@ -691,6 +1487,46 @@ func (siw *ServerInterfaceWrapper) GetDmnResourceDefinitions(w http.ResponseWrit
 	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "onlyLatest" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "onlyLatest", r.URL.Query(), &params.OnlyLatest)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "onlyLatest", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "dmnResourceDefinitionId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dmnResourceDefinitionId", r.URL.Query(), &params.DmnResourceDefinitionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dmnResourceDefinitionId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", r.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
 		return
 	}
 
@@ -744,6 +1580,105 @@ func (siw *ServerInterfaceWrapper) GetDmnResourceDefinition(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetGlobalIncidents operation middleware
+func (siw *ServerInterfaceWrapper) GetGlobalIncidents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGlobalIncidentsParams
+
+	// ------------- Optional query parameter "processInstanceKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processInstanceKey", r.URL.Query(), &params.ProcessInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "processDefinitionKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processDefinitionKey", r.URL.Query(), &params.ProcessDefinitionKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processDefinitionKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessId", r.URL.Query(), &params.BpmnProcessId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "createdFrom" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "createdFrom", r.URL.Query(), &params.CreatedFrom)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "createdFrom", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "createdTo" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "createdTo", r.URL.Query(), &params.CreatedTo)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "createdTo", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGlobalIncidents(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ResolveIncident operation middleware
 func (siw *ServerInterfaceWrapper) ResolveIncident(w http.ResponseWriter, r *http.Request) {
 
@@ -777,11 +1712,27 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetJobsParams
 
+	// ------------- Optional query parameter "processInstanceKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processInstanceKey", r.URL.Query(), &params.ProcessInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "jobType" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "jobType", r.URL.Query(), &params.JobType)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobType", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "assignee", r.URL.Query(), &params.Assignee)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
 		return
 	}
 
@@ -809,6 +1760,22 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetJobs(w, r, params)
 	}))
@@ -825,6 +1792,81 @@ func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CompleteJob(w, r)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJob operation middleware
+func (siw *ServerInterfaceWrapper) GetJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobKey" -------------
+	var jobKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobKey", chi.URLParam(r, "jobKey"), &jobKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJob(w, r, jobKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssignJob operation middleware
+func (siw *ServerInterfaceWrapper) AssignJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobKey" -------------
+	var jobKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobKey", chi.URLParam(r, "jobKey"), &jobKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssignJob(w, r, jobKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteJobByKey operation middleware
+func (siw *ServerInterfaceWrapper) CompleteJobByKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobKey" -------------
+	var jobKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobKey", chi.URLParam(r, "jobKey"), &jobKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteJobByKey(w, r, jobKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -900,6 +1942,38 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinitions(w http.ResponseWriter, 
 		return
 	}
 
+	// ------------- Optional query parameter "onlyLatest" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "onlyLatest", r.URL.Query(), &params.OnlyLatest)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "onlyLatest", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessId", r.URL.Query(), &params.BpmnProcessId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessId", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProcessDefinitions(w, r, params)
 	}))
@@ -925,6 +1999,81 @@ func (siw *ServerInterfaceWrapper) CreateProcessDefinition(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetProcessDefinitionStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessDefinitionStatisticsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "onlyLatest" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "onlyLatest", r.URL.Query(), &params.OnlyLatest)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "onlyLatest", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessId", r.URL.Query(), &params.BpmnProcessId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", r.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessDefinitionStatistics(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProcessDefinition operation middleware
 func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r *http.Request) {
 
@@ -941,6 +2090,31 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProcessDefinition(w, r, processDefinitionKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProcessDefinitionElementStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processDefinitionKey" -------------
+	var processDefinitionKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processDefinitionKey", chi.URLParam(r, "processDefinitionKey"), &processDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processDefinitionKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessDefinitionElementStatistics(w, r, processDefinitionKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -995,6 +2169,62 @@ func (siw *ServerInterfaceWrapper) GetProcessInstances(w http.ResponseWriter, r 
 	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessId", r.URL.Query(), &params.BpmnProcessId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "createdFrom" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "createdFrom", r.URL.Query(), &params.CreatedFrom)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "createdFrom", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "createdTo" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "createdTo", r.URL.Query(), &params.CreatedTo)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "createdTo", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "activityId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "activityId", r.URL.Query(), &params.ActivityId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activityId", Err: err})
 		return
 	}
 
@@ -1109,6 +2339,14 @@ func (siw *ServerInterfaceWrapper) GetIncidents(w http.ResponseWriter, r *http.R
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetIncidentsParams
 
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "page" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
@@ -1171,6 +2409,65 @@ func (siw *ServerInterfaceWrapper) GetProcessInstanceJobs(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProcessInstanceJobs(w, r, processInstanceKey, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProcessInstanceVariables operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProcessInstanceVariables(w, r, processInstanceKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProcessInstanceVariable operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variableName" -------------
+	var variableName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variableName", chi.URLParam(r, "variableName"), &variableName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variableName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProcessInstanceVariable(w, r, processInstanceKey, variableName)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -1347,6 +2644,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/decision-definitions/{decisionId}/evaluate", wrapper.EvaluateDecision)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-instances", wrapper.GetDecisionInstances)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-instances/{decisionInstanceKey}", wrapper.GetDecisionInstance)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/dmn-resource-definitions", wrapper.GetDmnResourceDefinitions)
 	})
 	r.Group(func(r chi.Router) {
@@ -1356,6 +2659,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/dmn-resource-definitions/{dmnResourceDefinitionKey}", wrapper.GetDmnResourceDefinition)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/incidents", wrapper.GetGlobalIncidents)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/incidents/{incidentKey}/resolve", wrapper.ResolveIncident)
 	})
 	r.Group(func(r chi.Router) {
@@ -1363,6 +2669,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/jobs/{jobKey}", wrapper.GetJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/jobs/{jobKey}/assign", wrapper.AssignJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/jobs/{jobKey}/complete", wrapper.CompleteJobByKey)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
@@ -1380,7 +2695,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/process-definitions", wrapper.CreateProcessDefinition)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-definitions/statistics", wrapper.GetProcessDefinitionStatistics)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}", wrapper.GetProcessDefinition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}/statistics", wrapper.GetProcessDefinitionElementStatistics)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances", wrapper.GetProcessInstances)
@@ -1399,6 +2720,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/jobs", wrapper.GetProcessInstanceJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/process-instances/{processInstanceKey}/variables", wrapper.UpdateProcessInstanceVariables)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/process-instances/{processInstanceKey}/variables/{variableName}", wrapper.DeleteProcessInstanceVariable)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/tests/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
@@ -1433,6 +2760,76 @@ type EvaluateDecision500JSONResponse Error
 func (response EvaluateDecision500JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstancesRequestObject struct {
+	Params GetDecisionInstancesParams
+}
+
+type GetDecisionInstancesResponseObject interface {
+	VisitGetDecisionInstancesResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionInstances200JSONResponse DecisionInstancePartitionPage
+
+func (response GetDecisionInstances200JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstances500JSONResponse Error
+
+func (response GetDecisionInstances500JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstances502JSONResponse Error
+
+func (response GetDecisionInstances502JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstanceRequestObject struct {
+	DecisionInstanceKey int64 `json:"decisionInstanceKey"`
+}
+
+type GetDecisionInstanceResponseObject interface {
+	VisitGetDecisionInstanceResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionInstance200JSONResponse DecisionInstanceDetail
+
+func (response GetDecisionInstance200JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstance404JSONResponse Error
+
+func (response GetDecisionInstance404JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstance502JSONResponse Error
+
+func (response GetDecisionInstance502JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1544,6 +2941,41 @@ func (response GetDmnResourceDefinition502JSONResponse) VisitGetDmnResourceDefin
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetGlobalIncidentsRequestObject struct {
+	Params GetGlobalIncidentsParams
+}
+
+type GetGlobalIncidentsResponseObject interface {
+	VisitGetGlobalIncidentsResponse(w http.ResponseWriter) error
+}
+
+type GetGlobalIncidents200JSONResponse IncidentPartitionPage
+
+func (response GetGlobalIncidents200JSONResponse) VisitGetGlobalIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetGlobalIncidents500JSONResponse Error
+
+func (response GetGlobalIncidents500JSONResponse) VisitGetGlobalIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetGlobalIncidents502JSONResponse Error
+
+func (response GetGlobalIncidents502JSONResponse) VisitGetGlobalIncidentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ResolveIncidentRequestObject struct {
 	IncidentKey int64 `json:"incidentKey"`
 }
@@ -1641,6 +3073,138 @@ func (response CompleteJob400JSONResponse) VisitCompleteJobResponse(w http.Respo
 type CompleteJob502JSONResponse Error
 
 func (response CompleteJob502JSONResponse) VisitCompleteJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJobRequestObject struct {
+	JobKey int64 `json:"jobKey"`
+}
+
+type GetJobResponseObject interface {
+	VisitGetJobResponse(w http.ResponseWriter) error
+}
+
+type GetJob200JSONResponse Job
+
+func (response GetJob200JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob400JSONResponse Error
+
+func (response GetJob400JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob404JSONResponse Error
+
+func (response GetJob404JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob502JSONResponse Error
+
+func (response GetJob502JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AssignJobRequestObject struct {
+	JobKey int64 `json:"jobKey"`
+	Body   *AssignJobJSONRequestBody
+}
+
+type AssignJobResponseObject interface {
+	VisitAssignJobResponse(w http.ResponseWriter) error
+}
+
+type AssignJob204Response struct {
+}
+
+func (response AssignJob204Response) VisitAssignJobResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AssignJob400JSONResponse Error
+
+func (response AssignJob400JSONResponse) VisitAssignJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AssignJob404JSONResponse Error
+
+func (response AssignJob404JSONResponse) VisitAssignJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AssignJob502JSONResponse Error
+
+func (response AssignJob502JSONResponse) VisitAssignJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CompleteJobByKeyRequestObject struct {
+	JobKey int64 `json:"jobKey"`
+	Body   *CompleteJobByKeyJSONRequestBody
+}
+
+type CompleteJobByKeyResponseObject interface {
+	VisitCompleteJobByKeyResponse(w http.ResponseWriter) error
+}
+
+type CompleteJobByKey204Response struct {
+}
+
+func (response CompleteJobByKey204Response) VisitCompleteJobByKeyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CompleteJobByKey400JSONResponse Error
+
+func (response CompleteJobByKey400JSONResponse) VisitCompleteJobByKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CompleteJobByKey404JSONResponse Error
+
+func (response CompleteJobByKey404JSONResponse) VisitCompleteJobByKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CompleteJobByKey502JSONResponse Error
+
+func (response CompleteJobByKey502JSONResponse) VisitCompleteJobByKeyResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(502)
 
@@ -1799,7 +3363,7 @@ func (response GetProcessDefinitions500JSONResponse) VisitGetProcessDefinitionsR
 }
 
 type CreateProcessDefinitionRequestObject struct {
-	Body io.Reader
+	Body *multipart.Reader
 }
 
 type CreateProcessDefinitionResponseObject interface {
@@ -1844,6 +3408,32 @@ func (response CreateProcessDefinition502JSONResponse) VisitCreateProcessDefinit
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProcessDefinitionStatisticsRequestObject struct {
+	Params GetProcessDefinitionStatisticsParams
+}
+
+type GetProcessDefinitionStatisticsResponseObject interface {
+	VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessDefinitionStatistics200JSONResponse ProcessDefinitionStatisticsPage
+
+func (response GetProcessDefinitionStatistics200JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionStatistics500JSONResponse Error
+
+func (response GetProcessDefinitionStatistics500JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProcessDefinitionRequestObject struct {
 	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 }
@@ -1873,6 +3463,32 @@ func (response GetProcessDefinition400JSONResponse) VisitGetProcessDefinitionRes
 type GetProcessDefinition500JSONResponse Error
 
 func (response GetProcessDefinition500JSONResponse) VisitGetProcessDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionElementStatisticsRequestObject struct {
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+}
+
+type GetProcessDefinitionElementStatisticsResponseObject interface {
+	VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessDefinitionElementStatistics200JSONResponse ElementStatistics
+
+func (response GetProcessDefinitionElementStatistics200JSONResponse) VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionElementStatistics500JSONResponse Error
+
+func (response GetProcessDefinitionElementStatistics500JSONResponse) VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -2128,6 +3744,85 @@ func (response GetProcessInstanceJobs502JSONResponse) VisitGetProcessInstanceJob
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateProcessInstanceVariablesRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	Body               *UpdateProcessInstanceVariablesJSONRequestBody
+}
+
+type UpdateProcessInstanceVariablesResponseObject interface {
+	VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error
+}
+
+type UpdateProcessInstanceVariables204Response struct {
+}
+
+func (response UpdateProcessInstanceVariables204Response) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateProcessInstanceVariables400JSONResponse Error
+
+func (response UpdateProcessInstanceVariables400JSONResponse) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProcessInstanceVariables502JSONResponse Error
+
+func (response UpdateProcessInstanceVariables502JSONResponse) VisitUpdateProcessInstanceVariablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariableRequestObject struct {
+	ProcessInstanceKey int64  `json:"processInstanceKey"`
+	VariableName       string `json:"variableName"`
+}
+
+type DeleteProcessInstanceVariableResponseObject interface {
+	VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error
+}
+
+type DeleteProcessInstanceVariable204Response struct {
+}
+
+func (response DeleteProcessInstanceVariable204Response) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProcessInstanceVariable400JSONResponse Error
+
+func (response DeleteProcessInstanceVariable400JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariable404JSONResponse Error
+
+func (response DeleteProcessInstanceVariable404JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProcessInstanceVariable502JSONResponse Error
+
+func (response DeleteProcessInstanceVariable502JSONResponse) VisitDeleteProcessInstanceVariableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type TestStartCpuProfileRequestObject struct {
 	NodeId string `json:"nodeId"`
 }
@@ -2186,6 +3881,12 @@ type StrictServerInterface interface {
 	// Evaluate latest version of decision definition directly in engine
 	// (POST /decision-definitions/{decisionId}/evaluate)
 	EvaluateDecision(ctx context.Context, request EvaluateDecisionRequestObject) (EvaluateDecisionResponseObject, error)
+	// Get list of decision instances
+	// (GET /decision-instances)
+	GetDecisionInstances(ctx context.Context, request GetDecisionInstancesRequestObject) (GetDecisionInstancesResponseObject, error)
+	// Get decision instance details
+	// (GET /decision-instances/{decisionInstanceKey})
+	GetDecisionInstance(ctx context.Context, request GetDecisionInstanceRequestObject) (GetDecisionInstanceResponseObject, error)
 	// Get list of dmn resource definitions
 	// (GET /dmn-resource-definitions)
 	GetDmnResourceDefinitions(ctx context.Context, request GetDmnResourceDefinitionsRequestObject) (GetDmnResourceDefinitionsResponseObject, error)
@@ -2195,6 +3896,9 @@ type StrictServerInterface interface {
 	// Get dmn resource definition
 	// (GET /dmn-resource-definitions/{dmnResourceDefinitionKey})
 	GetDmnResourceDefinition(ctx context.Context, request GetDmnResourceDefinitionRequestObject) (GetDmnResourceDefinitionResponseObject, error)
+	// Get list of incidents across all process instances
+	// (GET /incidents)
+	GetGlobalIncidents(ctx context.Context, request GetGlobalIncidentsRequestObject) (GetGlobalIncidentsResponseObject, error)
 	// Resolve an incident
 	// (POST /incidents/{incidentKey}/resolve)
 	ResolveIncident(ctx context.Context, request ResolveIncidentRequestObject) (ResolveIncidentResponseObject, error)
@@ -2204,6 +3908,15 @@ type StrictServerInterface interface {
 	// Complete a job
 	// (POST /jobs)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
+	// Get job details
+	// (GET /jobs/{jobKey})
+	GetJob(ctx context.Context, request GetJobRequestObject) (GetJobResponseObject, error)
+	// Assign a job to a user
+	// (POST /jobs/{jobKey}/assign)
+	AssignJob(ctx context.Context, request AssignJobRequestObject) (AssignJobResponseObject, error)
+	// Complete a job with variables (improved API)
+	// (POST /jobs/{jobKey}/complete)
+	CompleteJobByKey(ctx context.Context, request CompleteJobByKeyRequestObject) (CompleteJobByKeyResponseObject, error)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(ctx context.Context, request PublishMessageRequestObject) (PublishMessageResponseObject, error)
@@ -2219,9 +3932,15 @@ type StrictServerInterface interface {
 	// Deploy a new process definition
 	// (POST /process-definitions)
 	CreateProcessDefinition(ctx context.Context, request CreateProcessDefinitionRequestObject) (CreateProcessDefinitionResponseObject, error)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(ctx context.Context, request GetProcessDefinitionStatisticsRequestObject) (GetProcessDefinitionStatisticsResponseObject, error)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(ctx context.Context, request GetProcessDefinitionRequestObject) (GetProcessDefinitionResponseObject, error)
+	// Get running and incident counts per BPMN element
+	// (GET /process-definitions/{processDefinitionKey}/statistics)
+	GetProcessDefinitionElementStatistics(ctx context.Context, request GetProcessDefinitionElementStatisticsRequestObject) (GetProcessDefinitionElementStatisticsResponseObject, error)
 	// Get list of running process instances
 	// (GET /process-instances)
 	GetProcessInstances(ctx context.Context, request GetProcessInstancesRequestObject) (GetProcessInstancesResponseObject, error)
@@ -2240,6 +3959,12 @@ type StrictServerInterface interface {
 	// Get list of jobs for a process instance
 	// (GET /process-instances/{processInstanceKey}/jobs)
 	GetProcessInstanceJobs(ctx context.Context, request GetProcessInstanceJobsRequestObject) (GetProcessInstanceJobsResponseObject, error)
+	// Update process instance variables
+	// (PUT /process-instances/{processInstanceKey}/variables)
+	UpdateProcessInstanceVariables(ctx context.Context, request UpdateProcessInstanceVariablesRequestObject) (UpdateProcessInstanceVariablesResponseObject, error)
+	// Delete a process instance variable
+	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
+	DeleteProcessInstanceVariable(ctx context.Context, request DeleteProcessInstanceVariableRequestObject) (DeleteProcessInstanceVariableResponseObject, error)
 	// start a cpu profiler
 	// (POST /tests/{nodeId}/start-cpu-profile)
 	TestStartCpuProfile(ctx context.Context, request TestStartCpuProfileRequestObject) (TestStartCpuProfileResponseObject, error)
@@ -2303,6 +4028,58 @@ func (sh *strictHandler) EvaluateDecision(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EvaluateDecisionResponseObject); ok {
 		if err := validResponse.VisitEvaluateDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDecisionInstances operation middleware
+func (sh *strictHandler) GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams) {
+	var request GetDecisionInstancesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionInstances(ctx, request.(GetDecisionInstancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionInstances")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionInstancesResponseObject); ok {
+		if err := validResponse.VisitGetDecisionInstancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDecisionInstance operation middleware
+func (sh *strictHandler) GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64) {
+	var request GetDecisionInstanceRequestObject
+
+	request.DecisionInstanceKey = decisionInstanceKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionInstance(ctx, request.(GetDecisionInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionInstanceResponseObject); ok {
+		if err := validResponse.VisitGetDecisionInstanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2388,6 +4165,32 @@ func (sh *strictHandler) GetDmnResourceDefinition(w http.ResponseWriter, r *http
 	}
 }
 
+// GetGlobalIncidents operation middleware
+func (sh *strictHandler) GetGlobalIncidents(w http.ResponseWriter, r *http.Request, params GetGlobalIncidentsParams) {
+	var request GetGlobalIncidentsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGlobalIncidents(ctx, request.(GetGlobalIncidentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGlobalIncidents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGlobalIncidentsResponseObject); ok {
+		if err := validResponse.VisitGetGlobalIncidentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ResolveIncident operation middleware
 func (sh *strictHandler) ResolveIncident(w http.ResponseWriter, r *http.Request, incidentKey int64) {
 	var request ResolveIncidentRequestObject
@@ -2464,6 +4267,98 @@ func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CompleteJobResponseObject); ok {
 		if err := validResponse.VisitCompleteJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetJob operation middleware
+func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	var request GetJobRequestObject
+
+	request.JobKey = jobKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJob(ctx, request.(GetJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobResponseObject); ok {
+		if err := validResponse.VisitGetJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AssignJob operation middleware
+func (sh *strictHandler) AssignJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	var request AssignJobRequestObject
+
+	request.JobKey = jobKey
+
+	var body AssignJobJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssignJob(ctx, request.(AssignJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssignJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssignJobResponseObject); ok {
+		if err := validResponse.VisitAssignJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteJobByKey operation middleware
+func (sh *strictHandler) CompleteJobByKey(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	var request CompleteJobByKeyRequestObject
+
+	request.JobKey = jobKey
+
+	var body CompleteJobByKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteJobByKey(ctx, request.(CompleteJobByKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteJobByKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteJobByKeyResponseObject); ok {
+		if err := validResponse.VisitCompleteJobByKeyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2594,7 +4489,12 @@ func (sh *strictHandler) GetProcessDefinitions(w http.ResponseWriter, r *http.Re
 func (sh *strictHandler) CreateProcessDefinition(w http.ResponseWriter, r *http.Request) {
 	var request CreateProcessDefinitionRequestObject
 
-	request.Body = r.Body
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.CreateProcessDefinition(ctx, request.(CreateProcessDefinitionRequestObject))
@@ -2609,6 +4509,32 @@ func (sh *strictHandler) CreateProcessDefinition(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateProcessDefinitionResponseObject); ok {
 		if err := validResponse.VisitCreateProcessDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessDefinitionStatistics operation middleware
+func (sh *strictHandler) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
+	var request GetProcessDefinitionStatisticsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessDefinitionStatistics(ctx, request.(GetProcessDefinitionStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessDefinitionStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessDefinitionStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetProcessDefinitionStatisticsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2635,6 +4561,32 @@ func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProcessDefinitionResponseObject); ok {
 		if err := validResponse.VisitGetProcessDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessDefinitionElementStatistics operation middleware
+func (sh *strictHandler) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+	var request GetProcessDefinitionElementStatisticsRequestObject
+
+	request.ProcessDefinitionKey = processDefinitionKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessDefinitionElementStatistics(ctx, request.(GetProcessDefinitionElementStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessDefinitionElementStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessDefinitionElementStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetProcessDefinitionElementStatisticsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2806,6 +4758,66 @@ func (sh *strictHandler) GetProcessInstanceJobs(w http.ResponseWriter, r *http.R
 	}
 }
 
+// UpdateProcessInstanceVariables operation middleware
+func (sh *strictHandler) UpdateProcessInstanceVariables(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	var request UpdateProcessInstanceVariablesRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+
+	var body UpdateProcessInstanceVariablesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProcessInstanceVariables(ctx, request.(UpdateProcessInstanceVariablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProcessInstanceVariables")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProcessInstanceVariablesResponseObject); ok {
+		if err := validResponse.VisitUpdateProcessInstanceVariablesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProcessInstanceVariable operation middleware
+func (sh *strictHandler) DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string) {
+	var request DeleteProcessInstanceVariableRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+	request.VariableName = variableName
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProcessInstanceVariable(ctx, request.(DeleteProcessInstanceVariableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProcessInstanceVariable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProcessInstanceVariableResponseObject); ok {
+		if err := validResponse.VisitDeleteProcessInstanceVariableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // TestStartCpuProfile operation middleware
 func (sh *strictHandler) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
 	var request TestStartCpuProfileRequestObject
@@ -2861,83 +4873,130 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/+x9e1PjOPboV1H5/v7orpsQOxAeqZrapRt6lplumgJm69Y03C7FVoIax/LaMpDp4rv/",
+	"SrJsy5bkR0gg7PAfxHocHZ23jo5+Wi6ZhyRAAY2t8U8rhBGcI4oi/l9MIvo18lDE/vFQ7EY4pJgE1ti6",
+	"IBEFHo6Qy3/oWZj9+p8ERQurZwVwjqyx1L9nxe4NmkM2EAqSuTX+ZsHYtXp8WOu6Z9FFyLvQCAcz6/Hx",
+	"MevCITlCLo4xCU6CmMLARUeIQuxziCMSoohiFKdApu2+JjRMqAr2JxxAHxD+FZApoDcIROg/CYop8kDW",
+	"28rBIZMfyKXWYy8f+Rz9J8ERmjOMnXjqDCdH2bhH50eWsi79QL+jhTrS72hRHmpKojmk1tjCAd3dKcbG",
+	"AUUzFPHB58E5ikkSMRRNcYDZWCmYKiC6tgKSZaf6N4o4Aov5pB7oDvoJpMg7pKU5PEhRn+I50qEr75SR",
+	"AN9nTNGc//E/EZpaY+v/DAo6Hgi6GRxXu7LxxAQwiuCC/T/1yf2xz7chI66m3WBdAEr7ACw6AXoDKaAR",
+	"ns1QhDxAb3AsE1QLjN62xn0YERfFcQXgxo6PPStKqc5jDMjmqyEDMzWVt1K7R9caFqoy8RmMKB/yDM4Q",
+	"WwD0/a9Ta/ytytVh1rD93udjVyeNVSKooEWaTbOKltMijy3qC6LQgxRaj23wcZHM5zBaaKTa83H1Ujy6",
+	"QTyEgzChH0kSaIT/aTKfoIhBwFuBOxhhOPFR/ERuTNVJ46RC69TPulGcrSVaXc9CHRcsXMcm2kEu8Dz0",
+	"EWcxhfyPGBOp5P6oAHhdRkTWtfVKBBBPYsH2lJPaSVWSyeQCYJ/BNCJzcPTlVMd4kQDpVD/Ol1OQtQBT",
+	"7CM+oG6cO7Pa1lJW1t5MSK0RHjcJ/1zct5L79ZRVL/jTCZaQ+U2CviIbVepyI9TZLhJj6kkQaaVxC4qM",
+	"KaRIz2kyqjTj96RVZOPIYNYg5oJCimOKXY4M6Hl816B/VrYCSv9Bl+I71Ch002aKpokNysPFHgra6I+0",
+	"YQxIkGopMUGzaJbhrs54rfU7ZBC+wJDNn2MVUCKWOMiGAi4bK9b5MMdRRLgvhx5gJuZc4rFGp18vv3/6",
+	"+scp8zPmKI45U1pnqTYqFPQ9pjfgFi3AzsjeHh0c7A73tvfske2AgFAwJUngCS0mUzefQkOl+URN5MZH",
+	"KNprSSm3Qc+PzlGc+LSFd7hi/0LM2yRnNFP2qrDVLzEziYwrNBmH4nOmL4wNLvmHwlc/Ov54cnHy9fT7",
+	"5eGHz8dWz/p8cnl8fvj5+/H/Ozs/vmCfNE58jl22Ln0cgf8McADub7B7U7b4wD2MQY4ss7m3xI6dsH46",
+	"d3AOqXuDvPPEzxBaCh+QCJRRAdgAgAQ+E4CtYPhSzKADILUSl1iSIBwd8TVTUooPhZw4eo8fwgjFFfug",
+	"2GLexkBv/JuR2PjXf0M/YZ8VZSyGlQfpKQCVBmnFM0VkqLzUFO+GdaQfjQtJP2crqQJRWVg+UWnY8iCt",
+	"VtIk5ZpdRaVhbfhmVbKl2AFjkC0TP2vzbk+WlBtlfmkhP5ZUJEkLc1Xajwr2K4is2+l6L1FHSZU1Kvuq",
+	"YrkdNSc6twuVpdsTUGoSjz0rSnxkoGn+KfDQQwvPSAwjd+qp8Nfi4uWlcEXfXd6gQgHnURM/QeAdDBZc",
+	"971v0DDPIG9VmPNQSxtQPxXRq3/hmBJdBG7lDtrLxHo1Y5Xdtnp3TcXUap13zU60MWee6p6fCM9J3fZJ",
+	"OA+ED6Q76/lw9uUUCJyCE+1pz+Z49ugBuQkD/JLcoqBlp/ZkavbllibhNL7l33VDXx7BqJzLZe4x/w7e",
+	"MUpJmFTj8bVioveMC4TXk/1q9awkyP/RHFbqeE0bIin21sCMGRorbFneuzoi/ph6/wopU0Khr5GW7GcQ",
+	"qJEN7X5IWKiJjhStaoerYC0F0IBpdZ2rlTy5CHixGGGxrmc4FDvJt2VjDsMyNjDRbxrlahHqqw/xMTB9",
+	"ROsJOG/UMNgUYr9+pLRFwzAURXMcwAagilZNw7Xj9LAS2+vAomIvZGyWVpFjRrfRv5GJZnfjGM8CpNnf",
+	"Q/EFvEtiFAHRkAc+ebDoB5m8fxbFu3aLjeGaRlgXdzpHc4gDHMxA1qQ2dl/HlL+RyQVvl3O+Zq3FGWVj",
+	"OONW0Ws09Tm16i07FpCVWzGZgVxWK+oZ/b2YlOereQYB/xuZbJBsz2lOzv7qLkMK+pRjqGuIGawlVqBg",
+	"pYQ31eNsPINiS2LyIIkCrhN4XoWbRBGzcsPUiNQIJ0F15WE/St0yHfHO6U9gzIf20AMOZu/1Ugf/hZrh",
+	"DFFkhonrFcOhm2Kg8uHgHcQ+ExrNSkvMysHsCbSWprzW7o0xfajtTqWA52cZuZpNdwrHIGc//clGt2Nv",
+	"QyqRhoSLaZtjWjKIRploaczKbkgqjlPXgRuzbb9WZHARPF6Drlor1Gdlrd19J9dJ5RXgnhk1FU33JrE3",
+	"S2KntLF8TpoygDEfbRIun5CW9221BlM2mhKXVKwRqYU+OSxL7ShyzD6c6ZPM2FDntYlmPA7aLtOsvRe1",
+	"fE5aGTvtEF3KQFoG2SvDEFYCeW2Um2jN+1cDKfX9S61XkL3YnrBWtcPKmhUkdqSBzDNbSr7joFmkL6X2",
+	"tNSqVYGlMLxG8K9EnrsRiWMAfZ8vs0X0KF1rb0XifcV5o2bp/0KRgqqtYwiIVlJLOzi7lZxUDSE9/fRr",
+	"ksQ4QHF2v2kVQboOYTjImPBs2WBcWKWIJZJoVxLs6ByM00KuT8+VLyMYCKoFca4zkqU4JBsT1bqgMKIV",
+	"dGVmoZRgK0WV+UWZfkA81HfUNNlS+LnMasfVizI4BmI7AaSlDOQtq9cyd1tvGl1mVLmGlT0thUEzirqA",
+	"R24BTUmqsAMKXS5b0Jz7AvzTP8MJ5wvIyH2LRLPiwurh2Qm4SMKQRJrc6/Pji0vAWkxJBP5EwYezL1bP",
+	"8rGLgpjjIxvk17PPVs9KIjbhDaVhPB4M7u/vt2ZBwqYbiC7xAM5Cv7+9ZW+hYOuGzn1O25gy7FrpBOBr",
+	"iILDsxPJ+hlb9pazZfM8mBAFMMTW2GKD2Fy30huO8kEWeOp7hcoc/Cxyxh4HWZyUcyiJOZ7YrsEsZTBP",
+	"4jkqrmDJF4S/SdRg+QQGfRiGEbnjZ0T8PjADp8BuKWGt2FkaJUi+H1ylXuFBoZh+IN4i21iRrwHD0Mcu",
+	"B3nwI06NSYlEJzjwcDBL8wktH1IUl48c2BBMeA1H3GgkDNCRbdt2cQFZ4xHIoxZSPh/eQ6FPFuI+gNi3",
+	"SzjTSndTtmbF24cBmCCQpM49cMl8wpiUJ0ljegMkiEAORidNUgJUzZ6I280tjdEkhmQk6vm4TCJpOkhI",
+	"GOcwAIe23Y0W1PzTlFylCXSXAb6ZMmoVkq/Jp3XK6bPGrqn3aH0mMACH6uca0Mups2rCvjlztnSVY+dg",
+	"pEmT/aZJQrRSMz5PPEz/ckoJ22PrsGiU5+sJhntk2lgdVnChMvKwMvJJqV0+eIWJr6spud90B0Tf5HxE",
+	"8adTTtAeFyhXEhArm8Elljgo4n84pazQsf14/XhdEi/tMlnziy2cOwx3BvPmjKVHrXikJRz88pBm6pOA",
+	"oiiAPohRdIcigETDnhVnF5pzTSKEUyYnmDuZn5AUikoUlvAXTN6gYIYD7grAWSznPUuazbpm0xU6D8vu",
+	"0AxpVNuviKpHO4p6qxaP8CmKwGQBSjcrJbhT+1tXCqMmy7pAfwuLqDtM3DNrDRLXzWZdXDN/NZ/EMKs+",
+	"LeDpKBhLicpwymBK7xKlfo4Okrz9p4jM9UDUeKJt4JigKYlQe0AuyQrAOGs6ENDuiojJ5HN7aAr57RKn",
+	"fO1+m4nhOQ7wnNk8Tpv9MR0sgHdz+AAc2zYBJSJEOqBsHVTwQUBl211h5OVsphj5Xk0pmw8LbR2bci2M",
+	"25JbYt6mtRfQuX6qvSTincMsouj0So78t7yFM9rNQ5rfaq7Kq1bPMjbJIdvzoT0c9e39/nB46eyMt+3x",
+	"cPSnZS5EUb6tOrLLdSK2RVSp1GqXEVGpssNQn9lVvQnLEC+dQjps6wWiDvZfEk+j8c5ovL1dh6cD295z",
+	"Dg6Go529Hftg34CncquD3XZ4qvQaVvDE/08D1Iy75YD0cLTT2lqqrzGjsV4+45iWzBAsR5pe0oBisw/X",
+	"P/unNEWVEuAS30cuZaoK5mnxTIDgiY9AQDyGk5JZ9yuiwDcjUGOz5daByWKTYhQF9Tx2seNqohQqh9eF",
+	"KUomijle0WyyXD+D62qqT5YKEy+SLwkqpccqYsTurUk41dcMc1pK+QYv/SkOtsl7Vu6xO8Xdc61zzOY/",
+	"nOdVHkqe7HdY+lACqfRFOJipK7u8J/td8Vwz59zg0XKSqjqx31UvVrqtvsJ52bjtFblBc7fS1MsqFZFa",
+	"UueG55F6j7flymTH3lm/OFchKFXm2DiVotEonhGJLRTKPOhnXrAc+q5VINq6RE3RgEY/K5ffzob6XAWA",
+	"9os7YCdTwPWqSI+LeUkNnh+nRowQdG+M4Y5ZRJKQ+d4LYA5w6BbLJvychc41S55CP0b5UiaE+AgGq/Yl",
+	"RVKQGfJSxS85JWZj/M6lQlRMVswQ5ekkYk3x84SteJrSO+6IQB9wDWuKR4jNaTipWo3LvYybeKs3ugKN",
+	"yQOkI71yEbnyqFvePJDPHocclUaI3Ah5mPZjl0So794g99YA1l4O1kfeBVywLuCj6FIBSR62CpHwt0WA",
+	"wuBAttf05hJ1db7jPNDRdfwCCpdhivF2VtU4/a1R5fpNK5E0r17DWtePPcMx8keeqaBFrdX2bPdh7pd4",
+	"xbpKbHvb/cfDPBcYv1xZzpZ9ZQEUuMTDweyXK+uPy0/9/SvrH7w1ugrSXtLCsg8AZJ8y28P75arMC1cW",
+	"Fxa/XJVZ6coqxgBga2urGCx3b8vTDzTz6wO/bNXa0thNR6NOR/+ytQ9Xcyr+pNo8j0rdTv1Y+pPiigms",
+	"J2KQHsunJ2M7zxHY+QC9jA/TOQ/WP+dHEkx97FLQNzEzgH6EoLcA6AHH9JUIqSO+dwCCAN2bFtZKSNU5",
+	"CYOfJrp77Ow/tI1CcRWti0KZDwxfNhSV3X1YlQQGD3M/iH+5KqVKkfmMp0rFIXIHR19OB0PbOXAcxxl8",
+	"+Xp0/HlwZUkC2os8WQgvK8hzm6gs0cvDXUJGoHzM0k/fnXKvXBMouoA3r0LbTVNsmkn4FOOqJpZi4PIX",
+	"kt6vw5B7qmjE8hVOk8D71ScT6J9ItV1a5k28cI6ADEKrrA1DJvWKQFET6HUwVO+6LOXliqJHZI6p7Grn",
+	"u208ghd54moQoH1tJFOeRJ7A3CpbQ7Reca5GBkPLTA3R/C1P4zXmacj3H0TVEiaGKwmof5OMDTnCVLnn",
+	"k6v7bKrS3RHlVG40duw/SyVgxtYljG+/p5GdLKSDGk9zho5apM4Zbu+MdnV2zGjbliuVy0cOQcD0JiUA",
+	"PYiD9TSAxM/XsYvG4GPahgl/xq6Ely1tc2SU3+2RhV5Nxsd+HZ4Jo5P+NPGn2PdFtrgJ0aPxzq5I3lAQ",
+	"LcY8g1nKOWpM7TjYVXG9t39gO0N9jsd+qSp8OhGYQYru4QIkgXy5u03uRxs01iWEbLe2OfVl1WpieVgu",
+	"jfaW/tE6/aOo4SHfDNXVGBN2aNahangOfmZ/Mr97IMjDfEnlPG2QV/lo6Xdz+aHxu6XJV+5qOzVlKQs2",
+	"eHNv9O6N2GgAg5zYzOT0Q1RfMbkwvDrLa/JbfpAJEJXViiC4UGh9CuNbA0w/yEQUAV/KccgL8+lHlz4v",
+	"NTxbVf5UTL6s/LpsO5ekXbm7JSzwtxP8FzPNBamnm/13sc4LU7Goh2n9IDfBlkdQrXHo2OPhrtY4PEd3",
+	"GN0flqx5jTW9Y7c1gPMilduFFZczrEBaEqMoE0qlS4eM4vi4qZMRceD67NcUw1UzusDIMobxBQq8U0Lx",
+	"tLJ01RZuZ7S2WXpFJJdWH0iwiEzD9GIyG9rFIeaEZLlJTMkcRf8UxLPlEhU9debxYwfp2NowZhoVkABI",
+	"NPtmIXc4Wtfgr7BefpBJ3QG6qBrxG5lYT7gM/YNMftdzfolKBS/o5cxovM29/Ug8PmPFictas7VEMIih",
+	"m0NNH/p7+wf9h8VfVt1l6gyqdkWh2tfCEOMud7VYY6n/RiZFYeg3K91E8hmtAsgoXiHxzDYf/Ez357HB",
+	"SG/tzu3o3TlBBS98aPrK1TkmWy6cJ4EHt/5CaILGTL9fahSchAYO8uHZWZ+H8NhqhVbLcsB97CLwG7kJ",
+	"4vxtX6Nl0EGf6QiasW4pD/slcj+eIfebrfPVZXv/kDanUVoMUk4yR4PScvEbJTiW1NY6mVGjRuUK+vWF",
+	"N/KWy6nGHb1qzArzvzHYZunjlCFSbcxfiwVMeLfgtMzWkXmtYpbP02s84Pz44nKa+AAFXkhwQHmFJNEf",
+	"B7N08i1wCW9RzHP6GSy3aAFgDOBVwBgP5MzKg2wIemlQmTfPVjsh3mILnEVoiqIIeYAwZ+Ds68Ul4LBf",
+	"Be/cwlJ+z6GYIMrG5LWbYjSHAcVuvMWzaIw29odFyvmvW35UFbN0XZDXoZunzmZ2F0scw6d6t9Zgb7DB",
+	"FZHSWoS8uHX9JkPa2PRp1aecCsA7nMmBw7OT91rJIs4OY7PePksmPo5vvuTPXy1N9y6JIuTDPPnYsh2n",
+	"P9we9fed7eKBrdMsgsuPMvsRchFOs1nKfDMXB+a2bTMTNopQ4LJB/7g44hJikZvnIVwwW7cPJ24az+ED",
+	"Ksb97niYnpjXsVh1Dea3s41vJHbwlCuzlcdemf8sthbEohT/m/usYzXBBwCC4iW4jJ/y589TniIeni4G",
+	"wssr7kEaWewL71CtK9uV00wkW8k5iC8Jr4+p0gH/OQZ59gGg5BYFW22fzzZW3dQUsFVhyqtbasocZ5+W",
+	"h622dqauUvOytWlLzF1BL6Kxcl5ZSGupPKhBGmiAeoIMWJKa1l/cOFTrK3d6euKxxUWUs+o2cJ7FLxk+",
+	"/BtF65eQvqmI1B335zIYz6Is7qaI3pJgjpmg6rcXz1ywVcjsayAoOX6KRaSvZF25FbDPw38R89cy7vH4",
+	"iqc+uT9NC/v2in+GTCjUmEoSSEdpULEwgqRgYHprVPzT3xnt1ppFTyvJraxNeWrQ98l9zN1GCHgHAClw",
+	"b0iMgqy8MsCerA0Us6sqZjqYYaZkcxXy55DH3YRhs+gTwe43ybeZku8iJXd+vU6xHjISVNkh7iYas59b",
+	"FuZQH314K8qx0UU5NJdrpHoc6qstm12Fowpv9U2lduU3dLxc0PCgSEnqcFVIVy6DP4EM4hC5eIrdrPGT",
+	"LxWtKu1puy4TPrcASDAhMPLY1LpnlXQNt1gzw1XH/aLMhOgIvuYdwVmOovwy4zbbhBb3ITSgVVuZ4Ro5",
+	"Q+UKZtZLB9RQB5Tu8oAGKqVZDVhDOweLUyT4VBq9U8mN9hn6hpd9ajKRVCkTb1SxaznrRwdroTJVfdhY",
+	"RkNBV61nME98ikMY0QFTDP3s4cLsfjb7O7sLKvUUuWky+ohLEe3HNEJwXmujy8PVvBckaQj+Gto7Tpcg",
+	"VV9cz/QA04o7Xz68tyS1NsEBjBaNjwvkUKzPVO7sYK3DsWnjQlx3iFT8jatlaCjz1RfKUNfUJHwMVvog",
+	"Lj2Q2Npgl16qe6rl/nYddi0G+rrt8Be57r7Kom7P4VkUfkTpJcvqQ5b/dRchOt1B7mBzq2+octvUGjPL",
+	"W7pyys1U9cFUkf843hnJL/aNHWffzl/qG49KL/iNh5kBzCYZ2Y9NDkkbw397HYa/ETf7ZdQMa1HjsPVK",
+	"uNkbmVHjjHLU7B/oMTNyVuh7DJf3PSpvwLazlOLSc6wb5YaEtdAuaQv81JmZj53sgvbVsfa12VWGWPmL",
+	"JnkXz4I/qTQWG2ZcU6GQf89DtHJxqww4tb5VVchcWQDHx/yUG0581pLhq66SoTxrpUaVCWBFz2mlukFK",
+	"Sgy/NDObS0upTPx3PJdoIS1WKyKW9SLE0VedM/H6xcdx4B3foYB+z6vj5+pW6DW7ag6OmTL9Na3C0bVb",
+	"mkfDJ3RadlGqulS7bSvdnKxbpUZJtee+eUL1xku1MzPqKr2HWe+LZDLHtK73SDN1+8f5FMrUsF/2em9B",
+	"/TzxGcxhyB2z7GA3vUKRbEDtEUUyREkQ8APAwMuLLwhYuWPMfTuxkC4yo9VDfcoT0A2hhN/RguGVucFa",
+	"idYkK56hCJwMIn+mXJdzUhwF7trbw4MdBqcz2tkzwWl67/yJsH4Qj7jzjP0KXvMjYv467BziwF+I7H+R",
+	"UxrM1MaU8EGy1+EBCiimiy1TREB6RL6To/4qD4PXcQTcCTDzoeO7LMqUc61c6yc7h3y/+sBOEXEB77gQ",
+	"RDGY8RqU/iIDobhW/X4V9Sc2qPDEWwHFVtUtO1ewzG+5FmGMUtwij2d0e+QivSRAAR8e00WeOWYMeWYt",
+	"n+8kvqE84HBndeUBs0e7bvXXjzvkJpavJq8p9/BJy+UXt52habmjVS93tPxy9/YP9BVXsgqR+ysiAenV",
+	"yVt9VZXV4mRvtDROHNvpUmZlp3OcsXiUsj7BIbO21fJ5b9mTm14H0bx3qlskZUe2SvpY+tLOEsngz53b",
+	"LVv545d0QZSU7hscUxItLvEcXZLP+E6T2nKUpFvG572/wdJJa/GGHSMnGCFwi0IKcADYqMxDycw3zZJQ",
+	"4MVb4GQKyBxTZmaxVsLYB/fY98EEgRC7t8gDSZgSa/pePnBJMMUzAdcWeOd4+zc94HwZefs3Jd/H2rY9",
+	"3bKfkGz/1KT3Z0na+e+xWd6y9v+uWfupdjCk7dcrHG0ULo/bt317WVVM7Yom2E5dXH6DXl5+ZVKCu54X",
+	"FNIkTms75Cd/orBDnShh9BLfHurqzqxSyPB6rGm2ukKyb3JmQ6s0xeZNAzFi46V3PLQcvBIxNBB2WJ04",
+	"+pdosmli6K308CrTINdyJaVe0CvF+ErHp/rbFKO2r5B3nvyTT+6N0+6uato9/aseN8i9baw/ONxrCcUq",
+	"b5J8Kh6NF4KgKdAiIq/4JSMrr6eC7R2OMRPzU5/c5xdAxXXpdRmf7R4kq3mKbNMkf3FQkJ+jb9LjXG+K",
+	"aQMU0/A5XmdS5fizPdGU1ooEzNsYgz9iFEkF0Z7yDlPvqdjaHQ+Hq3nLamhA1J4eUY6MqOMHyVHALmrx",
+	"wJKurm+KFc0yd0ZjZ/9Pq8Bh5QmmFSVXF08vdXhx6U0H1+vg4pmlNevdpgd0Ko6+/j2dN7frTbvVa7eO",
+	"nk8HF8Sxu6qS1q+Y6Mu5VyqYS8jIy5jXrnc4dkYtlI9uqU7XpZZSXpofLslfe8jryDIKIxGyxvujx5Vq",
+	"Df4kSfNLJG+Rwlfx3smalVT53ZJEo6n+CD31/PzfebeNPK9YR8Fnfh3wMDtMGNlsnjuM7j+aCkHfoUh+",
+	"NyltjbwPC/O5QKcy0fIhcNF0ZSXp8y0GCaeAtxdbjEybskhNzdDVs+vgZ/bnKZyjx3T7smLzZQY+4r8b",
+	"GHgTLc4isYKieUgiGC0++XBmaQGQ0VA7dXMyaA0TgBS5/9111fPFvrLi6imB687V7goqb+A/imIaD36y",
+	"0U+8R1F61A2TfhiRKfZrqo5eopjys4yPYXImGjdcrzk5ylKw2HxshWHeUUPiKVC1xB1Cygwea2z9/2+w",
+	"/9dh/0+7f9D/fv1//8dqXX6gUtclTDKoorR8IYo26lKVKC8KXAlQaZ954Q3D3pKwy9aS8Ck7y2YT8KU1",
+	"2V5ug5esJM2smmlJeE8WVHu/oLlKUoWqSBgib8OoioTNRMW68DFSGkgi3xpbN5SG48HAJy70b0hMx/v2",
+	"vj24c3hMUIzws6I3+6X708pXKasj/+bNg35WnMvQ3UMujpnX3PBZN/wPMpH/zWKq0k/5O9HSbxwxj9eP",
+	"/xsAAP//D5+2/A7rAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -40,14 +40,14 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
-	v := engineStorage.ProcessInstances[instance.Key]
+	v := engineStorage.ProcessInstances[instance.ProcessInstance().Key]
 	time.Sleep(1 * time.Second)
-	*instance, err = bpmnEngine.FindProcessInstance(instance.Key)
+	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	// then
 	assert.NotNil(t, v, "Process instance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, "newVal", v.ProcessInstance().VariableHolder.GetLocalVariable(variableName))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }
 
 func TestSubProcessStartsAndCompletes(t *testing.T) {
@@ -78,14 +78,14 @@ func TestSubProcessStartsAndCompletes(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
 
-	v := engineStorage.ProcessInstances[instance.Key]
+	v := engineStorage.ProcessInstances[instance.ProcessInstance().Key]
 	time.Sleep(2 * time.Second)
-	*instance, err = bpmnEngine.FindProcessInstance(instance.Key)
+	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	// then
 	assert.NotNil(t, v, "Process instance needs to be present")
-	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, "newVal", v.ProcessInstance().VariableHolder.GetLocalVariable(variableName))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }
 
 func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
@@ -106,17 +106,17 @@ func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 	// wait for call activity process to be created
 	time.Sleep(1 * time.Second)
 
-	parentInstanceKey := instance.Key
-	var foundInstance *runtime.ProcessInstance
+	parentInstanceKey := instance.ProcessInstance().Key
+	var foundInstance runtime.ProcessInstance
 	for _, pi := range engineStorage.ProcessInstances {
 		if pi.ParentProcessExecutionToken != nil && pi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
-			foundInstance = &pi
+			foundInstance = pi
 			break
 		}
 	}
 
 	var job runtime.Job
-	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), foundInstance.Key)
+	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), foundInstance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs), "There should be one job")
 	job = jobs[0]
@@ -130,11 +130,11 @@ func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 	// wait for parent process instance to continue
 	time.Sleep(1 * time.Second)
 
-	v, err := bpmnEngine.FindProcessInstance(foundInstance.Key)
+	v, err := bpmnEngine.FindProcessInstance(foundInstance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.NotNil(t, v, "Process instance needs to be present")
-	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.State.String())
-	assert.Equal(t, "newVal", v.VariableHolder.GetLocalVariable(variableName))
+	assert.Equal(t, runtime.ActivityStateCompleted.String(), v.ProcessInstance().State.String())
+	assert.Equal(t, "newVal", v.ProcessInstance().VariableHolder.GetLocalVariable(variableName))
 }
 
 func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
@@ -159,11 +159,11 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	// wait for call activity process to be created
 	time.Sleep(1 * time.Second)
 
-	parentInstanceKey := instance.Key
-	var foundChildInstance *runtime.ProcessInstance
+	parentInstanceKey := instance.ProcessInstance().Key
+	var foundChildInstance runtime.ProcessInstance
 	for _, pi := range engineStorage.ProcessInstances {
 		if pi.ParentProcessExecutionToken != nil && pi.ParentProcessExecutionToken.ProcessInstanceKey == parentInstanceKey {
-			foundChildInstance = &pi
+			foundChildInstance = pi
 			break
 		}
 	}
@@ -174,19 +174,19 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	assert.NoError(t, err)
 
 	// then
-	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(subscriptions))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState(), "Parent instance should be completed")
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState(), "Parent instance should be completed")
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), foundChildInstance.Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), foundChildInstance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateTerminated, instance.GetState(), "Child instance should be terminated")
+	assert.Equal(t, runtime.ActivityStateTerminated, instance.ProcessInstance().GetState(), "Child instance should be terminated")
 
-	jobs := findActiveJobsForProcessInstance(instance.Key, "TestType")
+	jobs := findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "TestType")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 }

@@ -37,11 +37,11 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	batch := engine.persistence.NewBatch()
 
 	// Token points either to message listener or event based gateway
-	pd := instance.Definition.Definitions.Process
+	pd := instance.ProcessInstance().Definition.Definitions.Process
 	node := pd.GetFlowNodeById(message.Token.ElementId)
 	switch nodeT := node.(type) {
 	case *bpmn20.TEventBasedGateway:
-		tokens, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, message, &instance, variables)
+		tokens, err := engine.publishEventOnEventGateway(ctx, batch, nodeT, message, instance, variables)
 		if err != nil {
 			return newEngineErrorf("failed to publish message %s to event gateway in instance %d. Unexpected node type %T", message.Name, message.ProcessInstanceKey, nodeT)
 		}
@@ -50,14 +50,14 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 
-		return engine.runProcessInstance(ctx, &instance, tokens)
+		return engine.runProcessInstance(ctx, instance, tokens)
 	case *bpmn20.TIntermediateCatchEvent:
-		tokens, err := engine.publishMessageOnListener(ctx, batch, nodeT, &message, &instance, variables)
+		tokens, err := engine.publishMessageOnListener(ctx, batch, nodeT, &message, instance, variables)
 		if err != nil {
 			errBatch := engine.persistence.NewBatch()
 			message.State = runtime.ActivityStateFailed
 			errBatch.SaveMessageSubscription(ctx, message)
-			instance.State = runtime.ActivityStateFailed
+			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			errBatch.SaveProcessInstance(ctx, instance)
 			if err := errBatch.Flush(ctx); err != nil {
 				engine.logger.Error("Failed to save failed message", "msg", message, "err", err)
@@ -69,7 +69,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 
-		return engine.runProcessInstance(ctx, &instance, tokens)
+		return engine.runProcessInstance(ctx, instance, tokens)
 	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity:
 		return engine.handleBoundaryMessage(ctx, batch, message, instance, variables)
 
@@ -83,21 +83,21 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	// if so we need to handle interrupting/non interrupting boundary events
 }
 
-func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TIntermediateCatchEvent, message *runtime.MessageSubscription, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TIntermediateCatchEvent, message *runtime.MessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
 	message.State = runtime.ActivityStateCompleted
 	err := batch.SaveMessageSubscription(ctx, *message)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
+		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
 	}
 
-	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, variables)
 	if err = variableHolder.PropagateLocalVariablesToParent(listener.Output, engine.evaluateExpression); err != nil {
-		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.Key, err)
+		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	err = batch.SaveProcessInstance(ctx, *instance)
+	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, nil, token)
@@ -110,12 +110,12 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch storag
 func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch storage.Batch, message runtime.MessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) error {
 	var listener *bpmn20.TBoundaryEvent
 
-	for _, be := range instance.Definition.Definitions.Process.BoundaryEvent {
+	for _, be := range instance.ProcessInstance().Definition.Definitions.Process.BoundaryEvent {
 		if be.AttachedToRef != message.Token.ElementId {
 			continue
 		}
 		if messageDef, ok := be.EventDefinition.(bpmn20.TMessageEventDefinition); ok {
-			m, err := instance.Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
+			m, err := instance.ProcessInstance().Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
 			if err != nil {
 				return fmt.Errorf("failed to find message %s: %w", messageDef.MessageRef, err)
 			}
@@ -129,42 +129,42 @@ func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch storage.B
 		return fmt.Errorf("failed to find boundary event for message subscription %s", message.Name)
 	}
 
-	tokens, err := engine.publishMessageOnBoundaryListener(ctx, batch, listener, &message, &instance, variables)
+	tokens, err := engine.publishMessageOnBoundaryListener(ctx, batch, listener, &message, instance, variables)
 	if err != nil {
 		errBatch := engine.persistence.NewBatch()
 		message.State = runtime.ActivityStateFailed
 		errBatch.SaveMessageSubscription(ctx, message)
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		errBatch.SaveProcessInstance(ctx, instance)
 		if err := errBatch.Flush(ctx); err != nil {
 			engine.logger.Error("Failed to save failed message subscription", "msg", message, "err", err)
 		}
-		return errors.Join(newEngineErrorf("failed to publish message %s to listener in instance %d. ", message.Name, instance.Key), err)
+		return errors.Join(newEngineErrorf("failed to publish message %s to listener in instance %d. ", message.Name, instance.ProcessInstance().Key), err)
 	}
 	batch.Flush(ctx)
-	return engine.runProcessInstance(ctx, &instance, tokens)
+	return engine.runProcessInstance(ctx, instance, tokens)
 }
 
-func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TBoundaryEvent, message *runtime.MessageSubscription, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batch storage.Batch, listener *bpmn20.TBoundaryEvent, message *runtime.MessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
 	message.State = runtime.ActivityStateCompleted
 	err := batch.SaveMessageSubscription(ctx, *message)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.Key, err)
+		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
 	}
 
-	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, variables)
 	if err = variableHolder.PropagateLocalVariablesToParent(listener.Output, engine.evaluateExpression); err != nil {
-		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.Key, err)
+		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	err = batch.SaveProcessInstance(ctx, *instance)
+	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+		job, err := engine.persistence.FindJobByElementID(ctx, instance.ProcessInstance().Key, token.ElementId)
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
@@ -187,7 +187,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 		}
 
 	} else {
-		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		// recreate the message subscription
 		_, err := engine.createMessageCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TMessageEventDefinition), element, token)
 		if err != nil {
@@ -202,11 +202,11 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	return tokens, nil
 }
 
-func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, token *runtime.ExecutionToken) error {
+func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, token *runtime.ExecutionToken) error {
 	// cancel other message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
+	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
 	if err != nil {
-		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	for _, sub := range subscriptions {
 		sub.State = runtime.ActivityStateTerminated
@@ -219,7 +219,7 @@ func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch sto
 	// cancel other timer subscriptions
 	timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
-		return fmt.Errorf("failed to find timers for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	for _, timer := range timers {
 		timer.TimerState = runtime.TimerStateCancelled
@@ -240,7 +240,7 @@ type GatewayEvent interface {
 // publishEventOnEventGateway currently supports gateway events:
 // runtime.MessageSubscription
 // runtime.Timer
-func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch storage.Batch, gateway *bpmn20.TEventBasedGateway, event GatewayEvent, instance *runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch storage.Batch, gateway *bpmn20.TEventBasedGateway, event GatewayEvent, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	outgoing := gateway.GetOutgoingAssociation()
 	var catchEvent *bpmn20.TIntermediateCatchEvent
 	for _, flow := range outgoing {
@@ -269,13 +269,13 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", message.Key, err)
 		}
 		token = message.Token
-		variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, variables)
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, variables)
 		if err = variableHolder.PropagateLocalVariablesToParent(catchEvent.Output, engine.evaluateExpression); err != nil {
 			return nil, err
 		}
-		err = batch.SaveProcessInstance(ctx, *instance)
+		err = batch.SaveProcessInstance(ctx, instance)
 		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+			return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 		}
 	case bpmn20.TTimerEventDefinition:
 		timer := event.(runtime.Timer)
@@ -317,7 +317,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch stor
 func (engine *Engine) createMessageCatchEvent(
 	ctx context.Context,
 	messageWriter storage.MessageStorageWriter,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	messageDef bpmn20.TMessageEventDefinition,
 	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
@@ -339,15 +339,15 @@ func (engine *Engine) createMessageCatchEvent(
 	return token, nil
 }
 
-func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition, element bpmn20.FlowNode, token runtime.ExecutionToken) (runtime.MessageSubscription, error) {
-	message, err := instance.Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
+func (engine *Engine) createMessageSubscription(instance runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition, element bpmn20.FlowNode, token runtime.ExecutionToken) (runtime.MessageSubscription, error) {
+	message, err := instance.ProcessInstance().Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
 	if err != nil {
 		return runtime.MessageSubscription{}, fmt.Errorf("failed to create message subscription: %w", err)
 	}
 
 	correlationKey := message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, instance.VariableHolder.LocalVariables())
+		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, instance.ProcessInstance().VariableHolder.LocalVariables())
 		if err != nil {
 			token.State = runtime.TokenStateFailed
 			return runtime.MessageSubscription{}, fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
@@ -363,8 +363,8 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 	ms := runtime.MessageSubscription{
 		Key:                  engine.generateKey(),
 		ElementId:            element.GetId(),
-		ProcessDefinitionKey: instance.Definition.Key,
-		ProcessInstanceKey:   instance.GetInstanceKey(),
+		ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+		ProcessInstanceKey:   instance.ProcessInstance().GetInstanceKey(),
 		Name:                 message.Name,
 		CorrelationKey:       correlationKey,
 		State:                runtime.ActivityStateActive,
@@ -375,7 +375,7 @@ func (engine *Engine) createMessageSubscription(instance *runtime.ProcessInstanc
 	return ms, nil
 }
 
-func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	switch ed := ite.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
 		activityResult, err := engine.createInternalTask(ctx, batch, instance, ite, currentToken)

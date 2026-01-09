@@ -15,7 +15,7 @@ import (
 	"github.com/senseyeio/duration"
 )
 
-func (engine *Engine) createTimerCatchEvent(ctx context.Context, timerWriter storage.TimerStorageWriter, instance *runtime.ProcessInstance, timerDef bpmn20.TTimerEventDefinition, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
+func (engine *Engine) createTimerCatchEvent(ctx context.Context, timerWriter storage.TimerStorageWriter, instance runtime.ProcessInstance, timerDef bpmn20.TTimerEventDefinition, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
 	timer, err := engine.createTimer(ctx, timerWriter, instance, timerDef, element, currentToken)
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
@@ -32,7 +32,7 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, timerWriter sto
 func (engine *Engine) createTimer(
 	ctx context.Context,
 	timerStorageWriter storage.TimerStorageWriter,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	timerDef bpmn20.TTimerEventDefinition,
 	element bpmn20.FlowNode,
 	token runtime.ExecutionToken,
@@ -47,8 +47,8 @@ func (engine *Engine) createTimer(
 		ElementId:            element.GetId(),
 		Key:                  engine.generateKey(),
 		ElementInstanceKey:   token.ElementInstanceKey,
-		ProcessDefinitionKey: instance.Definition.Key,
-		ProcessInstanceKey:   instance.Key,
+		ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+		ProcessInstanceKey:   instance.ProcessInstance().Key,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            now,
 		DueAt:                durationVal.Shift(now),
@@ -71,13 +71,13 @@ func (engine *Engine) processTimer(ctx context.Context, timer runtime.Timer) {
 
 	err = engine.runProcessInstance(ctx, instance, tokens)
 	if err != nil {
-		engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.Key, err))
+		engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.ProcessInstance().Key, err))
 		return
 	}
 }
 
 func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	tokens []runtime.ExecutionToken,
 	retErr error,
 ) {
@@ -89,14 +89,13 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 		completeTimerSpan.End()
 	}()
-	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", timer.ProcessInstanceKey), err)
 	}
-	instance = &inst
 
 	currentToken := timer.Token
-	tokenNode := instance.Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
+	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
 	if tokenNode.GetId() == "" {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId), err)
 	}
@@ -137,7 +136,7 @@ func (engine *Engine) triggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 
 	default:
-		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.Key, nodeT)
+		msg := fmt.Sprintf("failed to trigger timer %+v to instance %d. Unexpected node type %T", timer, instance.ProcessInstance().Key, nodeT)
 		engine.logger.Error(msg)
 		return nil, nil, &BpmnEngineError{Msg: msg}
 	}
@@ -153,10 +152,10 @@ func findDurationValue(timerDef bpmn20.TTimerEventDefinition) (duration.Duration
 	return duration.ParseISO8601(durationStr)
 }
 
-func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Batch, timer runtime.Timer, instance *runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Batch, timer runtime.Timer, instance runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	var listener *bpmn20.TBoundaryEvent
 
-	for _, be := range instance.Definition.Definitions.Process.BoundaryEvent {
+	for _, be := range instance.ProcessInstance().Definition.Definitions.Process.BoundaryEvent {
 		if be.AttachedToRef != timer.Token.ElementId {
 			continue
 		}
@@ -174,7 +173,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.Key, token.ElementId)
+		job, err := engine.persistence.FindJobByElementID(ctx, instance.ProcessInstance().Key, token.ElementId)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
@@ -193,7 +192,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch storage.Bat
 			engine.cancelInstance(ctx, calledProcess, batch)
 		}
 	} else {
-		element := instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		// recreate the message subscription
 		_, err := engine.createTimerCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TTimerEventDefinition), element, token)
 		if err != nil {

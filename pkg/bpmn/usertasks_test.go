@@ -18,7 +18,7 @@ func TestUserTasksCanBeHandled(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 	assert.Equal(t, "user-task", cp.CallPath)
 }
 
@@ -42,22 +42,22 @@ func TestUserTasksCanBeContinue(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)
 
 	//when
 	userConfirm = true
-	tokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err = bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	err = bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
 	assert.NoError(t, err)
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 	assert.Equal(t, "user-task", cp.CallPath)
 }

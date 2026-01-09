@@ -8,7 +8,7 @@ import (
 
 // ActivatedJob is a struct to provide information for registered task handler
 type activatedJob struct {
-	processInstanceInfo      *runtime.ProcessInstance
+	processInstanceInfo      runtime.ProcessInstance
 	completeHandler          func()
 	failHandler              func(reason string)
 	key                      int64
@@ -73,7 +73,7 @@ func (aj *activatedJob) CreatedAt() time.Time {
 
 // InstanceKey implements ActivatedJob
 func (aj *activatedJob) InstanceKey() int64 {
-	return aj.processInstanceInfo.GetInstanceKey()
+	return aj.processInstanceInfo.ProcessInstance().GetInstanceKey()
 }
 
 // ElementId implements ActivatedJob

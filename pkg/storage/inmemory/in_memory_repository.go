@@ -280,7 +280,7 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
 	res := make([]bpmnruntime.ProcessInstance, 0)
 	for _, processInstance := range mem.ProcessInstances {
-		if processInstance.SubProcessParentMetadata != nil && processInstance.SubProcessParentMetadata.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
+		if processInstance.SubProcessMetadata != nil && processInstance.SubProcessMetadata.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
 			res = append(res, processInstance)
 		}
 	}

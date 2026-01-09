@@ -184,7 +184,7 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	// then
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.NotNil(t, err)
 	assert.ErrorContains(t, err, "No default flow, nor matching expressions found, for flow elements")
 }

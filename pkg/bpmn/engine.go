@@ -119,59 +119,12 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 	return engine.dmnEngine
 }
 
-// Start will start the process engine instance.
-// Engine will start to pull process instances with execution tokens that need to be processed
-func (engine *Engine) Start() error {
-	ctx := context.Background()
-	if engine.timerManager != nil {
-		engine.timerManager.stop()
-	}
-	engine.timerManager = newTimerManager(engine.processTimer, engine.persistence.FindTimersTo, 10*time.Second)
-	engine.timerManager.start()
-	tokens, err := engine.persistence.GetRunningTokens(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load running tokens: %w", err)
-	}
-	type instanceToStart struct {
-		instance *runtime.ProcessInstance
-		tokens   []runtime.ExecutionToken
-	}
-	instancesToStart := make(map[int64]instanceToStart)
-	for _, token := range tokens {
-		if val, ok := instancesToStart[token.ProcessInstanceKey]; ok {
-			val.tokens = append(val.tokens, token)
-			instancesToStart[token.ProcessInstanceKey] = val
-		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
-			if err != nil {
-				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
-			}
-			instancesToStart[token.ProcessInstanceKey] = instanceToStart{
-				instance: &instance,
-				tokens:   []runtime.ExecutionToken{token},
-			}
-		}
-	}
-	for _, instance := range instancesToStart {
-		err := engine.runProcessInstance(ctx, instance.instance, instance.tokens)
-		if err != nil {
-			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.Key, err.Error()))
-		}
-	}
-
-	return nil
-}
-
-func (engine *Engine) Stop() {
-	engine.timerManager.stop()
-}
-
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch storage.Batch) error {
 
 	// Cancel all message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.GetInstanceKey(), runtime.ActivityStateActive)
+	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
 	if err != nil {
-		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	for _, sub := range subscriptions {
@@ -183,9 +136,9 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	// Cancel all timer subscriptions
-	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.Key, runtime.TimerStateCreated)
+	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
 	if err != nil {
-		return fmt.Errorf("failed to find timers for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	for _, timer := range timers {
 		timer.TimerState = runtime.TimerStateCancelled
@@ -196,9 +149,9 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	// Cancell all jobs
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.Key)
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
 	if err != nil {
-		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	for _, job := range jobs {
@@ -211,9 +164,9 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 
 	// Cancel all incidents
 
-	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.Key)
+	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
 	if err != nil {
-		return fmt.Errorf("failed to find incidents for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find incidents for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	for _, incident := range incidents {
@@ -226,9 +179,9 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 
 	// Cancel all called processes
 
-	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.Key)
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
 	if err != nil {
-		return fmt.Errorf("failed to find tokens for instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to find tokens for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	for _, token := range tokens {
@@ -251,10 +204,10 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	}
 
 	// Cancel process instance
-	instance.State = runtime.ActivityStateTerminated
+	instance.ProcessInstance().State = runtime.ActivityStateTerminated
 	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
-		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.Key, err)
+		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	return nil
@@ -353,22 +306,22 @@ func (engine *Engine) terminateExecutionTokens(
 	return activeTokensLeft, nil
 }
 
-func (engine *Engine) startExecutionTokens(ctx context.Context, batch storage.Batch, startingElementIds []string, processInstance *runtime.ProcessInstance) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) startExecutionTokens(ctx context.Context, batch storage.Batch, startingElementIds []string, processInstance runtime.ProcessInstance) ([]runtime.ExecutionToken, error) {
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, elementId := range startingElementIds {
-		var flowNode = processInstance.Definition.Definitions.Process.GetFlowNodeById(elementId)
+		var flowNode = processInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(elementId)
 		executionToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          flowNode.GetId(),
-			ProcessInstanceKey: processInstance.Key,
+			ProcessInstanceKey: processInstance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 			CreatedAt:          time.Now(),
 		}
 		executionTokens = append(executionTokens, executionToken)
 		err := batch.SaveToken(ctx, executionToken)
 		if err != nil {
-			return nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", flowNode.GetId(), processInstance.Key, err)
+			return nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", flowNode.GetId(), processInstance.ProcessInstance().Key, err)
 		}
 	}
 
@@ -379,21 +332,18 @@ func (engine *Engine) createInstance(
 	ctx context.Context,
 	process *runtime.ProcessDefinition,
 	variableHolder runtime.VariableHolder,
-	subProcessMetadata *runtime.SubProcessParentMetadata,
-) (output *runtime.ProcessInstance, err error) {
-	processInstance := runtime.ProcessInstance{
-		Definition:               process,
-		Key:                      engine.generateKey(),
-		VariableHolder:           variableHolder,
-		CreatedAt:                time.Now(),
-		State:                    runtime.ActivityStateReady,
-		SubProcessParentMetadata: subProcessMetadata,
-	}
+	instance runtime.ProcessInstance,
+) (output runtime.ProcessInstance, err error) {
+	instance.ProcessInstance().Definition = process
+	instance.ProcessInstance().Key = engine.generateKey()
+	instance.ProcessInstance().VariableHolder = variableHolder
+	instance.ProcessInstance().CreatedAt = time.Now()
+	instance.ProcessInstance().State = runtime.ActivityStateReady
 
-	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
 		if err != nil {
@@ -404,7 +354,7 @@ func (engine *Engine) createInstance(
 	}()
 
 	batch := engine.persistence.NewBatch()
-	batch.SaveProcessInstance(ctx, processInstance)
+	batch.SaveProcessInstance(ctx, instance)
 
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
@@ -413,7 +363,7 @@ func (engine *Engine) createInstance(
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          be.GetId(),
-			ProcessInstanceKey: processInstance.Key,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		})
 	}
@@ -424,14 +374,14 @@ func (engine *Engine) createInstance(
 	}
 
 	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
+		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
 
-	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
+	err = engine.runProcessInstance(ctx, instance, executionTokens)
 	if err != nil {
-		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
+		return instance, fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	return &processInstance, nil
+	return instance, nil
 }
 
 func (engine *Engine) createInstanceWithStartingElements(
@@ -439,25 +389,22 @@ func (engine *Engine) createInstanceWithStartingElements(
 	processDefinition *runtime.ProcessDefinition,
 	startingFlowNodes []bpmn20.FlowNode,
 	variableHolder runtime.VariableHolder,
-	subProcessMetadata *runtime.SubProcessParentMetadata,
-) (output *runtime.ProcessInstance, err error) {
-	processInstance := runtime.ProcessInstance{
-		Definition:               processDefinition,
-		Key:                      engine.generateKey(),
-		VariableHolder:           variableHolder,
-		CreatedAt:                time.Now(),
-		State:                    runtime.ActivityStateReady,
-		SubProcessParentMetadata: subProcessMetadata,
-	}
+	instance runtime.ProcessInstance,
+) (output runtime.ProcessInstance, err error) {
+	instance.ProcessInstance().Definition = processDefinition
+	instance.ProcessInstance().Key = engine.generateKey()
+	instance.ProcessInstance().VariableHolder = variableHolder
+	instance.ProcessInstance().CreatedAt = time.Now()
+	instance.ProcessInstance().State = runtime.ActivityStateReady
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
 		startNodeIds = append(startNodeIds, startNode.GetId())
 	}
-	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", processInstance.Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", instance.ProcessInstance().Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 	defer func() {
 		if err != nil {
@@ -468,7 +415,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}()
 
 	batch := engine.persistence.NewBatch()
-	batch.SaveProcessInstance(ctx, processInstance)
+	batch.SaveProcessInstance(ctx, instance)
 
 	executionTokens := make([]runtime.ExecutionToken, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
@@ -476,7 +423,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          startNode.GetId(),
-			ProcessInstanceKey: processInstance.Key,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		})
 	}
@@ -487,53 +434,52 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 
 	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("bpmn_process_id", processInstance.Definition.BpmnProcessId),
+		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
 
-	err = engine.runProcessInstance(ctx, &processInstance, executionTokens)
+	err = engine.runProcessInstance(ctx, instance, executionTokens)
 	if err != nil {
-		return &processInstance, fmt.Errorf("failed to run process instance %d: %w", processInstance.Key, err)
+		return instance, fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	return &processInstance, nil
+	return instance, nil
 }
 
 // runProcessInstance will run the process instance with supplied tokens.
 // As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
 // Lock will be released once the runProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
-func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
+func (engine *Engine) runProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
 	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
 	defer func() {
 		engine.metrics.ProcessesRunning.Add(ctx, -1, metric.WithAttributes(
-			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}()
-	engine.runningInstances.lockInstance(instance.Key)
-	defer engine.runningInstances.unlockInstance(instance.Key)
+	engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
+	defer engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 
 	// we have to load the instance from DB because previous run could change it
-	inst, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.Key)
+	instance, err = engine.persistence.FindProcessInstanceByKey(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance to run: %w", err)
 	}
 
-	*instance = inst
-	process := instance.Definition
+	process := instance.ProcessInstance().Definition
 	runningExecutionTokens := executionTokens
 	var runErr error
 
-	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.Definition.BpmnProcessId), trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.Key),
-		attribute.String(otelPkg.AttributeProcessId, instance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.Definition.Key),
+	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
+		attribute.String(otelPkg.AttributeProcessId, instance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, instance.ProcessInstance().Definition.Key),
 	))
 
-	instance.State = runtime.ActivityStateActive
-	err = engine.persistence.SaveProcessInstance(ctx, *instance)
+	instance.ProcessInstance().State = runtime.ActivityStateActive
+	err = engine.persistence.SaveProcessInstance(ctx, instance)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.Key), err)
+		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.ProcessInstance().Key), err)
 	}
 	defer func() {
 		if err != nil {
@@ -559,7 +505,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {
-			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
+			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			runErr = errors.Join(runErr, err)
 			engine.handleIncident(ctx, currentToken, err, tokenSpan)
 
@@ -571,7 +517,7 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 		updatedTokens, err := engine.processFlowNode(ctx, batch, instance, activity, currentToken)
 		if err != nil {
-			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.Key, "err", err)
+			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			runErr = errors.Join(runErr, err)
 
 			engine.handleIncident(ctx, currentToken, err, tokenSpan)
@@ -603,10 +549,10 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 		}
 		tokenSpan.End()
 
-		if instance.State == runtime.ActivityStateCompleted {
-			if instance.SubProcessParentMetadata != nil {
+		if instance.ProcessInstance().State == runtime.ActivityStateCompleted {
+			if instance.Type() != runtime.ProcessTypeDefault {
 				//sub process ended
-				engine.handleParentProcessContinuation(ctx, *instance, activity.Element())
+				engine.handleParentProcessContinuation(ctx, instance, activity.Element())
 				break
 			} else {
 				//process ended
@@ -617,22 +563,22 @@ func (engine *Engine) runProcessInstance(ctx context.Context, instance *runtime.
 
 	// if we encounter any error we switch the instance to failed state
 	if runErr != nil {
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 	}
-	if instance.State == runtime.ActivityStateCompleted || instance.State == runtime.ActivityStateFailed {
+	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		// TODO need to send failed State
-		engine.exportEndProcessEvent(*process, *instance)
+		engine.exportEndProcessEvent(*process, instance)
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("bpmn_process_id", instance.Definition.BpmnProcessId),
+			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}
 	//TODO: THIS WILL CAUSE PROBLEMS IT SHOULD BE SAVED EVERY TIME TOKEN UPDATES
-	err = engine.persistence.SaveProcessInstance(ctx, *instance)
+	err = engine.persistence.SaveProcessInstance(ctx, instance)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to save process instance %d", instance.Key), err)
+		return errors.Join(newEngineErrorf("failed to save process instance %d", instance.ProcessInstance().Key), err)
 	}
 	if runErr != nil {
-		return errors.Join(newEngineErrorf("failed to run process instance %d", instance.Key), runErr)
+		return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
 	}
 	return nil
 }
@@ -663,21 +609,18 @@ func (engine *Engine) handleIncident(ctx context.Context, currentToken runtime.E
 
 func (engine *Engine) getExecutionTokenActivity(
 	ctx context.Context,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 ) (*elementActivity, error) {
 	var currentFlowNode bpmn20.FlowNode
-	//TODO: use ParentProcessDefinitionKey to figure out where to get GetFlowNodeById
-	if instance.SubProcessParentMetadata != nil {
-		parentActivityDefinition := instance.Definition.Definitions.Process.GetFlowNodeById(instance.SubProcessParentMetadata.ParentProcessTargetElementId)
-		switch parentActivityDefinition.(type) {
-		case *bpmn20.TSubProcess:
-			currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
-		default:
-			currentFlowNode = instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
-		}
-	} else {
-		currentFlowNode = instance.Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+	switch instance.(type) {
+	case *runtime.DefaultProcessInstance, *runtime.CallActivityInstance, *runtime.MultiInstanceInstance:
+		currentFlowNode = instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
+	case *runtime.SubProcessInstance:
+		parentActivityDefinition := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(instance.(*runtime.SubProcessInstance).ParentProcessTargetElementId)
+		currentFlowNode = parentActivityDefinition.(*bpmn20.TSubProcess).GetFlowNodeById(token.ElementId)
+	default:
+		return nil, errors.New("invalid instance type")
 	}
 	if currentFlowNode == nil {
 		return nil, fmt.Errorf("failed to find flow node %s for execution token in process definition", token.ElementId)
@@ -696,7 +639,7 @@ func (engine *Engine) getExecutionTokenActivity(
 func (engine *Engine) processFlowNode(
 	ctx context.Context,
 	batch storage.Batch,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	activity *elementActivity,
 	currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
@@ -716,7 +659,7 @@ func (engine *Engine) processFlowNode(
 	err = batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                engine.generateKey(),
-			ProcessInstanceKey: instance.GetInstanceKey(),
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          activity.element.GetId(),
 			CreatedAt:          time.Now(),
 		},
@@ -793,7 +736,7 @@ func (engine *Engine) processFlowNode(
 	}
 }
 
-func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {
 
 	var activityResult runtime.ActivityState
 	var err error
@@ -842,8 +785,8 @@ func (engine *Engine) handleActivity(ctx context.Context, batch storage.Batch, i
 	return []runtime.ExecutionToken{}, nil
 }
 
-func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch storage.Batch, currentToken runtime.ExecutionToken, instance *runtime.ProcessInstance, element bpmn20.FlowNode) error {
-	bes := bpmn20.FindBoundaryEventsForActivity(&instance.Definition.Definitions, element)
+func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch storage.Batch, currentToken runtime.ExecutionToken, instance runtime.ProcessInstance, element bpmn20.FlowNode) error {
+	bes := bpmn20.FindBoundaryEventsForActivity(&instance.ProcessInstance().Definition.Definitions, element)
 	for _, be := range bes {
 		switch be.EventDefinition.(type) {
 		case bpmn20.TMessageEventDefinition:
@@ -867,7 +810,7 @@ func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch
 func (engine *Engine) createBusinessRuleTask(
 	ctx context.Context,
 	batch storage.Batch,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	currentToken runtime.ExecutionToken,
 ) (runtime.ActivityState, error) {
@@ -892,14 +835,14 @@ func (engine *Engine) createBusinessRuleTask(
 
 func (engine *Engine) handleLocalBusinessRuleTask(
 	ctx context.Context,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskLocal,
 ) (runtime.ActivityState, error) {
-	variableHolder := runtime.NewVariableHolder(&instance.VariableHolder, nil)
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	if len(element.GetInputMapping()) > 0 {
 		if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
-			instance.State = runtime.ActivityStateFailed
+			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 		}
 	}
@@ -912,14 +855,14 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		variableHolder.LocalVariables(),
 	)
 	if err != nil {
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate business rule %s: %w", element.TTask.Id, err)
 	}
 
 	if len(element.GetOutputMapping()) > 0 {
 		variableHolder.SetLocalVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 		if err := variableHolder.PropagateLocalVariablesToParent(element.GetOutputMapping(), engine.evaluateExpression); err != nil {
-			instance.State = runtime.ActivityStateFailed
+			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
 		}
 		return runtime.ActivityStateCompleted, nil
@@ -934,23 +877,23 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 func (engine *Engine) createExternalBusinessRuleTask(
 	ctx context.Context,
 	batch storage.Batch,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskExternal,
 	currentToken runtime.ExecutionToken,
 ) (runtime.ActivityState, error) {
 	activityState, err := engine.createInternalTask(ctx, batch, instance, element, currentToken)
 	if err != nil {
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create internal task for business rule %s : %w", element.TTask.Id, err)
 	}
 	return activityState, nil
 }
 
-func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, element *bpmn20.TParallelGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: this implementation is wrong does not count with multiple gateways activated at the same time
 	incoming := element.GetIncomingAssociation()
-	instanceTokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, instance.Key)
+	instanceTokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current tokens for process instance: %w", err)
 	}
@@ -984,14 +927,14 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.B
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          flow.GetTargetRef().GetId(),
-			ProcessInstanceKey: instance.Key,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
 	}
 	return resTokens, nil
 }
 
-func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TEventBasedGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, element *bpmn20.TEventBasedGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	outgoing := element.GetOutgoingAssociation()
 	resTokens := make([]runtime.ExecutionToken, 0, 2)
 	// complete token that activated gateway
@@ -1002,7 +945,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage
 		Key:                engine.generateKey(),
 		ElementInstanceKey: engine.generateKey(),
 		ElementId:          element.GetId(),
-		ProcessInstanceKey: instance.Key,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
 		State:              runtime.TokenStateWaiting,
 	}
 	for _, flow := range outgoing {
@@ -1023,12 +966,12 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage
 // handleExclusiveGateway handles Exclusive gateway behaviour
 // A diverging Exclusive Gateway (Decision) is used to create alternative paths within a Process flow. This is basically
 // the “diversion point in the road” for a Process. For a given instance of the Process, only one of the paths can be taken.
-func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
-	activatedFlows, err := engine.exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
+	activatedFlows, err := engine.exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return nil, fmt.Errorf("failed to filter outgoing associations from ExclusiveGateway: %w", err)
 	}
 	if len(activatedFlows) != 0 {
@@ -1038,12 +981,12 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runt
 	return []runtime.ExecutionToken{currentToken}, nil
 }
 
-func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
-	activatedFlows, err := engine.inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
+	activatedFlows, err := engine.inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		instance.State = runtime.ActivityStateFailed
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return nil, fmt.Errorf("failed to filter outgoing associations from InclusiveGateway: %w", err)
 	}
 	resTokens := make([]runtime.ExecutionToken, len(activatedFlows)+1)
@@ -1054,7 +997,7 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          flow.GetTargetRef().GetId(),
-			ProcessInstanceKey: instance.Key,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
 	}
@@ -1065,18 +1008,21 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 func (engine *Engine) handleElementTransition(
 	ctx context.Context,
 	batch storage.Batch,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	element bpmn20.FlowNode,
 	outputVariables map[string]any,
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
-	if element, ok := element.(*bpmn20.TActivity); !ok && element.MultiInstance != nil {
-		if instance.SubProcessParentMetadata == nil {
-			currentToken.State = runtime.TokenStateFailed
-			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("sub-process parent metadata cannot be nil for multi instance process :%d", instance.Key)
+	switch instance.(type) {
+	case *runtime.DefaultProcessInstance, *runtime.SubProcessInstance, *runtime.CallActivityInstance:
+		return engine.handleDefaultElementTransition(ctx, batch, instance, element, outputVariables, currentToken)
+	case *runtime.MultiInstanceInstance:
+		element, ok := element.(*bpmn20.TActivity)
+		if !ok || element.MultiInstance == nil {
+			return nil, fmt.Errorf("failed to handle multi instance transition")
 		}
 
-		multiInstanceElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, instance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey)
+		multiInstanceElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, instance.(*runtime.MultiInstanceInstance).ParentProcessTargetElementInstanceKey)
 		if err != nil {
 			currentToken.State = runtime.TokenStateFailed
 			return []runtime.ExecutionToken{currentToken}, err
@@ -1084,15 +1030,14 @@ func (engine *Engine) handleElementTransition(
 		multiInstanceInputCollectionLength := len(multiInstanceElementInstance.InputVariables[element.MultiInstance.InputElementName].([]interface{}))
 
 		if element.MultiInstance.IsSequential == true {
-			//TODO: Optimize this query to use some kind of counter instead
-			count, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.Key)
+			count, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
 			if err != nil {
 				currentToken.State = runtime.TokenStateFailed
 				return []runtime.ExecutionToken{currentToken}, err
 			}
 			if count == multiInstanceInputCollectionLength {
 				currentToken.State = runtime.TokenStateCompleted
-				instance.State = runtime.ActivityStateCompleted
+				instance.ProcessInstance().State = runtime.ActivityStateCompleted
 			} else if count > multiInstanceInputCollectionLength {
 				currentToken.State = runtime.TokenStateFailed
 				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("")
@@ -1102,15 +1047,14 @@ func (engine *Engine) handleElementTransition(
 				return []runtime.ExecutionToken{currentToken}, nil
 			}
 		} else {
-			//TODO: Optimize this query to use some kind of counter instead
-			tokens, err := engine.persistence.GetCompletedTokensForProcessInstance(ctx, instance.Key)
+			tokens, err := engine.persistence.GetCompletedTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
 			if err != nil {
 				currentToken.State = runtime.TokenStateFailed
 				return []runtime.ExecutionToken{currentToken}, err
 			}
 			if len(tokens) == multiInstanceInputCollectionLength {
 				currentToken.State = runtime.TokenStateCompleted
-				instance.State = runtime.ActivityStateCompleted
+				instance.ProcessInstance().State = runtime.ActivityStateCompleted
 			} else if len(tokens) > multiInstanceInputCollectionLength {
 				currentToken.State = runtime.TokenStateFailed
 				return []runtime.ExecutionToken{currentToken}, fmt.Errorf("")
@@ -1119,22 +1063,23 @@ func (engine *Engine) handleElementTransition(
 				return []runtime.ExecutionToken{currentToken}, nil
 			}
 		}
+	default:
+		return nil, fmt.Errorf("unsupported instance type: %T", instance)
 	}
-	//normal process instance
-	return engine.handleDefaultElementTransition(ctx, batch, instance, element, outputVariables, currentToken)
+	return nil, fmt.Errorf("unsupported instance type: %T", instance)
 }
 
 func (engine *Engine) handleDefaultElementTransition(
 	ctx context.Context,
 	batch storage.Batch,
-	instance *runtime.ProcessInstance,
+	instance runtime.ProcessInstance,
 	element bpmn20.FlowNode,
 	outputVariables map[string]any,
 	currentToken runtime.ExecutionToken,
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 
-	instance.VariableHolder.PropagateVariables(outputVariables)
+	instance.ProcessInstance().VariableHolder.PropagateVariables(outputVariables)
 
 	// TODO: handle no outgoing associations
 	for i, flow := range element.GetOutgoingAssociation() {
@@ -1148,7 +1093,7 @@ func (engine *Engine) handleDefaultElementTransition(
 				Key:                engine.generateKey(),
 				ElementInstanceKey: engine.generateKey(),
 				ElementId:          flow.GetTargetRef().GetId(),
-				ProcessInstanceKey: instance.Key,
+				ProcessInstanceKey: instance.ProcessInstance().Key,
 				State:              runtime.TokenStateRunning,
 			})
 		}
@@ -1157,7 +1102,7 @@ func (engine *Engine) handleDefaultElementTransition(
 		err := batch.SaveFlowElementInstance(ctx,
 			runtime.FlowElementInstance{
 				Key:                engine.generateKey(),
-				ProcessInstanceKey: instance.GetInstanceKey(),
+				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),
 				ExecutionToken:     resTokens[i],
@@ -1170,7 +1115,7 @@ func (engine *Engine) handleDefaultElementTransition(
 	return resTokens, nil
 }
 
-func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	switch ice.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
 		token, err := engine.createMessageCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TMessageEventDefinition), ice, currentToken)
@@ -1186,10 +1131,10 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch st
 	}
 }
 
-func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.ProcessInstance) error {
+func (engine *Engine) handleEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
 	activeSubscriptions := false
 
-	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateActive)
+	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load active subscriptions"), err)
 	}
@@ -1197,7 +1142,7 @@ func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.Proc
 		activeSubscriptions = true
 	}
 
-	readySubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.Key, runtime.ActivityStateReady)
+	readySubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateReady)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load ready subscriptions"), err)
 	}
@@ -1205,24 +1150,24 @@ func (engine *Engine) handleEndEvent(ctx context.Context, instance *runtime.Proc
 		activeSubscriptions = true
 	}
 
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.Key)
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to load pending process instance jobs for key: %d", instance.Key), err)
+		return errors.Join(newEngineErrorf("failed to load pending process instance jobs for key: %d", instance.ProcessInstance().Key), err)
 	}
 	if len(jobs) > 0 {
 		activeSubscriptions = true
 	}
 
-	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.Key)
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to load active tokens for key: %d", instance.Key), err)
+		return errors.Join(newEngineErrorf("failed to load active tokens for key: %d", instance.ProcessInstance().Key), err)
 	}
 	if len(tokens) > 1 {
 		activeSubscriptions = true
 	}
 
 	if !activeSubscriptions {
-		instance.State = runtime.ActivityStateCompleted
+		instance.ProcessInstance().State = runtime.ActivityStateCompleted
 	}
 	return nil
 }

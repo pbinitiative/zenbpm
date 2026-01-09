@@ -809,12 +809,12 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 	}
 
 	res = bpmnruntime.ProcessInstance{
-		Definition:               &definition,
-		Key:                      dbInstance.Key,
-		VariableHolder:           bpmnruntime.NewVariableHolder(nil, variables),
-		CreatedAt:                time.UnixMilli(dbInstance.CreatedAt),
-		State:                    bpmnruntime.ActivityState(dbInstance.State),
-		SubProcessParentMetadata: subProcessParentMetadata,
+		Definition:         &definition,
+		Key:                dbInstance.Key,
+		VariableHolder:     bpmnruntime.NewVariableHolder(nil, variables),
+		CreatedAt:          time.UnixMilli(dbInstance.CreatedAt),
+		State:              bpmnruntime.ActivityState(dbInstance.State),
+		SubProcessMetadata: subProcessParentMetadata,
 	}
 
 	return res, nil
@@ -858,20 +858,20 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		State:                int64(processInstance.State),
 		Variables:            string(varStr),
 		ParentProcessExecutionToken: ssql.NullInt64{
-			Int64: processInstance.SubProcessParentMetadata.ParentProcessExecutionToken.Key,
-			Valid: processInstance.SubProcessParentMetadata != nil,
+			Int64: processInstance.SubProcessMetadata.ParentProcessExecutionToken.Key,
+			Valid: processInstance.SubProcessMetadata != nil,
 		},
 		ParentProcessTargetElementID: ssql.NullString{
-			String: processInstance.SubProcessParentMetadata.ParentProcessTargetElementId,
-			Valid:  processInstance.SubProcessParentMetadata != nil,
+			String: processInstance.SubProcessMetadata.ParentProcessTargetElementId,
+			Valid:  processInstance.SubProcessMetadata != nil,
 		},
 		ParentProcessTargetElementInstanceKey: ssql.NullInt64{
-			Int64: processInstance.SubProcessParentMetadata.ParentProcessTargetElementInstanceKey,
-			Valid: processInstance.SubProcessParentMetadata != nil,
+			Int64: processInstance.SubProcessMetadata.ParentProcessTargetElementInstanceKey,
+			Valid: processInstance.SubProcessMetadata != nil,
 		},
 		ParentProcessDefinitionKey: ssql.NullInt64{
-			Int64: processInstance.SubProcessParentMetadata.ParentProcessDefinitionKey,
-			Valid: processInstance.SubProcessParentMetadata != nil,
+			Int64: processInstance.SubProcessMetadata.ParentProcessDefinitionKey,
+			Valid: processInstance.SubProcessMetadata != nil,
 		},
 	})
 	if err != nil {

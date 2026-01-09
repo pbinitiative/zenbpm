@@ -9,7 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (engine *Engine) createUserTask(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+func (engine *Engine) createUserTask(ctx context.Context, batch storage.Batch, instance runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	// TODO consider different handlers, since Service Tasks are different in their definition than user tasks
 	return engine.createInternalTask(ctx, batch, instance, element, currentToken)
 }

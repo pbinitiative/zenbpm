@@ -423,6 +423,11 @@ message GetProcessInstancesRequest {
   int64 definition_key = 4;
   int64 parent_key = 5;
   string business_key = 6;
+  string process_id = 7;
+  int64 created_from = 8;
+  int64 created_to = 9;
+  int64 state = 10;
+  string sort_by_order = 11;
 }
 
 message PartitionedProcessInstances {

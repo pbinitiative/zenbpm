@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
+	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
@@ -557,14 +559,74 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 
 	definitionKey := ptr.Deref(request.Params.ProcessDefinitionKey, int64(0))
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
+	var state, createdFrom, createdTo *int64
+	if request.Params.State != nil {
+		supportedStates := [...]public.GetProcessInstancesParamsState{public.Active, public.Completed, public.Terminated, public.Failed}
+		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
+		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
+		switch *request.Params.State {
+		case public.Active:
+			state = ptr.To(int64(runtime.ActivityStateActive))
+		case public.Completed:
+			state = ptr.To(int64(runtime.ActivityStateCompleted))
+		case public.Terminated:
+			state = ptr.To(int64(runtime.ActivityStateTerminated))
+		case public.Failed:
+			state = ptr.To(int64(runtime.ActivityStateFailed))
+		default:
+			return public.GetProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates),
+			}, nil
+		}
+	}
+	if request.Params.CreatedFrom != nil {
+		createdFrom = ptr.To(request.Params.CreatedFrom.UnixMilli())
+	}
+	if request.Params.CreatedTo != nil {
+		createdTo = ptr.To(request.Params.CreatedTo.UnixMilli())
+	}
+	var sortByDbColumn *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		switch *request.Params.SortBy {
+		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt:
+			sortByDbColumn = &s
+		default:
+			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
+			return public.GetProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
+			}, nil
+		}
+	}
+	if request.Params.SortOrder != nil {
+		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.Asc, public.Desc}
+		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
+			return public.GetProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
+			}, nil
+		}
+	} else {
+		request.Params.SortOrder = ptr.To(public.Desc)
+	}
+	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
-		&definitionKey,
-		request.Params.BusinessKey,
-		parentInstanceKey,
-		*request.Params.Page,
-		*request.Params.Size,
+		&proto.GetProcessInstancesRequest{
+			Page:          request.Params.Page,
+			Size:          request.Params.Size,
+			DefinitionKey: &definitionKey,
+			ParentKey:     &parentInstanceKey,
+			BusinessKey:   request.Params.BusinessKey,
+			ProcessId:     request.Params.BpmnProcessId,
+			State:         state,
+			CreatedFrom:   createdFrom,
+			CreatedTo:     createdTo,
+			SortByOrder:   (*string)(sortByOrder),
+		},
 	)
 	if err != nil {
 		return public.GetProcessInstances502JSONResponse{
@@ -602,6 +664,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
 				Key:                  instance.GetKey(),
+				BpmnProcessId:        instance.ProcessId,
 				ProcessDefinitionKey: instance.GetDefinitionKey(),
 				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
 				BusinessKey:          instance.BusinessKey,

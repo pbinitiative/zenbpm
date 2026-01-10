@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -18,9 +20,9 @@ func TestRestApiProcessInstance(t *testing.T) {
 	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "service-task-input-output" {
 			definition = def
 			break
@@ -68,9 +70,9 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 	err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "Simple_CallActivity_Process" {
 			definition = def
 			break
@@ -111,9 +113,9 @@ func TestBusinessKey(t *testing.T) {
 	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "service-task-input-output" {
 			definition = def
 			break
@@ -139,13 +141,234 @@ func TestBusinessKey(t *testing.T) {
 	})
 
 	t.Run("find process instances by business key", func(t *testing.T) {
-		processInstances, err := getProcessInstances(t, bk)
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BusinessKey: &bk,
+		})
 		assert.NoError(t, err)
-		assert.NotEmpty(t, processInstances)
-		for _, pi := range processInstances {
+		assert.True(t, processInstances.JSON200.TotalCount > 0)
+		for _, pi := range processInstances.JSON200.Partitions[0].Items {
 			assert.Equal(t, bk, ptr.Deref(pi.BusinessKey, ""))
 			assert.NotEmpty(t, pi.Key)
 		}
+	})
+}
+
+func TestCreatedAt(t *testing.T) {
+	var instance1, instance2 public.ProcessInstance
+	var definition zenclient.ProcessDefinitionSimple
+	uniqueDefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *uniqueDefinitionName {
+			definition = def
+			break
+		}
+	}
+
+	t.Run("create process instance1", func(t *testing.T) {
+		instance1, err = createProcessInstance(t, definition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance1.Key)
+	})
+	t.Run("create process instance2", func(t *testing.T) {
+		instance2, err = createProcessInstance(t, definition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance2.Key)
+	})
+
+	past := time.Now().AddDate(0, 0, -1)
+	future := time.Now().AddDate(0, 0, 1)
+	t.Run("find process instances by createdAt in past sorted desc", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: uniqueDefinitionName,
+			CreatedFrom:   ptr.To(past),
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+			SortOrder:     ptr.To(zenclient.Desc),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
+		createdAtSlice := make([]int64, 0, len(processInstances.JSON200.Partitions[0].Items))
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
+		}
+		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] > createdAtSlice[q] })) // createdAt's are sorted desc
+	})
+	t.Run("find process instances by createdAt in past sorted asc", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: uniqueDefinitionName,
+			CreatedFrom:   ptr.To(past),
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+			SortOrder:     ptr.To(zenclient.Asc),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
+		createdAtSlice := make([]int64, 0, len(processInstances.JSON200.Partitions[0].Items))
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
+		}
+		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] < createdAtSlice[q] }))
+	})
+	t.Run("find process instances by createdAt in past by default created_at desc", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: uniqueDefinitionName,
+			CreatedFrom:   ptr.To(past),
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
+		createdAtSlice := make([]int64, 0, len(processInstances.JSON200.Partitions[0].Items))
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			createdAtSlice = append(createdAtSlice, part.CreatedAt.UnixMilli())
+		}
+		assert.True(t, sort.SliceIsSorted(createdAtSlice, func(p, q int) bool { return createdAtSlice[p] > createdAtSlice[q] }))
+	})
+	t.Run("find process instances by createdAt in future", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: uniqueDefinitionName,
+			CreatedFrom:   ptr.To(future),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, processInstances.JSON200.TotalCount)
+	})
+}
+
+func TestBpmnProcessId(t *testing.T) {
+	var serviceTaskIODefinition, simpleCountLoopDefinition zenclient.ProcessDefinitionSimple
+	serviceTaskIODefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *serviceTaskIODefinitionName {
+			serviceTaskIODefinition = def
+			break
+		}
+	}
+	simpleCountLoopDefinitionName, err := deployUniqueDefinition(t, "simple-count-loop.bpmn")
+	assert.NoError(t, err)
+	definitions, err = listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *simpleCountLoopDefinitionName {
+			simpleCountLoopDefinition = def
+			break
+		}
+	}
+
+	t.Run("create process instance1 for service-task-input-output.bpmn", func(t *testing.T) {
+		instance1, err := createProcessInstance(t, serviceTaskIODefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance1.Key)
+	})
+	t.Run("create process instance2 for simple-count-loop.bpmn", func(t *testing.T) {
+		instance2, err := createProcessInstance(t, simpleCountLoopDefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance2.Key)
+	})
+
+	t.Run("find process instances by bpmnProcessId=simple-count-loop", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: simpleCountLoopDefinitionName,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			assert.Equal(t, *simpleCountLoopDefinitionName, *part.BpmnProcessId)
+		}
+	})
+}
+
+func TestState(t *testing.T) {
+	var validDefinition, invalidDefinition zenclient.ProcessDefinitionSimple
+	validDefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *validDefinitionName {
+			validDefinition = def
+			break
+		}
+	}
+	invalidDefinitionName, err := deployUniqueDefinition(t, "service-task-invalid-input.bpmn")
+	assert.NoError(t, err)
+	definitions, err = listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *invalidDefinitionName {
+			invalidDefinition = def
+			break
+		}
+	}
+
+	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
+		instance1, err := createProcessInstance(t, validDefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance1.Key)
+		instance2, err := createProcessInstance(t, validDefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance2.Key)
+	})
+	t.Run("create process instance for service-task-invalid-input.bpmn", func(t *testing.T) {
+		invalidInstance, err := createProcessInstance(t, invalidDefinition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.Error(t, err)
+		assert.Empty(t, invalidInstance.Key)
+	})
+
+	t.Run("find process instances by state=failed", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: invalidDefinitionName,
+			State:         ptr.To(zenclient.Failed),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			assert.Equal(t, zenclient.ProcessInstanceState("ActivityStateFailed"), part.State)
+		}
+	})
+	t.Run("find process instances sorted by state asc", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: validDefinitionName,
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
+			SortOrder:     ptr.To(zenclient.Asc),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
+		stateSlice := make([]string, 0, len(processInstances.JSON200.Partitions[0].Items))
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			stateSlice = append(stateSlice, (string)(part.State))
+		}
+		assert.True(t, sort.SliceIsSorted(stateSlice, func(p, q int) bool { return stateSlice[p] < stateSlice[q] }))
+	})
+	t.Run("find process instances sorted by state desc", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: validDefinitionName,
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
+			SortOrder:     ptr.To(zenclient.Asc),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
+		stateSlice := make([]string, 0, len(processInstances.JSON200.Partitions[0].Items))
+		for _, part := range processInstances.JSON200.Partitions[0].Items {
+			stateSlice = append(stateSlice, (string)(part.State))
+		}
+		assert.True(t, sort.SliceIsSorted(stateSlice, func(p, q int) bool { return stateSlice[p] > stateSlice[q] }))
 	})
 }
 
@@ -238,26 +461,4 @@ func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, er
 		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)
 	}
 	return incidentPage.Items, nil
-}
-
-func getProcessInstances(t testing.TB, key string) ([]public.ProcessInstance, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances?businessKey=%s", key)).
-		DoOk()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
-	}
-	processInstancePage := public.ProcessInstancePage{}
-
-	err = json.Unmarshal(resp, &processInstancePage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job page: %w", err)
-	}
-
-	instances := make([]public.ProcessInstance, 0, len(processInstancePage.Partitions))
-
-	for _, part := range processInstancePage.Partitions {
-		instances = append(instances, part.Items...)
-	}
-	return instances, nil
 }

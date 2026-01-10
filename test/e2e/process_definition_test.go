@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -29,9 +30,9 @@ func TestRestApiProcessDefinition(t *testing.T) {
 	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
 		err := deployDefinition(t, "service-task-input-output.bpmn")
 		assert.NoError(t, err)
-		defintitions, err := listProcessDefinitions(t)
+		definitions, err := listProcessDefinitions(t)
 		assert.NoError(t, err)
-		for _, def := range defintitions {
+		for _, def := range definitions {
 			if def.BpmnProcessId == "service-task-input-output" {
 				definition = def
 				stDefinitionCount++
@@ -94,7 +95,7 @@ func TestRestApiProcessDefinition(t *testing.T) {
 
 	t.Run("test sorting", func(t *testing.T) {
 		onlyLatest := false
-		sortBy := zenclient.Version
+		sortBy := zenclient.GetProcessDefinitionsParamsSortByVersion
 		sortOrder := zenclient.GetProcessDefinitionsParamsSortOrderDesc
 
 		response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
@@ -187,6 +188,63 @@ func deployDefinition(t testing.TB, filename string) error {
 	return nil
 }
 
+func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId *string, err error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	wd = strings.ReplaceAll(wd, "/test/e2e", "")
+	loc := filepath.Join(wd, "pkg", "bpmn", "test-cases", filename)
+	file, err := os.ReadFile(loc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+	stringFile := string(file)
+	oldDefinitionId, found := getStringInBetweenTwoString(stringFile, "bpmn:process id=\"", "\"")
+	if !found {
+		return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
+	}
+	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixMilli()))
+	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
+	file = []byte(fileString)
+
+	// Create multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Create the resource field as required by the OpenAPI spec
+	part, err := writer.CreateFormFile("resource", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create form file: %w", err)
+	}
+
+	_, err = part.Write(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+
+	err = writer.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
+	}
+
+	if resp.StatusCode() >= 400 {
+		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
+	}
+
+	definition := public.CreateProcessDefinition201JSONResponse{}
+	err = json.Unmarshal(resp.Body, &definition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal create definition response: %w", err)
+	}
+	return replacedDefinitionId, nil
+}
+
 func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, error) {
 
 	resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
@@ -196,4 +254,18 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 		return nil, fmt.Errorf("failed to list process definitions: %w", err)
 	}
 	return resp.JSON200.Items, nil
+}
+
+func getStringInBetweenTwoString(str string, startS string, endS string) (result string, found bool) {
+	s := strings.Index(str, startS)
+	if s == -1 {
+		return result, false
+	}
+	newS := str[s+len(startS):]
+	e := strings.Index(newS, endS)
+	if e == -1 {
+		return result, false
+	}
+	result = newS[:e]
+	return result, true
 }

@@ -161,42 +161,82 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec,
+    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.history_ttl_sec, pi.history_delete_sec, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
-    process_instance
+    process_instance AS pi
+    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
 WHERE
-    CASE WHEN ?1 <> 0 THEN
-        process_instance.process_definition_key = ?1
+    -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+    CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+    AND
+    CASE WHEN ?2 <> 0 THEN
+        pi.process_definition_key = ?2
     ELSE
         1
     END
-    AND CASE WHEN ?2 <> 0 THEN
-        process_instance.parent_process_execution_token IN (
+    AND CASE WHEN ?3 <> 0 THEN
+        pi.parent_process_execution_token IN (
             SELECT
                 execution_token.key
             FROM
                 execution_token
             WHERE
-                execution_token.process_instance_key = ?2)
+                execution_token.process_instance_key = ?3)
     ELSE
         1
     END
     AND
-    CASE WHEN ?3 IS NOT NULL THEN
-        process_instance.business_key = ?3
+    CASE WHEN ?4 IS NOT NULL THEN
+        pi.business_key = ?4
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?5 IS NOT NULL THEN
+        pd.bpmn_process_id = ?5
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?6 IS NOT NULL THEN
+       pi.created_at >= ?6
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?7 IS NOT NULL THEN
+       pi.created_at <= ?7
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?8 IS NOT NULL THEN
+       pi.state = ?8
     ELSE
         1
     END
 ORDER BY
-    created_at DESC
-LIMIT ?5 OFFSET ?4
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
+  pi.created_at DESC
+
+LIMIT ?10 OFFSET ?9
 `
 
 type FindProcessInstancesPageParams struct {
+	SortByOrder          interface{} `json:"sort_by_order"`
 	ProcessDefinitionKey interface{} `json:"process_definition_key"`
 	ParentInstanceKey    interface{} `json:"parent_instance_key"`
 	BusinessKey          interface{} `json:"business_key"`
+	BpmnProcessID        interface{} `json:"bpmn_process_id"`
+	CreatedFrom          interface{} `json:"created_from"`
+	CreatedTo            interface{} `json:"created_to"`
+	State                interface{} `json:"state"`
 	Offset               int64       `json:"offset"`
 	Size                 int64       `json:"size"`
 }
@@ -211,14 +251,21 @@ type FindProcessInstancesPageRow struct {
 	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
 	HistoryTtlSec               sql.NullInt64  `json:"history_ttl_sec"`
 	HistoryDeleteSec            sql.NullInt64  `json:"history_delete_sec"`
+	BpmnProcessID               string         `json:"bpmn_process_id"`
 	TotalCount                  int64          `json:"total_count"`
 }
 
+// workaround for sqlc which does not replace params in order by
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage,
+		arg.SortByOrder,
 		arg.ProcessDefinitionKey,
 		arg.ParentInstanceKey,
 		arg.BusinessKey,
+		arg.BpmnProcessID,
+		arg.CreatedFrom,
+		arg.CreatedTo,
+		arg.State,
 		arg.Offset,
 		arg.Size,
 	)
@@ -239,6 +286,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.ParentProcessExecutionToken,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
+			&i.BpmnProcessID,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

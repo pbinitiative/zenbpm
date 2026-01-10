@@ -48,17 +48,38 @@ const (
 
 // Defines values for GetProcessDefinitionsParamsSortBy.
 const (
-	BpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
-	BpmnProcessName GetProcessDefinitionsParamsSortBy = "bpmnProcessName"
-	Key             GetProcessDefinitionsParamsSortBy = "key"
-	Name            GetProcessDefinitionsParamsSortBy = "name"
-	Version         GetProcessDefinitionsParamsSortBy = "version"
+	GetProcessDefinitionsParamsSortByBpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionsParamsSortByBpmnProcessName GetProcessDefinitionsParamsSortBy = "bpmnProcessName"
+	GetProcessDefinitionsParamsSortByKey             GetProcessDefinitionsParamsSortBy = "key"
+	GetProcessDefinitionsParamsSortByName            GetProcessDefinitionsParamsSortBy = "name"
+	GetProcessDefinitionsParamsSortByVersion         GetProcessDefinitionsParamsSortBy = "version"
 )
 
 // Defines values for GetProcessDefinitionsParamsSortOrder.
 const (
 	GetProcessDefinitionsParamsSortOrderAsc  GetProcessDefinitionsParamsSortOrder = "asc"
 	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsSortBy.
+const (
+	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey       GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState     GetProcessInstancesParamsSortBy = "state"
+)
+
+// Defines values for GetProcessInstancesParamsSortOrder.
+const (
+	Asc  GetProcessInstancesParamsSortOrder = "asc"
+	Desc GetProcessInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsState.
+const (
+	Active     GetProcessInstancesParamsState = "active"
+	Completed  GetProcessInstancesParamsState = "completed"
+	Failed     GetProcessInstancesParamsState = "failed"
+	Terminated GetProcessInstancesParamsState = "terminated"
 )
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -329,6 +350,7 @@ type ProcessDefinitionsPage struct {
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
 	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
+	BpmnProcessId            *string                `json:"bpmnProcessId,omitempty"`
 	BusinessKey              *string                `json:"businessKey,omitempty"`
 	CreatedAt                time.Time              `json:"createdAt"`
 	Key                      int64                  `json:"key"`
@@ -487,7 +509,34 @@ type GetProcessInstancesParams struct {
 
 	// Size Number of items per page
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID (returns instances across all versions)
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// SortBy Sort field (applies globally across partitions)
+	SortBy *GetProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// CreatedFrom Filter: created after this date
+	CreatedFrom *time.Time `form:"createdFrom,omitempty" json:"createdFrom,omitempty"`
+
+	// CreatedTo Filter: created before this date
+	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
+
+	// State Filter by state
+	State *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
 }
+
+// GetProcessInstancesParamsSortBy defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortBy string
+
+// GetProcessInstancesParamsSortOrder defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortOrder string
+
+// GetProcessInstancesParamsState defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsState string
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
@@ -1768,6 +1817,102 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, *params.BpmnProcessId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedFrom != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdFrom", runtime.ParamLocationQuery, *params.CreatedFrom); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdTo", runtime.ParamLocationQuery, *params.CreatedTo); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

@@ -35,6 +35,20 @@ GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
 ### GetProcessInstance
 GET {{host}}/v1/process-instances/{{instance_key}}
 
+### UpdateProcessInstanceVariables
+PATCH {{host}}/v1/process-instances/{{instance_key}}/variables
+Content-Type: application/json
+
+{
+  "variables":{
+    "name": "Test name changed",
+    "totalSum": 10.5
+  }
+}
+
+### DeleteProcessInstanceVariable
+DELETE {{host}}/v1/process-instances/{{instance_key}}/variables/name
+
 ### GetProcessInstanceJobs
 GET {{host}}/v1/process-instances/{{instance_key}}/jobs
 

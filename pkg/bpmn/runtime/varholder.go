@@ -42,6 +42,10 @@ func (vh *VariableHolder) SetLocalVariable(key string, val interface{}) {
 	vh.localVariables[key] = val
 }
 
+func (vh *VariableHolder) DeleteLocalVariable(key string) {
+	delete(vh.localVariables, key)
+}
+
 func (vh *VariableHolder) SetLocalVariables(variables map[string]interface{}) {
 	for k, v := range variables {
 		vh.localVariables[k] = v

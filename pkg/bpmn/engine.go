@@ -470,6 +470,50 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	return &processInstance, activeTokens, nil
 }
 
+func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) (*runtime.ProcessInstance, error) {
+	processInstance := runtime.ProcessInstance{
+		Key: processInstanceKey,
+	}
+	engine.runningInstances.lockInstance(&processInstance)
+	instanceUnlocked := false
+	defer func() {
+		if instanceUnlocked == false {
+			engine.runningInstances.unlockInstance(&processInstance)
+		}
+	}()
+
+	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.Key, err)
+	}
+
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("delete-instance-variable:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	))
+	defer createSpan.End()
+
+	batch := engine.persistence.NewBatch()
+
+	processInstance.VariableHolder.DeleteLocalVariable(variable)
+	err = batch.SaveProcessInstance(ctx, processInstance)
+	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete variable for process instance %d: %w", processInstance.Key, err)
+	}
+	engine.runningInstances.unlockInstance(&processInstance)
+	instanceUnlocked = true
+
+	return &processInstance, nil
+}
+
 func (engine *Engine) createInstance(ctx context.Context, process *runtime.ProcessDefinition, variableHolder runtime.VariableHolder, parentToken *runtime.ExecutionToken) (*runtime.ProcessInstance, error) {
 	processInstance := runtime.ProcessInstance{
 		Definition:                  process,

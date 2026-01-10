@@ -3,6 +3,8 @@ description: "Report a defect or unexpected behavior"
 title: "<short description>"
 labels: ["type: bug"]
 type: Bug
+# Corresponds to the "ZenBPM Product Backlog" project
+projects: ["pbinitiative/5"]
 body:
   - type: markdown
     attributes:

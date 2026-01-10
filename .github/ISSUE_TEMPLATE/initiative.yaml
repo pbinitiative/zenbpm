@@ -3,6 +3,7 @@ description: "Create a high-level Initiative (above Epics)"
 title: "<short name>"
 labels: ["type: initiative"]
 type: Initiative
+# Corresponds to the "ZenBPM Product Backlog" project
 projects: ["pbinitiative/5"]
 body:
   - type: markdown

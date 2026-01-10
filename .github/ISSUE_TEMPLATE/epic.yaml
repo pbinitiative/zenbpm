@@ -3,6 +3,7 @@ description: "Create an Epic (group of related tasks)"
 title: "<short name>"
 labels: ["type: epic"]
 type: Epic
+# Corresponds to the "ZenBPM Product Backlog" project
 projects: ["pbinitiative/5"]
 body:
   - type: markdown

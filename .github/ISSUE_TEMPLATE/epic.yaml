@@ -3,6 +3,7 @@ description: "Create an Epic (group of related tasks)"
 title: "<short name>"
 labels: ["type: epic"]
 type: Epic
+projects: ["pbinitiative/5"]
 body:
   - type: markdown
     attributes:

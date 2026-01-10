@@ -3,6 +3,7 @@ description: "Create a small, actionable work item"
 title: "<short name>"
 labels: ["type: task"]
 type: Task
+projects: ["pbinitiative/5"]
 body:
   - type: markdown
     attributes:

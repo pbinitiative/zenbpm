@@ -686,11 +686,13 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 		ProcessInstanceKey: &processInstanceKey,
 		Variable:           &variable,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to call DeleteProcessInstanceVariable RPC: %w", err)
-	}
-	if resp.Error != nil {
-		return fmt.Errorf("failed to delete process instance variable: %s", resp.Error.GetMessage())
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to delete process instance variable")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
 	}
 	return nil
 }

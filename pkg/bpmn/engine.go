@@ -498,17 +498,16 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 	processInstance.VariableHolder.DeleteLocalVariable(variable)
 	err = batch.SaveProcessInstance(ctx, processInstance)
-err = batch.SaveProcessInstance(ctx, processInstance)
-if err != nil {
-	createSpan.RecordError(err)
-	createSpan.SetStatus(codes.Error, err.Error())
-	return nil, err
-}
+	if err != nil {
+		createSpan.RecordError(err)
+		createSpan.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-err = batch.Flush(ctx)
-if err != nil {
-	return nil, fmt.Errorf("failed to delete variable for process instance %d: %w", processInstance.Key, err)
-}
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete variable for process instance %d: %w", processInstance.Key, err)
+	}
 	engine.runningInstances.unlockInstance(&processInstance)
 	instanceUnlocked = true
 

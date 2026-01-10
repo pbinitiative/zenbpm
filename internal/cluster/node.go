@@ -675,7 +675,7 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-return fmt.Errorf("failed to get follower node to delete process instance variable: %w", err)
+		return fmt.Errorf("failed to get follower node to delete process instance variable: %w", err)
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
@@ -686,13 +686,11 @@ return fmt.Errorf("failed to get follower node to delete process instance variab
 		ProcessInstanceKey: &processInstanceKey,
 		Variable:           &variable,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("failed to delete process instance variable")
-		if err != nil {
-			return fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		return fmt.Errorf("failed to call DeleteProcessInstanceVariable RPC: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("failed to delete process instance variable: %s", resp.Error.GetMessage())
 	}
 	return nil
 }

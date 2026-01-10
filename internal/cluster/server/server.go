@@ -453,33 +453,17 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
-		return &proto.DeleteProcessInstanceVariableResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		return createDeleteProcessInstanceVariableErrorResponse(err)
 	}
-	var instance *runtime.ProcessInstance
 	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
 	if err != nil {
 		err := fmt.Errorf("failed to delete process instance variable: %w", err)
-		return &proto.DeleteProcessInstanceVariableResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		return createDeleteProcessInstanceVariableErrorResponse(err)
 	}
 	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
-		return &proto.DeleteProcessInstanceVariableResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		return createDeleteProcessInstanceVariableErrorResponse(err)
 	}
 
 	return &proto.DeleteProcessInstanceVariableResponse{
@@ -492,6 +476,15 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 			DefinitionKey: &instance.Definition.Key,
 		},
 	}, nil
+}
+
+func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {

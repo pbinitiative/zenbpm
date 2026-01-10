@@ -372,6 +372,81 @@ func TestState(t *testing.T) {
 	})
 }
 
+func TestUpdateProcessInstanceVariables(t *testing.T) {
+	var processInstanceKey int64
+	var definition zenclient.ProcessDefinitionSimple
+	definitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *definitionName {
+			definition = def
+			break
+		}
+	}
+
+	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
+		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+			"var1": "var1 value",
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+		processInstanceKey = instance.Key
+	})
+
+	t.Run("testUpdateProcessInstanceVariables", func(t *testing.T) {
+		_, err := app.restClient.UpdateProcessInstanceVariablesWithResponse(t.Context(), processInstanceKey, zenclient.UpdateProcessInstanceVariablesJSONRequestBody{
+			Variables: map[string]any{
+				"var1":    "var1 value changed",
+				"newVar2": "var2 value",
+			},
+		})
+		assert.NoError(t, err)
+		fetchedInstance, err := getProcessInstance(t, processInstanceKey)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]any{"var1": "var1 value changed", "newVar2": "var2 value"}, fetchedInstance.Variables)
+	})
+}
+
+func TestDeleteProcessInstanceVariable(t *testing.T) {
+	var processInstanceKey int64
+	var definition zenclient.ProcessDefinitionSimple
+	definitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
+	assert.NoError(t, err)
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+	for _, def := range definitions {
+		if def.BpmnProcessId == *definitionName {
+			definition = def
+			break
+		}
+	}
+
+	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
+		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+			"var1": "var1 value",
+			"var2": "var2 value",
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+		processInstanceKey = instance.Key
+	})
+
+	t.Run("TestDeleteProcessInstanceVariable for existing variable", func(t *testing.T) {
+		_, err := app.restClient.DeleteProcessInstanceVariableWithResponse(t.Context(), processInstanceKey, "var1")
+		assert.NoError(t, err)
+		fetchedInstance, err := getProcessInstance(t, processInstanceKey)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]any{"var2": "var2 value"}, fetchedInstance.Variables)
+	})
+
+	t.Run("TestDeleteProcessInstanceVariable for non-existing variable", func(t *testing.T) {
+		deleteProcessInstanceVariableResponse, _ := app.restClient.DeleteProcessInstanceVariableWithResponse(t.Context(), processInstanceKey, "non-existing-variable")
+		assert.Equal(t, "NOT_FOUND", deleteProcessInstanceVariableResponse.JSON404.Code)
+	})
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
 	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
 }

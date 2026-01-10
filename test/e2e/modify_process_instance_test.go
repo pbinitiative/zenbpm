@@ -13,7 +13,7 @@ import (
 func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "fork-uncontrolled-join.bpmn", false)
+	err := deployDefinition(t, "fork-uncontrolled-join.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -57,7 +57,7 @@ func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 func TestRestApiModifyProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
+	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)

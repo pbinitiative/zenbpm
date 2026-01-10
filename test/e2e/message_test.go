@@ -13,7 +13,7 @@ import (
 func TestRestApiMessage(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "message-intermediate-catch-event.bpmn", false)
+	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)

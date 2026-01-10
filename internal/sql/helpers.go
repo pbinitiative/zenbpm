@@ -19,6 +19,18 @@ func ToNullString[S ~string](p *S) sql.NullString {
 	}
 }
 
+func ToNullInt64[I ~int64](p *I) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{
+			Valid: false,
+		}
+	}
+	return sql.NullInt64{
+		Int64: int64(ptr.Deref(p, 0)),
+		Valid: true,
+	}
+}
+
 type Sort string
 
 func SortString[O ~string, B ~string](sortOrder *O, sortBy *B) *Sort {

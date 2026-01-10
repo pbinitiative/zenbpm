@@ -590,10 +590,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
 		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState:
+		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt:
 			sortByDbColumn = &s
-		case public.GetProcessInstancesParamsSortByCreatedAt:
-			sortByDbColumn = ptr.To("created_at")
 		default:
 			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
 			return public.GetProcessInstances400JSONResponse{

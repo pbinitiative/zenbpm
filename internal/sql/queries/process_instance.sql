@@ -110,8 +110,8 @@ WHERE
     END
 ORDER BY
 -- workaround for sqlc which does not replace params in order by
-  CASE CAST(?1 AS TEXT) WHEN 'created_at_asc'  THEN pi.created_at END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'created_at_desc' THEN pi.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,

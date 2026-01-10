@@ -878,29 +878,14 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),
 			ParentInstanceKey:    req.GetParentKey(),
-			BusinessKey: ssql.NullString{
-				String: ptr.Deref(req.BusinessKey, ""),
-				Valid:  req.BusinessKey != nil,
-			},
-			BpmnProcessID: ssql.NullString{
-				String: ptr.Deref(req.ProcessId, ""),
-				Valid:  req.ProcessId != nil,
-			},
-			CreatedFrom: ssql.NullInt64{
-				Int64: ptr.Deref(req.CreatedFrom, 0),
-				Valid: req.CreatedFrom != nil,
-			},
-			CreatedTo: ssql.NullInt64{
-				Int64: ptr.Deref(req.CreatedTo, 0),
-				Valid: req.CreatedTo != nil,
-			},
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			SortByOrder: ssql.NullString{String: ptr.Deref(req.SortByOrder, ""), Valid: req.SortByOrder != nil},
-			Offset:      int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:        int64(req.GetSize()),
+			BusinessKey:          sql.ToNullString(req.BusinessKey),
+			BpmnProcessID:        sql.ToNullString(req.ProcessId),
+			CreatedFrom:          sql.ToNullInt64(req.CreatedFrom),
+			CreatedTo:            sql.ToNullInt64(req.CreatedTo),
+			State:                sql.ToNullInt64(req.State),
+			SortByOrder:          sql.ToNullString(req.SortByOrder),
+			Offset:               int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:                 int64(req.GetSize()),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)

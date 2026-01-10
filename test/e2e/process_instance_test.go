@@ -18,7 +18,7 @@ import (
 func TestRestApiProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
+	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -65,9 +65,9 @@ func TestRestApiProcessInstance(t *testing.T) {
 func TestRestApiParentProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "call-activity-simple.bpmn", false)
+	err := deployDefinition(t, "call-activity-simple.bpmn")
 	assert.NoError(t, err)
-	_, err = deployDefinition(t, "simple_task.bpmn", false)
+	err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	definitions, err := listProcessDefinitions(t)
@@ -111,7 +111,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 func TestBusinessKey(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	_, err := deployDefinition(t, "service-task-input-output.bpmn", false)
+	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -156,7 +156,7 @@ func TestBusinessKey(t *testing.T) {
 func TestCreatedAt(t *testing.T) {
 	var instance1, instance2 public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	uniqueDefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
+	uniqueDefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -240,7 +240,7 @@ func TestCreatedAt(t *testing.T) {
 
 func TestBpmnProcessId(t *testing.T) {
 	var serviceTaskIODefinition, simpleCountLoopDefinition zenclient.ProcessDefinitionSimple
-	serviceTaskIODefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
+	serviceTaskIODefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -250,7 +250,7 @@ func TestBpmnProcessId(t *testing.T) {
 			break
 		}
 	}
-	simpleCountLoopDefinitionName, err := deployDefinition(t, "simple-count-loop.bpmn", true)
+	simpleCountLoopDefinitionName, err := deployUniqueDefinition(t, "simple-count-loop.bpmn")
 	assert.NoError(t, err)
 	definitions, err = listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -290,7 +290,7 @@ func TestBpmnProcessId(t *testing.T) {
 
 func TestState(t *testing.T) {
 	var validDefinition, invalidDefinition zenclient.ProcessDefinitionSimple
-	validDefinitionName, err := deployDefinition(t, "service-task-input-output.bpmn", true)
+	validDefinitionName, err := deployUniqueDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -300,7 +300,7 @@ func TestState(t *testing.T) {
 			break
 		}
 	}
-	invalidDefinitionName, err := deployDefinition(t, "service-task-invalid-input.bpmn", true)
+	invalidDefinitionName, err := deployUniqueDefinition(t, "service-task-invalid-input.bpmn")
 	assert.NoError(t, err)
 	definitions, err = listProcessDefinitions(t)
 	assert.NoError(t, err)

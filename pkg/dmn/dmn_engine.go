@@ -115,12 +115,19 @@ func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 		return nil, nil, fmt.Errorf("failed to saveDmnResourceDefinition dmnResourceDefinition by id %s: %w", dmnResourceDefinition.Id, err)
 	}
 	if len(dmnResourceDefinitions) > 0 {
-		latestIndex := len(dmnResourceDefinitions) - 1
-		if dmnResourceDefinitions[latestIndex].DmnChecksum == dmnResourceDefinition.DmnChecksum {
-			return &dmnResourceDefinitions[latestIndex], nil, nil
+		var latest = &dmnResourceDefinitions[0]
+		for i := range dmnResourceDefinitions {
+			if latest.Version < dmnResourceDefinitions[i].Version {
+				latest = &dmnResourceDefinitions[i]
+			}
 		}
-		dmnResourceDefinition.Version = dmnResourceDefinitions[latestIndex].Version + 1
+
+		if latest.DmnChecksum == dmnResourceDefinition.DmnChecksum {
+			return latest, nil, nil
+		}
+		dmnResourceDefinition.Version = latest.Version + 1
 	}
+
 	err = engine.persistence.SaveDmnResourceDefinition(ctx, dmnResourceDefinition)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to save decisionDefinition definition by id %s: %w", dmnResourceDefinition.Id, err)

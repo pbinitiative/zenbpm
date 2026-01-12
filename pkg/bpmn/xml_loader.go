@@ -55,11 +55,16 @@ func (engine *Engine) load(xmlData []byte, key int64) (*runtime.ProcessDefinitio
 		return nil, fmt.Errorf("failed to load processes by id %s: %w", definitions.Process.Id, err)
 	}
 	if len(processes) > 0 {
-		latestIndex := len(processes) - 1
-		if processes[latestIndex].BpmnChecksum == md5sum {
-			return &processes[latestIndex], nil
+		latest := &processes[0]
+		for i := range processes {
+			if latest.Version < processes[i].Version {
+				latest = &processes[i]
+			}
 		}
-		processInfo.Version = processes[latestIndex].Version + 1
+		if latest.BpmnChecksum == md5sum {
+			return latest, nil
+		}
+		processInfo.Version = latest.Version + 1
 	}
 	err = engine.persistence.SaveProcessDefinition(context.TODO(), processInfo)
 	if err != nil {

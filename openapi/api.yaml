@@ -1559,6 +1559,7 @@ components:
             - active
             - completed
             - terminated
+            - failed
         parentProcessInstanceKey:
           type: integer
           format: int64

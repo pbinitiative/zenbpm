@@ -263,7 +263,7 @@ func TestState(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
 		for _, part := range processInstances.JSON200.Partitions[0].Items {
-			assert.Equal(t, zenclient.ProcessInstanceState("ActivityStateFailed"), part.State)
+			assert.Equal(t, zenclient.ProcessInstanceState("failed"), part.State)
 		}
 	})
 	t.Run("find process instances sorted by state asc", func(t *testing.T) {

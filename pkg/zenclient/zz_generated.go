@@ -30,6 +30,7 @@ const (
 const (
 	ProcessInstanceStateActive     ProcessInstanceState = "active"
 	ProcessInstanceStateCompleted  ProcessInstanceState = "completed"
+	ProcessInstanceStateFailed     ProcessInstanceState = "failed"
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
 )
 

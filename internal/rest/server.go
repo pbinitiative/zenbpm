@@ -562,8 +562,6 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
 		supportedStates := [...]public.GetProcessInstancesParamsState{public.Active, public.Completed, public.Terminated, public.Failed}
-		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
-		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.Active:
 			state = ptr.To(int64(runtime.ActivityStateActive))

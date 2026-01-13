@@ -671,13 +671,11 @@ func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, process
 }
 
 func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) error {
-	state := node.store.ClusterState()
-	partitionId := zenflake.GetPartitionId(processInstanceKey)
-	follower, err := state.GetPartitionFollower(partitionId)
+	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
 	if err != nil {
-		return fmt.Errorf("failed to get follower node to delete process instance variable: %w", err)
+		return fmt.Errorf("failed to get node to delete process instance variable: %w", err)
 	}
-	client, err := node.client.For(follower.Addr)
+	client, err := node.client.For(candidateNode.Addr)
 	if err != nil {
 		return fmt.Errorf("failed to get client to delete process instance variable: %w", err)
 	}
@@ -698,13 +696,11 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 }
 
 func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
-	state := node.store.ClusterState()
-	partitionId := zenflake.GetPartitionId(processInstanceKey)
-	follower, err := state.GetPartitionFollower(partitionId)
+	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to follower node to modify process instance: %w", err)
+		return nil, nil, fmt.Errorf("failed to get node to modify process instance: %w", err)
 	}
-	client, err := node.client.For(follower.Addr)
+	client, err := node.client.For(candidateNode.Addr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get client to modify process instance: %w", err)
 	}

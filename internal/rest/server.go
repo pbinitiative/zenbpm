@@ -662,13 +662,14 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				}, nil
 			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
-				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
-				Key:                  instance.GetKey(),
-				BpmnProcessId:        instance.ProcessId,
-				ProcessDefinitionKey: instance.GetDefinitionKey(),
-				State:                public.ProcessInstanceState(runtime.ActivityState(instance.GetState()).String()),
-				BusinessKey:          instance.BusinessKey,
-				Variables:            vars,
+				ActiveElementInstances: make([]public.ElementInstance, 0),
+				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
+				Key:                    instance.GetKey(),
+				BpmnProcessId:          instance.ProcessId,
+				ProcessDefinitionKey:   instance.GetDefinitionKey(),
+				State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+				BusinessKey:            instance.BusinessKey,
+				Variables:              vars,
 			}
 			if instance.GetParentKey() != 0 {
 				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentKey())
@@ -903,7 +904,7 @@ func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInst
 	case runtime.ActivityStateCompleted:
 		return public.ProcessInstanceStateCompleted
 	case runtime.ActivityStateFailed:
-		return public.ProcessInstanceStateActive
+		return public.ProcessInstanceStateFailed
 	case runtime.ActivityStateTerminated:
 		return public.ProcessInstanceStateTerminated
 	default:

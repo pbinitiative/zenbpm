@@ -404,7 +404,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	err := s.node.CompleteJob(ctx, request.Body.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
+	err := s.node.CompleteJob(ctx, request.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
 		return public.CompleteJob502JSONResponse{
 			Code:    "TODO",

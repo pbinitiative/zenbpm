@@ -1022,46 +1022,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-    post:
-      operationId: completeJob
-      tags:
-        - job
-      summary: Complete a job
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - jobKey
-              properties:
-                jobKey:
-                  type: integer
-                  format: int64
-                variables:
-                  type: object
-            example:
-              jobKey: 4503599627370540
-              variables:
-                result: "success"
-                transactionId: "tx-789-xyz"
-                processedAt: "2025-08-22T15:15:30Z"
-      responses:
-        201:
-          description: Job completed
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        502:
-          description: Failed to redirect request to responsible node
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+
   /jobs/{jobKey}:
     get:
       operationId: getJob
@@ -1096,6 +1057,48 @@ paths:
                 $ref: "#/components/schemas/Error"
         502:
           description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}/complete:
+    post:
+      operationId: completeJob
+      tags:
+        - job
+      summary: Complete a job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables:
+                  type: object
+            example:
+              variables:
+                result: "success"
+                transactionId: "tx-789-xyz"
+                processedAt: "2025-08-22T15:15:30Z"
+      responses:
+        201:
+          description: Job completed
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:

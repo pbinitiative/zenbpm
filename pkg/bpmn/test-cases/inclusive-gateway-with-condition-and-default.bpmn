@@ -6,7 +6,7 @@
     </bpmn:startEvent>
     <bpmn:sequenceFlow id="Flow_1y8jegt" sourceRef="StartEvent_1" targetRef="Gateway_01wr5g0" />
     <bpmn:sequenceFlow id="price-gt-zero" name="price &#62; 0" sourceRef="Gateway_01wr5g0" targetRef="task-a">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">price &gt; 0</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=price &gt; 0</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:serviceTask id="task-a" name="task-a">
       <bpmn:extensionElements>

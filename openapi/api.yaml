@@ -1697,6 +1697,8 @@ components:
           format: date-time
         variables:
           type: object
+        assignee:
+          type: string
     JobState:
       type: string
       enum:

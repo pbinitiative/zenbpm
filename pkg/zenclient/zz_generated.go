@@ -239,6 +239,7 @@ type IncidentPage struct {
 
 // Job defines model for Job.
 type Job struct {
+	Assignee           *string                `json:"assignee,omitempty"`
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
 	Key                int64                  `json:"key"`

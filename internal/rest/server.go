@@ -842,6 +842,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
+				Assignee:           job.Assignee,
 			}
 		}
 	}

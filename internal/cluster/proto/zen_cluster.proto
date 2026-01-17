@@ -433,9 +433,9 @@ message GetProcessInstancesRequest {
 message GetDmnResourceDefinitionsRequest {
   int32 page = 1;
   int32 size = 2;
-  string dmnDefinitionName = 3;
-  bool onlyLatest = 4;
-  string dmnResourceDefinitionId = 5;
+  string dmn_definition_name = 3;
+  bool only_latest = 4;
+  string dmn_resource_definition_id = 5;
   string sort_by_order = 6;
 }
 

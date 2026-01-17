@@ -239,26 +239,46 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
 }
 
 // GetDmnResourceDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context) ([]proto.DmnResourceDefinition, error) {
+func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *proto.GetDmnResourceDefinitionsRequest) (proto.DmnResourceDefinitionsPage, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dmn resource definitions: %w", err)
+		return proto.DmnResourceDefinitionsPage{}, fmt.Errorf("failed to get node DB: %w", err)
 	}
-	definitions, err := db.Queries.FindAllDmnResourceDefinitions(ctx)
+	page := *request.Page
+	size := *request.Size
+	latest := 0
+	if request.OnlyLatest != nil && *request.OnlyLatest {
+		latest = 1
+	}
+	definitions, err := db.Queries.FindAllDmnResourceDefinitions(ctx, sql.FindAllDmnResourceDefinitionsParams{
+		OnlyLatest:              int64(latest),
+		SortByOrder:             sql.ToNullString(request.SortByOrder),
+		DmnResourceDefinitionID: sql.ToNullString(request.DmnResourceDefinitionId),
+		DmnDefinitionName:       sql.ToNullString(request.DmnDefinitionName),
+		Offset:                  int64((page - 1) * size),
+		Size:                    int64(size),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read dmn resource definitions from database: %w", err)
+		return proto.DmnResourceDefinitionsPage{}, fmt.Errorf("failed to read dmn resource definitions from database: %w", err)
 	}
-	resp := make([]proto.DmnResourceDefinition, 0, len(definitions))
-	for _, def := range definitions {
-		resp = append(resp, proto.DmnResourceDefinition{
+	items := make([]*proto.DmnResourceDefinition, 0, len(definitions))
+	totalCount := 0
+	for i, def := range definitions {
+		if i == 0 {
+			totalCount = int(def.TotalCount)
+		}
+		items = append(items, &proto.DmnResourceDefinition{
 			Key:                     &def.Key,
 			Version:                 ptr.To(int32(def.Version)),
 			DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 			Definition:              []byte(def.DmnData),
-			ResourceName:            &def.DmnResourceName,
+			DmnDefinitionName:       &def.DmnDefinitionName,
 		})
 	}
-	return resp, nil
+	return proto.DmnResourceDefinitionsPage{
+		Items:      items,
+		TotalCount: ptr.To(int32(totalCount)),
+	}, nil
 }
 
 // GetDmnResourceDefinition does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
@@ -276,7 +296,7 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 		Version:                 ptr.To(int32(def.Version)),
 		DmnResourceDefinitionId: &def.DmnResourceDefinitionID,
 		Definition:              []byte(def.DmnData),
-		ResourceName:            &def.DmnResourceName,
+		DmnDefinitionName:       &def.DmnDefinitionName,
 	}, nil
 }
 

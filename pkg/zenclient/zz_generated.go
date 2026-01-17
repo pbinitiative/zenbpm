@@ -47,6 +47,20 @@ const (
 	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
 
+// Defines values for GetDmnResourceDefinitionsParamsSortBy.
+const (
+	GetDmnResourceDefinitionsParamsSortByDmnDefinitionName       GetDmnResourceDefinitionsParamsSortBy = "dmnDefinitionName"
+	GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId GetDmnResourceDefinitionsParamsSortBy = "dmnResourceDefinitionId"
+	GetDmnResourceDefinitionsParamsSortByKey                     GetDmnResourceDefinitionsParamsSortBy = "key"
+	GetDmnResourceDefinitionsParamsSortByVersion                 GetDmnResourceDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetDmnResourceDefinitionsParamsSortOrder.
+const (
+	GetDmnResourceDefinitionsParamsSortOrderAsc  GetDmnResourceDefinitionsParamsSortOrder = "asc"
+	GetDmnResourceDefinitionsParamsSortOrderDesc GetDmnResourceDefinitionsParamsSortOrder = "desc"
+)
+
 // Defines values for GetProcessDefinitionsParamsSortBy.
 const (
 	GetProcessDefinitionsParamsSortByBpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
@@ -64,15 +78,15 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
-	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
-	GetProcessInstancesParamsSortByKey       GetProcessInstancesParamsSortBy = "key"
-	GetProcessInstancesParamsSortByState     GetProcessInstancesParamsSortBy = "state"
+	CreatedAt GetProcessInstancesParamsSortBy = "createdAt"
+	Key       GetProcessInstancesParamsSortBy = "key"
+	State     GetProcessInstancesParamsSortBy = "state"
 )
 
 // Defines values for GetProcessInstancesParamsSortOrder.
 const (
-	Asc  GetProcessInstancesParamsSortOrder = "asc"
-	Desc GetProcessInstancesParamsSortOrder = "desc"
+	GetProcessInstancesParamsSortOrderAsc  GetProcessInstancesParamsSortOrder = "asc"
+	GetProcessInstancesParamsSortOrderDesc GetProcessInstancesParamsSortOrder = "desc"
 )
 
 // Defines values for GetProcessInstancesParamsState.
@@ -86,17 +100,17 @@ const (
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
 	DmnData                 *string `json:"dmnData,omitempty"`
+	DmnDefinitionName       string  `json:"dmnDefinitionName"`
 	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
 	Key                     int64   `json:"key"`
-	ResourceName            string  `json:"resourceName"`
 	Version                 int     `json:"version"`
 }
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
+	DmnDefinitionName       string  `json:"dmnDefinitionName"`
 	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
 	Key                     int64   `json:"key"`
-	ResourceName            string  `json:"resourceName"`
 	Version                 int     `json:"version"`
 }
 
@@ -416,7 +430,28 @@ type GetDmnResourceDefinitionsParams struct {
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDmnResourceDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDmnResourceDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// DmnDefinitionName Filter by name (partial match)
+	DmnDefinitionName *string `form:"dmnDefinitionName,omitempty" json:"dmnDefinitionName,omitempty"`
 }
+
+// GetDmnResourceDefinitionsParamsSortBy defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortBy string
+
+// GetDmnResourceDefinitionsParamsSortOrder defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortOrder string
 
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
@@ -1159,6 +1194,86 @@ func NewGetDmnResourceDefinitionsRequest(server string, params *GetDmnResourceDe
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.OnlyLatest != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnResourceDefinitionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionId", runtime.ParamLocationQuery, *params.DmnResourceDefinitionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnDefinitionName != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnDefinitionName", runtime.ParamLocationQuery, *params.DmnDefinitionName); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

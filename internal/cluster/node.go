@@ -700,7 +700,7 @@ func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceK
 }
 
 // GetJobs will contact follower nodes and return jobs in partitions they are following
-func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState) ([]*proto.PartitionedJobs, error) {
+func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobType *string, jobState *runtime.ActivityState, assignee *string, processInstanceKey *int64, sort *sql.Sort) ([]*proto.PartitionedJobs, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
@@ -718,12 +718,20 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 		if jobState != nil {
 			reqState = ptr.To(int64(*jobState))
 		}
+
+		var sortString string
+		if sort != nil {
+			sortString = string(ptr.Deref(sort, ""))
+		}
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
-			Page:       &page,
-			Size:       &size,
-			Partitions: []uint32{partitionID},
-			JobType:    jobType,
-			State:      reqState,
+			Page:               &page,
+			Size:               &size,
+			Partitions:         []uint32{partitionID},
+			JobType:            jobType,
+			State:              reqState,
+			Assignee:           assignee,
+			ProcessInstanceKey: processInstanceKey,
+			Sort:               &sortString,
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)
@@ -736,6 +744,30 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 		result = append(result, resp.Partitions...)
 	}
 	return result, nil
+}
+
+func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(jobKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get follower node to get job: %w", err)
+
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get job: %w", err)
+	}
+	resp, err := client.GetJob(ctx, &proto.GetJobRequest{
+		JobKey: &jobKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get job from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		}
+	}
+	return resp.Job, nil
 }
 
 // GetProcessInstances will contact follower nodes and return instances in partitions they are following

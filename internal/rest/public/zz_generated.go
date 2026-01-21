@@ -49,9 +49,23 @@ const (
 
 // Defines values for EvaluateDecisionJSONBodyBindingType.
 const (
-	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
-	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
-	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+	EvaluateDecisionJSONBodyBindingTypeDeployment EvaluateDecisionJSONBodyBindingType = "deployment"
+	EvaluateDecisionJSONBodyBindingTypeLatest     EvaluateDecisionJSONBodyBindingType = "latest"
+	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
+// Defines values for GetJobsParamsSortBy.
+const (
+	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
+	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
+	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
+	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
+)
+
+// Defines values for GetJobsParamsSortOrder.
+const (
+	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
+	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
 )
 
 // Defines values for GetProcessDefinitionsParamsSortBy.
@@ -78,16 +92,16 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortOrder.
 const (
-	Asc  GetProcessInstancesParamsSortOrder = "asc"
-	Desc GetProcessInstancesParamsSortOrder = "desc"
+	GetProcessInstancesParamsSortOrderAsc  GetProcessInstancesParamsSortOrder = "asc"
+	GetProcessInstancesParamsSortOrderDesc GetProcessInstancesParamsSortOrder = "desc"
 )
 
 // Defines values for GetProcessInstancesParamsState.
 const (
-	Active     GetProcessInstancesParamsState = "active"
-	Completed  GetProcessInstancesParamsState = "completed"
-	Failed     GetProcessInstancesParamsState = "failed"
-	Terminated GetProcessInstancesParamsState = "terminated"
+	GetProcessInstancesParamsStateActive     GetProcessInstancesParamsState = "active"
+	GetProcessInstancesParamsStateCompleted  GetProcessInstancesParamsState = "completed"
+	GetProcessInstancesParamsStateFailed     GetProcessInstancesParamsState = "failed"
+	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
 )
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -207,6 +221,7 @@ type IncidentPage struct {
 
 // Job defines model for Job.
 type Job struct {
+	Assignee           *string                `json:"assignee,omitempty"`
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
 	Key                int64                  `json:"key"`
@@ -369,13 +384,30 @@ type GetDmnResourceDefinitionsParams struct {
 type GetJobsParams struct {
 	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
 	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+
+	// Assignee Filter by assignee
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+	Page               *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size               *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetJobsParamsSortBy defines parameters for GetJobs.
+type GetJobsParamsSortBy string
+
+// GetJobsParamsSortOrder defines parameters for GetJobs.
+type GetJobsParamsSortOrder string
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey    int64                   `json:"jobKey"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -573,9 +605,12 @@ type ServerInterface interface {
 	// Get list of jobs on partitions
 	// (GET /jobs)
 	GetJobs(w http.ResponseWriter, r *http.Request, params GetJobsParams)
+	// Get job details
+	// (GET /jobs/{jobKey})
+	GetJob(w http.ResponseWriter, r *http.Request, jobKey int64)
 	// Complete a job
-	// (POST /jobs)
-	CompleteJob(w http.ResponseWriter, r *http.Request)
+	// (POST /jobs/{jobKey}/complete)
+	CompleteJob(w http.ResponseWriter, r *http.Request, jobKey int64)
 	// Publish a message
 	// (POST /messages)
 	PublishMessage(w http.ResponseWriter, r *http.Request)
@@ -666,9 +701,15 @@ func (_ Unimplemented) GetJobs(w http.ResponseWriter, r *http.Request, params Ge
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get job details
+// (GET /jobs/{jobKey})
+func (_ Unimplemented) GetJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Complete a job
-// (POST /jobs)
-func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request) {
+// (POST /jobs/{jobKey}/complete)
+func (_ Unimplemented) CompleteJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -925,6 +966,22 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "assignee", r.URL.Query(), &params.Assignee)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "processInstanceKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processInstanceKey", r.URL.Query(), &params.ProcessInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "page" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
@@ -941,8 +998,49 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetJobs(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJob operation middleware
+func (siw *ServerInterfaceWrapper) GetJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "jobKey" -------------
+	var jobKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobKey", chi.URLParam(r, "jobKey"), &jobKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJob(w, r, jobKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -955,8 +1053,19 @@ func (siw *ServerInterfaceWrapper) GetJobs(w http.ResponseWriter, r *http.Reques
 // CompleteJob operation middleware
 func (siw *ServerInterfaceWrapper) CompleteJob(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+
+	// ------------- Path parameter "jobKey" -------------
+	var jobKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "jobKey", chi.URLParam(r, "jobKey"), &jobKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobKey", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CompleteJob(w, r)
+		siw.Handler.CompleteJob(w, r, jobKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -1633,7 +1742,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/jobs", wrapper.GetJobs)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/jobs", wrapper.CompleteJob)
+		r.Get(options.BaseURL+"/jobs/{jobKey}", wrapper.GetJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/jobs/{jobKey}/complete", wrapper.CompleteJob)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/messages", wrapper.PublishMessage)
@@ -1890,8 +2002,53 @@ func (response GetJobs502JSONResponse) VisitGetJobsResponse(w http.ResponseWrite
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetJobRequestObject struct {
+	JobKey int64 `json:"jobKey"`
+}
+
+type GetJobResponseObject interface {
+	VisitGetJobResponse(w http.ResponseWriter) error
+}
+
+type GetJob200JSONResponse Job
+
+func (response GetJob200JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob404JSONResponse Error
+
+func (response GetJob404JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob500JSONResponse Error
+
+func (response GetJob500JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetJob502JSONResponse Error
+
+func (response GetJob502JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CompleteJobRequestObject struct {
-	Body *CompleteJobJSONRequestBody
+	JobKey int64 `json:"jobKey"`
+	Body   *CompleteJobJSONRequestBody
 }
 
 type CompleteJobResponseObject interface {
@@ -2557,8 +2714,11 @@ type StrictServerInterface interface {
 	// Get list of jobs on partitions
 	// (GET /jobs)
 	GetJobs(ctx context.Context, request GetJobsRequestObject) (GetJobsResponseObject, error)
+	// Get job details
+	// (GET /jobs/{jobKey})
+	GetJob(ctx context.Context, request GetJobRequestObject) (GetJobResponseObject, error)
 	// Complete a job
-	// (POST /jobs)
+	// (POST /jobs/{jobKey}/complete)
 	CompleteJob(ctx context.Context, request CompleteJobRequestObject) (CompleteJobResponseObject, error)
 	// Publish a message
 	// (POST /messages)
@@ -2802,9 +2962,37 @@ func (sh *strictHandler) GetJobs(w http.ResponseWriter, r *http.Request, params 
 	}
 }
 
+// GetJob operation middleware
+func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
+	var request GetJobRequestObject
+
+	request.JobKey = jobKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJob(ctx, request.(GetJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobResponseObject); ok {
+		if err := validResponse.VisitGetJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CompleteJob operation middleware
-func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CompleteJob(w http.ResponseWriter, r *http.Request, jobKey int64) {
 	var request CompleteJobRequestObject
+
+	request.JobKey = jobKey
 
 	var body CompleteJobJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -3288,92 +3476,93 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"+Cm/6dv4Tcu+uFr8NwAA//87H2r5vJQAAA==",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

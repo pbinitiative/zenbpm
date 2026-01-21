@@ -1065,7 +1065,7 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /process-instances/{processInstanceKey}/variables:
-    put:
+    patch:
       operationId: updateProcessInstanceVariables
       summary: Update process instance variables
       tags:

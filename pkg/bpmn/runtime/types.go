@@ -233,6 +233,7 @@ type Job struct {
 	Variables          map[string]any
 	CreatedAt          time.Time
 	Token              ExecutionToken
+	Assignee           *string
 }
 
 func (j Job) GetKey() int64 {

@@ -1277,6 +1277,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		CreatedAt:          job.CreatedAt.UnixMilli(),
 		Variables:          string(variableBytes),
 		ExecutionToken:     job.Token.Key,
+		Assignee:           sql.ToNullString(job.Assignee),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)

@@ -151,7 +151,7 @@ func TestCreatedAt(t *testing.T) {
 			BpmnProcessId: &definition.BpmnProcessId,
 			CreatedFrom:   ptr.To(past),
 			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
-			SortOrder:     ptr.To(zenclient.Desc),
+			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderDesc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -166,7 +166,7 @@ func TestCreatedAt(t *testing.T) {
 			BpmnProcessId: &definition.BpmnProcessId,
 			CreatedFrom:   ptr.To(past),
 			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
-			SortOrder:     ptr.To(zenclient.Asc),
+			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -258,7 +258,7 @@ func TestState(t *testing.T) {
 	t.Run("find process instances by state=failed", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &invalidDefinition.BpmnProcessId,
-			State:         ptr.To(zenclient.Failed),
+			State:         ptr.To(zenclient.GetProcessInstancesParamsStateFailed),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
@@ -270,7 +270,7 @@ func TestState(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &validDefinition.BpmnProcessId,
 			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
-			SortOrder:     ptr.To(zenclient.Asc),
+			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
@@ -284,7 +284,7 @@ func TestState(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &validDefinition.BpmnProcessId,
 			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByState),
-			SortOrder:     ptr.To(zenclient.Asc),
+			SortOrder:     ptr.To(zenclient.GetProcessInstancesParamsSortOrderAsc),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)

@@ -26,7 +26,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	t.Run("evaluate decision BindingType Latest with DecisionDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Latest,
+			public.EvaluateDecisionJSONBodyBindingTypeLatest,
 			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
@@ -43,7 +43,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	t.Run("evaluate decision BindingType Latest without DecisionDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Latest,
+			public.EvaluateDecisionJSONBodyBindingTypeLatest,
 			nil,
 			"example_canAutoLiquidateRule",
 			nil,
@@ -61,7 +61,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		versionTag := "versionTagTest"
 		result, err = evaluateDecision(
 			t,
-			public.VersionTag,
+			public.EvaluateDecisionJSONBodyBindingTypeVersionTag,
 			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			&versionTag,
@@ -78,7 +78,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	t.Run("evaluate decision BindingType Deployment with DecisionDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Deployment,
+			public.EvaluateDecisionJSONBodyBindingTypeDeployment,
 			definition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,

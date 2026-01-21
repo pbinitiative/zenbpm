@@ -243,7 +243,7 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
 	var decision = request.DecisionId
-	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.Latest {
+	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeLatest {
 		decision = *request.Body.DecisionDefinitionId + "." + request.DecisionId
 	}
 
@@ -404,7 +404,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	err := s.node.CompleteJob(ctx, request.Body.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
+	err := s.node.CompleteJob(ctx, request.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
 		return public.CompleteJob502JSONResponse{
 			Code:    "TODO",
@@ -561,15 +561,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
-		supportedStates := [...]public.GetProcessInstancesParamsState{public.Active, public.Completed, public.Terminated, public.Failed}
+		supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
+		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
+		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
-		case public.Active:
+		case public.GetProcessInstancesParamsStateActive:
 			state = ptr.To(int64(runtime.ActivityStateActive))
-		case public.Completed:
+		case public.GetProcessInstancesParamsStateCompleted:
 			state = ptr.To(int64(runtime.ActivityStateCompleted))
-		case public.Terminated:
+		case public.GetProcessInstancesParamsStateTerminated:
 			state = ptr.To(int64(runtime.ActivityStateTerminated))
-		case public.Failed:
+		case public.GetProcessInstancesParamsStateFailed:
 			state = ptr.To(int64(runtime.ActivityStateFailed))
 		default:
 			return public.GetProcessInstances400JSONResponse{
@@ -599,7 +601,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		}
 	}
 	if request.Params.SortOrder != nil {
-		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.Asc, public.Desc}
+		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.GetProcessInstancesParamsSortOrderAsc, public.GetProcessInstancesParamsSortOrderDesc}
 		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
 			return public.GetProcessInstances400JSONResponse{
 				Code:    "TODO",
@@ -607,7 +609,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			}, nil
 		}
 	} else {
-		request.Params.SortOrder = ptr.To(public.Desc)
+		request.Params.SortOrder = ptr.To(public.GetProcessInstancesParamsSortOrderDesc)
 	}
 	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
@@ -870,7 +872,9 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState)
+
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey, sort)
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -896,29 +900,50 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
-			vars := map[string]any{}
-			err = json.Unmarshal(job.GetVariables(), &vars)
-			if err != nil {
-				return public.GetJobs500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
 				State:              getRestJobState(runtime.ActivityState(job.GetState())),
-				Variables:          vars,
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
+				Assignee:           job.Assignee,
 			}
 		}
 	}
 	jobsPage.Count = count
 	jobsPage.TotalCount = int(totalCount)
 	return jobsPage, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject) (public.GetJobResponseObject, error) {
+	job, err := s.node.GetJob(ctx, request.JobKey)
+	if err != nil {
+		// Not your cluster error type → treat as internal (or map generically)
+		return public.GetJob500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobVars := make(map[string]any)
+	err = json.Unmarshal(job.GetVariables(), &jobVars)
+	if err != nil {
+		return public.GetJob500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.GetJob200JSONResponse{
+		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+		ElementId:          job.GetElementId(),
+		Key:                job.GetKey(),
+		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		Type:               job.GetType(),
+		Variables:          jobVars,
+	}, nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

@@ -609,6 +609,11 @@ type GetProcessInstanceJobsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// UpdateProcessInstanceVariablesJSONBody defines parameters for UpdateProcessInstanceVariables.
+type UpdateProcessInstanceVariablesJSONBody struct {
+	Variables map[string]interface{} `json:"variables"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
@@ -629,6 +634,9 @@ type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipar
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
+type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -774,6 +782,14 @@ type ClientInterface interface {
 
 	// GetProcessInstanceJobs request
 	GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateProcessInstanceVariablesWithBody request with any body
+	UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteProcessInstanceVariable request
+	DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStartCpuProfile request
 	TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1084,6 +1100,42 @@ func (c *Client) GetIncidents(ctx context.Context, processInstanceKey int64, par
 
 func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceJobsRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequestWithBody(c.Server, processInstanceKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequest(c.Server, processInstanceKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProcessInstanceVariableRequest(c.Server, processInstanceKey, variableName)
 	if err != nil {
 		return nil, err
 	}
@@ -2380,6 +2432,94 @@ func NewGetProcessInstanceJobsRequest(server string, processInstanceKey int64, p
 	return req, nil
 }
 
+// NewUpdateProcessInstanceVariablesRequest calls the generic UpdateProcessInstanceVariables builder with application/json body
+func NewUpdateProcessInstanceVariablesRequest(server string, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateProcessInstanceVariablesRequestWithBody(server, processInstanceKey, "application/json", bodyReader)
+}
+
+// NewUpdateProcessInstanceVariablesRequestWithBody generates requests for UpdateProcessInstanceVariables with any type of body
+func NewUpdateProcessInstanceVariablesRequestWithBody(server string, processInstanceKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteProcessInstanceVariableRequest generates requests for DeleteProcessInstanceVariable
+func NewDeleteProcessInstanceVariableRequest(server string, processInstanceKey int64, variableName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "variableName", runtime.ParamLocationPath, variableName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewTestStartCpuProfileRequest generates requests for TestStartCpuProfile
 func NewTestStartCpuProfileRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
@@ -2562,6 +2702,14 @@ type ClientWithResponsesInterface interface {
 
 	// GetProcessInstanceJobsWithResponse request
 	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
+
+	// UpdateProcessInstanceVariablesWithBodyWithResponse request with any body
+	UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	// DeleteProcessInstanceVariableWithResponse request
+	DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error)
 
 	// TestStartCpuProfileWithResponse request
 	TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error)
@@ -3060,6 +3208,53 @@ func (r GetProcessInstanceJobsResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateProcessInstanceVariablesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateProcessInstanceVariablesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateProcessInstanceVariablesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteProcessInstanceVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProcessInstanceVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProcessInstanceVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TestStartCpuProfileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3333,6 +3528,32 @@ func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseGetProcessInstanceJobsResponse(rsp)
+}
+
+// UpdateProcessInstanceVariablesWithBodyWithResponse request with arbitrary body returning *UpdateProcessInstanceVariablesResponse
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariablesWithBody(ctx, processInstanceKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariables(ctx, processInstanceKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+// DeleteProcessInstanceVariableWithResponse request returning *DeleteProcessInstanceVariableResponse
+func (c *ClientWithResponses) DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error) {
+	rsp, err := c.DeleteProcessInstanceVariable(ctx, processInstanceKey, variableName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProcessInstanceVariableResponse(rsp)
 }
 
 // TestStartCpuProfileWithResponse request returning *TestStartCpuProfileResponse
@@ -4168,6 +4389,79 @@ func ParseGetProcessInstanceJobsResponse(rsp *http.Response) (*GetProcessInstanc
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateProcessInstanceVariablesResponse parses an HTTP response from a UpdateProcessInstanceVariablesWithResponse call
+func ParseUpdateProcessInstanceVariablesResponse(rsp *http.Response) (*UpdateProcessInstanceVariablesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateProcessInstanceVariablesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteProcessInstanceVariableResponse parses an HTTP response from a DeleteProcessInstanceVariableWithResponse call
+func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProcessInstanceVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProcessInstanceVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error

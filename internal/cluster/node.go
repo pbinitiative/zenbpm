@@ -665,14 +665,36 @@ func (node *ZenNode) CreateInstance(
 	return resp.Process, nil
 }
 
-func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
-	state := node.store.ClusterState()
-	partitionId := zenflake.GetPartitionId(processInstanceKey)
-	follower, err := state.GetPartitionFollower(partitionId)
+func (node *ZenNode) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, variables map[string]any) error {
+	_, _, err := node.ModifyProcessInstance(ctx, processInstanceKey, []int64{}, []string{}, variables)
+	return err
+}
+
+func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) error {
+	partition := zenflake.GetPartitionId(processInstanceKey)
+	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to follower node to modify process instance: %w", err)
+		return fmt.Errorf("failed to get client to delete process instance variable: %w", err)
 	}
-	client, err := node.client.For(follower.Addr)
+
+	resp, err := client.DeleteProcessInstanceVariable(ctx, &proto.DeleteProcessInstanceVariableRequest{
+		ProcessInstanceKey: &processInstanceKey,
+		Variable:           &variable,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to delete process instance variable")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return nil
+}
+
+func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
+	partition := zenflake.GetPartitionId(processInstanceKey)
+	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get client to modify process instance: %w", err)
 	}

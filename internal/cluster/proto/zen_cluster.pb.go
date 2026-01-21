@@ -71,7 +71,7 @@ func (x SubscribeJobRequest_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SubscribeJobRequest_Type.Descriptor instead.
 func (SubscribeJobRequest_Type) EnumDescriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{71, 0}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{73, 0}
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -3353,6 +3353,58 @@ func (x *ModifyProcessInstanceRequest) GetVariables() []byte {
 	return nil
 }
 
+type DeleteProcessInstanceVariableRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ProcessInstanceKey *int64                 `protobuf:"varint,1,opt,name=process_instance_key,json=processInstanceKey" json:"process_instance_key,omitempty"`
+	Variable           *string                `protobuf:"bytes,2,opt,name=variable" json:"variable,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *DeleteProcessInstanceVariableRequest) Reset() {
+	*x = DeleteProcessInstanceVariableRequest{}
+	mi := &file_zen_cluster_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteProcessInstanceVariableRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteProcessInstanceVariableRequest) ProtoMessage() {}
+
+func (x *DeleteProcessInstanceVariableRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteProcessInstanceVariableRequest.ProtoReflect.Descriptor instead.
+func (*DeleteProcessInstanceVariableRequest) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *DeleteProcessInstanceVariableRequest) GetProcessInstanceKey() int64 {
+	if x != nil && x.ProcessInstanceKey != nil {
+		return *x.ProcessInstanceKey
+	}
+	return 0
+}
+
+func (x *DeleteProcessInstanceVariableRequest) GetVariable() string {
+	if x != nil && x.Variable != nil {
+		return *x.Variable
+	}
+	return ""
+}
+
 type ModifyProcessInstanceResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Error           *ErrorResult           `protobuf:"bytes,1,opt,name=error" json:"error,omitempty"`
@@ -3364,7 +3416,7 @@ type ModifyProcessInstanceResponse struct {
 
 func (x *ModifyProcessInstanceResponse) Reset() {
 	*x = ModifyProcessInstanceResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[52]
+	mi := &file_zen_cluster_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3376,7 +3428,7 @@ func (x *ModifyProcessInstanceResponse) String() string {
 func (*ModifyProcessInstanceResponse) ProtoMessage() {}
 
 func (x *ModifyProcessInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[52]
+	mi := &file_zen_cluster_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3389,7 +3441,7 @@ func (x *ModifyProcessInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModifyProcessInstanceResponse.ProtoReflect.Descriptor instead.
 func (*ModifyProcessInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{52}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ModifyProcessInstanceResponse) GetError() *ErrorResult {
@@ -3413,6 +3465,58 @@ func (x *ModifyProcessInstanceResponse) GetExecutionTokens() []*ExecutionToken {
 	return nil
 }
 
+type DeleteProcessInstanceVariableResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         *ErrorResult           `protobuf:"bytes,1,opt,name=error" json:"error,omitempty"`
+	Process       *ProcessInstance       `protobuf:"bytes,2,opt,name=process" json:"process,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteProcessInstanceVariableResponse) Reset() {
+	*x = DeleteProcessInstanceVariableResponse{}
+	mi := &file_zen_cluster_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteProcessInstanceVariableResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteProcessInstanceVariableResponse) ProtoMessage() {}
+
+func (x *DeleteProcessInstanceVariableResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteProcessInstanceVariableResponse.ProtoReflect.Descriptor instead.
+func (*DeleteProcessInstanceVariableResponse) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *DeleteProcessInstanceVariableResponse) GetError() *ErrorResult {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *DeleteProcessInstanceVariableResponse) GetProcess() *ProcessInstance {
+	if x != nil {
+		return x.Process
+	}
+	return nil
+}
+
 type GetProcessInstancesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Page          *int32                 `protobuf:"varint,1,opt,name=page" json:"page,omitempty"`
@@ -3432,7 +3536,7 @@ type GetProcessInstancesRequest struct {
 
 func (x *GetProcessInstancesRequest) Reset() {
 	*x = GetProcessInstancesRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[53]
+	mi := &file_zen_cluster_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3444,7 +3548,7 @@ func (x *GetProcessInstancesRequest) String() string {
 func (*GetProcessInstancesRequest) ProtoMessage() {}
 
 func (x *GetProcessInstancesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[53]
+	mi := &file_zen_cluster_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3457,7 +3561,7 @@ func (x *GetProcessInstancesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstancesRequest.ProtoReflect.Descriptor instead.
 func (*GetProcessInstancesRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{53}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetProcessInstancesRequest) GetPage() int32 {
@@ -3548,7 +3652,7 @@ type PartitionedProcessInstances struct {
 
 func (x *PartitionedProcessInstances) Reset() {
 	*x = PartitionedProcessInstances{}
-	mi := &file_zen_cluster_proto_msgTypes[54]
+	mi := &file_zen_cluster_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3560,7 +3664,7 @@ func (x *PartitionedProcessInstances) String() string {
 func (*PartitionedProcessInstances) ProtoMessage() {}
 
 func (x *PartitionedProcessInstances) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[54]
+	mi := &file_zen_cluster_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3573,7 +3677,7 @@ func (x *PartitionedProcessInstances) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionedProcessInstances.ProtoReflect.Descriptor instead.
 func (*PartitionedProcessInstances) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{54}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *PartitionedProcessInstances) GetPartitionId() uint32 {
@@ -3607,7 +3711,7 @@ type GetProcessInstancesResponse struct {
 
 func (x *GetProcessInstancesResponse) Reset() {
 	*x = GetProcessInstancesResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[55]
+	mi := &file_zen_cluster_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3619,7 +3723,7 @@ func (x *GetProcessInstancesResponse) String() string {
 func (*GetProcessInstancesResponse) ProtoMessage() {}
 
 func (x *GetProcessInstancesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[55]
+	mi := &file_zen_cluster_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3632,7 +3736,7 @@ func (x *GetProcessInstancesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstancesResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessInstancesResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{55}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *GetProcessInstancesResponse) GetError() *ErrorResult {
@@ -3658,7 +3762,7 @@ type GetProcessInstanceRequest struct {
 
 func (x *GetProcessInstanceRequest) Reset() {
 	*x = GetProcessInstanceRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[56]
+	mi := &file_zen_cluster_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3670,7 +3774,7 @@ func (x *GetProcessInstanceRequest) String() string {
 func (*GetProcessInstanceRequest) ProtoMessage() {}
 
 func (x *GetProcessInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[56]
+	mi := &file_zen_cluster_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3683,7 +3787,7 @@ func (x *GetProcessInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstanceRequest.ProtoReflect.Descriptor instead.
 func (*GetProcessInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{56}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetProcessInstanceRequest) GetProcessInstanceKey() int64 {
@@ -3704,7 +3808,7 @@ type GetProcessInstanceResponse struct {
 
 func (x *GetProcessInstanceResponse) Reset() {
 	*x = GetProcessInstanceResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[57]
+	mi := &file_zen_cluster_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3716,7 +3820,7 @@ func (x *GetProcessInstanceResponse) String() string {
 func (*GetProcessInstanceResponse) ProtoMessage() {}
 
 func (x *GetProcessInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[57]
+	mi := &file_zen_cluster_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3729,7 +3833,7 @@ func (x *GetProcessInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstanceResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{57}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *GetProcessInstanceResponse) GetError() *ErrorResult {
@@ -3764,7 +3868,7 @@ type GetProcessInstanceJobsRequest struct {
 
 func (x *GetProcessInstanceJobsRequest) Reset() {
 	*x = GetProcessInstanceJobsRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[58]
+	mi := &file_zen_cluster_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3776,7 +3880,7 @@ func (x *GetProcessInstanceJobsRequest) String() string {
 func (*GetProcessInstanceJobsRequest) ProtoMessage() {}
 
 func (x *GetProcessInstanceJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[58]
+	mi := &file_zen_cluster_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3789,7 +3893,7 @@ func (x *GetProcessInstanceJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstanceJobsRequest.ProtoReflect.Descriptor instead.
 func (*GetProcessInstanceJobsRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{58}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *GetProcessInstanceJobsRequest) GetProcessInstanceKey() int64 {
@@ -3824,7 +3928,7 @@ type GetProcessInstanceJobsResponse struct {
 
 func (x *GetProcessInstanceJobsResponse) Reset() {
 	*x = GetProcessInstanceJobsResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[59]
+	mi := &file_zen_cluster_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3836,7 +3940,7 @@ func (x *GetProcessInstanceJobsResponse) String() string {
 func (*GetProcessInstanceJobsResponse) ProtoMessage() {}
 
 func (x *GetProcessInstanceJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[59]
+	mi := &file_zen_cluster_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3849,7 +3953,7 @@ func (x *GetProcessInstanceJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProcessInstanceJobsResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessInstanceJobsResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{59}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *GetProcessInstanceJobsResponse) GetError() *ErrorResult {
@@ -3884,7 +3988,7 @@ type GetFlowElementHistoryRequest struct {
 
 func (x *GetFlowElementHistoryRequest) Reset() {
 	*x = GetFlowElementHistoryRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[60]
+	mi := &file_zen_cluster_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3896,7 +4000,7 @@ func (x *GetFlowElementHistoryRequest) String() string {
 func (*GetFlowElementHistoryRequest) ProtoMessage() {}
 
 func (x *GetFlowElementHistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[60]
+	mi := &file_zen_cluster_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3909,7 +4013,7 @@ func (x *GetFlowElementHistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFlowElementHistoryRequest.ProtoReflect.Descriptor instead.
 func (*GetFlowElementHistoryRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{60}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *GetFlowElementHistoryRequest) GetProcessInstanceKey() int64 {
@@ -3944,7 +4048,7 @@ type GetFlowElementHistoryResponse struct {
 
 func (x *GetFlowElementHistoryResponse) Reset() {
 	*x = GetFlowElementHistoryResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[61]
+	mi := &file_zen_cluster_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3956,7 +4060,7 @@ func (x *GetFlowElementHistoryResponse) String() string {
 func (*GetFlowElementHistoryResponse) ProtoMessage() {}
 
 func (x *GetFlowElementHistoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[61]
+	mi := &file_zen_cluster_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3969,7 +4073,7 @@ func (x *GetFlowElementHistoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFlowElementHistoryResponse.ProtoReflect.Descriptor instead.
 func (*GetFlowElementHistoryResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{61}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GetFlowElementHistoryResponse) GetError() *ErrorResult {
@@ -4004,7 +4108,7 @@ type GetIncidentsRequest struct {
 
 func (x *GetIncidentsRequest) Reset() {
 	*x = GetIncidentsRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[62]
+	mi := &file_zen_cluster_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4016,7 +4120,7 @@ func (x *GetIncidentsRequest) String() string {
 func (*GetIncidentsRequest) ProtoMessage() {}
 
 func (x *GetIncidentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[62]
+	mi := &file_zen_cluster_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4029,7 +4133,7 @@ func (x *GetIncidentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetIncidentsRequest.ProtoReflect.Descriptor instead.
 func (*GetIncidentsRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{62}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetIncidentsRequest) GetProcessInstanceKey() int64 {
@@ -4064,7 +4168,7 @@ type GetIncidentsResponse struct {
 
 func (x *GetIncidentsResponse) Reset() {
 	*x = GetIncidentsResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[63]
+	mi := &file_zen_cluster_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4076,7 +4180,7 @@ func (x *GetIncidentsResponse) String() string {
 func (*GetIncidentsResponse) ProtoMessage() {}
 
 func (x *GetIncidentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[63]
+	mi := &file_zen_cluster_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4089,7 +4193,7 @@ func (x *GetIncidentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetIncidentsResponse.ProtoReflect.Descriptor instead.
 func (*GetIncidentsResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{63}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetIncidentsResponse) GetError() *ErrorResult {
@@ -4129,7 +4233,7 @@ type GetJobsRequest struct {
 
 func (x *GetJobsRequest) Reset() {
 	*x = GetJobsRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[64]
+	mi := &file_zen_cluster_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4141,7 +4245,7 @@ func (x *GetJobsRequest) String() string {
 func (*GetJobsRequest) ProtoMessage() {}
 
 func (x *GetJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[64]
+	mi := &file_zen_cluster_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4154,7 +4258,7 @@ func (x *GetJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobsRequest.ProtoReflect.Descriptor instead.
 func (*GetJobsRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{64}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *GetJobsRequest) GetPage() int32 {
@@ -4222,7 +4326,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[65]
+	mi := &file_zen_cluster_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4234,7 +4338,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[65]
+	mi := &file_zen_cluster_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4247,7 +4351,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{65}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *GetJobRequest) GetJobKey() int64 {
@@ -4267,7 +4371,7 @@ type GetJobResponse struct {
 
 func (x *GetJobResponse) Reset() {
 	*x = GetJobResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[66]
+	mi := &file_zen_cluster_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4279,7 +4383,7 @@ func (x *GetJobResponse) String() string {
 func (*GetJobResponse) ProtoMessage() {}
 
 func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[66]
+	mi := &file_zen_cluster_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4292,7 +4396,7 @@ func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobResponse.ProtoReflect.Descriptor instead.
 func (*GetJobResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{66}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GetJobResponse) GetError() *ErrorResult {
@@ -4320,7 +4424,7 @@ type PartitionedJobs struct {
 
 func (x *PartitionedJobs) Reset() {
 	*x = PartitionedJobs{}
-	mi := &file_zen_cluster_proto_msgTypes[67]
+	mi := &file_zen_cluster_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4332,7 +4436,7 @@ func (x *PartitionedJobs) String() string {
 func (*PartitionedJobs) ProtoMessage() {}
 
 func (x *PartitionedJobs) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[67]
+	mi := &file_zen_cluster_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4345,7 +4449,7 @@ func (x *PartitionedJobs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionedJobs.ProtoReflect.Descriptor instead.
 func (*PartitionedJobs) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{67}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *PartitionedJobs) GetPartitionId() uint32 {
@@ -4379,7 +4483,7 @@ type GetJobsResponse struct {
 
 func (x *GetJobsResponse) Reset() {
 	*x = GetJobsResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[68]
+	mi := &file_zen_cluster_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4391,7 +4495,7 @@ func (x *GetJobsResponse) String() string {
 func (*GetJobsResponse) ProtoMessage() {}
 
 func (x *GetJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[68]
+	mi := &file_zen_cluster_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4404,7 +4508,7 @@ func (x *GetJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobsResponse.ProtoReflect.Descriptor instead.
 func (*GetJobsResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{68}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetJobsResponse) GetError() *ErrorResult {
@@ -4430,7 +4534,7 @@ type ResolveIncidentRequest struct {
 
 func (x *ResolveIncidentRequest) Reset() {
 	*x = ResolveIncidentRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[69]
+	mi := &file_zen_cluster_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4442,7 +4546,7 @@ func (x *ResolveIncidentRequest) String() string {
 func (*ResolveIncidentRequest) ProtoMessage() {}
 
 func (x *ResolveIncidentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[69]
+	mi := &file_zen_cluster_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4455,7 +4559,7 @@ func (x *ResolveIncidentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveIncidentRequest.ProtoReflect.Descriptor instead.
 func (*ResolveIncidentRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{69}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ResolveIncidentRequest) GetIncidentKey() int64 {
@@ -4474,7 +4578,7 @@ type ResolveIncidentResponse struct {
 
 func (x *ResolveIncidentResponse) Reset() {
 	*x = ResolveIncidentResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[70]
+	mi := &file_zen_cluster_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4486,7 +4590,7 @@ func (x *ResolveIncidentResponse) String() string {
 func (*ResolveIncidentResponse) ProtoMessage() {}
 
 func (x *ResolveIncidentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[70]
+	mi := &file_zen_cluster_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4499,7 +4603,7 @@ func (x *ResolveIncidentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveIncidentResponse.ProtoReflect.Descriptor instead.
 func (*ResolveIncidentResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{70}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ResolveIncidentResponse) GetError() *ErrorResult {
@@ -4520,7 +4624,7 @@ type SubscribeJobRequest struct {
 
 func (x *SubscribeJobRequest) Reset() {
 	*x = SubscribeJobRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[71]
+	mi := &file_zen_cluster_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4532,7 +4636,7 @@ func (x *SubscribeJobRequest) String() string {
 func (*SubscribeJobRequest) ProtoMessage() {}
 
 func (x *SubscribeJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[71]
+	mi := &file_zen_cluster_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4545,7 +4649,7 @@ func (x *SubscribeJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeJobRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeJobRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{71}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *SubscribeJobRequest) GetJobType() string {
@@ -4580,7 +4684,7 @@ type SubscribeJobResponse struct {
 
 func (x *SubscribeJobResponse) Reset() {
 	*x = SubscribeJobResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[72]
+	mi := &file_zen_cluster_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4592,7 +4696,7 @@ func (x *SubscribeJobResponse) String() string {
 func (*SubscribeJobResponse) ProtoMessage() {}
 
 func (x *SubscribeJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[72]
+	mi := &file_zen_cluster_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4605,7 +4709,7 @@ func (x *SubscribeJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeJobResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeJobResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{72}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *SubscribeJobResponse) GetJobType() string {
@@ -4638,7 +4742,7 @@ type ReassignJobRequest struct {
 
 func (x *ReassignJobRequest) Reset() {
 	*x = ReassignJobRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[73]
+	mi := &file_zen_cluster_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4650,7 +4754,7 @@ func (x *ReassignJobRequest) String() string {
 func (*ReassignJobRequest) ProtoMessage() {}
 
 func (x *ReassignJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[73]
+	mi := &file_zen_cluster_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4663,7 +4767,7 @@ func (x *ReassignJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReassignJobRequest.ProtoReflect.Descriptor instead.
 func (*ReassignJobRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{73}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ReassignJobRequest) GetKey() int64 {
@@ -4682,7 +4786,7 @@ type ReassignJobResponse struct {
 
 func (x *ReassignJobResponse) Reset() {
 	*x = ReassignJobResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[74]
+	mi := &file_zen_cluster_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4694,7 +4798,7 @@ func (x *ReassignJobResponse) String() string {
 func (*ReassignJobResponse) ProtoMessage() {}
 
 func (x *ReassignJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[74]
+	mi := &file_zen_cluster_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4707,7 +4811,7 @@ func (x *ReassignJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReassignJobResponse.ProtoReflect.Descriptor instead.
 func (*ReassignJobResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{74}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ReassignJobResponse) GetError() *ErrorResult {
@@ -4725,7 +4829,7 @@ type CpuProfilerRequest struct {
 
 func (x *CpuProfilerRequest) Reset() {
 	*x = CpuProfilerRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[75]
+	mi := &file_zen_cluster_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4737,7 +4841,7 @@ func (x *CpuProfilerRequest) String() string {
 func (*CpuProfilerRequest) ProtoMessage() {}
 
 func (x *CpuProfilerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[75]
+	mi := &file_zen_cluster_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4750,7 +4854,7 @@ func (x *CpuProfilerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CpuProfilerRequest.ProtoReflect.Descriptor instead.
 func (*CpuProfilerRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{75}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{77}
 }
 
 type CpuProfilerStartResult struct {
@@ -4762,7 +4866,7 @@ type CpuProfilerStartResult struct {
 
 func (x *CpuProfilerStartResult) Reset() {
 	*x = CpuProfilerStartResult{}
-	mi := &file_zen_cluster_proto_msgTypes[76]
+	mi := &file_zen_cluster_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4774,7 +4878,7 @@ func (x *CpuProfilerStartResult) String() string {
 func (*CpuProfilerStartResult) ProtoMessage() {}
 
 func (x *CpuProfilerStartResult) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[76]
+	mi := &file_zen_cluster_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4787,7 +4891,7 @@ func (x *CpuProfilerStartResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CpuProfilerStartResult.ProtoReflect.Descriptor instead.
 func (*CpuProfilerStartResult) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{76}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *CpuProfilerStartResult) GetError() *ErrorResult {
@@ -4807,7 +4911,7 @@ type CpuProfilerStopResult struct {
 
 func (x *CpuProfilerStopResult) Reset() {
 	*x = CpuProfilerStopResult{}
-	mi := &file_zen_cluster_proto_msgTypes[77]
+	mi := &file_zen_cluster_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4819,7 +4923,7 @@ func (x *CpuProfilerStopResult) String() string {
 func (*CpuProfilerStopResult) ProtoMessage() {}
 
 func (x *CpuProfilerStopResult) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[77]
+	mi := &file_zen_cluster_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4832,7 +4936,7 @@ func (x *CpuProfilerStopResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CpuProfilerStopResult.ProtoReflect.Descriptor instead.
 func (*CpuProfilerStopResult) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{77}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *CpuProfilerStopResult) GetError() *ErrorResult {
@@ -4858,7 +4962,7 @@ type PartitionRestoreRequest struct {
 
 func (x *PartitionRestoreRequest) Reset() {
 	*x = PartitionRestoreRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[78]
+	mi := &file_zen_cluster_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4870,7 +4974,7 @@ func (x *PartitionRestoreRequest) String() string {
 func (*PartitionRestoreRequest) ProtoMessage() {}
 
 func (x *PartitionRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[78]
+	mi := &file_zen_cluster_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4883,7 +4987,7 @@ func (x *PartitionRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionRestoreRequest.ProtoReflect.Descriptor instead.
 func (*PartitionRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{78}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{80}
 }
 
 type PartitionRestoreResponse struct {
@@ -4894,7 +4998,7 @@ type PartitionRestoreResponse struct {
 
 func (x *PartitionRestoreResponse) Reset() {
 	*x = PartitionRestoreResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[79]
+	mi := &file_zen_cluster_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4906,7 +5010,7 @@ func (x *PartitionRestoreResponse) String() string {
 func (*PartitionRestoreResponse) ProtoMessage() {}
 
 func (x *PartitionRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[79]
+	mi := &file_zen_cluster_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4919,7 +5023,7 @@ func (x *PartitionRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionRestoreResponse.ProtoReflect.Descriptor instead.
 func (*PartitionRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{79}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{81}
 }
 
 type PartitionBackupRequest struct {
@@ -4930,7 +5034,7 @@ type PartitionBackupRequest struct {
 
 func (x *PartitionBackupRequest) Reset() {
 	*x = PartitionBackupRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[80]
+	mi := &file_zen_cluster_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4942,7 +5046,7 @@ func (x *PartitionBackupRequest) String() string {
 func (*PartitionBackupRequest) ProtoMessage() {}
 
 func (x *PartitionBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[80]
+	mi := &file_zen_cluster_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4955,7 +5059,7 @@ func (x *PartitionBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionBackupRequest.ProtoReflect.Descriptor instead.
 func (*PartitionBackupRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{80}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{82}
 }
 
 type PartitionBackupResponse struct {
@@ -4966,7 +5070,7 @@ type PartitionBackupResponse struct {
 
 func (x *PartitionBackupResponse) Reset() {
 	*x = PartitionBackupResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[81]
+	mi := &file_zen_cluster_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4978,7 +5082,7 @@ func (x *PartitionBackupResponse) String() string {
 func (*PartitionBackupResponse) ProtoMessage() {}
 
 func (x *PartitionBackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[81]
+	mi := &file_zen_cluster_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4991,7 +5095,7 @@ func (x *PartitionBackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionBackupResponse.ProtoReflect.Descriptor instead.
 func (*PartitionBackupResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{81}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{83}
 }
 
 type UnassignPartitionRequest struct {
@@ -5002,7 +5106,7 @@ type UnassignPartitionRequest struct {
 
 func (x *UnassignPartitionRequest) Reset() {
 	*x = UnassignPartitionRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[82]
+	mi := &file_zen_cluster_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5014,7 +5118,7 @@ func (x *UnassignPartitionRequest) String() string {
 func (*UnassignPartitionRequest) ProtoMessage() {}
 
 func (x *UnassignPartitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[82]
+	mi := &file_zen_cluster_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5027,7 +5131,7 @@ func (x *UnassignPartitionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnassignPartitionRequest.ProtoReflect.Descriptor instead.
 func (*UnassignPartitionRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{82}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{84}
 }
 
 type UnassignPartitionResponse struct {
@@ -5038,7 +5142,7 @@ type UnassignPartitionResponse struct {
 
 func (x *UnassignPartitionResponse) Reset() {
 	*x = UnassignPartitionResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[83]
+	mi := &file_zen_cluster_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5050,7 +5154,7 @@ func (x *UnassignPartitionResponse) String() string {
 func (*UnassignPartitionResponse) ProtoMessage() {}
 
 func (x *UnassignPartitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[83]
+	mi := &file_zen_cluster_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5063,7 +5167,7 @@ func (x *UnassignPartitionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnassignPartitionResponse.ProtoReflect.Descriptor instead.
 func (*UnassignPartitionResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{83}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{85}
 }
 
 type AssignPartitionRequest struct {
@@ -5074,7 +5178,7 @@ type AssignPartitionRequest struct {
 
 func (x *AssignPartitionRequest) Reset() {
 	*x = AssignPartitionRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[84]
+	mi := &file_zen_cluster_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5086,7 +5190,7 @@ func (x *AssignPartitionRequest) String() string {
 func (*AssignPartitionRequest) ProtoMessage() {}
 
 func (x *AssignPartitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[84]
+	mi := &file_zen_cluster_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5099,7 +5203,7 @@ func (x *AssignPartitionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignPartitionRequest.ProtoReflect.Descriptor instead.
 func (*AssignPartitionRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{84}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{86}
 }
 
 type AssignPartitionResponse struct {
@@ -5110,7 +5214,7 @@ type AssignPartitionResponse struct {
 
 func (x *AssignPartitionResponse) Reset() {
 	*x = AssignPartitionResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[85]
+	mi := &file_zen_cluster_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5122,7 +5226,7 @@ func (x *AssignPartitionResponse) String() string {
 func (*AssignPartitionResponse) ProtoMessage() {}
 
 func (x *AssignPartitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[85]
+	mi := &file_zen_cluster_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5135,7 +5239,7 @@ func (x *AssignPartitionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignPartitionResponse.ProtoReflect.Descriptor instead.
 func (*AssignPartitionResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{85}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{87}
 }
 
 type ConfigurationUpdateRequest struct {
@@ -5146,7 +5250,7 @@ type ConfigurationUpdateRequest struct {
 
 func (x *ConfigurationUpdateRequest) Reset() {
 	*x = ConfigurationUpdateRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[86]
+	mi := &file_zen_cluster_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5158,7 +5262,7 @@ func (x *ConfigurationUpdateRequest) String() string {
 func (*ConfigurationUpdateRequest) ProtoMessage() {}
 
 func (x *ConfigurationUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[86]
+	mi := &file_zen_cluster_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5171,7 +5275,7 @@ func (x *ConfigurationUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationUpdateRequest.ProtoReflect.Descriptor instead.
 func (*ConfigurationUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{86}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{88}
 }
 
 type ConfigurationUpdateResponse struct {
@@ -5182,7 +5286,7 @@ type ConfigurationUpdateResponse struct {
 
 func (x *ConfigurationUpdateResponse) Reset() {
 	*x = ConfigurationUpdateResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[87]
+	mi := &file_zen_cluster_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5194,7 +5298,7 @@ func (x *ConfigurationUpdateResponse) String() string {
 func (*ConfigurationUpdateResponse) ProtoMessage() {}
 
 func (x *ConfigurationUpdateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[87]
+	mi := &file_zen_cluster_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5207,7 +5311,7 @@ func (x *ConfigurationUpdateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationUpdateResponse.ProtoReflect.Descriptor instead.
 func (*ConfigurationUpdateResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{87}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{89}
 }
 
 type ClusterRestoreRequest struct {
@@ -5218,7 +5322,7 @@ type ClusterRestoreRequest struct {
 
 func (x *ClusterRestoreRequest) Reset() {
 	*x = ClusterRestoreRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[88]
+	mi := &file_zen_cluster_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5230,7 +5334,7 @@ func (x *ClusterRestoreRequest) String() string {
 func (*ClusterRestoreRequest) ProtoMessage() {}
 
 func (x *ClusterRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[88]
+	mi := &file_zen_cluster_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5243,7 +5347,7 @@ func (x *ClusterRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterRestoreRequest.ProtoReflect.Descriptor instead.
 func (*ClusterRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{88}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{90}
 }
 
 type ClusterRestoreResponse struct {
@@ -5254,7 +5358,7 @@ type ClusterRestoreResponse struct {
 
 func (x *ClusterRestoreResponse) Reset() {
 	*x = ClusterRestoreResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[89]
+	mi := &file_zen_cluster_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5266,7 +5370,7 @@ func (x *ClusterRestoreResponse) String() string {
 func (*ClusterRestoreResponse) ProtoMessage() {}
 
 func (x *ClusterRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[89]
+	mi := &file_zen_cluster_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5279,7 +5383,7 @@ func (x *ClusterRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterRestoreResponse.ProtoReflect.Descriptor instead.
 func (*ClusterRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{89}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{91}
 }
 
 type ClusterBackupRequest struct {
@@ -5290,7 +5394,7 @@ type ClusterBackupRequest struct {
 
 func (x *ClusterBackupRequest) Reset() {
 	*x = ClusterBackupRequest{}
-	mi := &file_zen_cluster_proto_msgTypes[90]
+	mi := &file_zen_cluster_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5302,7 +5406,7 @@ func (x *ClusterBackupRequest) String() string {
 func (*ClusterBackupRequest) ProtoMessage() {}
 
 func (x *ClusterBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[90]
+	mi := &file_zen_cluster_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5315,7 +5419,7 @@ func (x *ClusterBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterBackupRequest.ProtoReflect.Descriptor instead.
 func (*ClusterBackupRequest) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{90}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{92}
 }
 
 type ClusterBackupResponse struct {
@@ -5326,7 +5430,7 @@ type ClusterBackupResponse struct {
 
 func (x *ClusterBackupResponse) Reset() {
 	*x = ClusterBackupResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[91]
+	mi := &file_zen_cluster_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5338,7 +5442,7 @@ func (x *ClusterBackupResponse) String() string {
 func (*ClusterBackupResponse) ProtoMessage() {}
 
 func (x *ClusterBackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[91]
+	mi := &file_zen_cluster_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5351,7 +5455,7 @@ func (x *ClusterBackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterBackupResponse.ProtoReflect.Descriptor instead.
 func (*ClusterBackupResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{91}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{93}
 }
 
 type NodeCommandResponse struct {
@@ -5369,7 +5473,7 @@ type NodeCommandResponse struct {
 
 func (x *NodeCommandResponse) Reset() {
 	*x = NodeCommandResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[92]
+	mi := &file_zen_cluster_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5381,7 +5485,7 @@ func (x *NodeCommandResponse) String() string {
 func (*NodeCommandResponse) ProtoMessage() {}
 
 func (x *NodeCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[92]
+	mi := &file_zen_cluster_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5394,7 +5498,7 @@ func (x *NodeCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeCommandResponse.ProtoReflect.Descriptor instead.
 func (*NodeCommandResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{92}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *NodeCommandResponse) GetError() *ErrorResult {
@@ -5460,7 +5564,7 @@ type ClusterNodeChangeResponse struct {
 
 func (x *ClusterNodeChangeResponse) Reset() {
 	*x = ClusterNodeChangeResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[93]
+	mi := &file_zen_cluster_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5472,7 +5576,7 @@ func (x *ClusterNodeChangeResponse) String() string {
 func (*ClusterNodeChangeResponse) ProtoMessage() {}
 
 func (x *ClusterNodeChangeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[93]
+	mi := &file_zen_cluster_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5485,7 +5589,7 @@ func (x *ClusterNodeChangeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterNodeChangeResponse.ProtoReflect.Descriptor instead.
 func (*ClusterNodeChangeResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{93}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{95}
 }
 
 type ClusterNodePartitionChangeResponse struct {
@@ -5496,7 +5600,7 @@ type ClusterNodePartitionChangeResponse struct {
 
 func (x *ClusterNodePartitionChangeResponse) Reset() {
 	*x = ClusterNodePartitionChangeResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[94]
+	mi := &file_zen_cluster_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5508,7 +5612,7 @@ func (x *ClusterNodePartitionChangeResponse) String() string {
 func (*ClusterNodePartitionChangeResponse) ProtoMessage() {}
 
 func (x *ClusterNodePartitionChangeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[94]
+	mi := &file_zen_cluster_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5521,7 +5625,7 @@ func (x *ClusterNodePartitionChangeResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ClusterNodePartitionChangeResponse.ProtoReflect.Descriptor instead.
 func (*ClusterNodePartitionChangeResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{94}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{96}
 }
 
 var File_zen_cluster_proto protoreflect.FileDescriptor
@@ -5985,19 +6089,35 @@ var file_zen_cluster_proto_rawDesc = string([]byte{
 	0x65, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x49, 0x64, 0x73, 0x54, 0x6f, 0x53, 0x74, 0x61, 0x72,
 	0x74, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x76, 0x61, 0x72,
 	0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x09, 0x76, 0x61,
-	0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x22, 0xc3, 0x01, 0x0a, 0x1d, 0x4d, 0x6f, 0x64, 0x69,
-	0x66, 0x79, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
-	0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2a, 0x0a, 0x05, 0x65, 0x72, 0x72,
-	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74,
-	0x65, 0x72, 0x2e, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x52, 0x05,
-	0x65, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x32, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72,
-	0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
-	0x52, 0x07, 0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x12, 0x42, 0x0a, 0x10, 0x65, 0x78, 0x65,
-	0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x73, 0x18, 0x03, 0x20,
-	0x03, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x45, 0x78,
-	0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x52, 0x0f, 0x65, 0x78,
-	0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x73, 0x22, 0xe8, 0x02,
+	0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x73, 0x22, 0x74, 0x0a, 0x24, 0x44, 0x65, 0x6c, 0x65, 0x74,
+	0x65, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
+	0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12,
+	0x30, 0x0a, 0x14, 0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x5f, 0x69, 0x6e, 0x73, 0x74, 0x61,
+	0x6e, 0x63, 0x65, 0x5f, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x12, 0x70,
+	0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4b, 0x65,
+	0x79, 0x12, 0x1a, 0x0a, 0x08, 0x76, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x08, 0x76, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x22, 0xc3, 0x01,
+	0x0a, 0x1d, 0x4d, 0x6f, 0x64, 0x69, 0x66, 0x79, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49,
+	0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x2a, 0x0a, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14,
+	0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x65,
+	0x73, 0x75, 0x6c, 0x74, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x32, 0x0a, 0x07, 0x70,
+	0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x63,
+	0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e,
+	0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x12,
+	0x42, 0x0a, 0x10, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x6f, 0x6b,
+	0x65, 0x6e, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x63, 0x6c, 0x75, 0x73,
+	0x74, 0x65, 0x72, 0x2e, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x6f, 0x6b,
+	0x65, 0x6e, 0x52, 0x0f, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x6f, 0x6b,
+	0x65, 0x6e, 0x73, 0x22, 0x87, 0x01, 0x0a, 0x25, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x50, 0x72,
+	0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x56, 0x61, 0x72,
+	0x69, 0x61, 0x62, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2a, 0x0a,
+	0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x63,
+	0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x65, 0x73, 0x75,
+	0x6c, 0x74, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x32, 0x0a, 0x07, 0x70, 0x72, 0x6f,
+	0x63, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x63, 0x6c, 0x75,
+	0x73, 0x74, 0x65, 0x72, 0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74,
+	0x61, 0x6e, 0x63, 0x65, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x22, 0xe8, 0x02,
 	0x0a, 0x1a, 0x47, 0x65, 0x74, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74,
 	0x61, 0x6e, 0x63, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04,
 	0x70, 0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x61, 0x67, 0x65,
@@ -6239,7 +6359,7 @@ var file_zen_cluster_proto_rawDesc = string([]byte{
 	0x75, 0x73, 0x74, 0x65, 0x72, 0x4e, 0x6f, 0x64, 0x65, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x52,
 	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x24, 0x0a, 0x22, 0x43, 0x6c, 0x75, 0x73, 0x74,
 	0x65, 0x72, 0x4e, 0x6f, 0x64, 0x65, 0x50, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x43,
-	0x68, 0x61, 0x6e, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xfc, 0x1a,
+	0x68, 0x61, 0x6e, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xfc, 0x1b,
 	0x0a, 0x0a, 0x5a, 0x65, 0x6e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x39, 0x0a, 0x06,
 	0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x12, 0x16, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72,
 	0x2e, 0x4e, 0x6f, 0x74, 0x69, 0x66, 0x79, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17,
@@ -6394,6 +6514,14 @@ var file_zen_cluster_proto_rawDesc = string([]byte{
 	0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
 	0x74, 0x1a, 0x26, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x4d, 0x6f, 0x64, 0x69,
 	0x66, 0x79, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
+	0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x7e, 0x0a, 0x1d, 0x44, 0x65, 0x6c,
+	0x65, 0x74, 0x65, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
+	0x63, 0x65, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c, 0x65, 0x12, 0x2d, 0x2e, 0x63, 0x6c, 0x75,
+	0x73, 0x74, 0x65, 0x72, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x50, 0x72, 0x6f, 0x63, 0x65,
+	0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62,
+	0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x63, 0x6c, 0x75, 0x73,
+	0x74, 0x65, 0x72, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73,
+	0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x56, 0x61, 0x72, 0x69, 0x61, 0x62, 0x6c,
 	0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x60, 0x0a, 0x13, 0x47, 0x65, 0x74,
 	0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x73,
 	0x12, 0x23, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2e, 0x47, 0x65, 0x74, 0x50, 0x72,
@@ -6476,7 +6604,7 @@ func file_zen_cluster_proto_rawDescGZIP() []byte {
 }
 
 var file_zen_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_zen_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 95)
+var file_zen_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 97)
 var file_zen_cluster_proto_goTypes = []any{
 	(SubscribeJobRequest_Type)(0),                 // 0: cluster.SubscribeJobRequest.Type
 	(*ErrorResult)(nil),                           // 1: cluster.ErrorResult
@@ -6531,51 +6659,53 @@ var file_zen_cluster_proto_goTypes = []any{
 	(*StartInstanceOnElementIdsRequest)(nil),      // 50: cluster.StartInstanceOnElementIdsRequest
 	(*StartInstanceOnElementIdsResponse)(nil),     // 51: cluster.StartInstanceOnElementIdsResponse
 	(*ModifyProcessInstanceRequest)(nil),          // 52: cluster.ModifyProcessInstanceRequest
-	(*ModifyProcessInstanceResponse)(nil),         // 53: cluster.ModifyProcessInstanceResponse
-	(*GetProcessInstancesRequest)(nil),            // 54: cluster.GetProcessInstancesRequest
-	(*PartitionedProcessInstances)(nil),           // 55: cluster.PartitionedProcessInstances
-	(*GetProcessInstancesResponse)(nil),           // 56: cluster.GetProcessInstancesResponse
-	(*GetProcessInstanceRequest)(nil),             // 57: cluster.GetProcessInstanceRequest
-	(*GetProcessInstanceResponse)(nil),            // 58: cluster.GetProcessInstanceResponse
-	(*GetProcessInstanceJobsRequest)(nil),         // 59: cluster.GetProcessInstanceJobsRequest
-	(*GetProcessInstanceJobsResponse)(nil),        // 60: cluster.GetProcessInstanceJobsResponse
-	(*GetFlowElementHistoryRequest)(nil),          // 61: cluster.GetFlowElementHistoryRequest
-	(*GetFlowElementHistoryResponse)(nil),         // 62: cluster.GetFlowElementHistoryResponse
-	(*GetIncidentsRequest)(nil),                   // 63: cluster.GetIncidentsRequest
-	(*GetIncidentsResponse)(nil),                  // 64: cluster.GetIncidentsResponse
-	(*GetJobsRequest)(nil),                        // 65: cluster.GetJobsRequest
-	(*GetJobRequest)(nil),                         // 66: cluster.GetJobRequest
-	(*GetJobResponse)(nil),                        // 67: cluster.GetJobResponse
-	(*PartitionedJobs)(nil),                       // 68: cluster.PartitionedJobs
-	(*GetJobsResponse)(nil),                       // 69: cluster.GetJobsResponse
-	(*ResolveIncidentRequest)(nil),                // 70: cluster.ResolveIncidentRequest
-	(*ResolveIncidentResponse)(nil),               // 71: cluster.ResolveIncidentResponse
-	(*SubscribeJobRequest)(nil),                   // 72: cluster.SubscribeJobRequest
-	(*SubscribeJobResponse)(nil),                  // 73: cluster.SubscribeJobResponse
-	(*ReassignJobRequest)(nil),                    // 74: cluster.ReassignJobRequest
-	(*ReassignJobResponse)(nil),                   // 75: cluster.ReassignJobResponse
-	(*CpuProfilerRequest)(nil),                    // 76: cluster.CpuProfilerRequest
-	(*CpuProfilerStartResult)(nil),                // 77: cluster.CpuProfilerStartResult
-	(*CpuProfilerStopResult)(nil),                 // 78: cluster.CpuProfilerStopResult
-	(*PartitionRestoreRequest)(nil),               // 79: cluster.PartitionRestoreRequest
-	(*PartitionRestoreResponse)(nil),              // 80: cluster.PartitionRestoreResponse
-	(*PartitionBackupRequest)(nil),                // 81: cluster.PartitionBackupRequest
-	(*PartitionBackupResponse)(nil),               // 82: cluster.PartitionBackupResponse
-	(*UnassignPartitionRequest)(nil),              // 83: cluster.UnassignPartitionRequest
-	(*UnassignPartitionResponse)(nil),             // 84: cluster.UnassignPartitionResponse
-	(*AssignPartitionRequest)(nil),                // 85: cluster.AssignPartitionRequest
-	(*AssignPartitionResponse)(nil),               // 86: cluster.AssignPartitionResponse
-	(*ConfigurationUpdateRequest)(nil),            // 87: cluster.ConfigurationUpdateRequest
-	(*ConfigurationUpdateResponse)(nil),           // 88: cluster.ConfigurationUpdateResponse
-	(*ClusterRestoreRequest)(nil),                 // 89: cluster.ClusterRestoreRequest
-	(*ClusterRestoreResponse)(nil),                // 90: cluster.ClusterRestoreResponse
-	(*ClusterBackupRequest)(nil),                  // 91: cluster.ClusterBackupRequest
-	(*ClusterBackupResponse)(nil),                 // 92: cluster.ClusterBackupResponse
-	(*NodeCommandResponse)(nil),                   // 93: cluster.NodeCommandResponse
-	(*ClusterNodeChangeResponse)(nil),             // 94: cluster.ClusterNodeChangeResponse
-	(*ClusterNodePartitionChangeResponse)(nil),    // 95: cluster.ClusterNodePartitionChangeResponse
-	(proto.Command_Type)(0),                       // 96: zencommand.Command.Type
-	(*proto.Command)(nil),                         // 97: zencommand.Command
+	(*DeleteProcessInstanceVariableRequest)(nil),  // 53: cluster.DeleteProcessInstanceVariableRequest
+	(*ModifyProcessInstanceResponse)(nil),         // 54: cluster.ModifyProcessInstanceResponse
+	(*DeleteProcessInstanceVariableResponse)(nil), // 55: cluster.DeleteProcessInstanceVariableResponse
+	(*GetProcessInstancesRequest)(nil),            // 56: cluster.GetProcessInstancesRequest
+	(*PartitionedProcessInstances)(nil),           // 57: cluster.PartitionedProcessInstances
+	(*GetProcessInstancesResponse)(nil),           // 58: cluster.GetProcessInstancesResponse
+	(*GetProcessInstanceRequest)(nil),             // 59: cluster.GetProcessInstanceRequest
+	(*GetProcessInstanceResponse)(nil),            // 60: cluster.GetProcessInstanceResponse
+	(*GetProcessInstanceJobsRequest)(nil),         // 61: cluster.GetProcessInstanceJobsRequest
+	(*GetProcessInstanceJobsResponse)(nil),        // 62: cluster.GetProcessInstanceJobsResponse
+	(*GetFlowElementHistoryRequest)(nil),          // 63: cluster.GetFlowElementHistoryRequest
+	(*GetFlowElementHistoryResponse)(nil),         // 64: cluster.GetFlowElementHistoryResponse
+	(*GetIncidentsRequest)(nil),                   // 65: cluster.GetIncidentsRequest
+	(*GetIncidentsResponse)(nil),                  // 66: cluster.GetIncidentsResponse
+	(*GetJobsRequest)(nil),                        // 67: cluster.GetJobsRequest
+	(*GetJobRequest)(nil),                         // 68: cluster.GetJobRequest
+	(*GetJobResponse)(nil),                        // 69: cluster.GetJobResponse
+	(*PartitionedJobs)(nil),                       // 70: cluster.PartitionedJobs
+	(*GetJobsResponse)(nil),                       // 71: cluster.GetJobsResponse
+	(*ResolveIncidentRequest)(nil),                // 72: cluster.ResolveIncidentRequest
+	(*ResolveIncidentResponse)(nil),               // 73: cluster.ResolveIncidentResponse
+	(*SubscribeJobRequest)(nil),                   // 74: cluster.SubscribeJobRequest
+	(*SubscribeJobResponse)(nil),                  // 75: cluster.SubscribeJobResponse
+	(*ReassignJobRequest)(nil),                    // 76: cluster.ReassignJobRequest
+	(*ReassignJobResponse)(nil),                   // 77: cluster.ReassignJobResponse
+	(*CpuProfilerRequest)(nil),                    // 78: cluster.CpuProfilerRequest
+	(*CpuProfilerStartResult)(nil),                // 79: cluster.CpuProfilerStartResult
+	(*CpuProfilerStopResult)(nil),                 // 80: cluster.CpuProfilerStopResult
+	(*PartitionRestoreRequest)(nil),               // 81: cluster.PartitionRestoreRequest
+	(*PartitionRestoreResponse)(nil),              // 82: cluster.PartitionRestoreResponse
+	(*PartitionBackupRequest)(nil),                // 83: cluster.PartitionBackupRequest
+	(*PartitionBackupResponse)(nil),               // 84: cluster.PartitionBackupResponse
+	(*UnassignPartitionRequest)(nil),              // 85: cluster.UnassignPartitionRequest
+	(*UnassignPartitionResponse)(nil),             // 86: cluster.UnassignPartitionResponse
+	(*AssignPartitionRequest)(nil),                // 87: cluster.AssignPartitionRequest
+	(*AssignPartitionResponse)(nil),               // 88: cluster.AssignPartitionResponse
+	(*ConfigurationUpdateRequest)(nil),            // 89: cluster.ConfigurationUpdateRequest
+	(*ConfigurationUpdateResponse)(nil),           // 90: cluster.ConfigurationUpdateResponse
+	(*ClusterRestoreRequest)(nil),                 // 91: cluster.ClusterRestoreRequest
+	(*ClusterRestoreResponse)(nil),                // 92: cluster.ClusterRestoreResponse
+	(*ClusterBackupRequest)(nil),                  // 93: cluster.ClusterBackupRequest
+	(*ClusterBackupResponse)(nil),                 // 94: cluster.ClusterBackupResponse
+	(*NodeCommandResponse)(nil),                   // 95: cluster.NodeCommandResponse
+	(*ClusterNodeChangeResponse)(nil),             // 96: cluster.ClusterNodeChangeResponse
+	(*ClusterNodePartitionChangeResponse)(nil),    // 97: cluster.ClusterNodePartitionChangeResponse
+	(proto.Command_Type)(0),                       // 98: zencommand.Command.Type
+	(*proto.Command)(nil),                         // 99: zencommand.Command
 }
 var file_zen_cluster_proto_depIdxs = []int32{
 	1,  // 0: cluster.NotifyResponse.error:type_name -> cluster.ErrorResult
@@ -6607,116 +6737,120 @@ var file_zen_cluster_proto_depIdxs = []int32{
 	1,  // 26: cluster.ModifyProcessInstanceResponse.error:type_name -> cluster.ErrorResult
 	26, // 27: cluster.ModifyProcessInstanceResponse.process:type_name -> cluster.ProcessInstance
 	27, // 28: cluster.ModifyProcessInstanceResponse.execution_tokens:type_name -> cluster.ExecutionToken
-	26, // 29: cluster.PartitionedProcessInstances.instances:type_name -> cluster.ProcessInstance
-	1,  // 30: cluster.GetProcessInstancesResponse.error:type_name -> cluster.ErrorResult
-	55, // 31: cluster.GetProcessInstancesResponse.partitions:type_name -> cluster.PartitionedProcessInstances
-	1,  // 32: cluster.GetProcessInstanceResponse.error:type_name -> cluster.ErrorResult
-	26, // 33: cluster.GetProcessInstanceResponse.processes:type_name -> cluster.ProcessInstance
-	27, // 34: cluster.GetProcessInstanceResponse.execution_tokens:type_name -> cluster.ExecutionToken
-	1,  // 35: cluster.GetProcessInstanceJobsResponse.error:type_name -> cluster.ErrorResult
-	28, // 36: cluster.GetProcessInstanceJobsResponse.jobs:type_name -> cluster.Job
-	1,  // 37: cluster.GetFlowElementHistoryResponse.error:type_name -> cluster.ErrorResult
-	29, // 38: cluster.GetFlowElementHistoryResponse.flow:type_name -> cluster.FlowElement
-	1,  // 39: cluster.GetIncidentsResponse.error:type_name -> cluster.ErrorResult
-	30, // 40: cluster.GetIncidentsResponse.incidents:type_name -> cluster.Incident
-	1,  // 41: cluster.GetJobResponse.error:type_name -> cluster.ErrorResult
-	28, // 42: cluster.GetJobResponse.job:type_name -> cluster.Job
-	28, // 43: cluster.PartitionedJobs.jobs:type_name -> cluster.Job
-	1,  // 44: cluster.GetJobsResponse.error:type_name -> cluster.ErrorResult
-	68, // 45: cluster.GetJobsResponse.partitions:type_name -> cluster.PartitionedJobs
-	1,  // 46: cluster.ResolveIncidentResponse.error:type_name -> cluster.ErrorResult
-	0,  // 47: cluster.SubscribeJobRequest.type:type_name -> cluster.SubscribeJobRequest.Type
-	41, // 48: cluster.SubscribeJobResponse.job:type_name -> cluster.InternalJob
-	1,  // 49: cluster.ReassignJobResponse.error:type_name -> cluster.ErrorResult
-	1,  // 50: cluster.CpuProfilerStartResult.error:type_name -> cluster.ErrorResult
-	1,  // 51: cluster.CpuProfilerStopResult.error:type_name -> cluster.ErrorResult
-	1,  // 52: cluster.NodeCommandResponse.error:type_name -> cluster.ErrorResult
-	96, // 53: cluster.NodeCommandResponse.type:type_name -> zencommand.Command.Type
-	94, // 54: cluster.NodeCommandResponse.node_change:type_name -> cluster.ClusterNodeChangeResponse
-	95, // 55: cluster.NodeCommandResponse.node_partition_change:type_name -> cluster.ClusterNodePartitionChangeResponse
-	2,  // 56: cluster.ZenService.Notify:input_type -> cluster.NotifyRequest
-	4,  // 57: cluster.ZenService.Join:input_type -> cluster.JoinRequest
-	6,  // 58: cluster.ZenService.AddPartitionNode:input_type -> cluster.AddPartitionNodeRequest
-	8,  // 59: cluster.ZenService.ShutdownPartitionNode:input_type -> cluster.ShutdownPartitionNodeRequest
-	10, // 60: cluster.ZenService.PartitionNodeLeaderChange:input_type -> cluster.PartitionNodeLeaderChangeRequest
-	12, // 61: cluster.ZenService.RemovePartitionNode:input_type -> cluster.RemovePartitionNodeRequest
-	14, // 62: cluster.ZenService.ResumePartitionNode:input_type -> cluster.ResumePartitionNodeRequest
-	91, // 63: cluster.ZenService.ClusterBackup:input_type -> cluster.ClusterBackupRequest
-	89, // 64: cluster.ZenService.ClusterRestore:input_type -> cluster.ClusterRestoreRequest
-	87, // 65: cluster.ZenService.ConfigurationUpdate:input_type -> cluster.ConfigurationUpdateRequest
-	85, // 66: cluster.ZenService.AssignPartition:input_type -> cluster.AssignPartitionRequest
-	83, // 67: cluster.ZenService.UnassignPartition:input_type -> cluster.UnassignPartitionRequest
-	81, // 68: cluster.ZenService.PartitionBackup:input_type -> cluster.PartitionBackupRequest
-	79, // 69: cluster.ZenService.PartitionRestore:input_type -> cluster.PartitionRestoreRequest
-	76, // 70: cluster.ZenService.StartCpuProfiler:input_type -> cluster.CpuProfilerRequest
-	76, // 71: cluster.ZenService.StopCpuProfiler:input_type -> cluster.CpuProfilerRequest
-	97, // 72: cluster.ZenService.NodeCommand:input_type -> zencommand.Command
-	16, // 73: cluster.ZenService.EvaluateDecision:input_type -> cluster.EvaluateDecisionRequest
-	31, // 74: cluster.ZenService.DeployDmnResourceDefinition:input_type -> cluster.DeployDmnResourceDefinitionRequest
-	33, // 75: cluster.ZenService.DeployProcessDefinition:input_type -> cluster.DeployProcessDefinitionRequest
-	39, // 76: cluster.ZenService.ActivateJob:input_type -> cluster.ActivateJobRequest
-	46, // 77: cluster.ZenService.PublishMessage:input_type -> cluster.PublishMessageRequest
-	42, // 78: cluster.ZenService.SetMessageSubscriptionPointer:input_type -> cluster.SetMessageSubscriptionPointerRequest
-	44, // 79: cluster.ZenService.FindActiveMessage:input_type -> cluster.FindActiveMessageRequest
-	48, // 80: cluster.ZenService.CreateInstance:input_type -> cluster.CreateInstanceRequest
-	50, // 81: cluster.ZenService.StartProcessInstanceOnElements:input_type -> cluster.StartInstanceOnElementIdsRequest
-	52, // 82: cluster.ZenService.ModifyProcessInstance:input_type -> cluster.ModifyProcessInstanceRequest
-	54, // 83: cluster.ZenService.GetProcessInstances:input_type -> cluster.GetProcessInstancesRequest
-	65, // 84: cluster.ZenService.GetJobs:input_type -> cluster.GetJobsRequest
-	66, // 85: cluster.ZenService.GetJob:input_type -> cluster.GetJobRequest
-	57, // 86: cluster.ZenService.GetProcessInstance:input_type -> cluster.GetProcessInstanceRequest
-	59, // 87: cluster.ZenService.GetProcessInstanceJobs:input_type -> cluster.GetProcessInstanceJobsRequest
-	61, // 88: cluster.ZenService.GetFlowElementHistory:input_type -> cluster.GetFlowElementHistoryRequest
-	63, // 89: cluster.ZenService.GetIncidents:input_type -> cluster.GetIncidentsRequest
-	70, // 90: cluster.ZenService.ResolveIncident:input_type -> cluster.ResolveIncidentRequest
-	72, // 91: cluster.ZenService.SubscribeJob:input_type -> cluster.SubscribeJobRequest
-	35, // 92: cluster.ZenService.CompleteJob:input_type -> cluster.CompleteJobRequest
-	37, // 93: cluster.ZenService.FailJob:input_type -> cluster.FailJobRequest
-	74, // 94: cluster.ZenService.ReassignJob:input_type -> cluster.ReassignJobRequest
-	3,  // 95: cluster.ZenService.Notify:output_type -> cluster.NotifyResponse
-	5,  // 96: cluster.ZenService.Join:output_type -> cluster.JoinResponse
-	7,  // 97: cluster.ZenService.AddPartitionNode:output_type -> cluster.AddPartitionNodeResponse
-	9,  // 98: cluster.ZenService.ShutdownPartitionNode:output_type -> cluster.ShutdownPartitionNodeResponse
-	11, // 99: cluster.ZenService.PartitionNodeLeaderChange:output_type -> cluster.PartitionNodeLeaderChangeResponse
-	13, // 100: cluster.ZenService.RemovePartitionNode:output_type -> cluster.RemovePartitionNodeResponse
-	15, // 101: cluster.ZenService.ResumePartitionNode:output_type -> cluster.ResumePartitionNodeResponse
-	92, // 102: cluster.ZenService.ClusterBackup:output_type -> cluster.ClusterBackupResponse
-	90, // 103: cluster.ZenService.ClusterRestore:output_type -> cluster.ClusterRestoreResponse
-	88, // 104: cluster.ZenService.ConfigurationUpdate:output_type -> cluster.ConfigurationUpdateResponse
-	86, // 105: cluster.ZenService.AssignPartition:output_type -> cluster.AssignPartitionResponse
-	84, // 106: cluster.ZenService.UnassignPartition:output_type -> cluster.UnassignPartitionResponse
-	82, // 107: cluster.ZenService.PartitionBackup:output_type -> cluster.PartitionBackupResponse
-	80, // 108: cluster.ZenService.PartitionRestore:output_type -> cluster.PartitionRestoreResponse
-	77, // 109: cluster.ZenService.StartCpuProfiler:output_type -> cluster.CpuProfilerStartResult
-	78, // 110: cluster.ZenService.StopCpuProfiler:output_type -> cluster.CpuProfilerStopResult
-	93, // 111: cluster.ZenService.NodeCommand:output_type -> cluster.NodeCommandResponse
-	17, // 112: cluster.ZenService.EvaluateDecision:output_type -> cluster.EvaluatedDRDResult
-	32, // 113: cluster.ZenService.DeployDmnResourceDefinition:output_type -> cluster.DeployDmnResourceDefinitionResponse
-	34, // 114: cluster.ZenService.DeployProcessDefinition:output_type -> cluster.DeployProcessDefinitionResponse
-	40, // 115: cluster.ZenService.ActivateJob:output_type -> cluster.ActivateJobResponse
-	47, // 116: cluster.ZenService.PublishMessage:output_type -> cluster.PublishMessageResponse
-	43, // 117: cluster.ZenService.SetMessageSubscriptionPointer:output_type -> cluster.SetMessageSubscriptionPointerResponse
-	45, // 118: cluster.ZenService.FindActiveMessage:output_type -> cluster.FindActiveMessageResponse
-	49, // 119: cluster.ZenService.CreateInstance:output_type -> cluster.CreateInstanceResponse
-	51, // 120: cluster.ZenService.StartProcessInstanceOnElements:output_type -> cluster.StartInstanceOnElementIdsResponse
-	53, // 121: cluster.ZenService.ModifyProcessInstance:output_type -> cluster.ModifyProcessInstanceResponse
-	56, // 122: cluster.ZenService.GetProcessInstances:output_type -> cluster.GetProcessInstancesResponse
-	69, // 123: cluster.ZenService.GetJobs:output_type -> cluster.GetJobsResponse
-	67, // 124: cluster.ZenService.GetJob:output_type -> cluster.GetJobResponse
-	58, // 125: cluster.ZenService.GetProcessInstance:output_type -> cluster.GetProcessInstanceResponse
-	60, // 126: cluster.ZenService.GetProcessInstanceJobs:output_type -> cluster.GetProcessInstanceJobsResponse
-	62, // 127: cluster.ZenService.GetFlowElementHistory:output_type -> cluster.GetFlowElementHistoryResponse
-	64, // 128: cluster.ZenService.GetIncidents:output_type -> cluster.GetIncidentsResponse
-	71, // 129: cluster.ZenService.ResolveIncident:output_type -> cluster.ResolveIncidentResponse
-	73, // 130: cluster.ZenService.SubscribeJob:output_type -> cluster.SubscribeJobResponse
-	36, // 131: cluster.ZenService.CompleteJob:output_type -> cluster.CompleteJobResponse
-	38, // 132: cluster.ZenService.FailJob:output_type -> cluster.FailJobResponse
-	75, // 133: cluster.ZenService.ReassignJob:output_type -> cluster.ReassignJobResponse
-	95, // [95:134] is the sub-list for method output_type
-	56, // [56:95] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	1,  // 29: cluster.DeleteProcessInstanceVariableResponse.error:type_name -> cluster.ErrorResult
+	26, // 30: cluster.DeleteProcessInstanceVariableResponse.process:type_name -> cluster.ProcessInstance
+	26, // 31: cluster.PartitionedProcessInstances.instances:type_name -> cluster.ProcessInstance
+	1,  // 32: cluster.GetProcessInstancesResponse.error:type_name -> cluster.ErrorResult
+	57, // 33: cluster.GetProcessInstancesResponse.partitions:type_name -> cluster.PartitionedProcessInstances
+	1,  // 34: cluster.GetProcessInstanceResponse.error:type_name -> cluster.ErrorResult
+	26, // 35: cluster.GetProcessInstanceResponse.processes:type_name -> cluster.ProcessInstance
+	27, // 36: cluster.GetProcessInstanceResponse.execution_tokens:type_name -> cluster.ExecutionToken
+	1,  // 37: cluster.GetProcessInstanceJobsResponse.error:type_name -> cluster.ErrorResult
+	28, // 38: cluster.GetProcessInstanceJobsResponse.jobs:type_name -> cluster.Job
+	1,  // 39: cluster.GetFlowElementHistoryResponse.error:type_name -> cluster.ErrorResult
+	29, // 40: cluster.GetFlowElementHistoryResponse.flow:type_name -> cluster.FlowElement
+	1,  // 41: cluster.GetIncidentsResponse.error:type_name -> cluster.ErrorResult
+	30, // 42: cluster.GetIncidentsResponse.incidents:type_name -> cluster.Incident
+	1,  // 43: cluster.GetJobResponse.error:type_name -> cluster.ErrorResult
+	28, // 44: cluster.GetJobResponse.job:type_name -> cluster.Job
+	28, // 45: cluster.PartitionedJobs.jobs:type_name -> cluster.Job
+	1,  // 46: cluster.GetJobsResponse.error:type_name -> cluster.ErrorResult
+	70, // 47: cluster.GetJobsResponse.partitions:type_name -> cluster.PartitionedJobs
+	1,  // 48: cluster.ResolveIncidentResponse.error:type_name -> cluster.ErrorResult
+	0,  // 49: cluster.SubscribeJobRequest.type:type_name -> cluster.SubscribeJobRequest.Type
+	41, // 50: cluster.SubscribeJobResponse.job:type_name -> cluster.InternalJob
+	1,  // 51: cluster.ReassignJobResponse.error:type_name -> cluster.ErrorResult
+	1,  // 52: cluster.CpuProfilerStartResult.error:type_name -> cluster.ErrorResult
+	1,  // 53: cluster.CpuProfilerStopResult.error:type_name -> cluster.ErrorResult
+	1,  // 54: cluster.NodeCommandResponse.error:type_name -> cluster.ErrorResult
+	98, // 55: cluster.NodeCommandResponse.type:type_name -> zencommand.Command.Type
+	96, // 56: cluster.NodeCommandResponse.node_change:type_name -> cluster.ClusterNodeChangeResponse
+	97, // 57: cluster.NodeCommandResponse.node_partition_change:type_name -> cluster.ClusterNodePartitionChangeResponse
+	2,  // 58: cluster.ZenService.Notify:input_type -> cluster.NotifyRequest
+	4,  // 59: cluster.ZenService.Join:input_type -> cluster.JoinRequest
+	6,  // 60: cluster.ZenService.AddPartitionNode:input_type -> cluster.AddPartitionNodeRequest
+	8,  // 61: cluster.ZenService.ShutdownPartitionNode:input_type -> cluster.ShutdownPartitionNodeRequest
+	10, // 62: cluster.ZenService.PartitionNodeLeaderChange:input_type -> cluster.PartitionNodeLeaderChangeRequest
+	12, // 63: cluster.ZenService.RemovePartitionNode:input_type -> cluster.RemovePartitionNodeRequest
+	14, // 64: cluster.ZenService.ResumePartitionNode:input_type -> cluster.ResumePartitionNodeRequest
+	93, // 65: cluster.ZenService.ClusterBackup:input_type -> cluster.ClusterBackupRequest
+	91, // 66: cluster.ZenService.ClusterRestore:input_type -> cluster.ClusterRestoreRequest
+	89, // 67: cluster.ZenService.ConfigurationUpdate:input_type -> cluster.ConfigurationUpdateRequest
+	87, // 68: cluster.ZenService.AssignPartition:input_type -> cluster.AssignPartitionRequest
+	85, // 69: cluster.ZenService.UnassignPartition:input_type -> cluster.UnassignPartitionRequest
+	83, // 70: cluster.ZenService.PartitionBackup:input_type -> cluster.PartitionBackupRequest
+	81, // 71: cluster.ZenService.PartitionRestore:input_type -> cluster.PartitionRestoreRequest
+	78, // 72: cluster.ZenService.StartCpuProfiler:input_type -> cluster.CpuProfilerRequest
+	78, // 73: cluster.ZenService.StopCpuProfiler:input_type -> cluster.CpuProfilerRequest
+	99, // 74: cluster.ZenService.NodeCommand:input_type -> zencommand.Command
+	16, // 75: cluster.ZenService.EvaluateDecision:input_type -> cluster.EvaluateDecisionRequest
+	31, // 76: cluster.ZenService.DeployDmnResourceDefinition:input_type -> cluster.DeployDmnResourceDefinitionRequest
+	33, // 77: cluster.ZenService.DeployProcessDefinition:input_type -> cluster.DeployProcessDefinitionRequest
+	39, // 78: cluster.ZenService.ActivateJob:input_type -> cluster.ActivateJobRequest
+	46, // 79: cluster.ZenService.PublishMessage:input_type -> cluster.PublishMessageRequest
+	42, // 80: cluster.ZenService.SetMessageSubscriptionPointer:input_type -> cluster.SetMessageSubscriptionPointerRequest
+	44, // 81: cluster.ZenService.FindActiveMessage:input_type -> cluster.FindActiveMessageRequest
+	48, // 82: cluster.ZenService.CreateInstance:input_type -> cluster.CreateInstanceRequest
+	50, // 83: cluster.ZenService.StartProcessInstanceOnElements:input_type -> cluster.StartInstanceOnElementIdsRequest
+	52, // 84: cluster.ZenService.ModifyProcessInstance:input_type -> cluster.ModifyProcessInstanceRequest
+	53, // 85: cluster.ZenService.DeleteProcessInstanceVariable:input_type -> cluster.DeleteProcessInstanceVariableRequest
+	56, // 86: cluster.ZenService.GetProcessInstances:input_type -> cluster.GetProcessInstancesRequest
+	67, // 87: cluster.ZenService.GetJobs:input_type -> cluster.GetJobsRequest
+	68, // 88: cluster.ZenService.GetJob:input_type -> cluster.GetJobRequest
+	59, // 89: cluster.ZenService.GetProcessInstance:input_type -> cluster.GetProcessInstanceRequest
+	61, // 90: cluster.ZenService.GetProcessInstanceJobs:input_type -> cluster.GetProcessInstanceJobsRequest
+	63, // 91: cluster.ZenService.GetFlowElementHistory:input_type -> cluster.GetFlowElementHistoryRequest
+	65, // 92: cluster.ZenService.GetIncidents:input_type -> cluster.GetIncidentsRequest
+	72, // 93: cluster.ZenService.ResolveIncident:input_type -> cluster.ResolveIncidentRequest
+	74, // 94: cluster.ZenService.SubscribeJob:input_type -> cluster.SubscribeJobRequest
+	35, // 95: cluster.ZenService.CompleteJob:input_type -> cluster.CompleteJobRequest
+	37, // 96: cluster.ZenService.FailJob:input_type -> cluster.FailJobRequest
+	76, // 97: cluster.ZenService.ReassignJob:input_type -> cluster.ReassignJobRequest
+	3,  // 98: cluster.ZenService.Notify:output_type -> cluster.NotifyResponse
+	5,  // 99: cluster.ZenService.Join:output_type -> cluster.JoinResponse
+	7,  // 100: cluster.ZenService.AddPartitionNode:output_type -> cluster.AddPartitionNodeResponse
+	9,  // 101: cluster.ZenService.ShutdownPartitionNode:output_type -> cluster.ShutdownPartitionNodeResponse
+	11, // 102: cluster.ZenService.PartitionNodeLeaderChange:output_type -> cluster.PartitionNodeLeaderChangeResponse
+	13, // 103: cluster.ZenService.RemovePartitionNode:output_type -> cluster.RemovePartitionNodeResponse
+	15, // 104: cluster.ZenService.ResumePartitionNode:output_type -> cluster.ResumePartitionNodeResponse
+	94, // 105: cluster.ZenService.ClusterBackup:output_type -> cluster.ClusterBackupResponse
+	92, // 106: cluster.ZenService.ClusterRestore:output_type -> cluster.ClusterRestoreResponse
+	90, // 107: cluster.ZenService.ConfigurationUpdate:output_type -> cluster.ConfigurationUpdateResponse
+	88, // 108: cluster.ZenService.AssignPartition:output_type -> cluster.AssignPartitionResponse
+	86, // 109: cluster.ZenService.UnassignPartition:output_type -> cluster.UnassignPartitionResponse
+	84, // 110: cluster.ZenService.PartitionBackup:output_type -> cluster.PartitionBackupResponse
+	82, // 111: cluster.ZenService.PartitionRestore:output_type -> cluster.PartitionRestoreResponse
+	79, // 112: cluster.ZenService.StartCpuProfiler:output_type -> cluster.CpuProfilerStartResult
+	80, // 113: cluster.ZenService.StopCpuProfiler:output_type -> cluster.CpuProfilerStopResult
+	95, // 114: cluster.ZenService.NodeCommand:output_type -> cluster.NodeCommandResponse
+	17, // 115: cluster.ZenService.EvaluateDecision:output_type -> cluster.EvaluatedDRDResult
+	32, // 116: cluster.ZenService.DeployDmnResourceDefinition:output_type -> cluster.DeployDmnResourceDefinitionResponse
+	34, // 117: cluster.ZenService.DeployProcessDefinition:output_type -> cluster.DeployProcessDefinitionResponse
+	40, // 118: cluster.ZenService.ActivateJob:output_type -> cluster.ActivateJobResponse
+	47, // 119: cluster.ZenService.PublishMessage:output_type -> cluster.PublishMessageResponse
+	43, // 120: cluster.ZenService.SetMessageSubscriptionPointer:output_type -> cluster.SetMessageSubscriptionPointerResponse
+	45, // 121: cluster.ZenService.FindActiveMessage:output_type -> cluster.FindActiveMessageResponse
+	49, // 122: cluster.ZenService.CreateInstance:output_type -> cluster.CreateInstanceResponse
+	51, // 123: cluster.ZenService.StartProcessInstanceOnElements:output_type -> cluster.StartInstanceOnElementIdsResponse
+	54, // 124: cluster.ZenService.ModifyProcessInstance:output_type -> cluster.ModifyProcessInstanceResponse
+	55, // 125: cluster.ZenService.DeleteProcessInstanceVariable:output_type -> cluster.DeleteProcessInstanceVariableResponse
+	58, // 126: cluster.ZenService.GetProcessInstances:output_type -> cluster.GetProcessInstancesResponse
+	71, // 127: cluster.ZenService.GetJobs:output_type -> cluster.GetJobsResponse
+	69, // 128: cluster.ZenService.GetJob:output_type -> cluster.GetJobResponse
+	60, // 129: cluster.ZenService.GetProcessInstance:output_type -> cluster.GetProcessInstanceResponse
+	62, // 130: cluster.ZenService.GetProcessInstanceJobs:output_type -> cluster.GetProcessInstanceJobsResponse
+	64, // 131: cluster.ZenService.GetFlowElementHistory:output_type -> cluster.GetFlowElementHistoryResponse
+	66, // 132: cluster.ZenService.GetIncidents:output_type -> cluster.GetIncidentsResponse
+	73, // 133: cluster.ZenService.ResolveIncident:output_type -> cluster.ResolveIncidentResponse
+	75, // 134: cluster.ZenService.SubscribeJob:output_type -> cluster.SubscribeJobResponse
+	36, // 135: cluster.ZenService.CompleteJob:output_type -> cluster.CompleteJobResponse
+	38, // 136: cluster.ZenService.FailJob:output_type -> cluster.FailJobResponse
+	77, // 137: cluster.ZenService.ReassignJob:output_type -> cluster.ReassignJobResponse
+	98, // [98:138] is the sub-list for method output_type
+	58, // [58:98] is the sub-list for method input_type
+	58, // [58:58] is the sub-list for extension type_name
+	58, // [58:58] is the sub-list for extension extendee
+	0,  // [0:58] is the sub-list for field type_name
 }
 
 func init() { file_zen_cluster_proto_init() }
@@ -6728,7 +6862,7 @@ func file_zen_cluster_proto_init() {
 		(*CreateInstanceRequest_DefinitionKey)(nil),
 		(*CreateInstanceRequest_LatestProcessId)(nil),
 	}
-	file_zen_cluster_proto_msgTypes[92].OneofWrappers = []any{
+	file_zen_cluster_proto_msgTypes[94].OneofWrappers = []any{
 		(*NodeCommandResponse_NodeChange)(nil),
 		(*NodeCommandResponse_NodePartitionChange)(nil),
 	}
@@ -6738,7 +6872,7 @@ func file_zen_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_zen_cluster_proto_rawDesc), len(file_zen_cluster_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   95,
+			NumMessages:   97,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

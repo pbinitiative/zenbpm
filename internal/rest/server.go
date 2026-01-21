@@ -572,10 +572,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
 		switch *request.Params.SortBy {
-		case public.Key, public.State, public.CreatedAt:
+		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt:
 			sortByDbColumn = &s
 		default:
-			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.CreatedAt, public.Key, public.State}
+			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
 			return public.GetProcessInstances400JSONResponse{
 				Code:    "TODO",
 				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),

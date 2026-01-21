@@ -180,7 +180,7 @@ func TestCreatedAt(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			BpmnProcessId: &definition.BpmnProcessId,
 			CreatedFrom:   ptr.To(past),
-			SortBy:        ptr.To(zenclient.CreatedAt),
+			SortBy:        ptr.To(zenclient.GetProcessInstancesParamsSortByCreatedAt),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)

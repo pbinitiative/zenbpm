@@ -47,20 +47,6 @@ const (
 	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
 
-// Defines values for GetJobsParamsSortBy.
-const (
-	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
-	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
-	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
-	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
-)
-
-// Defines values for GetJobsParamsSortOrder.
-const (
-	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
-	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
-)
-
 // Defines values for GetDmnResourceDefinitionsParamsSortBy.
 const (
 	GetDmnResourceDefinitionsParamsSortByDmnDefinitionName       GetDmnResourceDefinitionsParamsSortBy = "dmnDefinitionName"
@@ -73,6 +59,20 @@ const (
 const (
 	GetDmnResourceDefinitionsParamsSortOrderAsc  GetDmnResourceDefinitionsParamsSortOrder = "asc"
 	GetDmnResourceDefinitionsParamsSortOrderDesc GetDmnResourceDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetJobsParamsSortBy.
+const (
+	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
+	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
+	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
+	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
+)
+
+// Defines values for GetJobsParamsSortOrder.
+const (
+	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
+	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
 )
 
 // Defines values for GetProcessDefinitionsParamsSortBy.
@@ -92,9 +92,9 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
-	CreatedAt GetProcessInstancesParamsSortBy = "createdAt"
-	Key       GetProcessInstancesParamsSortBy = "key"
-	State     GetProcessInstancesParamsSortBy = "state"
+	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey       GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState     GetProcessInstancesParamsSortBy = "state"
 )
 
 // Defines values for GetProcessInstancesParamsSortOrder.

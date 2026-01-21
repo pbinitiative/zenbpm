@@ -8,5 +8,6 @@ output-options:
   skip-prune: true
 compatibility:
   apply-chi-middleware-first-to-last: true
+  always-prefix-enum-values: true
   old-merge-schemas: true
 output: zz_generated.go

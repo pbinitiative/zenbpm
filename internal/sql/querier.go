@@ -39,7 +39,9 @@ type Querier interface {
 	FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error)
 	FindJobByJobKey(ctx context.Context, key int64) (Job, error)
 	FindJobByKey(ctx context.Context, key int64) (Job, error)
-	FindJobsFilter(ctx context.Context, arg FindJobsFilterParams) ([]FindJobsFilterRow, error)
+	// force sqlc to keep sort param
+	// workaround for sqlc does not replace params in order by
+	FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error)
 	FindLatestDecisionDefinitionById(ctx context.Context, decisionID string) (DecisionDefinition, error)
 	FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error)
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)

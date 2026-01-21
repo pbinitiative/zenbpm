@@ -34,6 +34,22 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch storage.Batc
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}
+	// Only evaluate assignee for UserTask elements
+	if userTask, ok := element.(bpmn20.UserTask); ok {
+		assigneeResult, err := engine.evaluateExpression(userTask.GetAssignmentAssignee(), jobVarHolder.LocalVariables())
+		if err != nil {
+			job.State = runtime.ActivityStateFailed
+			return job.State, fmt.Errorf("failed to create job: %w", err)
+		}
+
+		// Cast the result to string
+		assigneeStr, ok := assigneeResult.(string)
+		if !ok {
+			assigneeStr = fmt.Sprintf("%v", assigneeResult)
+		}
+		job.Assignee = ptr.To(assigneeStr)
+	}
+
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
 		job.State = runtime.ActivityStateFailed

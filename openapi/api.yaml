@@ -940,6 +940,91 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-instances/{processInstanceKey}/variables:
+    patch:
+      operationId: updateProcessInstanceVariables
+      summary: "Update process instance variables"
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - variables
+              properties:
+                variables:
+                  type: object
+            example:
+              variables:
+                orderAmount: 150.00
+                approved: true
+      responses:
+        204:
+          description: Variables updated
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/variables/{variableName}:
+    delete:
+      operationId: deleteProcessInstanceVariable
+      summary: "Delete a process instance variable"
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+        - name: variableName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        204:
+          description: Variable deleted
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Variable not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /jobs:
     get:
       operationId: getJobs
@@ -959,6 +1044,17 @@ paths:
           schema:
             $ref: "#/components/schemas/JobState"
           example: "active"
+        - name: assignee
+          in: query
+          schema:
+            type: string
+          description: Filter by assignee
+        - name: processInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by process instance
         - name: page
           in: query
           schema:
@@ -973,6 +1069,18 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, key, type, state]
+          description: Sort field
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of jobs on partitions
@@ -1022,27 +1130,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /jobs/{jobKey}:
+    get:
+      operationId: getJob
+      summary: "Get job details"
+      tags:
+        - job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}/complete:
     post:
       operationId: completeJob
       tags:
         - job
       summary: Complete a job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - jobKey
               properties:
-                jobKey:
-                  type: integer
-                  format: int64
                 variables:
                   type: object
             example:
-              jobKey: 4503599627370540
               variables:
                 result: "success"
                 transactionId: "tx-789-xyz"
@@ -1656,6 +1805,8 @@ components:
           format: date-time
         variables:
           type: object
+        assignee:
+          type: string
     JobState:
       type: string
       enum:

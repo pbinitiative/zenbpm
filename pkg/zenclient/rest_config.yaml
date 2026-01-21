@@ -4,4 +4,6 @@ generate:
   client: true
 output-options:
   skip-prune: true
+compatibility:
+  always-prefix-enum-values: true
 output: zz_generated.go

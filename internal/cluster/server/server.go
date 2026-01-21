@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	ssql "database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -449,6 +448,44 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 	}, nil
 }
 
+func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
+	if err != nil {
+		err := fmt.Errorf("failed to delete process instance variable: %w", err)
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.Key,
+			ProcessId:     &instance.Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.State)),
+			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.Definition.Key,
+		},
+	}, nil
+}
+
+func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
+}
+
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {
@@ -813,44 +850,44 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				},
 			}, err
 		}
-		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			Type: ssql.NullString{
-				String: ptr.Deref(req.JobType, ""),
-				Valid:  req.JobType != nil,
-			},
+
+		dbJobs, err := queries.FindJobs(ctx, sql.FindJobsParams{
+			State:              sql.ToNullInt64(req.State),
+			Type:               sql.ToNullString(req.JobType),
+			Assignee:           sql.ToNullString(req.Assignee),
+			ProcessInstanceKey: sql.ToNullInt64(req.ProcessInstanceKey),
+			Sort:               sql.ToNullString(req.Sort),
+			Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+			Limit:              int64(req.GetSize()),
 		})
 		if err != nil {
-			err := fmt.Errorf("failed to find jobs with filter %+v", req)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			return nil, fmt.Errorf("failed to find jobs list%w", err)
 		}
+
+		partitionJobs := make([]*proto.Job, len(dbJobs))
+
 		totalCount := int32(0)
-		if len(jobs) > 0 {
-			totalCount = int32(jobs[0].TotalCount)
-		}
-		partitionJobs := make([]*proto.Job, len(jobs))
-		for i, job := range jobs {
+		for i, job := range dbJobs {
+			if i == 0 {
+				totalCount = int32(job.TotalCount)
+			}
+
+			var a *string
+			if job.Assignee.Valid {
+				a = &job.Assignee.String
+			}
 			partitionJobs[i] = &proto.Job{
-				Key:                &job.Key,
-				Variables:          []byte(job.Variables),
-				State:              ptr.To(int64(job.State)),
-				CreatedAt:          &job.CreatedAt,
-				ElementInstanceKey: &job.ElementInstanceKey,
-				ElementId:          &job.ElementID,
-				ProcessInstanceKey: &job.ProcessInstanceKey,
-				Type:               &job.Type,
+				Key:                ptr.To(job.Key),
+				ProcessInstanceKey: ptr.To(job.ProcessInstanceKey),
+				ElementId:          ptr.To(job.ElementID),
+				ElementInstanceKey: ptr.To(job.ElementInstanceKey),
+				Type:               ptr.To(job.Type),
+				CreatedAt:          ptr.To(job.CreatedAt),
+				State:              ptr.To(job.State),
+				Assignee:           a,
 			}
 		}
+
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
@@ -860,6 +897,61 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 	return &proto.GetJobsResponse{
 		Partitions: resp,
 	}, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetJobKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	job, err := queries.FindJobByJobKey(ctx, *req.JobKey)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("failed to find job %d", req.GetJobKey())
+			return &proto.GetJobResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, nil
+		}
+		err := fmt.Errorf("failed to find job %d", req.GetJobKey())
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	var assignee *string
+	if job.Assignee.Valid {
+		assignee = &job.Assignee.String
+	}
+
+	return &proto.GetJobResponse{
+		Job: &proto.Job{
+			Key:                &job.Key,
+			ElementInstanceKey: &job.ElementInstanceKey,
+			ElementId:          &job.ElementID,
+			ProcessInstanceKey: &job.ProcessInstanceKey,
+			Type:               &job.Type,
+			State:              &job.State,
+			CreatedAt:          &job.CreatedAt,
+			Assignee:           assignee,
+			Variables:          []byte(job.Variables),
+		},
+	}, nil
+
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {

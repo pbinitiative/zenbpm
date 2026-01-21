@@ -30,7 +30,7 @@ type InternalTask interface {
 	GetOutputMapping() []extensions.TIoMapping
 }
 
-type UserTaskElement interface {
+type UserTask interface {
 	InternalTask
 	GetAssignmentAssignee() string
 	GetAssignmentCandidateGroups() []string

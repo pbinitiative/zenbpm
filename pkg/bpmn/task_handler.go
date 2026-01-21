@@ -111,7 +111,7 @@ func (engine *Engine) RemoveHandler(handler *taskHandler) {
 // TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.InternalTask) bool {
-		utl, isUserTask := element.(bpmn20.UserTaskElement)
+		utl, isUserTask := element.(bpmn20.UserTask)
 		if !isUserTask {
 			return false
 		}
@@ -125,7 +125,7 @@ func (thc newTaskHandlerCommand) Assignee(assignee string) NewTaskHandlerCommand
 // TODO: it is an unlikely scenario for getting a predefined handler for User Task. To be redesigned
 func (thc newTaskHandlerCommand) CandidateGroups(groups ...string) NewTaskHandlerCommand2 {
 	thc.matcher = func(element bpmn20.InternalTask) bool {
-		utl, isUserTask := element.(bpmn20.UserTaskElement)
+		utl, isUserTask := element.(bpmn20.UserTask)
 		if !isUserTask {
 			return false
 		}

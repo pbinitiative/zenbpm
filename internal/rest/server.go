@@ -225,7 +225,7 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
 	var decision = request.DecisionId
-	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.Latest {
+	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeLatest {
 		decision = *request.Body.DecisionDefinitionId + "." + request.DecisionId
 	}
 
@@ -386,7 +386,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 }
 
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
-	err := s.node.CompleteJob(ctx, request.Body.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
+	err := s.node.CompleteJob(ctx, request.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
 		return public.CompleteJob502JSONResponse{
 			Code:    "TODO",
@@ -543,15 +543,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
-		supportedStates := [...]public.GetProcessInstancesParamsState{public.Active, public.Completed, public.Terminated, public.Failed}
+		supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
+		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
+		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
-		case public.Active:
+		case public.GetProcessInstancesParamsStateActive:
 			state = ptr.To(int64(runtime.ActivityStateActive))
-		case public.Completed:
+		case public.GetProcessInstancesParamsStateCompleted:
 			state = ptr.To(int64(runtime.ActivityStateCompleted))
-		case public.Terminated:
+		case public.GetProcessInstancesParamsStateTerminated:
 			state = ptr.To(int64(runtime.ActivityStateTerminated))
-		case public.Failed:
+		case public.GetProcessInstancesParamsStateFailed:
 			state = ptr.To(int64(runtime.ActivityStateFailed))
 		default:
 			return public.GetProcessInstances400JSONResponse{
@@ -699,6 +701,71 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 	}, nil
 }
 
+func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request public.UpdateProcessInstanceVariablesRequestObject) (public.UpdateProcessInstanceVariablesResponseObject, error) {
+	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.UpdateProcessInstanceVariables502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	if process.GetState() != int64(runtime.ActivityStateActive) {
+		return public.UpdateProcessInstanceVariables400JSONResponse{
+			Code:    "INVALID_STATE",
+			Message: "Can update variables only for process instances in active state",
+		}, nil
+	}
+	err = s.node.UpdateProcessInstanceVariables(ctx, request.ProcessInstanceKey, request.Body.Variables)
+	if err != nil {
+		return public.UpdateProcessInstanceVariables502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.UpdateProcessInstanceVariables204Response{}, nil
+}
+
+func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request public.DeleteProcessInstanceVariableRequestObject) (public.DeleteProcessInstanceVariableResponseObject, error) {
+	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	existingVars := make(map[string]any)
+	err = json.Unmarshal(process.GetVariables(), &existingVars)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	_, exists := existingVars[request.VariableName]
+	if !exists {
+		return public.DeleteProcessInstanceVariable404JSONResponse{
+			Code:    "NOT_FOUND",
+			Message: fmt.Sprintf("Variable %v does not exist for process instance with key=%v", request.VariableName, request.ProcessInstanceKey),
+		}, nil
+	}
+	if process.GetState() != int64(runtime.ActivityStateActive) {
+		return public.DeleteProcessInstanceVariable400JSONResponse{
+			Code:    "INVALID_STATE",
+			Message: "Can delete variables only for process instances in active state",
+		}, nil
+	}
+	err = s.node.DeleteProcessInstanceVariable(ctx, request.ProcessInstanceKey, request.VariableName)
+	if err != nil {
+		return public.DeleteProcessInstanceVariable502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.DeleteProcessInstanceVariable204Response{}, nil
+}
+
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
@@ -787,7 +854,9 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			panic("unexpected public.JobState")
 		}
 	}
-	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState)
+
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey, sort)
 	if err != nil {
 		return public.GetJobs502JSONResponse{
 			Code:    "TODO",
@@ -813,29 +882,50 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
-			vars := map[string]any{}
-			err = json.Unmarshal(job.GetVariables(), &vars)
-			if err != nil {
-				return public.GetJobs500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
 				State:              getRestJobState(runtime.ActivityState(job.GetState())),
-				Variables:          vars,
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
+				Assignee:           job.Assignee,
 			}
 		}
 	}
 	jobsPage.Count = count
 	jobsPage.TotalCount = int(totalCount)
 	return jobsPage, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject) (public.GetJobResponseObject, error) {
+	job, err := s.node.GetJob(ctx, request.JobKey)
+	if err != nil {
+		// Not your cluster error type → treat as internal (or map generically)
+		return public.GetJob500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	jobVars := make(map[string]any)
+	err = json.Unmarshal(job.GetVariables(), &jobVars)
+	if err != nil {
+		return public.GetJob500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	return public.GetJob200JSONResponse{
+		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+		ElementId:          job.GetElementId(),
+		Key:                job.GetKey(),
+		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		Type:               job.GetType(),
+		Variables:          jobVars,
+	}, nil
 }
 
 func getRestJobState(state runtime.ActivityState) public.JobState {

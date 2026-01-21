@@ -63,8 +63,10 @@ service ZenService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
+  rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -256,6 +258,7 @@ message Job {
   int64 state = 6;
   int64 created_at = 7;
   bytes variables = 8;
+  string assignee = 9;
 }
 
 message FlowElement {
@@ -410,10 +413,20 @@ message ModifyProcessInstanceRequest {
   bytes variables = 4;
 }
 
+message DeleteProcessInstanceVariableRequest {
+  int64 process_instance_key = 1;
+  string variable = 2;
+}
+
 message ModifyProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance process = 2;
   repeated ExecutionToken execution_tokens = 3;
+}
+
+message DeleteProcessInstanceVariableResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
 }
 
 message GetProcessInstancesRequest {
@@ -507,6 +520,18 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  string assignee = 6;
+  int64 processInstanceKey = 7;
+  string sort = 8;
+}
+
+message GetJobRequest{
+  int64 job_key = 1;
+}
+
+message GetJobResponse {
+  ErrorResult error = 1;
+  Job job = 2;
 }
 
 message PartitionedJobs {

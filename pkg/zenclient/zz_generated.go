@@ -42,9 +42,23 @@ const (
 
 // Defines values for EvaluateDecisionJSONBodyBindingType.
 const (
-	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
-	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
-	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+	EvaluateDecisionJSONBodyBindingTypeDeployment EvaluateDecisionJSONBodyBindingType = "deployment"
+	EvaluateDecisionJSONBodyBindingTypeLatest     EvaluateDecisionJSONBodyBindingType = "latest"
+	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
+// Defines values for GetJobsParamsSortBy.
+const (
+	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
+	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
+	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
+	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
+)
+
+// Defines values for GetJobsParamsSortOrder.
+const (
+	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
+	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDmnResourceDefinitionsParamsSortBy.
@@ -91,10 +105,10 @@ const (
 
 // Defines values for GetProcessInstancesParamsState.
 const (
-	Active     GetProcessInstancesParamsState = "active"
-	Completed  GetProcessInstancesParamsState = "completed"
-	Failed     GetProcessInstancesParamsState = "failed"
-	Terminated GetProcessInstancesParamsState = "terminated"
+	GetProcessInstancesParamsStateActive     GetProcessInstancesParamsState = "active"
+	GetProcessInstancesParamsStateCompleted  GetProcessInstancesParamsState = "completed"
+	GetProcessInstancesParamsStateFailed     GetProcessInstancesParamsState = "failed"
+	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
 )
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -239,6 +253,7 @@ type IncidentPage struct {
 
 // Job defines model for Job.
 type Job struct {
+	Assignee           *string                `json:"assignee,omitempty"`
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
 	Key                int64                  `json:"key"`
@@ -457,13 +472,30 @@ type GetDmnResourceDefinitionsParamsSortOrder string
 type GetJobsParams struct {
 	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
 	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+
+	// Assignee Filter by assignee
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+	Page               *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size               *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetJobsParamsSortBy defines parameters for GetJobs.
+type GetJobsParamsSortBy string
+
+// GetJobsParamsSortOrder defines parameters for GetJobs.
+type GetJobsParamsSortOrder string
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey    int64                   `json:"jobKey"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -612,6 +644,11 @@ type GetProcessInstanceJobsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// UpdateProcessInstanceVariablesJSONBody defines parameters for UpdateProcessInstanceVariables.
+type UpdateProcessInstanceVariablesJSONBody struct {
+	Variables map[string]interface{} `json:"variables"`
+}
+
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
@@ -632,6 +669,9 @@ type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipar
 
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
+type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -726,10 +766,13 @@ type ClientInterface interface {
 	// GetJobs request
 	GetJobs(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CompleteJobWithBody request with any body
-	CompleteJobWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetJob request
+	GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// CompleteJobWithBody request with any body
+	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -774,6 +817,14 @@ type ClientInterface interface {
 
 	// GetProcessInstanceJobs request
 	GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateProcessInstanceVariablesWithBody request with any body
+	UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteProcessInstanceVariable request
+	DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStartCpuProfile request
 	TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -866,8 +917,8 @@ func (c *Client) GetJobs(ctx context.Context, params *GetJobsParams, reqEditors 
 	return c.Client.Do(req)
 }
 
-func (c *Client) CompleteJobWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCompleteJobRequestWithBody(c.Server, contentType, body)
+func (c *Client) GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetJobRequest(c.Server, jobKey)
 	if err != nil {
 		return nil, err
 	}
@@ -878,8 +929,20 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, contentType string, bo
 	return c.Client.Do(req)
 }
 
-func (c *Client) CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCompleteJobRequest(c.Server, body)
+func (c *Client) CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteJobRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteJobRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1072,6 +1135,42 @@ func (c *Client) GetIncidents(ctx context.Context, processInstanceKey int64, par
 
 func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceJobsRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequestWithBody(c.Server, processInstanceKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequest(c.Server, processInstanceKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProcessInstanceVariableRequest(c.Server, processInstanceKey, variableName)
 	if err != nil {
 		return nil, err
 	}
@@ -1449,6 +1548,38 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
+		if params.Assignee != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "assignee", runtime.ParamLocationQuery, *params.Assignee); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if params.Page != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
@@ -1481,6 +1612,38 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -1492,27 +1655,68 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 	return req, nil
 }
 
-// NewCompleteJobRequest calls the generic CompleteJob builder with application/json body
-func NewCompleteJobRequest(server string, body CompleteJobJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+// NewGetJobRequest generates requests for GetJob
+func NewGetJobRequest(server string, jobKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
 	if err != nil {
 		return nil, err
 	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCompleteJobRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewCompleteJobRequestWithBody generates requests for CompleteJob with any type of body
-func NewCompleteJobRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/jobs")
+	operationPath := fmt.Sprintf("/jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteJobRequest calls the generic CompleteJob builder with application/json body
+func NewCompleteJobRequest(server string, jobKey int64, body CompleteJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCompleteJobRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewCompleteJobRequestWithBody generates requests for CompleteJob with any type of body
+func NewCompleteJobRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/complete", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2343,6 +2547,94 @@ func NewGetProcessInstanceJobsRequest(server string, processInstanceKey int64, p
 	return req, nil
 }
 
+// NewUpdateProcessInstanceVariablesRequest calls the generic UpdateProcessInstanceVariables builder with application/json body
+func NewUpdateProcessInstanceVariablesRequest(server string, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateProcessInstanceVariablesRequestWithBody(server, processInstanceKey, "application/json", bodyReader)
+}
+
+// NewUpdateProcessInstanceVariablesRequestWithBody generates requests for UpdateProcessInstanceVariables with any type of body
+func NewUpdateProcessInstanceVariablesRequestWithBody(server string, processInstanceKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteProcessInstanceVariableRequest generates requests for DeleteProcessInstanceVariable
+func NewDeleteProcessInstanceVariableRequest(server string, processInstanceKey int64, variableName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "variableName", runtime.ParamLocationPath, variableName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewTestStartCpuProfileRequest generates requests for TestStartCpuProfile
 func NewTestStartCpuProfileRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
@@ -2474,10 +2766,13 @@ type ClientWithResponsesInterface interface {
 	// GetJobsWithResponse request
 	GetJobsWithResponse(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*GetJobsResponse, error)
 
-	// CompleteJobWithBodyWithResponse request with any body
-	CompleteJobWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+	// GetJobWithResponse request
+	GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error)
 
-	CompleteJobWithResponse(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+	// CompleteJobWithBodyWithResponse request with any body
+	CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+
+	CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
@@ -2522,6 +2817,14 @@ type ClientWithResponsesInterface interface {
 
 	// GetProcessInstanceJobsWithResponse request
 	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
+
+	// UpdateProcessInstanceVariablesWithBodyWithResponse request with any body
+	UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	// DeleteProcessInstanceVariableWithResponse request
+	DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error)
 
 	// TestStartCpuProfileWithResponse request
 	TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error)
@@ -2668,6 +2971,31 @@ func (r GetJobsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetJobsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Job
+	JSON404      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetJobResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2995,6 +3323,53 @@ func (r GetProcessInstanceJobsResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateProcessInstanceVariablesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateProcessInstanceVariablesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateProcessInstanceVariablesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteProcessInstanceVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProcessInstanceVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProcessInstanceVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TestStartCpuProfileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3104,17 +3479,26 @@ func (c *ClientWithResponses) GetJobsWithResponse(ctx context.Context, params *G
 	return ParseGetJobsResponse(rsp)
 }
 
+// GetJobWithResponse request returning *GetJobResponse
+func (c *ClientWithResponses) GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error) {
+	rsp, err := c.GetJob(ctx, jobKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetJobResponse(rsp)
+}
+
 // CompleteJobWithBodyWithResponse request with arbitrary body returning *CompleteJobResponse
-func (c *ClientWithResponses) CompleteJobWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
-	rsp, err := c.CompleteJobWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
+	rsp, err := c.CompleteJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseCompleteJobResponse(rsp)
 }
 
-func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
-	rsp, err := c.CompleteJob(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
+	rsp, err := c.CompleteJob(ctx, jobKey, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3259,6 +3643,32 @@ func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseGetProcessInstanceJobsResponse(rsp)
+}
+
+// UpdateProcessInstanceVariablesWithBodyWithResponse request with arbitrary body returning *UpdateProcessInstanceVariablesResponse
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariablesWithBody(ctx, processInstanceKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariables(ctx, processInstanceKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+// DeleteProcessInstanceVariableWithResponse request returning *DeleteProcessInstanceVariableResponse
+func (c *ClientWithResponses) DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error) {
+	rsp, err := c.DeleteProcessInstanceVariable(ctx, processInstanceKey, variableName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProcessInstanceVariableResponse(rsp)
 }
 
 // TestStartCpuProfileWithResponse request returning *TestStartCpuProfileResponse
@@ -3487,6 +3897,53 @@ func ParseGetJobsResponse(rsp *http.Response) (*GetJobsResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetJobResponse parses an HTTP response from a GetJobWithResponse call
+func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -4047,6 +4504,79 @@ func ParseGetProcessInstanceJobsResponse(rsp *http.Response) (*GetProcessInstanc
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateProcessInstanceVariablesResponse parses an HTTP response from a UpdateProcessInstanceVariablesWithResponse call
+func ParseUpdateProcessInstanceVariablesResponse(rsp *http.Response) (*UpdateProcessInstanceVariablesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateProcessInstanceVariablesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteProcessInstanceVariableResponse parses an HTTP response from a DeleteProcessInstanceVariableWithResponse call
+func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProcessInstanceVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProcessInstanceVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error

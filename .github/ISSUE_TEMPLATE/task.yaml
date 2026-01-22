@@ -14,6 +14,7 @@ body:
 
   - type: textarea
     id: description
+    required: true
     attributes:
       label: Description
       description: What needs to be done? Be concise and clear.
@@ -23,6 +24,7 @@ body:
 
   - type: textarea
     id: acceptance
+    required: true
     attributes:
       label: Acceptance Criteria
       description: Define what success looks like for this task.

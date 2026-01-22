@@ -14,6 +14,7 @@ body:
 
   - type: textarea
     id: goal
+    required: true
     attributes:
       label: Goal
       description: What is the purpose of this initiative? What problem are we solving?
@@ -23,6 +24,7 @@ body:
 
   - type: textarea
     id: scope
+    required: true
     attributes:
       label: Scope
       description: What is included and what is out of scope?
@@ -34,6 +36,7 @@ body:
 
   - type: textarea
     id: success
+    required: true
     attributes:
       label: Success Metrics / KPIs
       description: How will we know this initiative is successful?

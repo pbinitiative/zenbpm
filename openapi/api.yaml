@@ -115,20 +115,15 @@ paths:
           in: query
           schema:
             type: string
-            enum: [name, dmnResourceDefinitionId, resourceName, version, key]
+            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
           description: Sort field
-        - name: sortOrder
-          in: query
-          schema:
-            type: string
-            enum: [asc, desc]
-          description: Sort direction
+        - $ref: "#/components/parameters/sortOrder"
         - name: dmnResourceDefinitionId
           in: query
           schema:
             type: string
           description: Filter by DMN resource definition ID to get all versions
-        - name: name
+        - name: dmnDefinitionName
           in: query
           schema:
             type: string

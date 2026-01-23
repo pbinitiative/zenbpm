@@ -240,6 +240,8 @@ func (node *ZenNode) GetReadOnlyDB(ctx context.Context) (*partition.DB, error) {
 
 // GetDmnResourceDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
 func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *proto.GetDmnResourceDefinitionsRequest) (proto.DmnResourceDefinitionsPage, error) {
+	// TODO some methods like GetDmnResourceDefinitions and GetProcessInstances use GRPC request objects in their arguments
+	// in order not to have up to 8 and more arguments line in getJobs. Unify the approach
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
 		return proto.DmnResourceDefinitionsPage{}, fmt.Errorf("failed to get node DB: %w", err)

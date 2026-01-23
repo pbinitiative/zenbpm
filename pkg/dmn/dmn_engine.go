@@ -76,20 +76,19 @@ func (engine *ZenDmnEngine) ParseDmnFromBytes(resourceName string, xmlData []byt
 
 func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 	ctx context.Context,
-	resourceName string,
 	definition *dmn.TDefinitions,
 	xmlData []byte,
 	key int64,
 ) (*runtime.DmnResourceDefinition, []runtime.DecisionDefinition, error) {
 	md5sum := md5.Sum(xmlData)
 	dmnResourceDefinition := runtime.DmnResourceDefinition{
-		Version:         1,
-		Id:              definition.Id,
-		Key:             key,
-		Definitions:     *definition,
-		DmnData:         xmlData,
-		DmnChecksum:     md5sum,
-		DmnResourceName: resourceName,
+		Version:           1,
+		Id:                definition.Id,
+		Key:               key,
+		Definitions:       *definition,
+		DmnData:           xmlData,
+		DmnChecksum:       md5sum,
+		DmnDefinitionName: definition.Name,
 	}
 	decisionDefinitions := make([]runtime.DecisionDefinition, 0)
 	for _, definition := range definition.Decisions {

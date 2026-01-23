@@ -11,29 +11,90 @@ import (
 
 const findAllDmnResourceDefinitions = `-- name: FindAllDmnResourceDefinitions :many
 SELECT
-    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_resource_name
+    drd."key", drd.version, drd.dmn_resource_definition_id, drd.dmn_data, drd.dmn_checksum, drd.dmn_definition_name, COUNT(*) OVER () AS total_count
 FROM
-    dmn_resource_definition
+    dmn_resource_definition as drd
+WHERE
+    -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+    CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+    AND (
+        CAST(?2 AS INTEGER) = 0
+        OR drd.version = (
+            SELECT MAX(drd2.version)
+            FROM dmn_resource_definition AS drd2
+            WHERE drd2.dmn_resource_definition_id = drd.dmn_resource_definition_id
+        )
+    )
+    AND
+    CASE WHEN ?3 IS NOT NULL THEN
+         drd.dmn_resource_definition_id = ?3
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?4 IS NOT NULL THEN
+         lower(drd.dmn_definition_name) like concat('%', lower(?4), '%')
+    ELSE
+        1
+    END
 ORDER BY
-    version DESC
+    -- workaround for sqlc which does not replace params in order by
+    CASE CAST(?1 AS TEXT) WHEN 'dmnDefinitionName_asc' THEN drd.dmn_definition_name END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'dmnDefinitionName_desc' THEN drd.dmn_definition_name END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'dmnResourceDefinitionId_asc' THEN drd.dmn_resource_definition_id END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'dmnResourceDefinitionId_desc' THEN drd.dmn_resource_definition_id END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'version_asc' THEN drd.version END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'version_desc' THEN drd.version END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN drd.key END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN drd.key END DESC,
+    drd.dmn_resource_definition_id ASC, drd.version DESC
+
+LIMIT ?6 OFFSET ?5
 `
 
-func (q *Queries) FindAllDmnResourceDefinitions(ctx context.Context) ([]DmnResourceDefinition, error) {
-	rows, err := q.db.QueryContext(ctx, findAllDmnResourceDefinitions)
+type FindAllDmnResourceDefinitionsParams struct {
+	SortByOrder             interface{} `json:"sort_by_order"`
+	OnlyLatest              int64       `json:"only_latest"`
+	DmnResourceDefinitionID interface{} `json:"dmn_resource_definition_id"`
+	DmnDefinitionName       interface{} `json:"dmn_definition_name"`
+	Offset                  int64       `json:"offset"`
+	Size                    int64       `json:"size"`
+}
+
+type FindAllDmnResourceDefinitionsRow struct {
+	Key                     int64  `json:"key"`
+	Version                 int64  `json:"version"`
+	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
+	DmnData                 string `json:"dmn_data"`
+	DmnChecksum             []byte `json:"dmn_checksum"`
+	DmnDefinitionName       string `json:"dmn_definition_name"`
+	TotalCount              int64  `json:"total_count"`
+}
+
+func (q *Queries) FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, findAllDmnResourceDefinitions,
+		arg.SortByOrder,
+		arg.OnlyLatest,
+		arg.DmnResourceDefinitionID,
+		arg.DmnDefinitionName,
+		arg.Offset,
+		arg.Size,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []DmnResourceDefinition{}
+	items := []FindAllDmnResourceDefinitionsRow{}
 	for rows.Next() {
-		var i DmnResourceDefinition
+		var i FindAllDmnResourceDefinitionsRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.Version,
 			&i.DmnResourceDefinitionID,
 			&i.DmnData,
 			&i.DmnChecksum,
-			&i.DmnResourceName,
+			&i.DmnDefinitionName,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -50,7 +111,7 @@ func (q *Queries) FindAllDmnResourceDefinitions(ctx context.Context) ([]DmnResou
 
 const findDmnResourceDefinitionByKey = `-- name: FindDmnResourceDefinitionByKey :one
 SELECT
-    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_resource_name
+    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_definition_name
 FROM
     dmn_resource_definition
 WHERE
@@ -66,14 +127,14 @@ func (q *Queries) FindDmnResourceDefinitionByKey(ctx context.Context, key int64)
 		&i.DmnResourceDefinitionID,
 		&i.DmnData,
 		&i.DmnChecksum,
-		&i.DmnResourceName,
+		&i.DmnDefinitionName,
 	)
 	return i, err
 }
 
 const findDmnResourceDefinitionsById = `-- name: FindDmnResourceDefinitionsById :many
 SELECT
-    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_resource_name
+    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_definition_name
 FROM
     dmn_resource_definition
 WHERE
@@ -97,7 +158,7 @@ func (q *Queries) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourc
 			&i.DmnResourceDefinitionID,
 			&i.DmnData,
 			&i.DmnChecksum,
-			&i.DmnResourceName,
+			&i.DmnDefinitionName,
 		); err != nil {
 			return nil, err
 		}
@@ -114,7 +175,7 @@ func (q *Queries) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourc
 
 const findLatestDmnResourceDefinitionById = `-- name: FindLatestDmnResourceDefinitionById :one
 SELECT
-    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_resource_name
+    "key", version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_definition_name
 FROM
     dmn_resource_definition
 WHERE
@@ -133,7 +194,7 @@ func (q *Queries) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnRe
 		&i.DmnResourceDefinitionID,
 		&i.DmnData,
 		&i.DmnChecksum,
-		&i.DmnResourceName,
+		&i.DmnDefinitionName,
 	)
 	return i, err
 }
@@ -156,7 +217,7 @@ func (q *Queries) GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmn
 }
 
 const saveDmnResourceDefinition = `-- name: SaveDmnResourceDefinition :exec
-INSERT INTO dmn_resource_definition(key, version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_resource_name)
+INSERT INTO dmn_resource_definition(key, version, dmn_resource_definition_id, dmn_data, dmn_checksum, dmn_definition_name)
     VALUES (?, ?, ?, ?, ?, ?)
 `
 
@@ -166,7 +227,7 @@ type SaveDmnResourceDefinitionParams struct {
 	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
 	DmnData                 string `json:"dmn_data"`
 	DmnChecksum             []byte `json:"dmn_checksum"`
-	DmnResourceName         string `json:"dmn_resource_name"`
+	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
 func (q *Queries) SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error {
@@ -176,7 +237,7 @@ func (q *Queries) SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnReso
 		arg.DmnResourceDefinitionID,
 		arg.DmnData,
 		arg.DmnChecksum,
-		arg.DmnResourceName,
+		arg.DmnDefinitionName,
 	)
 	return err
 }

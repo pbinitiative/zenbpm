@@ -65,6 +65,15 @@ Content-Type: application/json
 	"variables": {}
 }
 
+### DeployDmnResourceDefinition
+POST {{host}}/v1/dmn-resource-definitions
+Content-Type: application/xml
+
+< pkg/dmn/test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn
+
+### GetDmnResourceDefinitions
+GET {{host}}/v1/dmn-resource-definitions?page=1&sortBy=dmnDefinitionName&sortOrder=desc&onlyLatest=true&dmnDefinitionName=DRD
+
 ### Metrics
 GET {{host}}/system/metrics
 

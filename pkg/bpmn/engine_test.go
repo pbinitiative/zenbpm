@@ -489,7 +489,6 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	assert.NoError(t, err)
 	_, _, err = bpmnEngine.dmnEngine.SaveDmnResourceDefinition(
 		t.Context(),
-		"",
 		definition,
 		xmldata,
 		bpmnEngine.generateKey(),

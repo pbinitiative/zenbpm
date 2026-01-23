@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS dmn_resource_definition(
     dmn_resource_definition_id text NOT NULL, -- id of the dmn resource from xml definition
     dmn_data text NOT NULL, -- string of the dmn resource definition
     dmn_checksum BLOB NOT NULL, -- md5 checksum of the dmn resource definition
-    dmn_resource_name text NOT NULL -- resource name from deployment
+    dmn_definition_name text NOT NULL -- name of the dmn resource definition from xml
 );
 
 -- table that holds information about all the decision definitions

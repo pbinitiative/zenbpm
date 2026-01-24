@@ -193,13 +193,20 @@ FROM
     incident
 WHERE
     process_instance_key = ?1
-LIMIT ?3 OFFSET ?2
+    AND CASE 
+        WHEN CAST(?2 AS TEXT) IS NULL THEN 1 = 1
+        WHEN CAST(?2 AS TEXT)  = 'resolved' THEN resolved_at IS NOT NULL
+        WHEN CAST(?2 AS TEXT)  = 'unresolved' THEN resolved_at IS NULL
+        ELSE 1 = 1  -- return all if state is not 'resolved' or 'unresolved'
+    END
+LIMIT ?4 OFFSET ?3
 `
 
 type FindIncidentsPageByProcessInstanceKeyParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	Offset             int64 `json:"offset"`
-	Size               int64 `json:"size"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	State              sql.NullString `json:"state"`
+	Offset             int64          `json:"offset"`
+	Size               int64          `json:"size"`
 }
 
 type FindIncidentsPageByProcessInstanceKeyRow struct {
@@ -215,7 +222,12 @@ type FindIncidentsPageByProcessInstanceKeyRow struct {
 }
 
 func (q *Queries) FindIncidentsPageByProcessInstanceKey(ctx context.Context, arg FindIncidentsPageByProcessInstanceKeyParams) ([]FindIncidentsPageByProcessInstanceKeyRow, error) {
-	rows, err := q.db.QueryContext(ctx, findIncidentsPageByProcessInstanceKey, arg.ProcessInstanceKey, arg.Offset, arg.Size)
+	rows, err := q.db.QueryContext(ctx, findIncidentsPageByProcessInstanceKey,
+		arg.ProcessInstanceKey,
+		arg.State,
+		arg.Offset,
+		arg.Size,
+	)
 	if err != nil {
 		return nil, err
 	}

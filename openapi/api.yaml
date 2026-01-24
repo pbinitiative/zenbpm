@@ -857,6 +857,11 @@ paths:
             type: integer
             format: int64
           example: 4503599627370501
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [resolved, unresolved]
         - name: page
           in: query
           schema:

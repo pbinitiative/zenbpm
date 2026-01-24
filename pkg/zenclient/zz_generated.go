@@ -97,6 +97,12 @@ const (
 	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
 )
 
+// Defines values for GetIncidentsParamsState.
+const (
+	GetIncidentsParamsStateResolved   GetIncidentsParamsState = "resolved"
+	GetIncidentsParamsStateUnresolved GetIncidentsParamsState = "unresolved"
+)
+
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
 	DmnData                 *string `json:"dmnData,omitempty"`
@@ -593,12 +599,17 @@ type GetHistoryParams struct {
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
+	State *GetIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetIncidentsParamsState defines parameters for GetIncidents.
+type GetIncidentsParamsState string
 
 // GetProcessInstanceJobsParams defines parameters for GetProcessInstanceJobs.
 type GetProcessInstanceJobsParams struct {
@@ -2316,6 +2327,22 @@ func NewGetIncidentsRequest(server string, processInstanceKey int64, params *Get
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Page != nil {
 

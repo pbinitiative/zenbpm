@@ -104,6 +104,29 @@ paths:
             default: 10
           description: Number of items per page (max 100)
           example: 10
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
+          description: "Sort field"
+        - $ref: "#/components/parameters/sortOrder"
+        - name: dmnResourceDefinitionId
+          in: query
+          schema:
+            type: string
+          description: "Filter by DMN resource definition ID to get all versions"
+        - name: dmnDefinitionName
+          in: query
+          schema:
+            type: string
+          description: "Filter by name (partial match)"
       responses:
         200:
           description: List of dmn resource definitions
@@ -1522,7 +1545,7 @@ components:
         - key
         - version
         - decisionDefinitionId
-        - resourceName
+        - dmnDefinitionName
       properties:
         key:
           type: integer
@@ -1531,7 +1554,7 @@ components:
           type: integer
         dmnResourceDefinitionId:
           type: string
-        resourceName:
+        dmnDefinitionName:
           type: string
     DmnResourceDefinitionDetail:
       type: object

@@ -30,7 +30,7 @@ type DmnResourceDefinition struct {
 	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
 	DmnData                 string `json:"dmn_data"`
 	DmnChecksum             []byte `json:"dmn_checksum"`
-	DmnResourceName         string `json:"dmn_resource_name"`
+	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
 type ExecutionToken struct {

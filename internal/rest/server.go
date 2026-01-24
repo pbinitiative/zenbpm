@@ -136,7 +136,17 @@ func (s *Server) TestStopCpuProfile(ctx context.Context, request public.TestStop
 }
 
 func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {
-	definitions, err := s.node.GetDmnResourceDefinitions(ctx)
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+
+	dmnResourceDefinitionsPage, err := s.node.GetDmnResourceDefinitions(ctx, &proto.GetDmnResourceDefinitionsRequest{
+		Page:                    request.Params.Page,
+		Size:                    request.Params.Size,
+		DmnDefinitionName:       request.Params.DmnDefinitionName,
+		OnlyLatest:              request.Params.OnlyLatest,
+		DmnResourceDefinitionId: request.Params.DmnResourceDefinitionId,
+		SortByOrder:             (*string)(sort),
+	})
 	if err != nil {
 		return public.GetDmnResourceDefinitions502JSONResponse{
 			Code:    "TODO",
@@ -144,53 +154,25 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		}, nil
 	}
 
-	defaultPagination(&request.Params.Page, &request.Params.Size)
-	page := int(*request.Params.Page)
-	size := int(*request.Params.Size)
-
 	items := make([]public.DmnResourceDefinitionSimple, 0)
-	for _, p := range definitions {
-		processDefinitionSimple := public.DmnResourceDefinitionSimple{
+	result := public.DmnResourceDefinitionsPage{
+		Items: items,
+	}
+	for _, p := range dmnResourceDefinitionsPage.Items {
+		dmnResourceDefinitionSimple := public.DmnResourceDefinitionSimple{
 			Key:                     p.GetKey(),
 			Version:                 int(p.GetVersion()),
 			DmnResourceDefinitionId: p.DmnResourceDefinitionId,
-			ResourceName:            *p.ResourceName,
+			DmnDefinitionName:       *p.DmnDefinitionName,
 		}
-		items = append(items, processDefinitionSimple)
+		items = append(items, dmnResourceDefinitionSimple)
 	}
 
-	totalCount := len(items)
-
-	startIndex := (page - 1) * size
-	endIndex := startIndex + size
-	if startIndex >= totalCount {
-		result := public.DmnResourceDefinitionsPage{
-			Items: []public.DmnResourceDefinitionSimple{},
-			PageMetadata: public.PageMetadata{
-				Page:       page,
-				Size:       size,
-				Count:      0,
-				TotalCount: totalCount,
-			},
-		}
-		return public.GetDmnResourceDefinitions200JSONResponse(result), nil
-	}
-
-	if endIndex > totalCount {
-		endIndex = totalCount
-	}
-
-	pagedItems := items[startIndex:endIndex]
-
-	result := public.DmnResourceDefinitionsPage{
-		Items: pagedItems,
-		PageMetadata: public.PageMetadata{
-			Page:       page,
-			Size:       size,
-			Count:      len(pagedItems),
-			TotalCount: totalCount,
-		},
-	}
+	result.Items = items
+	result.Count = len(items)
+	result.Page = int(*request.Params.Page)
+	result.Size = int(*request.Params.Size)
+	result.TotalCount = int(*dmnResourceDefinitionsPage.TotalCount)
 
 	return public.GetDmnResourceDefinitions200JSONResponse(result), nil
 }
@@ -206,7 +188,7 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
 			DmnResourceDefinitionId: definition.DmnResourceDefinitionId,
-			ResourceName:            definition.GetResourceName(),
+			DmnDefinitionName:       definition.GetDmnDefinitionName(),
 			Key:                     definition.GetKey(),
 			Version:                 int(definition.GetVersion()),
 		},

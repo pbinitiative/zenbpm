@@ -520,7 +520,7 @@ func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definit
 		Version:                 definition.Version,
 		DmnData:                 string(definition.DmnData),
 		DmnChecksum:             definition.DmnChecksum[:],
-		DmnResourceName:         definition.DmnResourceName,
+		DmnDefinitionName:       definition.DmnDefinitionName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save dmn resource definition: %w", err)
@@ -549,13 +549,13 @@ func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, decisionD
 	}
 
 	res = dmnruntime.DmnResourceDefinition{
-		Id:              dbDefinition.DmnResourceDefinitionID,
-		Version:         dbDefinition.Version,
-		Key:             dbDefinition.Key,
-		Definitions:     definitions,
-		DmnData:         []byte(dbDefinition.DmnData),
-		DmnResourceName: dbDefinition.DmnResourceName,
-		DmnChecksum:     [16]byte(dbDefinition.DmnChecksum),
+		Id:                dbDefinition.DmnResourceDefinitionID,
+		Version:           dbDefinition.Version,
+		Key:               dbDefinition.Key,
+		Definitions:       definitions,
+		DmnData:           []byte(dbDefinition.DmnData),
+		DmnDefinitionName: dbDefinition.DmnDefinitionName,
+		DmnChecksum:       [16]byte(dbDefinition.DmnChecksum),
 	}
 
 	rq.drdCache.Add(dbDefinition.Key, res)
@@ -582,13 +582,13 @@ func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDef
 	}
 
 	res = dmnruntime.DmnResourceDefinition{
-		Id:              drd.DmnResourceDefinitionID,
-		Version:         drd.Version,
-		Key:             drd.Key,
-		Definitions:     definitions,
-		DmnData:         []byte(drd.DmnData),
-		DmnResourceName: drd.DmnResourceName,
-		DmnChecksum:     [16]byte(drd.DmnChecksum),
+		Id:                drd.DmnResourceDefinitionID,
+		Version:           drd.Version,
+		Key:               drd.Key,
+		Definitions:       definitions,
+		DmnData:           []byte(drd.DmnData),
+		DmnDefinitionName: drd.DmnDefinitionName,
+		DmnChecksum:       [16]byte(drd.DmnChecksum),
 	}
 
 	rq.drdCache.Add(dmnResourceDefinitionKey, res)
@@ -616,13 +616,13 @@ func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefini
 			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 		}
 		res[i] = dmnruntime.DmnResourceDefinition{
-			Id:              def.DmnResourceDefinitionID,
-			Version:         def.Version,
-			Key:             def.Key,
-			Definitions:     definitions,
-			DmnData:         []byte(def.DmnData),
-			DmnResourceName: def.DmnResourceName,
-			DmnChecksum:     [16]byte(def.DmnChecksum),
+			Id:                def.DmnResourceDefinitionID,
+			Version:           def.Version,
+			Key:               def.Key,
+			Definitions:       definitions,
+			DmnData:           []byte(def.DmnData),
+			DmnDefinitionName: def.DmnDefinitionName,
+			DmnChecksum:       [16]byte(def.DmnChecksum),
 		}
 
 		rq.drdCache.Add(def.Key, res[i])

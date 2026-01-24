@@ -628,7 +628,7 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 				return nil, err
 			}
 		}
-		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, "", definition, req.GetData(), req.GetKey())
+		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, definition, req.GetData(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy dmn resource definition: %w", err)
 			return &proto.DeployDmnResourceDefinitionResponse{

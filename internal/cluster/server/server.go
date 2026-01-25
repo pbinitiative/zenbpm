@@ -598,9 +598,10 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 	}
 
 	return &proto.EvaluatedDRDResult{
-		Error:              nil,
-		EvaluatedDecisions: evaluatedDecisions,
-		DecisionOutput:     decisionOutput,
+		Error:               nil,
+		EvaluatedDecisions:  evaluatedDecisions,
+		DecisionOutput:      decisionOutput,
+		DecisionInstanceKey: &result.DecisionInstanceKey,
 	}, nil
 }
 
@@ -740,6 +741,81 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 			BusinessKey:   instance.BusinessKey,
 		},
 		ExecutionTokens: respTokens,
+	}, nil
+}
+
+func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecisionInstanceRequest) (*proto.GetDecisionInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetDecisionInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d was not found", partitionId)
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	decisionInstance, err := queries.FindDecisionInstanceByKey(ctx, req.GetDecisionInstanceKey())
+	if err != nil {
+		err := fmt.Errorf("failed to find decision decisionInstance %d", req.GetDecisionInstanceKey())
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	dmnResourceDefinition, err := queries.FindDmnResourceDefinitionByKey(ctx, decisionInstance.DmnResourceDefinitionKey)
+	if err != nil {
+		err := fmt.Errorf("failed to find dmn resource definition %d", decisionInstance.DmnResourceDefinitionKey)
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	evaluatedDecisions, err := json.Marshal(decisionInstance.EvaluatedDecisions)
+	if err != nil {
+		err := fmt.Errorf("failed to marshal evaluatedDecisions of decisionInstance %d", req.GetDecisionInstanceKey())
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	outputVariables, err := json.Marshal(decisionInstance.OutputVariables)
+	if err != nil {
+		err := fmt.Errorf("failed to marshal outputVariables of decisionInstance %d", req.GetDecisionInstanceKey())
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	var processInstanceKey *int64
+	if decisionInstance.ProcessInstanceKey.Valid {
+		processInstanceKey = &decisionInstance.ProcessInstanceKey.Int64
+	}
+	return &proto.GetDecisionInstanceResponse{
+		DecisionInstance: &proto.DecisionInstance{
+			Key:                          &decisionInstance.Key,
+			DmnResourceDefinitionKey:     &decisionInstance.DmnResourceDefinitionKey,
+			DmnResourceDefinitionId:      &dmnResourceDefinition.DmnResourceDefinitionID,
+			DmnResourceDefinitionVersion: &dmnResourceDefinition.Version,
+			ProcessInstanceKey:           processInstanceKey,
+			EvaluatedAt:                  &decisionInstance.CreatedAt,
+			EvaluatedDecisions:           evaluatedDecisions,
+			DecisionOutput:               outputVariables,
+		},
 	}, nil
 }
 

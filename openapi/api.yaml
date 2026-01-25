@@ -282,6 +282,109 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /decision-instances:
+    get:
+      operationId: getDecisionInstances
+      summary: "Get list of decision instances"
+      tags:
+        - decision-instance
+      parameters:
+        - name: dmnResourceDefinitionKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: "Filter by DMN resource definition key"
+        - name: dmnResourceDefinitionId
+          in: query
+          schema:
+            type: string
+          description: "Filter by DMN resource definition ID"
+        - name: processInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: "Filter by process instance"
+        - name: evaluatedFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: evaluated after this date"
+        - name: evaluatedTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: evaluated before this date"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: "Page number (1-based indexing)"
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: "Number of items per page (max 100)"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [evaluatedAt, key]
+          description: "Sort field"
+        - $ref: "#/components/parameters/sortOrder"
+      responses:
+        200:
+          description: List of decision instances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionInstancePartitionPage"
+
+  /decision-instances/{decisionInstanceKey}:
+    get:
+      operationId: getDecisionInstance
+      summary: "Get decision instance details"
+      tags:
+        - decision-instance
+      parameters:
+        - name: decisionInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Decision instance details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionInstanceDetail"
+        404:
+          description: Decision instance not found
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-definitions:
     post:
       operationId: createProcessDefinition
@@ -1470,6 +1573,166 @@ paths:
 
 components:
   schemas:
+    DecisionInstancePartitionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - partitions
+          properties:
+            partitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartitionDecisionInstances"
+        - $ref: "#/components/schemas/PartitionedPageMetadata"
+    PartitionDecisionInstances:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        count:
+          type: integer
+          description: "Total decision instances in this partition"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DecisionInstanceSummary"
+    DecisionInstanceSummary:
+      type: object
+      required:
+        - key
+        - dmnResourceDefinitionKey
+        - dmnResourceDefinitionId
+        - evaluatedAt
+      properties:
+        key:
+          type: integer
+          format: int64
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
+        dmnResourceDefinitionId:
+          type: string
+        processInstanceKey:
+          type: integer
+          format: int64
+        flowElementInstanceKey:
+          type: integer
+          format: int64
+          description: "Key of the flow element instance that triggered this decision"
+        evaluatedAt:
+          type: string
+          format: date-time
+        inputCount:
+          type: integer
+          description: "Number of input variables"
+        outputCount:
+          type: integer
+          description: "Number of output variables"
+    DecisionInstanceDetail:
+      type: object
+      required:
+        - key
+        - dmnResourceDefinitionKey
+        - dmnResourceDefinitionId
+        - evaluatedAt
+        - evaluatedDecisions
+        - dmnResourceDefinitionVersion
+      properties:
+        key:
+          type: integer
+          format: int64
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
+        dmnResourceDefinitionId:
+          type: string
+        dmnResourceDefinitionVersion:
+          type: integer
+        processInstanceKey:
+          type: integer
+          format: int64
+        flowElementInstanceKey:
+          type: integer
+          format: int64
+          description: "Key of the flow element instance that triggered this decision"
+        evaluatedAt:
+          type: string
+          format: date-time
+        decisionRequirementsKey:
+          type: integer
+          format: int64
+          description: "Key of the DRD"
+        decisionRequirementsId:
+          type: string
+          description: "ID of the DRD"
+        evaluatedDecisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedDecision"
+        decisionOutput:
+          type: object
+          description: "Final output of the requested decision"
+    EvaluatedDecision:
+      type: object
+      properties:
+        decisionId:
+          type: string
+        decisionName:
+          type: string
+        decisionType:
+          type: string
+          enum: [ DECISION_TABLE, LITERAL_EXPRESSION ]
+        evaluationOrder:
+          type: integer
+          description: "Order in which this decision was evaluated"
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedInput"
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedOutput"
+        matchedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchedRule"
+          description: "For DECISION_TABLE type only"
+    EvaluatedInput:
+      type: object
+      properties:
+        inputId:
+          type: string
+        inputName:
+          type: string
+        inputExpression:
+          type: string
+        inputValue:
+          description: "The evaluated input value (any type)"
+    EvaluatedOutput:
+      type: object
+      properties:
+        outputId:
+          type: string
+        outputName:
+          type: string
+        outputValue:
+          description: "The output value (any type)"
+    MatchedRule:
+      type: object
+      properties:
+        ruleId:
+          type: string
+        ruleIndex:
+          type: integer
+        evaluatedOutputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedOutput"
     PartitionedPageMetadata:
       type: object
       required:
@@ -1564,9 +1827,13 @@ components:
     EvaluatedDRDResult:
       type: object
       required:
+        - decisionInstanceKey
         - evaluatedDecisions
         - decisionOutput
       properties:
+        decisionInstanceKey:
+          type: integer
+          format: int64
         evaluatedDecisions:
           type: array
           items:

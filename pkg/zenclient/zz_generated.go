@@ -18,6 +18,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EvaluatedDecisionDecisionType.
+const (
+	EvaluatedDecisionDecisionTypeDECISIONTABLE     EvaluatedDecisionDecisionType = "DECISION_TABLE"
+	EvaluatedDecisionDecisionTypeLITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
+)
+
 // Defines values for JobState.
 const (
 	JobStateActive     JobState = "active"
@@ -45,6 +51,18 @@ const (
 	EvaluateDecisionJSONBodyBindingTypeDeployment EvaluateDecisionJSONBodyBindingType = "deployment"
 	EvaluateDecisionJSONBodyBindingTypeLatest     EvaluateDecisionJSONBodyBindingType = "latest"
 	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
+// Defines values for GetDecisionInstancesParamsSortBy.
+const (
+	GetDecisionInstancesParamsSortByEvaluatedAt GetDecisionInstancesParamsSortBy = "evaluatedAt"
+	GetDecisionInstancesParamsSortByKey         GetDecisionInstancesParamsSortBy = "key"
+)
+
+// Defines values for GetDecisionInstancesParamsSortOrder.
+const (
+	GetDecisionInstancesParamsSortOrderAsc  GetDecisionInstancesParamsSortOrder = "asc"
+	GetDecisionInstancesParamsSortOrderDesc GetDecisionInstancesParamsSortOrder = "desc"
 )
 
 // Defines values for GetDmnResourceDefinitionsParamsSortBy.
@@ -111,6 +129,62 @@ const (
 	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
 )
 
+// DecisionInstanceDetail defines model for DecisionInstanceDetail.
+type DecisionInstanceDetail struct {
+	// DecisionOutput Final output of the requested decision
+	DecisionOutput *map[string]interface{} `json:"decisionOutput,omitempty"`
+
+	// DecisionRequirementsId ID of the DRD
+	DecisionRequirementsId *string `json:"decisionRequirementsId,omitempty"`
+
+	// DecisionRequirementsKey Key of the DRD
+	DecisionRequirementsKey      *int64              `json:"decisionRequirementsKey,omitempty"`
+	DmnResourceDefinitionId      string              `json:"dmnResourceDefinitionId"`
+	DmnResourceDefinitionKey     int64               `json:"dmnResourceDefinitionKey"`
+	DmnResourceDefinitionVersion int                 `json:"dmnResourceDefinitionVersion"`
+	EvaluatedAt                  time.Time           `json:"evaluatedAt"`
+	EvaluatedDecisions           []EvaluatedDecision `json:"evaluatedDecisions"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
+}
+
+// DecisionInstancePartitionPage defines model for DecisionInstancePartitionPage.
+type DecisionInstancePartitionPage struct {
+	// Count Number of items returned in the current page
+	Count int `json:"count"`
+
+	// Page Current page number (1-based indexing)
+	Page       int                          `json:"page"`
+	Partitions []PartitionDecisionInstances `json:"partitions"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
+}
+
+// DecisionInstanceSummary defines model for DecisionInstanceSummary.
+type DecisionInstanceSummary struct {
+	DmnResourceDefinitionId  string    `json:"dmnResourceDefinitionId"`
+	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time `json:"evaluatedAt"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+
+	// InputCount Number of input variables
+	InputCount *int  `json:"inputCount,omitempty"`
+	Key        int64 `json:"key"`
+
+	// OutputCount Number of output variables
+	OutputCount        *int   `json:"outputCount,omitempty"`
+	ProcessInstanceKey *int64 `json:"processInstanceKey,omitempty"`
+}
+
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
 	DmnData                 *string `json:"dmnData,omitempty"`
@@ -160,9 +234,28 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     interface{}               `json:"decisionOutput"`
-	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
+	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
+	DecisionOutput      interface{}               `json:"decisionOutput"`
+	EvaluatedDecisions  []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
+
+// EvaluatedDecision defines model for EvaluatedDecision.
+type EvaluatedDecision struct {
+	DecisionId   *string                        `json:"decisionId,omitempty"`
+	DecisionName *string                        `json:"decisionName,omitempty"`
+	DecisionType *EvaluatedDecisionDecisionType `json:"decisionType,omitempty"`
+
+	// EvaluationOrder Order in which this decision was evaluated
+	EvaluationOrder *int              `json:"evaluationOrder,omitempty"`
+	Inputs          *[]EvaluatedInput `json:"inputs,omitempty"`
+
+	// MatchedRules For DECISION_TABLE type only
+	MatchedRules *[]MatchedRule     `json:"matchedRules,omitempty"`
+	Outputs      *[]EvaluatedOutput `json:"outputs,omitempty"`
+}
+
+// EvaluatedDecisionDecisionType defines model for EvaluatedDecision.DecisionType.
+type EvaluatedDecisionDecisionType string
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
@@ -197,6 +290,25 @@ type EvaluatedDecisionRule struct {
 	EvaluatedOutputs []EvaluatedDecisionOutput `json:"evaluatedOutputs"`
 	RuleId           string                    `json:"ruleId"`
 	RuleIndex        int                       `json:"ruleIndex"`
+}
+
+// EvaluatedInput defines model for EvaluatedInput.
+type EvaluatedInput struct {
+	InputExpression *string `json:"inputExpression,omitempty"`
+	InputId         *string `json:"inputId,omitempty"`
+	InputName       *string `json:"inputName,omitempty"`
+
+	// InputValue The evaluated input value (any type)
+	InputValue *interface{} `json:"inputValue,omitempty"`
+}
+
+// EvaluatedOutput defines model for EvaluatedOutput.
+type EvaluatedOutput struct {
+	OutputId   *string `json:"outputId,omitempty"`
+	OutputName *string `json:"outputName,omitempty"`
+
+	// OutputValue The output value (any type)
+	OutputValue *interface{} `json:"outputValue,omitempty"`
 }
 
 // FlowElementHistory defines model for FlowElementHistory.
@@ -298,6 +410,13 @@ type JobPartitionPage struct {
 // JobState defines model for JobState.
 type JobState string
 
+// MatchedRule defines model for MatchedRule.
+type MatchedRule struct {
+	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
+	RuleId           *string            `json:"ruleId,omitempty"`
+	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
 // PageMetadata defines model for PageMetadata.
 type PageMetadata struct {
 	// Count Number of items returned in the current page
@@ -311,6 +430,14 @@ type PageMetadata struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// PartitionDecisionInstances defines model for PartitionDecisionInstances.
+type PartitionDecisionInstances struct {
+	// Count Total decision instances in this partition
+	Count     *int                      `json:"count,omitempty"`
+	Items     []DecisionInstanceSummary `json:"items"`
+	Partition int                       `json:"partition"`
 }
 
 // PartitionJobs defines model for PartitionJobs.
@@ -437,6 +564,42 @@ type EvaluateDecisionJSONBody struct {
 
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBodyBindingType string
+
+// GetDecisionInstancesParams defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParams struct {
+	// DmnResourceDefinitionKey Filter by DMN resource definition key
+	DmnResourceDefinitionKey *int64 `form:"dmnResourceDefinitionKey,omitempty" json:"dmnResourceDefinitionKey,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// EvaluatedFrom Filter: evaluated after this date
+	EvaluatedFrom *time.Time `form:"evaluatedFrom,omitempty" json:"evaluatedFrom,omitempty"`
+
+	// EvaluatedTo Filter: evaluated before this date
+	EvaluatedTo *time.Time `form:"evaluatedTo,omitempty" json:"evaluatedTo,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetDecisionInstancesParamsSortBy defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortBy string
+
+// GetDecisionInstancesParamsSortOrder defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortOrder string
 
 // GetDmnResourceDefinitionsParams defines parameters for GetDmnResourceDefinitions.
 type GetDmnResourceDefinitionsParams struct {
@@ -751,6 +914,12 @@ type ClientInterface interface {
 
 	EvaluateDecision(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDecisionInstances request
+	GetDecisionInstances(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDecisionInstance request
+	GetDecisionInstance(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetDmnResourceDefinitions request
 	GetDmnResourceDefinitions(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -847,6 +1016,30 @@ func (c *Client) EvaluateDecisionWithBody(ctx context.Context, decisionId string
 
 func (c *Client) EvaluateDecision(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEvaluateDecisionRequest(c.Server, decisionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDecisionInstances(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDecisionInstancesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDecisionInstanceRequest(c.Server, decisionInstanceKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1248,6 +1441,217 @@ func NewEvaluateDecisionRequestWithBody(server string, decisionId string, conten
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetDecisionInstancesRequest generates requests for GetDecisionInstances
+func NewGetDecisionInstancesRequest(server string, params *GetDecisionInstancesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/decision-instances")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.DmnResourceDefinitionKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionKey", runtime.ParamLocationQuery, *params.DmnResourceDefinitionKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnResourceDefinitionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionId", runtime.ParamLocationQuery, *params.DmnResourceDefinitionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.EvaluatedFrom != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "evaluatedFrom", runtime.ParamLocationQuery, *params.EvaluatedFrom); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.EvaluatedTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "evaluatedTo", runtime.ParamLocationQuery, *params.EvaluatedTo); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDecisionInstanceRequest generates requests for GetDecisionInstance
+func NewGetDecisionInstanceRequest(server string, decisionInstanceKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionInstanceKey", runtime.ParamLocationPath, decisionInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/decision-instances/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2751,6 +3155,12 @@ type ClientWithResponsesInterface interface {
 
 	EvaluateDecisionWithResponse(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error)
 
+	// GetDecisionInstancesWithResponse request
+	GetDecisionInstancesWithResponse(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*GetDecisionInstancesResponse, error)
+
+	// GetDecisionInstanceWithResponse request
+	GetDecisionInstanceWithResponse(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*GetDecisionInstanceResponse, error)
+
 	// GetDmnResourceDefinitionsWithResponse request
 	GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error)
 
@@ -2850,6 +3260,52 @@ func (r EvaluateDecisionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r EvaluateDecisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDecisionInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DecisionInstancePartitionPage
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDecisionInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDecisionInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDecisionInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DecisionInstanceDetail
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDecisionInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDecisionInstanceResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3434,6 +3890,24 @@ func (c *ClientWithResponses) EvaluateDecisionWithResponse(ctx context.Context, 
 	return ParseEvaluateDecisionResponse(rsp)
 }
 
+// GetDecisionInstancesWithResponse request returning *GetDecisionInstancesResponse
+func (c *ClientWithResponses) GetDecisionInstancesWithResponse(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*GetDecisionInstancesResponse, error) {
+	rsp, err := c.GetDecisionInstances(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDecisionInstancesResponse(rsp)
+}
+
+// GetDecisionInstanceWithResponse request returning *GetDecisionInstanceResponse
+func (c *ClientWithResponses) GetDecisionInstanceWithResponse(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*GetDecisionInstanceResponse, error) {
+	rsp, err := c.GetDecisionInstance(ctx, decisionInstanceKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDecisionInstanceResponse(rsp)
+}
+
 // GetDmnResourceDefinitionsWithResponse request returning *GetDmnResourceDefinitionsResponse
 func (c *ClientWithResponses) GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error) {
 	rsp, err := c.GetDmnResourceDefinitions(ctx, params, reqEditors...)
@@ -3716,6 +4190,72 @@ func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionRespons
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDecisionInstancesResponse parses an HTTP response from a GetDecisionInstancesWithResponse call
+func ParseGetDecisionInstancesResponse(rsp *http.Response) (*GetDecisionInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDecisionInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DecisionInstancePartitionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDecisionInstanceResponse parses an HTTP response from a GetDecisionInstanceWithResponse call
+func ParseGetDecisionInstanceResponse(rsp *http.Response) (*GetDecisionInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDecisionInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DecisionInstanceDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

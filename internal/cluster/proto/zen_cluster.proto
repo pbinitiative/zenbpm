@@ -65,6 +65,7 @@ service ZenService {
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
   rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetDecisionInstance(GetDecisionInstanceRequest) returns (GetDecisionInstanceResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
@@ -164,8 +165,9 @@ message EvaluateDecisionRequest {
 
 message EvaluatedDRDResult {
   ErrorResult error = 1;
-  repeated EvaluatedDecisionResult evaluatedDecisions = 2;
-  bytes DecisionOutput = 3;
+  repeated EvaluatedDecisionResult evaluated_decisions = 2;
+  bytes decision_output = 3;
+  int64 decision_instance_key = 4;
 }
 
 message EvaluatedDecisionResult {
@@ -238,6 +240,17 @@ message ProcessInstance {
   int64 definition_key = 6;
   int64 parent_key = 7;
   string business_key = 8;
+}
+
+message DecisionInstance {
+  int64 key = 1;
+  int64 dmn_resource_definition_key = 2;
+  string dmn_resource_definition_id = 3;
+  int64 dmn_resource_definition_version = 4;
+  int64 process_instance_key = 5;
+  int64 evaluatedAt = 6;
+  bytes evaluated_decisions = 7;
+  bytes decisionOutput = 8;
 }
 
 message ExecutionToken {
@@ -443,6 +456,10 @@ message GetProcessInstancesRequest {
   string sort_by_order = 11;
 }
 
+message GetDecisionInstanceRequest {
+  int64 decision_instance_key = 1;
+}
+
 message GetDmnResourceDefinitionsRequest {
   int32 page = 1;
   int32 size = 2;
@@ -476,6 +493,11 @@ message GetProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance processes = 2;
   repeated ExecutionToken execution_tokens = 3;
+}
+
+message GetDecisionInstanceResponse {
+  ErrorResult error = 1;
+  DecisionInstance decision_instance = 2;
 }
 
 message GetProcessInstanceJobsRequest {

@@ -93,6 +93,7 @@ func (engine *ZenDmnEngine) SaveDmnResourceDefinition(
 	decisionDefinitions := make([]runtime.DecisionDefinition, 0)
 	for _, definition := range definition.Decisions {
 		decisionDefinition := runtime.DecisionDefinition{
+			Key:                      engine.generateKey(),
 			Version:                  1,
 			Id:                       definition.Id,
 			VersionTag:               definition.VersionTag.Value,
@@ -278,11 +279,13 @@ func (engine *ZenDmnEngine) evaluateDRD(
 	}
 	decisionInstanceKey := engine.generateKey()
 	err = engine.persistence.SaveDecisionInstance(ctx, runtime.DecisionInstance{
-		Key:                decisionInstanceKey,
-		DecisionId:         decisionDefinition.Id,
-		CreatedAt:          time.Now(),
-		OutputVariables:    string(outputVariables),
-		EvaluatedDecisions: string(evaluatedDecisionsJson),
+		Key:                      decisionInstanceKey,
+		DecisionId:               decisionDefinition.Id,
+		CreatedAt:                time.Now(),
+		OutputVariables:          string(outputVariables),
+		EvaluatedDecisions:       string(evaluatedDecisionsJson),
+		DmnResourceDefinitionKey: dmnResourceDefinition.Key,
+		DecisionDefinitionKey:    decisionDefinition.Key,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to save business rule: %w", err)
@@ -359,29 +362,33 @@ func (engine *ZenDmnEngine) evaluateDecision(
 		decisionName = foundDecision.Id
 	}
 
+	var decisionType dmn.EvaluatedDecisionType
 	if foundDecision.DecisionTable != nil {
 		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, decisionName, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
+		decisionType = dmn.DecisionTable
 	} else if foundDecision.LiteralExpression != nil {
 		decisionOutput, err = engine.evaluateLiteralExpression(foundDecision.LiteralExpression, foundDecision.Variable, decisionName, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
+		decisionType = dmn.LiteralExpression
 	} else if foundDecision.Context != nil {
 		decisionOutput, err = engine.evaluateContext(foundDecision.Context, decisionName, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
+		decisionType = dmn.Context
 	} else {
-		return EvaluatedDecisionResult{}, nil, fmt.Errorf("decision type unsuported on decision id %s", foundDecision.Id)
+		return EvaluatedDecisionResult{}, nil, fmt.Errorf("decision type unsupported on decision id %s", foundDecision.Id)
 	}
 
 	return EvaluatedDecisionResult{
 		DecisionId:                foundDecision.Id,
 		DecisionName:              foundDecision.Name,
-		DecisionType:              "<literalExpression>",
+		DecisionType:              string(decisionType),
 		DecisionDefinitionVersion: dmnResourceDefinition.Version,
 		DecisionDefinitionKey:     dmnResourceDefinition.Key,
 		DecisionDefinitionId:      dmnResourceDefinition.Id,

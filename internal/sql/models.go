@@ -9,6 +9,7 @@ import (
 )
 
 type DecisionDefinition struct {
+	Key                      int64  `json:"key"`
 	Version                  int64  `json:"version"`
 	DecisionID               string `json:"decision_id"`
 	VersionTag               string `json:"version_tag"`
@@ -17,11 +18,14 @@ type DecisionDefinition struct {
 }
 
 type DecisionInstance struct {
-	Key                int64  `json:"key"`
-	DecisionID         string `json:"decision_id"`
-	CreatedAt          int64  `json:"created_at"`
-	OutputVariables    string `json:"output_variables"`
-	EvaluatedDecisions string `json:"evaluated_decisions"`
+	Key                      int64         `json:"key"`
+	DecisionID               string        `json:"decision_id"`
+	CreatedAt                int64         `json:"created_at"`
+	OutputVariables          string        `json:"output_variables"`
+	EvaluatedDecisions       string        `json:"evaluated_decisions"`
+	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
+	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
+	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
 }
 
 type DmnResourceDefinition struct {

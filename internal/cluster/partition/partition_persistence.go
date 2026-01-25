@@ -389,6 +389,7 @@ func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId st
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      decisionDefinition.Key,
 		Version:                  decisionDefinition.Version,
 		Id:                       decisionDefinition.DecisionID,
 		VersionTag:               decisionDefinition.VersionTag,
@@ -408,6 +409,7 @@ func (rq *DB) GetDecisionDefinitionsById(ctx context.Context, decisionId string)
 	res := make([]dmnruntime.DecisionDefinition, len(decisionDefinitions))
 	for i, dec := range decisionDefinitions {
 		res[i] = dmnruntime.DecisionDefinition{
+			Key:                      dec.Key,
 			Version:                  dec.Version,
 			Id:                       dec.DecisionID,
 			VersionTag:               dec.VersionTag,
@@ -431,6 +433,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -454,6 +457,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx cont
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -477,6 +481,7 @@ func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.C
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -495,6 +500,7 @@ func (rq *DB) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.De
 
 func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.DecisionDefinition) error {
 	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+		Key:                      decision.Key,
 		Version:                  decision.Version,
 		DecisionID:               decision.Id,
 		VersionTag:               decision.VersionTag,
@@ -633,12 +639,17 @@ func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefini
 var _ storage.DecisionInstanceStorageWriter = &DB{}
 
 func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
+	partitionInstanceKey, pikFound := appcontext.ProcessInstanceKeyFromContext(ctx)
+
 	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
-		Key:                result.Key,
-		DecisionID:         result.DecisionId,
-		OutputVariables:    result.OutputVariables,
-		EvaluatedDecisions: result.EvaluatedDecisions,
-		CreatedAt:          result.CreatedAt.UnixMilli(),
+		Key:                      result.Key,
+		DecisionID:               result.DecisionId,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                result.CreatedAt.UnixMilli(),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       ssql.NullInt64{Int64: partitionInstanceKey, Valid: pikFound},
 	})
 }
 
@@ -649,12 +660,19 @@ func (rq *DB) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnrunt
 	if err != nil {
 		return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision results by execution token ids: %w", err)
 	}
+	var processInstanceKey int64
+	if result.ProcessInstanceKey.Valid {
+		processInstanceKey = result.ProcessInstanceKey.Int64
+	}
 	return dmnruntime.DecisionInstance{
-		Key:                result.Key,
-		DecisionId:         result.DecisionID,
-		OutputVariables:    result.OutputVariables,
-		EvaluatedDecisions: result.EvaluatedDecisions,
-		CreatedAt:          time.UnixMilli(result.CreatedAt),
+		Key:                      result.Key,
+		DecisionId:               result.DecisionID,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                time.UnixMilli(result.CreatedAt),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       processInstanceKey,
 	}, nil
 }
 

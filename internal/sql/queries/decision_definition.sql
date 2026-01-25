@@ -1,6 +1,6 @@
 -- name: SaveDecisionDefinition :exec
-INSERT INTO decision_definition(version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key)
-    VALUES (?, ?, ?, ?, ?);
+INSERT INTO decision_definition(key, version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key)
+    VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: FindDecisionDefinitionByIdAndDmnResourceDefinitionKey :one
 SELECT

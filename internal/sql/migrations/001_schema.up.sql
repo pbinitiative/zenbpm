@@ -132,12 +132,13 @@ CREATE TABLE IF NOT EXISTS dmn_resource_definition(
 
 -- table that holds information about all the decision definitions
 CREATE TABLE IF NOT EXISTS decision_definition(
+    key INTEGER PRIMARY KEY, -- int64 id of the dmn definition
     version INTEGER NOT NULL, -- int64 version of the decision definition
     decision_id TEXT NOT NULL, -- id of the decision from xml
     version_tag TEXT NOT NULL, -- string version tag of the decision definition (user defined)
     dmn_resource_definition_id TEXT NOT NULL, -- id of the decision definition from xml dmn resource definition
     dmn_resource_definition_key INTEGER NOT NULL, -- int64 reference to dmn resource definition
-    FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key) -- reference to decision definition
+    FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key) -- reference to dmn resource definition
 );
 
 CREATE TABLE IF NOT EXISTS decision_instance(
@@ -145,7 +146,13 @@ CREATE TABLE IF NOT EXISTS decision_instance(
       decision_id TEXT NOT NULL, -- id of the decision from xml
       created_at integer NOT NULL, -- unix millis of when the instance of the job was created
       output_variables text NOT NULL, -- serialized json variables of the process instance
-      evaluated_decisions text NOT NULL -- serialized json variables of the process instance
+      evaluated_decisions text NOT NULL, -- serialized json variables of the process instance,
+      dmn_resource_definition_key INTEGER NOT NULL, -- int64 reference to dmn resource definition
+      decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
+      process_instance_key INTEGER, -- nullable int64 reference to parent process instance
+      FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key), -- reference to dmn resource definition
+      FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key), -- reference to decision definition
+      FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to parent process instance
 );
 
 -- TODO: create a table for dumb activities like gateway/...

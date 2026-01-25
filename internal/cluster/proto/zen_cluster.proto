@@ -248,9 +248,9 @@ message DecisionInstance {
   string dmn_resource_definition_id = 3;
   int64 dmn_resource_definition_version = 4;
   int64 process_instance_key = 5;
-  int64 evaluatedAt = 6;
+  int64 evaluated_at = 6;
   bytes evaluated_decisions = 7;
-  bytes decisionOutput = 8;
+  bytes decision_output = 8;
 }
 
 message ExecutionToken {

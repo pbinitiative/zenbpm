@@ -52,6 +52,19 @@ func (vh *VariableHolder) SetLocalVariables(variables map[string]interface{}) {
 	}
 }
 
+// EvaluateAndSetMappingsToLocalVariables sets local variables according to mappings
+// uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
+func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
+	for _, mapping := range mappings {
+		evalResult, err := evaluateExpression(mapping.Source, vh.parent.LocalVariables())
+		if err != nil {
+			return err
+		}
+		vh.SetLocalVariable(mapping.Target, evalResult)
+	}
+	return nil
+}
+
 // PropagateVariable set a value with given key to the parent VariableHolder
 func (vh *VariableHolder) PropagateVariable(key string, value interface{}) {
 	if vh.parent != nil {
@@ -59,36 +72,48 @@ func (vh *VariableHolder) PropagateVariable(key string, value interface{}) {
 	}
 }
 
-// PropagateLocalVariables propagates local variables to the parent VariableHolder according to mappings
+// PropagateVariables set a values with given keys to the parent VariableHolder
+func (vh *VariableHolder) PropagateVariables(variables map[string]interface{}) {
+	if vh.parent != nil {
+		for k, v := range variables {
+			vh.parent.SetLocalVariable(k, v)
+		}
+	}
+}
+
+// PropagateOutputVariablesToParent propagates local variables to the parent VariableHolder according to mappings
 // uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-func (vh *VariableHolder) PropagateLocalVariables(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
+func (vh *VariableHolder) PropagateOutputVariablesToParent(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) (map[string]any, error) {
 	if vh.parent == nil {
-		return nil
+		return nil, nil
 	}
 
 	if len(mappings) == 0 {
-		vh.parent.SetLocalVariables(vh.localVariables)
+		vh.parent.SetLocalVariables(outputVariables)
+		return outputVariables, nil
 	}
 
+	localScope := mergeLocalVariablesWithOutputVariables(vh.LocalVariables(), outputVariables)
+	outputVariablesWithOutputMappings := make(map[string]interface{})
+
 	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, vh.LocalVariables())
+		evalResult, err := evaluateExpression(mapping.Source, localScope)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		outputVariablesWithOutputMappings[mapping.Target] = evalResult
 		vh.parent.SetLocalVariable(mapping.Target, evalResult)
 	}
-	return nil
+	return outputVariablesWithOutputMappings, nil
 }
 
-// EvaluateAndSetInputMappings sets local variables according to mappings
-// uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-func (vh *VariableHolder) EvaluateAndSetInputMappings(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
-	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, vh.LocalVariables())
-		if err != nil {
-			return err
-		}
-		vh.SetLocalVariable(mapping.Target, evalResult)
+func mergeLocalVariablesWithOutputVariables(localVariables map[string]any, outputVariables map[string]any) map[string]any {
+	localScope := make(map[string]any)
+	for k, v := range localVariables {
+		localScope[k] = v
 	}
-	return nil
+	for k, v := range outputVariables {
+		localScope[k] = v
+	}
+	return localScope
 }

@@ -19,10 +19,11 @@ type Activity interface {
 	// GetCompletionQuantity() int
 	// GetIsForCompensation() bool
 	// GetStartQuantity() int
+	GetMultiInstance() *TMultiInstance
 }
 
 type InternalTask interface {
-	Activity
+	FlowNode
 	GetId() string
 	GetType() ElementType
 	GetTaskType() string
@@ -38,10 +39,10 @@ type UserTask interface {
 
 type TActivity struct {
 	TFlowNode
-	CompletionQuantity int  `xml:"completionQuantity,attr"`
-	IsForCompensation  bool `xml:"isForCompensation,attr"`
-	StartQuantity      int  `xml:"startQuantity,attr" default:"1"`
-
+	MultiInstance      *TMultiInstance `xml:"multiInstanceLoopCharacteristics,omitempty"`
+	CompletionQuantity int             `xml:"completionQuantity,attr"`
+	IsForCompensation  bool            `xml:"isForCompensation,attr"`
+	StartQuantity      int             `xml:"startQuantity,attr" default:"1"`
 	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
@@ -49,6 +50,7 @@ type TActivity struct {
 
 func (task TActivity) GetInputMapping() []extensions.TIoMapping  { return task.Input }
 func (task TActivity) GetOutputMapping() []extensions.TIoMapping { return task.Output }
+func (task TActivity) GetMultiInstance() *TMultiInstance         { return task.MultiInstance }
 
 type TTask struct {
 	TActivity
@@ -70,6 +72,8 @@ type TServiceTask struct {
 	OperationRef   string `xml:"operationRef,attr"`
 	Implementation string `xml:"implementation,attr"`
 }
+
+func (serviceTask TServiceTask) GetMultiInstance() *TMultiInstance { return serviceTask.MultiInstance }
 
 func (serviceTask TServiceTask) GetType() ElementType { return ElementTypeServiceTask }
 
@@ -156,4 +160,17 @@ type TCallActivity struct {
 type TSubProcess struct {
 	TActivity
 	TProcess
+}
+
+type TMultiInstance struct {
+	IsSequential        bool                 `xml:"isSequential,attr"`
+	LoopCharacteristics TLoopCharacteristics `xml:"extensionElements>loopCharacteristics"`
+	CompletionCondition string               `xml:"completionCondition"`
+}
+
+type TLoopCharacteristics struct {
+	InputCollectionExpression string `xml:"inputCollection,attr"`
+	OutputCollectionName      string `xml:"outputCollection,attr"`
+	InputElementName          string `xml:"inputElement,attr"`
+	OutputElementExpression   string `xml:"outputElement,attr"`
 }

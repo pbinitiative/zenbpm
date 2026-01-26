@@ -199,19 +199,19 @@ type EvaluatedDecisionRule struct {
 	RuleIndex        int                       `json:"ruleIndex"`
 }
 
-// FlowElementHistory defines model for FlowElementHistory.
-type FlowElementHistory struct {
+// FlowElementInstance defines model for FlowElementInstance.
+type FlowElementInstance struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
 	Key                int64     `json:"key"`
 	ProcessInstanceKey int64     `json:"processInstanceKey"`
 }
 
-// FlowElementHistoryPage defines model for FlowElementHistoryPage.
-type FlowElementHistoryPage struct {
+// FlowElementInstancePage defines model for FlowElementInstancePage.
+type FlowElementInstancePage struct {
 	// Count Number of items returned in the current page
 	Count int                   `json:"count"`
-	Items *[]FlowElementHistory `json:"items,omitempty"`
+	Items *[]FlowElementInstance `json:"items,omitempty"`
 
 	// Page Current page number (1-based indexing)
 	Page int `json:"page"`
@@ -3253,7 +3253,7 @@ func (r GetProcessInstanceResponse) StatusCode() int {
 type GetHistoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *FlowElementHistoryPage
+	JSON200      *FlowElementInstancePage
 	JSON400      *Error
 	JSON502      *Error
 }
@@ -4405,7 +4405,7 @@ func ParseGetHistoryResponse(rsp *http.Response) (*GetHistoryResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest FlowElementHistoryPage
+		var dest FlowElementInstancePage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

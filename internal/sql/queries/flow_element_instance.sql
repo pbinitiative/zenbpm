@@ -18,11 +18,13 @@ WHERE process_instance_key IN (sqlc.slice('keys'));
 
 -- name: GetFlowElementInstances :many
 SELECT
-    *
+    *,
+    COUNT(*) OVER() AS total_count
 FROM
     flow_element_instance
 WHERE
-    process_instance_key = @process_instance_key;
+    process_instance_key = @process_instance_key
+LIMIT @limit OFFSET @offset;
 
 
 -- name: GetFlowElementInstanceByTokenKey :one

@@ -282,19 +282,17 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel called processes
+				// TODO: This can cause a deadlock
 				calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
 					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
 				for _, calledProcess := range calledProcesses {
-					calledProcessInstance := runtime.ProcessInstance{
-						Key: calledProcess.Key,
-					}
-					engine.runningInstances.lockInstance(&calledProcessInstance)
+					engine.runningInstances.lockInstance(calledProcess.ProcessInstance().Key)
 					calledInstanceUnlocked := false
 					defer func() {
 						if calledInstanceUnlocked == false {
-							engine.runningInstances.unlockInstance(&calledProcessInstance)
+							engine.runningInstances.unlockInstance(calledProcess.ProcessInstance().Key)
 						}
 					}()
 					err = engine.cancelInstance(ctx, calledProcess, batch)
@@ -693,7 +691,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate business rule %s: %w", element.TTask.Id, err)
 	}
 
-	// TODO persist relation between result.DecisionInstanceKey and flow_element_history
+	// TODO persist relation between result.DecisionInstanceKey and flow_element_instance
 
 	if len(element.GetOutputMapping()) > 0 {
 		outputVariables, err := variableHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)

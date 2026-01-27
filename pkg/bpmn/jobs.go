@@ -2,14 +2,11 @@ package bpmn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"

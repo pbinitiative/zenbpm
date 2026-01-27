@@ -411,105 +411,31 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	return processInstance, activeTokens, nil
 }
 
-//TODO: this is from main
-//func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-//	processInstance := runtime.ProcessInstance{
-//		Key: processInstanceKey,
-//	}
-//	engine.runningInstances.lockInstance(&processInstance)
-//	instanceUnlocked := false
-//	defer func() {
-//		if instanceUnlocked == false {
-//			engine.runningInstances.unlockInstance(&processInstance)
-//		}
-//	}()
-//
-//	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
-//	if err != nil {
-//		return nil, nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.Key, err)
-//	}
-//
-//	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
-//		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
-//		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
-//		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
-//	))
-//	defer createSpan.End()
-//
-//	batch := engine.persistence.NewBatch()
-//
-//	var activeTokensLeft []runtime.ExecutionToken
-//	if len(elementInstanceIdsToTerminate) > 0 {
-//		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, batch, elementInstanceIdsToTerminate, processInstanceKey)
-//		if err != nil {
-//			createSpan.RecordError(err)
-//			createSpan.SetStatus(codes.Error, err.Error())
-//			return &processInstance, nil, err
-//		}
-//	}
-//
-//	startedTokens, err := engine.startExecutionTokens(ctx, batch, elementIdsToStartInstance, &processInstance)
-//	if err != nil {
-//		createSpan.RecordError(err)
-//		createSpan.SetStatus(codes.Error, err.Error())
-//		return &processInstance, nil, err
-//	}
-//
-//	activeTokens := append(activeTokensLeft, startedTokens...)
-//
-//	for key, value := range variableContext {
-//		processInstance.VariableHolder.SetLocalVariable(key, value)
-//	}
-//	err = batch.SaveProcessInstance(ctx, processInstance)
-//	if err != nil {
-//		createSpan.RecordError(err)
-//		createSpan.SetStatus(codes.Error, err.Error())
-//		return &processInstance, nil, err
-//	}
-//
-//	err = batch.Flush(ctx)
-//	if err != nil {
-//		return &processInstance, activeTokens, fmt.Errorf("failed to modify process instance %d: %w", processInstance.Key, err)
-//	}
-//
-//	engine.runningInstances.unlockInstance(&processInstance)
-//	instanceUnlocked = true
-//	err = engine.runProcessInstance(ctx, &processInstance, activeTokens)
-//	if err != nil {
-//		return &processInstance, activeTokens, err
-//	}
-//
-//	return &processInstance, activeTokens, nil
-//}
-
 // TODO: this is from main
-func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) (*runtime.ProcessInstance, error) {
-	processInstance := runtime.ProcessInstance{
-		Key: processInstanceKey,
-	}
-	engine.runningInstances.lockInstance(&processInstance)
+func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) (runtime.ProcessInstance, error) {
+	engine.runningInstances.lockInstance(processInstanceKey)
 	instanceUnlocked := false
 	defer func() {
 		if instanceUnlocked == false {
-			engine.runningInstances.unlockInstance(&processInstance)
+			engine.runningInstances.unlockInstance(processInstanceKey)
 		}
 	}()
 
 	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.Key, err)
+		return nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
-	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("delete-instance-variable:%s", processInstance.Definition.BpmnProcessId), trace.WithAttributes(
-		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.Key),
-		attribute.String(otelPkg.AttributeProcessId, processInstance.Definition.BpmnProcessId),
-		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.Definition.Key),
+	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("delete-instance-variable:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
+		attribute.Int64(otelPkg.AttributeProcessInstanceKey, processInstance.ProcessInstance().Key),
+		attribute.String(otelPkg.AttributeProcessId, processInstance.ProcessInstance().Definition.BpmnProcessId),
+		attribute.Int64(otelPkg.AttributeProcessDefinitionKey, processInstance.ProcessInstance().Definition.Key),
 	))
 	defer createSpan.End()
 
 	batch := engine.persistence.NewBatch()
 
-	processInstance.VariableHolder.DeleteLocalVariable(variable)
+	processInstance.ProcessInstance().VariableHolder.DeleteLocalVariable(variable)
 	err = batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
 		createSpan.RecordError(err)
@@ -519,12 +445,12 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to delete variable for process instance %d: %w", processInstance.Key, err)
+		return nil, fmt.Errorf("failed to delete variable for process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
-	engine.runningInstances.unlockInstance(&processInstance)
+	engine.runningInstances.unlockInstance(processInstanceKey)
 	instanceUnlocked = true
 
-	return &processInstance, nil
+	return processInstance, nil
 }
 
 // FindProcessInstance searches for a given processInstanceKey

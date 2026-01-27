@@ -222,7 +222,10 @@ func TestDataCleanup(t *testing.T) {
 
 		r2 := db.GenerateId()
 		*idArr = append(*idArr, r2)
-		inst2 := runtime.DefaultProcessInstance{
+		inst2 := runtime.SubProcessInstance{
+			ParentProcessExecutionToken:           token,
+			ParentProcessTargetElementInstanceKey: token.ElementInstanceKey,
+			ParentProcessTargetElementId:          token.ElementId,
 			ProcessInstanceData: runtime.ProcessInstanceData{
 				Definition:     &pd,
 				Key:            r2,
@@ -338,7 +341,7 @@ func TestDataCleanup(t *testing.T) {
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
 	count = queryCount(t, db, "select count(*) from execution_token")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
-	count = queryCount(t, db, "select count(*) from flow_element_history")
+	count = queryCount(t, db, "select count(*) from flow_element_instance")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
 	count = queryCount(t, db, "select count(*) from incident")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
@@ -360,7 +363,7 @@ func TestDataCleanup(t *testing.T) {
 	assert.Empty(t, count)
 	count = queryCount(t, db, "select count(*) from execution_token")
 	assert.Empty(t, count)
-	count = queryCount(t, db, "select count(*) from flow_element_history")
+	count = queryCount(t, db, "select count(*) from flow_element_instance")
 	assert.Empty(t, count)
 	count = queryCount(t, db, "select count(*) from incident")
 	assert.Empty(t, count)

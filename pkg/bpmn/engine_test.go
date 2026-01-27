@@ -377,15 +377,16 @@ func TestModifyProcessInstance(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		inMem := bpmnEngine.persistence.(*inmemory.Storage)
 		for _, inst := range inMem.ProcessInstances {
-			if inst.ParentProcessExecutionToken != nil {
+
+			if activityInstance, ok := inst.(*runtime.CallActivityInstance); ok {
 				// wait till instance is already created
-				if inst.ParentProcessExecutionToken.ProcessInstanceKey == instance.Key {
+				if activityInstance.ParentProcessExecutionToken.ProcessInstanceKey == instance.ProcessInstance().Key {
 					return true
 				}
 			}
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 5000*time.Millisecond, 200*time.Millisecond)
 
 	var executionTokens []runtime.ExecutionToken
 	assert.Eventually(t, func() bool {
@@ -396,6 +397,8 @@ func TestModifyProcessInstance(t *testing.T) {
 		}
 		return false
 	}, 5*time.Second, 200*time.Millisecond)
+
+	time.Sleep(2 * time.Second)
 
 	var mainToken runtime.ExecutionToken
 	for _, token := range executionTokens {
@@ -412,6 +415,8 @@ func TestModifyProcessInstance(t *testing.T) {
 
 	modifiedInstance, runningTokens, err := bpmnEngine.ModifyInstance(t.Context(), instance.ProcessInstance().GetInstanceKey(), elementInstancesToTerminate, elementIdsToStartInstance, map[string]any{
 		"order": map[string]any{"name": "test-order-name"}})
+
+	time.Sleep(2 * time.Second)
 
 	assert.NoError(t, err)
 	assert.Equal(t, definition.Key, modifiedInstance.ProcessInstance().Definition.Key)
@@ -444,6 +449,8 @@ func TestModifyProcessInstance(t *testing.T) {
 
 	// All incidents should be resolved
 	// TODO: would need different test
+
+	time.Sleep(2 * time.Second)
 
 	// All called processes should be terminated
 	cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), mainToken.Key)

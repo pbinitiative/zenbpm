@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -974,11 +975,11 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	}
 
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
-		Key:                  processInstance.ProcessInstance().Key,
-		ProcessDefinitionKey: processInstance.ProcessInstance().Definition.Key,
-		CreatedAt:            processInstance.ProcessInstance().CreatedAt.UnixMilli(),
-		State:                int64(processInstance.ProcessInstance().State),
-		BusinessKey:          ssql.NullString{String: businessKey, Valid: bkFound},
+		Key:                                   processInstance.ProcessInstance().Key,
+		ProcessDefinitionKey:                  processInstance.ProcessInstance().Definition.Key,
+		CreatedAt:                             processInstance.ProcessInstance().CreatedAt.UnixMilli(),
+		State:                                 int64(processInstance.ProcessInstance().State),
+		BusinessKey:                           ssql.NullString{String: businessKey, Valid: bkFound},
 		Variables:                             string(varStr),
 		ParentProcessExecutionToken:           parentProcessExecutionToken,
 		ParentProcessTargetElementID:          parentProcessTargetElementID,
@@ -1760,7 +1761,11 @@ func (rq *DB) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Contex
 }
 
 func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
-	flowElementInstances, err := rq.Queries.GetFlowElementInstances(ctx, processInstanceKey)
+	flowElementInstances, err := rq.Queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
+		ProcessInstanceKey: processInstanceKey,
+		Offset:             0,
+		Limit:              1000,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1834,13 +1839,29 @@ func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance b
 }
 
 func (rq *DB) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
-	//TODO implement me
-	panic("implement me")
+	err := UpdateOutputFlowElementInstanceWith(ctx, rq.Queries, flowElementInstance)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
-	//TODO implement me
-	panic("implement me")
+	outputVariablesString, err := json.Marshal(flowElementInstance.OutputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	return db.UpdateOutputFlowElementInstance(
+		ctx,
+		sql.UpdateOutputFlowElementInstanceParams{
+			Key:                flowElementInstance.Key,
+			ElementID:          flowElementInstance.ElementId,
+			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
+			CreatedAt:          flowElementInstance.CreatedAt.UnixMilli(),
+			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
+			OutputVariables:    string(outputVariablesString),
+		},
+	)
 }
 
 func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element bpmnruntime.FlowElementInstance) error {

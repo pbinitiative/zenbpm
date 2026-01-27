@@ -73,22 +73,41 @@ func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executio
 
 const getFlowElementInstances = `-- name: GetFlowElementInstances :many
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables,
+    COUNT(*) OVER() AS total_count
 FROM
     flow_element_instance
 WHERE
     process_instance_key = ?1
+LIMIT ?3 OFFSET ?2
 `
 
-func (q *Queries) GetFlowElementInstances(ctx context.Context, processInstanceKey int64) ([]FlowElementInstance, error) {
-	rows, err := q.db.QueryContext(ctx, getFlowElementInstances, processInstanceKey)
+type GetFlowElementInstancesParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	Offset             int64 `json:"offset"`
+	Limit              int64 `json:"limit"`
+}
+
+type GetFlowElementInstancesRow struct {
+	Key                int64  `json:"key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	ExecutionTokenKey  int64  `json:"execution_token_key"`
+	CreatedAt          int64  `json:"created_at"`
+	InputVariables     string `json:"input_variables"`
+	OutputVariables    string `json:"output_variables"`
+	TotalCount         int64  `json:"total_count"`
+}
+
+func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getFlowElementInstances, arg.ProcessInstanceKey, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FlowElementInstance{}
+	items := []GetFlowElementInstancesRow{}
 	for rows.Next() {
-		var i FlowElementInstance
+		var i GetFlowElementInstancesRow
 		if err := rows.Scan(
 			&i.Key,
 			&i.ElementID,
@@ -97,6 +116,7 @@ func (q *Queries) GetFlowElementInstances(ctx context.Context, processInstanceKe
 			&i.CreatedAt,
 			&i.InputVariables,
 			&i.OutputVariables,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

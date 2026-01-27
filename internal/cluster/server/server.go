@@ -284,7 +284,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	if req.BusinessKey != nil {
 		ctx = appcontext.WithBusinessKey(ctx, ptr.Deref(req.BusinessKey, ""))
 	}
-	var instance *runtime.ProcessInstance
+	var instance runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
 		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
@@ -300,7 +300,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.CreateInstanceResponse{
@@ -312,13 +312,13 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	}
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
-			BusinessKey:   instance.BusinessKey,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			BusinessKey:   instance.ProcessInstance().BusinessKey,
 		},
 	}, nil
 }
@@ -346,7 +346,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		}, err
 	}
 
-	instance, err := engine.StartInstanceOnElementsByKey(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
+	instance, err := engine.CreateInstanceWithStartingElements(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
 	if err != nil {
 		err := fmt.Errorf("failed to start process instance: %w", err)
 		return &proto.StartInstanceOnElementIdsResponse{
@@ -357,7 +357,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		}, err
 	}
 
-	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.StartInstanceOnElementIdsResponse{
@@ -369,12 +369,12 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 	}
 	return &proto.StartInstanceOnElementIdsResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
 		},
 	}, nil
 }
@@ -401,7 +401,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			},
 		}, err
 	}
-	var instance *runtime.ProcessInstance
+	var instance runtime.ProcessInstance
 	instance, tokens, err := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.ElementInstanceIdsToTerminate, req.ElementIdsToStartInstance, vars)
 	if err != nil {
 		err := fmt.Errorf("failed to modify process instance: %w", err)
@@ -412,7 +412,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.ModifyProcessInstanceResponse{
@@ -437,12 +437,12 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 
 	return &proto.ModifyProcessInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -459,7 +459,7 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 		err := fmt.Errorf("failed to delete process instance variable: %w", err)
 		return createDeleteProcessInstanceVariableErrorResponse(err)
 	}
-	variables, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return createDeleteProcessInstanceVariableErrorResponse(err)
@@ -467,12 +467,12 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 
 	return &proto.DeleteProcessInstanceVariableResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
 		},
 	}, nil
 }
@@ -719,7 +719,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		})
 	}
 
-	vars, err := json.Marshal(instance.VariableHolder.LocalVariables())
+	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
@@ -731,13 +731,13 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	}
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     vars,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
-			BusinessKey:   instance.BusinessKey,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			BusinessKey:   instance.ProcessInstance().BusinessKey,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -804,7 +804,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			},
 		}, err
 	}
-	flowElements, err := queries.GetFlowElementHistory(ctx, sql.GetFlowElementHistoryParams{
+	flowElements, err := queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
 		ProcessInstanceKey: *req.ProcessInstanceKey,
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
 		Limit:              int64(req.GetSize()),

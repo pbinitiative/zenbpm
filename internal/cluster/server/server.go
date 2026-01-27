@@ -1183,12 +1183,7 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 		}, err
 	}
 
-	// Use the state-aware query if state filter is provided
-	var incidents []sql.FindIncidentsPageByProcessInstanceKeyRow
-	var totalCount int32
-	var err error
-
-	incidents, err = queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
+	incidents, err := queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
 		ProcessInstanceKey: req.GetProcessInstanceKey(),
 		State:              sql.ToNullString(req.State),
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
@@ -1204,6 +1199,7 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
+	var totalCount int32
 
 	if len(incidents) > 0 {
 		totalCount = int32(incidents[0].TotalCount)

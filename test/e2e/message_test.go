@@ -29,10 +29,11 @@ func TestRestApiMessage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, instance.Key)
 
-	_, err = createProcessInstance(t, definition.Key, map[string]any{
+	failedInstance, err := createProcessInstance(t, definition.Key, map[string]any{
 		"testVar": 123,
 	})
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	assert.Equal(t, public.ProcessInstanceStateFailed, failedInstance.State)
 
 	t.Run("publish message", func(t *testing.T) {
 		err := publishMessage(t, "globalMsgRef", "correlation-key-one", &map[string]any{

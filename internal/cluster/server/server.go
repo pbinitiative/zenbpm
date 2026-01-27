@@ -291,7 +291,8 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	case *proto.CreateInstanceRequest_LatestProcessId:
 		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
 	}
-	if err != nil {
+
+	if err != nil && instance == nil {
 		err := fmt.Errorf("failed to create process instance: %w", err)
 		return &proto.CreateInstanceResponse{
 			Error: &proto.ErrorResult{
@@ -1181,11 +1182,14 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
+
 	incidents, err := queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
 		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		State:              sql.ToNullString(req.State),
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
 		Size:               int64(req.GetSize()),
 	})
+
 	if err != nil {
 		err := fmt.Errorf("failed to find incidents for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetIncidentsResponse{
@@ -1195,10 +1199,12 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
-	totalCount := int32(0)
+	var totalCount int32
+
 	if len(incidents) > 0 {
 		totalCount = int32(incidents[0].TotalCount)
 	}
+
 	results := make([]*proto.Incident, len(incidents))
 	for i, incident := range incidents {
 		results[i] = &proto.Incident{

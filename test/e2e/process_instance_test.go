@@ -251,8 +251,8 @@ func TestState(t *testing.T) {
 		invalidInstance, err := createProcessInstance(t, invalidDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
-		assert.Error(t, err)
-		assert.Empty(t, invalidInstance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, public.ProcessInstanceStateFailed, invalidInstance.State)
 	})
 
 	t.Run("find process instances by state=failed", func(t *testing.T) {

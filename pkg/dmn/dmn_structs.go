@@ -12,7 +12,7 @@ type EvaluatedDecisionResult struct {
 	DecisionType              string
 	DecisionDefinitionVersion int64
 	DecisionDefinitionKey     int64
-	DecisionDefinitionId      string
+	DmnResourceDefinitionId   string
 	MatchedRules              []EvaluatedRule
 	DecisionOutput            map[string]interface{}
 	EvaluatedInputs           []EvaluatedInput

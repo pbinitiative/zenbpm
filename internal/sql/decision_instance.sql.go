@@ -7,10 +7,11 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 )
 
 const findDecisionInstanceByKey = `-- name: FindDecisionInstanceByKey :one
-SELECT "key", decision_id, created_at, output_variables, evaluated_decisions
+SELECT "key", decision_id, created_at, output_variables, evaluated_decisions, dmn_resource_definition_key, decision_definition_key, process_instance_key
 FROM decision_instance
 WHERE key = ?1
 `
@@ -24,21 +25,28 @@ func (q *Queries) FindDecisionInstanceByKey(ctx context.Context, key int64) (Dec
 		&i.CreatedAt,
 		&i.OutputVariables,
 		&i.EvaluatedDecisions,
+		&i.DmnResourceDefinitionKey,
+		&i.DecisionDefinitionKey,
+		&i.ProcessInstanceKey,
 	)
 	return i, err
 }
 
 const saveDecisionInstance = `-- name: SaveDecisionInstance :exec
-INSERT INTO decision_instance ( key,  decision_id, created_at, output_variables, evaluated_decisions)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO decision_instance (key, decision_id, created_at, output_variables, evaluated_decisions, dmn_resource_definition_key,
+                               decision_definition_key, process_instance_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveDecisionInstanceParams struct {
-	Key                int64  `json:"key"`
-	DecisionID         string `json:"decision_id"`
-	CreatedAt          int64  `json:"created_at"`
-	OutputVariables    string `json:"output_variables"`
-	EvaluatedDecisions string `json:"evaluated_decisions"`
+	Key                      int64         `json:"key"`
+	DecisionID               string        `json:"decision_id"`
+	CreatedAt                int64         `json:"created_at"`
+	OutputVariables          string        `json:"output_variables"`
+	EvaluatedDecisions       string        `json:"evaluated_decisions"`
+	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
+	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
+	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
 }
 
 func (q *Queries) SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error {
@@ -48,6 +56,9 @@ func (q *Queries) SaveDecisionInstance(ctx context.Context, arg SaveDecisionInst
 		arg.CreatedAt,
 		arg.OutputVariables,
 		arg.EvaluatedDecisions,
+		arg.DmnResourceDefinitionKey,
+		arg.DecisionDefinitionKey,
+		arg.ProcessInstanceKey,
 	)
 	return err
 }

@@ -876,6 +876,32 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 	return resp.Processes, resp.ExecutionTokens, nil
 }
 
+func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64) (*proto.DecisionInstance, error) {
+	state := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(decisionInstanceKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get follower node to get decision instance: %w", err)
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client to get decision instance: %w", err)
+	}
+	resp, err := client.GetDecisionInstance(ctx, &proto.GetDecisionInstanceRequest{
+		DecisionInstanceKey: &decisionInstanceKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get decision instance from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+
+	return resp.DecisionInstance, nil
+}
+
 // GetProcessInstanceJobs will contact follower node of partition that contains process instance jobs
 func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetProcessInstanceJobsResponse, error) {
 	state := node.store.ClusterState()

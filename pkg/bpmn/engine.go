@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/script/js"
@@ -1064,6 +1065,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 		}
 	}
+
+	ctx = appcontext.WithProcessInstanceKey(ctx, instance.Key)
 
 	result, err := engine.dmnEngine.FindAndEvaluateDRD(
 		ctx,

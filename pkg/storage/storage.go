@@ -81,13 +81,13 @@ type DecisionDefinitionStorageWriter interface {
 }
 
 type DmnResourceDefinitionStorageReader interface {
-	FindLatestDmnResourceDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DmnResourceDefinition, error)
+	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error)
 
 	FindDmnResourceDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error)
 
 	// FindDmnResourceDefinitionsById return zero or many registered DmnResourceDefinitions with given ID
 	// result array is ordered by version number desc
-	FindDmnResourceDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error)
+	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error)
 }
 
 type DmnResourceDefinitionStorageWriter interface {

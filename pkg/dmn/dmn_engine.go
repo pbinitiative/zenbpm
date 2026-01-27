@@ -391,7 +391,7 @@ func (engine *ZenDmnEngine) evaluateDecision(
 		DecisionType:              string(decisionType),
 		DecisionDefinitionVersion: dmnResourceDefinition.Version,
 		DecisionDefinitionKey:     dmnResourceDefinition.Key,
-		DecisionDefinitionId:      dmnResourceDefinition.Id,
+		DmnResourceDefinitionId:   dmnResourceDefinition.Id,
 		MatchedRules:              matchedRules,
 		EvaluatedInputs:           evaluatedInputs,
 		DecisionOutput:            decisionOutput,

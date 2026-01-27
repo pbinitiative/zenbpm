@@ -446,14 +446,14 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 
 func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	var res dmnruntime.DecisionDefinition
-	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx,
-		sql.FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams{
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams{
 			DecisionID:              decisionId,
 			DmnResourceDefinitionID: dmnResourceDefinitionId,
 		},
 	)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision by id and decisionDefinitionId: %w", err)
+		return res, fmt.Errorf("failed to find latest decision by id and dmnResourceDefinitionId: %w", err)
 	}
 
 	res = dmnruntime.DecisionDefinition{
@@ -536,9 +536,9 @@ func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definit
 
 var _ storage.DmnResourceDefinitionStorageReader = &DB{}
 
-func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
+func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
 	var res dmnruntime.DmnResourceDefinition
-	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, decisionDefinitionId)
+	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, dmnResourceDefinitionId)
 	if err != nil {
 		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
@@ -602,8 +602,8 @@ func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDef
 	return res, nil
 }
 
-func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
-	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, decisionDefinitionId)
+func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
+	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, dmnResourceDefinitionId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find dmn resource definitions by id: %w", err)
 	}

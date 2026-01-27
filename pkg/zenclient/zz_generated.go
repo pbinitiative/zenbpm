@@ -189,17 +189,17 @@ type DecisionInstanceSummary struct {
 type DmnResourceDefinitionDetail struct {
 	DmnData                 *string `json:"dmnData,omitempty"`
 	DmnDefinitionName       string  `json:"dmnDefinitionName"`
-	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
+	DmnResourceDefinitionId string  `json:"dmnResourceDefinitionId"`
 	Key                     int64   `json:"key"`
 	Version                 int     `json:"version"`
 }
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
-	DmnDefinitionName       string  `json:"dmnDefinitionName"`
-	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
-	Key                     int64   `json:"key"`
-	Version                 int     `json:"version"`
+	DmnDefinitionName       string `json:"dmnDefinitionName"`
+	DmnResourceDefinitionId string `json:"dmnResourceDefinitionId"`
+	Key                     int64  `json:"key"`
+	Version                 int    `json:"version"`
 }
 
 // DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
@@ -274,12 +274,12 @@ type EvaluatedDecisionOutput struct {
 
 // EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
 type EvaluatedDecisionResult struct {
-	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
 	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
 	DecisionId                string                   `json:"decisionId"`
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
+	DmnResourceDefinitionId   string                   `json:"dmnResourceDefinitionId"`
 	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
@@ -554,9 +554,9 @@ type SortOrder string
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
 
-	// DecisionDefinitionId Can be used in combination with bindingType latest
-	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
-	Variables            *map[string]interface{} `json:"variables,omitempty"`
+	// DmnResourceDefinitionId Can be used in combination with bindingType latest
+	DmnResourceDefinitionId *string                 `json:"dmnResourceDefinitionId,omitempty"`
+	Variables               *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
 	VersionTag *string `json:"versionTag,omitempty"`

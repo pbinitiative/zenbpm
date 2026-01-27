@@ -214,7 +214,7 @@ message DecisionDefinition {
   int32 version = 2;
   string decision_id = 3;
   string version_tag = 4;
-  string decision_definition_id = 5;
+  string dmn_resource_definition_id = 5;
   string dmn_resource_definition_key = 6;
 }
 

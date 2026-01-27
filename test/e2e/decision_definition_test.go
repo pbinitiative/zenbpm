@@ -25,7 +25,7 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 		assert.NoError(t, err)
 		count := 0
 		for _, def := range definitions {
-			if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
+			if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
 				count++
 			}
 		}
@@ -38,12 +38,12 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 		assert.Greater(t, len(list), 0)
 		var deployedDefinition zenclient.DmnResourceDefinitionSimple
 		for _, def := range list {
-			if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
+			if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
 				deployedDefinition = def
 				break
 			}
 		}
-		assert.Equal(t, "example_canAutoLiquidate", *deployedDefinition.DmnResourceDefinitionId)
+		assert.Equal(t, "example_canAutoLiquidate", deployedDefinition.DmnResourceDefinitionId)
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 
 		detail, err := app.restClient.GetDmnResourceDefinitionWithResponse(t.Context(), list[0].Key)
 		assert.NoError(t, err)
-		assert.Equal(t, "example_canAutoLiquidate", *detail.JSON200.DmnResourceDefinitionId)
+		assert.Equal(t, "example_canAutoLiquidate", detail.JSON200.DmnResourceDefinitionId)
 		assert.NotNil(t, detail.JSON200.DmnData)
 	})
 }
@@ -95,9 +95,9 @@ func TestGetDmnResourceDefinitions(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 2, processInstances.JSON200.TotalCount)
 		assert.Equal(t, "name11", processInstances.JSON200.Items[0].DmnDefinitionName)
-		assert.Equal(t, "defId1", *processInstances.JSON200.Items[0].DmnResourceDefinitionId)
+		assert.Equal(t, "defId1", processInstances.JSON200.Items[0].DmnResourceDefinitionId)
 		assert.Equal(t, "name12", processInstances.JSON200.Items[1].DmnDefinitionName)
-		assert.Equal(t, "defId1", *processInstances.JSON200.Items[1].DmnResourceDefinitionId)
+		assert.Equal(t, "defId1", processInstances.JSON200.Items[1].DmnResourceDefinitionId)
 	})
 }
 

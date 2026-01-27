@@ -21,7 +21,7 @@ type DecisionDefinition struct {
 	Key                      int64  // The engines key for this given decision definition with version
 	Id                       string // The decision ID as defined in the DMN file
 	VersionTag               string // The VersionTag as defined in the DMN file
-	DmnResourceDefinitionId  string // The DecisionDefinitionId is the parent DMN file's id
+	DmnResourceDefinitionId  string // The DmnResourceDefinitionId is the parent DMN file's id
 	DmnResourceDefinitionKey int64  // An id to dmn resource definition that hosts the decision table
 }
 type DecisionInstance struct {

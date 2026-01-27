@@ -105,7 +105,7 @@ func (q *Queries) FindLatestDecisionDefinitionById(ctx context.Context, decision
 	return i, err
 }
 
-const findLatestDecisionDefinitionByIdAndDecisionDefinitionId = `-- name: FindLatestDecisionDefinitionByIdAndDecisionDefinitionId :one
+const findLatestDecisionDefinitionByIdAndDmnResourceDefinitionId = `-- name: FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId :one
 SELECT
     "key", version, decision_id, version_tag, dmn_resource_definition_id, dmn_resource_definition_key
 FROM
@@ -118,13 +118,13 @@ ORDER BY
 LIMIT 1
 `
 
-type FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams struct {
+type FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams struct {
 	DecisionID              string `json:"decision_id"`
 	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
 }
 
-func (q *Queries) FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error) {
-	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndDecisionDefinitionId, arg.DecisionID, arg.DmnResourceDefinitionID)
+func (q *Queries) FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams) (DecisionDefinition, error) {
+	row := q.db.QueryRowContext(ctx, findLatestDecisionDefinitionByIdAndDmnResourceDefinitionId, arg.DecisionID, arg.DmnResourceDefinitionID)
 	var i DecisionDefinition
 	err := row.Scan(
 		&i.Key,

@@ -136,15 +136,14 @@ paths:
                 $ref: "#/components/schemas/DmnResourceDefinitionsPage"
               example:
                 items:
-                  - key: "4503599627370495"
-                    version: 1
-                    decisionDefinitionId: "loan-approval"
                   - key: "4503599627370496"
                     version: 2
-                    decisionDefinitionId: "loan-approval"
+                    dmnResourceDefinitionId: "loan-approval"
+                    dmnDefinitionName: "Loan Approval Decision"
                   - key: "4503599627370497"
                     version: 1
-                    decisionDefinitionId: "credit-score-check"
+                    dmnResourceDefinitionId: "credit-score-check"
+                    dmnDefinitionName: "Credit Score Check"
                 page: 1
                 size: 10
                 count: 3
@@ -180,7 +179,8 @@ paths:
               example:
                 key: "4503599627370495"
                 version: 1
-                decisionDefinitionId: "loan-approval"
+                dmnResourceDefinitionId: "loan-approval"
+                dmnDefinitionName: "Loan Approval Decision"
                 dmnData: |
                   <?xml version="1.0" encoding="UTF-8"?>
                   <definitions>
@@ -229,7 +229,7 @@ paths:
                     - latest
                     - deployment #TODO: unsupported
                     - versionTag
-                decisionDefinitionId:
+                dmnResourceDefinitionId:
                   description: Can be used in combination with bindingType latest
                   type: string
                 versionTag:
@@ -256,7 +256,7 @@ paths:
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
                     dmnResourceDefinitionKey: 4503599627370495
-                    decisionDefinitionId: "loan-approval"
+                    dmnResourceDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
                         ruleIndex: 0
@@ -1802,7 +1802,7 @@ components:
       required:
         - key
         - version
-        - decisionDefinitionId
+        - dmnResourceDefinitionId
         - dmnDefinitionName
       properties:
         key:
@@ -1847,7 +1847,7 @@ components:
         - decisionType
         - decisionDefinitionVersion
         - dmnResourceDefinitionKey
-        - decisionDefinitionId
+        - dmnResourceDefinitionId
         - matchedRules
         - decisionOutput
         - evaluatedInputs
@@ -1863,7 +1863,7 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
         matchedRules:
           type: array

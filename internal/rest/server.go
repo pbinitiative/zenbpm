@@ -164,7 +164,7 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		dmnResourceDefinitionSimple := public.DmnResourceDefinitionSimple{
 			Key:                     p.GetKey(),
 			Version:                 int(p.GetVersion()),
-			DmnResourceDefinitionId: p.DmnResourceDefinitionId,
+			DmnResourceDefinitionId: p.GetDmnResourceDefinitionId(),
 			DmnDefinitionName:       *p.DmnDefinitionName,
 		}
 		items = append(items, dmnResourceDefinitionSimple)
@@ -189,7 +189,7 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 	}
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
-			DmnResourceDefinitionId: definition.DmnResourceDefinitionId,
+			DmnResourceDefinitionId: definition.GetDmnResourceDefinitionId(),
 			DmnDefinitionName:       definition.GetDmnDefinitionName(),
 			Key:                     definition.GetKey(),
 			Version:                 int(definition.GetVersion()),
@@ -227,8 +227,8 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
 	var decision = request.DecisionId
-	if request.Body.DecisionDefinitionId != nil && request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeLatest {
-		decision = *request.Body.DecisionDefinitionId + "." + request.DecisionId
+	if request.Body.DmnResourceDefinitionId != nil && request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeLatest {
+		decision = *request.Body.DmnResourceDefinitionId + "." + request.DecisionId
 	}
 
 	result, err := s.node.EvaluateDecision(
@@ -317,7 +317,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			DecisionType:              evaluatedDecision.GetDecisionType(),
 			DecisionDefinitionVersion: int(evaluatedDecision.GetDmnResourceDefinitionVersion()),
 			DmnResourceDefinitionKey:  evaluatedDecision.GetDmnResourceDefinitionKey(),
-			DecisionDefinitionId:      evaluatedDecision.GetDmnResourceDefinitionId(),
+			DmnResourceDefinitionId:   evaluatedDecision.GetDmnResourceDefinitionId(),
 			MatchedRules:              matchedRules,
 			DecisionOutput:            resultDecisionOutput,
 			EvaluatedInputs:           evaluatedInputs,

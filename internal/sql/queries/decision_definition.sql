@@ -34,7 +34,7 @@ ORDER BY
     version DESC
 LIMIT 1;
 
--- name: FindLatestDecisionDefinitionByIdAndDecisionDefinitionId :one
+-- name: FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId :one
 SELECT
     *
 FROM

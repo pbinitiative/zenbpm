@@ -104,6 +104,10 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}
 		for _, calledProcess := range calledProcesses {
+			err := batch.AddLockedInstance(ctx, calledProcess)
+			if err != nil {
+				return nil, err
+			}
 			engine.cancelInstance(ctx, calledProcess, batch)
 		}
 	} else {

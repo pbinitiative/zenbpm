@@ -760,6 +760,7 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 		}
 		return false
 	}, 500*time.Millisecond, 10*time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	assert.Equal(t, runtime.ActivityStateCompleted, subProcesses[0].ProcessInstance().State)
 }

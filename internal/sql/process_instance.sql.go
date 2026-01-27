@@ -119,7 +119,7 @@ func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, currunix sq
 
 const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -143,6 +143,9 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.ParentProcessTargetElementID,
+			&i.ParentProcessTargetElementInstanceKey,
+			&i.ProcessType,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 		); err != nil {
@@ -161,7 +164,7 @@ func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentP
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
-    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.history_ttl_sec, pi.history_delete_sec, pd.bpmn_process_id,
+    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
     process_instance AS pi
@@ -242,17 +245,20 @@ type FindProcessInstancesPageParams struct {
 }
 
 type FindProcessInstancesPageRow struct {
-	Key                         int64          `json:"key"`
-	ProcessDefinitionKey        int64          `json:"process_definition_key"`
-	BusinessKey                 sql.NullString `json:"business_key"`
-	CreatedAt                   int64          `json:"created_at"`
-	State                       int64          `json:"state"`
-	Variables                   string         `json:"variables"`
-	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
-	HistoryTtlSec               sql.NullInt64  `json:"history_ttl_sec"`
-	HistoryDeleteSec            sql.NullInt64  `json:"history_delete_sec"`
-	BpmnProcessID               string         `json:"bpmn_process_id"`
-	TotalCount                  int64          `json:"total_count"`
+	Key                                   int64          `json:"key"`
+	ProcessDefinitionKey                  int64          `json:"process_definition_key"`
+	BusinessKey                           sql.NullString `json:"business_key"`
+	CreatedAt                             int64          `json:"created_at"`
+	State                                 int64          `json:"state"`
+	Variables                             string         `json:"variables"`
+	ParentProcessExecutionToken           sql.NullInt64  `json:"parent_process_execution_token"`
+	ParentProcessTargetElementID          sql.NullString `json:"parent_process_target_element_id"`
+	ParentProcessTargetElementInstanceKey sql.NullInt64  `json:"parent_process_target_element_instance_key"`
+	ProcessType                           int64          `json:"process_type"`
+	HistoryTtlSec                         sql.NullInt64  `json:"history_ttl_sec"`
+	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
+	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	TotalCount                            int64          `json:"total_count"`
 }
 
 // workaround for sqlc which does not replace params in order by
@@ -284,6 +290,9 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.State,
 			&i.Variables,
 			&i.ParentProcessExecutionToken,
+			&i.ParentProcessTargetElementID,
+			&i.ParentProcessTargetElementInstanceKey,
+			&i.ProcessType,
 			&i.HistoryTtlSec,
 			&i.HistoryDeleteSec,
 			&i.BpmnProcessID,
@@ -304,7 +313,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, history_ttl_sec, history_delete_sec
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec
 FROM
     process_instance
 WHERE
@@ -322,6 +331,9 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 		&i.State,
 		&i.Variables,
 		&i.ParentProcessExecutionToken,
+		&i.ParentProcessTargetElementID,
+		&i.ParentProcessTargetElementInstanceKey,
+		&i.ProcessType,
 		&i.HistoryTtlSec,
 		&i.HistoryDeleteSec,
 	)
@@ -329,8 +341,8 @@ func (q *Queries) GetProcessInstance(ctx context.Context, key int64) (ProcessIns
 }
 
 const saveProcessInstance = `-- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, business_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
@@ -339,13 +351,16 @@ ON CONFLICT (key)
 `
 
 type SaveProcessInstanceParams struct {
-	Key                         int64          `json:"key"`
-	ProcessDefinitionKey        int64          `json:"process_definition_key"`
-	CreatedAt                   int64          `json:"created_at"`
-	State                       int64          `json:"state"`
-	Variables                   string         `json:"variables"`
-	ParentProcessExecutionToken sql.NullInt64  `json:"parent_process_execution_token"`
-	BusinessKey                 sql.NullString `json:"business_key"`
+	Key                                   int64          `json:"key"`
+	ProcessDefinitionKey                  int64          `json:"process_definition_key"`
+	CreatedAt                             int64          `json:"created_at"`
+	State                                 int64          `json:"state"`
+	Variables                             string         `json:"variables"`
+	ParentProcessExecutionToken           sql.NullInt64  `json:"parent_process_execution_token"`
+	ParentProcessTargetElementID          sql.NullString `json:"parent_process_target_element_id"`
+	ParentProcessTargetElementInstanceKey sql.NullInt64  `json:"parent_process_target_element_instance_key"`
+	ProcessType                           int64          `json:"process_type"`
+	BusinessKey                           sql.NullString `json:"business_key"`
 }
 
 func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstanceParams) error {
@@ -356,6 +371,9 @@ func (q *Queries) SaveProcessInstance(ctx context.Context, arg SaveProcessInstan
 		arg.State,
 		arg.Variables,
 		arg.ParentProcessExecutionToken,
+		arg.ParentProcessTargetElementID,
+		arg.ParentProcessTargetElementInstanceKey,
+		arg.ProcessType,
 		arg.BusinessKey,
 	)
 	return err

@@ -27,19 +27,6 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 }
 
 func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error) {
-	incident, instance, err := handleResolveIncident(ctx, engine, key, err)
-	if err != nil {
-		return err
-	}
-
-	err = engine.runProcessInstance(ctx, &instance, []runtime.ExecutionToken{incident.Token})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err error) (runtime.Incident, runtime.ProcessInstance, error) {
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
 		if err != nil {
@@ -51,7 +38,7 @@ func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err e
 
 	incident, err := engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
-		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
+		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
 	}
 
 	resoveIncidentSpan.SetAttributes(
@@ -61,20 +48,24 @@ func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err e
 	)
 
 	if incident.ResolvedAt != nil {
-		return runtime.Incident{}, runtime.ProcessInstance{}, errors.New("incident already resolved")
+		return errors.New("incident already resolved")
 	}
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
-		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
+		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
 	}
 
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
-		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
+		return errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
 	}
 
-	batch := engine.persistence.NewBatch()
+	batch, err := engine.NewEngineBatch(ctx, instance)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
+	}
+
 	incident.ResolvedAt = ptr.To(time.Now())
 	batch.SaveIncident(ctx, incident)
 
@@ -97,13 +88,17 @@ func handleResolveIncident(ctx context.Context, engine *Engine, key int64, err e
 	}
 	batch.SaveToken(ctx, incident.Token)
 
-	instance.State = runtime.ActivityStateActive
+	instance.ProcessInstance().State = runtime.ActivityStateActive
 	batch.SaveProcessInstance(ctx, instance)
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return runtime.Incident{}, runtime.ProcessInstance{}, errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
+		return errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
 	}
 
-	return incident, instance, nil
+	err = engine.RunProcessInstance(ctx, instance, []runtime.ExecutionToken{incident.Token})
+	if err != nil {
+		return err
+	}
+	return nil
 }

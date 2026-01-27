@@ -16,6 +16,7 @@ type TFlowElementsContainer struct {
 	IntermediateThrowEvent []TIntermediateThrowEvent `xml:"intermediateThrowEvent"`
 	CallActivity           []TCallActivity           `xml:"callActivity"`
 	BoundaryEvent          []TBoundaryEvent          `xml:"boundaryEvent"`
+	SubProcess             []TSubProcess             `xml:"subProcess"`
 }
 
 type TProcess struct {
@@ -118,6 +119,11 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 		}
 	}
 	for _, e := range p.CallActivity {
+		if e.GetId() == id {
+			return &e
+		}
+	}
+	for _, e := range p.SubProcess {
 		if e.GetId() == id {
 			return &e
 		}

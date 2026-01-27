@@ -32,7 +32,7 @@ func TestTracer(t *testing.T) {
 
 	instance, err := bpmnEngine.CreateInstanceByKey(ctx, process.Key, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
 	parent.End()
 

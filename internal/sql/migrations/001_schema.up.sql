@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS process_instance(
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     variables text NOT NULL, -- serialized json variables of the process instance
     parent_process_execution_token integer, -- key of the execution_token of the parent process
+    parent_process_target_element_id text, -- if its not empty the process is a sub process with a specific activity to execute in parent process definition
+    parent_process_target_element_instance_key integer,
+    process_type integer not null, -- runtime.ProcessType
     history_ttl_sec integer, -- seconds after completion for data to be deleted
     history_delete_sec integer, -- unix millis when the data should be deleted
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- process definition that describes this process instance
@@ -101,11 +104,14 @@ CREATE TABLE IF NOT EXISTS execution_token(
 );
 
 -- table that holds information about all the process instance visited nodes and transitions
-CREATE TABLE IF NOT EXISTS flow_element_history(
+CREATE TABLE IF NOT EXISTS flow_element_instance(
     key INTEGER PRIMARY KEY, -- int64 snowflake id of flow element history item
     element_id text NOT NULL, -- string id of the element from xml definition
     process_instance_key integer NOT NULL, -- int64 id of process instance
-    created_at integer NOT NULL -- unix millis of when the process flow element was started
+    execution_token_key integer NOT NULL, -- int64 id of execution token
+    created_at integer NOT NULL, -- unix millis of when the process flow element was started
+    input_variables text NOT NULL, -- variables that were inputted by activity
+    output_variables text NOT NULL -- variables that were outputted by activity
 );
 
 CREATE TABLE IF NOT EXISTS incident(

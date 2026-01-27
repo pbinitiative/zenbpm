@@ -40,7 +40,7 @@ func TestFkdUpClient(t *testing.T) {
 	}
 	cm := client.NewClientManager(nil)
 	c, _ := cm.For(cLn.Addr().String())
-	// c, _ := cm.For(ln.Addr().String())
+	// c, _ := cm.For(ln.Addr().Value())
 	now := time.Now()
 	fmt.Println(now)
 	for i := range 10 {

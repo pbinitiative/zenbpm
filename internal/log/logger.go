@@ -94,7 +94,7 @@ func Warna(ctx context.Context, msg string, attrs ...slog.Attr) {
 func getContextArgs(ctx context.Context) []slog.Attr {
 	// baseAttrs := []slog.Attr{
 	// 	slog.Group("user",
-	// 		slog.String("id", appcontext.GetUserId(ctx)),
+	// 		slog.Value("id", appcontext.GetUserId(ctx)),
 	// 	),
 	// }
 	// return baseAttrs

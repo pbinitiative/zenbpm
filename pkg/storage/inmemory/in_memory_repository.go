@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"sort"
 	"time"
 
 	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
@@ -26,7 +27,7 @@ type Storage struct {
 	Timers                 map[int64]bpmnruntime.Timer
 	Jobs                   map[int64]bpmnruntime.Job
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
-	FlowElementHistory     map[int64]bpmnruntime.FlowElementHistoryItem
+	FlowElementInstance     map[int64]bpmnruntime.FlowElementInstance
 	Incidents              map[int64]bpmnruntime.Incident
 }
 
@@ -45,7 +46,7 @@ func NewStorage() *Storage {
 		Timers:                 make(map[int64]bpmnruntime.Timer),
 		Jobs:                   make(map[int64]bpmnruntime.Job),
 		ExecutionTokens:        make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementHistory:     make(map[int64]bpmnruntime.FlowElementHistoryItem),
+		FlowElementInstance:     make(map[int64]bpmnruntime.FlowElementInstance),
 		Incidents:              make(map[int64]bpmnruntime.Incident),
 	}
 }
@@ -76,8 +77,8 @@ func (mem *Storage) Copy() *Storage {
 	for k, v := range mem.ExecutionTokens {
 		c.ExecutionTokens[k] = v
 	}
-	for k, v := range mem.FlowElementHistory {
-		c.FlowElementHistory[k] = v
+	for k, v := range mem.FlowElementInstance {
+		c.FlowElementInstance[k] = v
 	}
 	for k, v := range mem.Incidents {
 		c.Incidents[k] = v
@@ -302,8 +303,21 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
 	res := make([]bpmnruntime.ProcessInstance, 0)
 	for _, processInstance := range mem.ProcessInstances {
-		if processInstance.ParentProcessExecutionToken != nil && processInstance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
-			res = append(res, processInstance)
+		switch instance := processInstance.(type) {
+		case *bpmnruntime.MultiInstanceInstance:
+			if instance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
+				res = append(res, processInstance)
+			}
+		case *bpmnruntime.SubProcessInstance:
+			if instance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
+				res = append(res, processInstance)
+			}
+		case *bpmnruntime.CallActivityInstance:
+			if instance.ParentProcessExecutionToken.Key == parentExecutionTokenKey {
+				res = append(res, processInstance)
+			}
+		default:
+			continue
 		}
 	}
 	return res, nil
@@ -312,7 +326,7 @@ func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Con
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {
-	mem.ProcessInstances[processInstance.Key] = processInstance
+	mem.ProcessInstances[processInstance.ProcessInstance().Key] = processInstance
 	return nil
 }
 
@@ -426,7 +440,7 @@ func (mem *Storage) FindPendingProcessInstanceJobs(ctx context.Context, processI
 		if job.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if job.GetState() != bpmnruntime.ActivityStateActive && job.GetState() != bpmnruntime.ActivityStateCompleting {
+		if job.GetState() != bpmnruntime.ActivityStateActive && job.GetState() != bpmnruntime.ActivityStateCompleting && job.GetState() != bpmnruntime.ActivityStateFailed {
 			continue
 		}
 		res = append(res, job)
@@ -544,6 +558,20 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 
 var _ storage.TokenStorageReader = &Storage{}
 
+func (mem *Storage) GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	res := make([]bpmnruntime.ExecutionToken, 0)
+	for _, tok := range mem.ExecutionTokens {
+		if tok.ProcessInstanceKey == processInstanceKey && (tok.State == bpmnruntime.TokenStateCompleted) {
+			res = append(res, tok)
+		}
+	}
+	return res, nil
+}
+
+func (mem *Storage) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
+	return mem.ExecutionTokens[key], nil
+}
+
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
 func (mem *Storage) GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
 	res := make([]bpmnruntime.ExecutionToken, 0)
@@ -584,8 +612,61 @@ func (mem *Storage) SaveToken(ctx context.Context, token bpmnruntime.ExecutionTo
 	return nil
 }
 
-func (mem *Storage) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	mem.FlowElementHistory[historyItem.Key] = historyItem
+var _ storage.FlowElementInstanceReader = &Storage{}
+
+func (mem *Storage) GetFlowElementInstancesByTokenKey(ctx context.Context, token bpmnruntime.ExecutionToken) ([]bpmnruntime.FlowElementInstance, error) {
+	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
+	for _, flowElementInstance := range mem.FlowElementInstance {
+		if flowElementInstance.ExecutionTokenKey == token.Key {
+			flowElementInstances = append(flowElementInstances, flowElementInstance)
+		}
+	}
+	return flowElementInstances, nil
+}
+
+func (mem *Storage) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int64, error) {
+	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
+	for _, flowElementInstance := range mem.FlowElementInstance {
+		if flowElementInstance.ProcessInstanceKey == processInstanceKey {
+			flowElementInstances = append(flowElementInstances, flowElementInstance)
+		}
+	}
+	return int64(len(flowElementInstances)), nil
+}
+
+func (mem *Storage) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
+	flowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
+	for _, flowElementInstance := range mem.FlowElementInstance {
+		if flowElementInstance.ProcessInstanceKey == processInstanceKey {
+			flowElementInstances = append(flowElementInstances, flowElementInstance)
+		}
+	}
+	if orderByTimeCreated {
+		sort.Slice(flowElementInstances, func(i, j int) bool {
+			if flowElementInstances[i].CreatedAt.Compare(flowElementInstances[j].CreatedAt) > 0 {
+				return true
+			}
+			return false
+		})
+	}
+	return flowElementInstances, nil
+}
+
+func (mem *Storage) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
+	return mem.FlowElementInstance[key], nil
+}
+
+var _ storage.FlowElementInstanceWriter = &Storage{}
+
+func (mem *Storage) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	mem.FlowElementInstance[flowElementInstance.Key] = flowElementInstance
+	return nil
+}
+
+func (mem *Storage) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	elementInstance := mem.FlowElementInstance[flowElementInstance.Key]
+	elementInstance.OutputVariables = flowElementInstance.OutputVariables
+	mem.FlowElementInstance[flowElementInstance.Key] = elementInstance
 	return nil
 }
 
@@ -685,9 +766,16 @@ func (b *StorageBatch) SaveToken(ctx context.Context, token bpmnruntime.Executio
 	return nil
 }
 
-func (b *StorageBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
+func (b *StorageBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
-		return b.db.SaveFlowElementHistory(ctx, historyItem)
+		return b.db.SaveFlowElementInstance(ctx, historyItem)
+	})
+	return nil
+}
+
+func (b *StorageBatch) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.UpdateOutputFlowElementInstance(ctx, flowElementInstance)
 	})
 	return nil
 }

@@ -1,14 +1,12 @@
 package bpmn
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"sync"
 )
 
 type RunningInstance struct {
-	instance *runtime.ProcessInstance
-	mu       *sync.Mutex
-	waiters  int64
+	mu      *sync.Mutex
+	waiters int64
 }
 
 type RunningInstancesCache struct {
@@ -23,16 +21,15 @@ func newRunningInstanceCache() *RunningInstancesCache {
 	}
 }
 
-func (c *RunningInstancesCache) lockInstance(instance *runtime.ProcessInstance) {
+func (c *RunningInstancesCache) lockInstance(instanceKey int64) {
 	c.mu.Lock()
-	ri, ok := c.processInstances[instance.Key]
+	ri, ok := c.processInstances[instanceKey]
 	if !ok {
 		ri = &RunningInstance{
-			instance: instance,
-			mu:       &sync.Mutex{},
-			waiters:  0,
+			mu:      &sync.Mutex{},
+			waiters: 0,
 		}
-		c.processInstances[instance.Key] = ri
+		c.processInstances[instanceKey] = ri
 	}
 	ri.waiters++
 	c.mu.Unlock()
@@ -40,13 +37,13 @@ func (c *RunningInstancesCache) lockInstance(instance *runtime.ProcessInstance) 
 	ri.mu.Lock()
 }
 
-func (c *RunningInstancesCache) unlockInstance(instance *runtime.ProcessInstance) {
+func (c *RunningInstancesCache) unlockInstance(instanceKey int64) {
 	c.mu.Lock()
-	ri := c.processInstances[instance.Key]
+	ri := c.processInstances[instanceKey]
 	ri.mu.Unlock()
 	ri.waiters--
 	if ri.waiters == 0 {
-		delete(c.processInstances, instance.Key)
+		delete(c.processInstances, instanceKey)
 	}
 	c.mu.Unlock()
 }

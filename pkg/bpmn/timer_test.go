@@ -37,7 +37,7 @@ func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(tH)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "Can't find 'timeDuration' value for INTERMEDIATE_CATCH_EVENT with id=TimerEventDefinition_0he1igl"))
 	assert.Equal(t, "", cp.CallPath)
@@ -102,7 +102,7 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 
 	// then
 
-	jobs := findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	jobs := findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -118,11 +118,11 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(timers))
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
 
-	jobs = findActiveJobsForProcessInstance(instance.Key, "simple-job")
+	jobs = findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 

@@ -12,6 +12,10 @@
     <bpmn:callActivity id="callActivity" name="Test call activity">
       <bpmn:extensionElements>
         <zeebe:calledElement processId="Simple_Task_Process" propagateAllChildVariables="false" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=variable_name" target="variable_name" />
+          <zeebe:output source="=variable_name" target="variable_name" />
+        </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0y8zi5j</bpmn:incoming>
       <bpmn:outgoing>Flow_1htsftl</bpmn:outgoing>
@@ -19,15 +23,15 @@
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Simple_CallActivity_Process">
+      <bpmndi:BPMNShape id="Event_0rrd3fx_di" bpmnElement="Event_0rrd3fx">
+        <dc:Bounds x="422" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
         <dc:Bounds x="182" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0nqrldo_di" bpmnElement="callActivity">
         <dc:Bounds x="270" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0rrd3fx_di" bpmnElement="Event_0rrd3fx">
-        <dc:Bounds x="422" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0y8zi5j_di" bpmnElement="Flow_0y8zi5j">
         <di:waypoint x="218" y="120" />

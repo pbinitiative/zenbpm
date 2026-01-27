@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+  <bpmn:process id="MultiInstance_Call_Activity_Task_Process" name="aName" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_0xt1d7q" sourceRef="StartEvent_1" targetRef="Activity_0kx7fyc" />
+    <bpmn:endEvent id="Event_1j4mcqg">
+      <bpmn:incoming>Flow_07piwol</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="Event_1vd6rls">
+      <bpmn:incoming>Flow_104hlf4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_104hlf4" sourceRef="Event_15f0ox7" targetRef="Event_1vd6rls" />
+    <bpmn:callActivity id="Activity_0kx7fyc">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="Multi_Instance_Call_Activity_Process" propagateAllChildVariables="false" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=item" target="testElementInput" />
+          <zeebe:output source="=testOutput" target="testElementOutput" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>
+      <bpmn:outgoing>Flow_07piwol</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=testInputCollection" inputElement="item" outputCollection="testOutputCollection" outputElement="=testElementOutput" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:callActivity>
+    <bpmn:sequenceFlow id="Flow_07piwol" sourceRef="Activity_0kx7fyc" targetRef="Event_1j4mcqg" />
+    <bpmn:boundaryEvent id="Event_15f0ox7" attachedToRef="Activity_0kx7fyc">
+      <bpmn:outgoing>Flow_104hlf4</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_1gzzrlx" messageRef="Message_3314vbd" />
+    </bpmn:boundaryEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_3314vbd" name="boundary message">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=1234" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="MultiInstance_Call_Activity_Task_Process">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="219" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1j4mcqg_di" bpmnElement="Event_1j4mcqg">
+        <dc:Bounds x="632" y="219" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1vd6rls_di" bpmnElement="Event_1vd6rls">
+        <dc:Bounds x="382" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_197a13z_di" bpmnElement="Activity_0kx7fyc">
+        <dc:Bounds x="350" y="197" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_01mcg6c_di" bpmnElement="Event_15f0ox7">
+        <dc:Bounds x="382" y="179" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0xt1d7q_di" bpmnElement="Flow_0xt1d7q">
+        <di:waypoint x="188" y="237" />
+        <di:waypoint x="350" y="237" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_104hlf4_di" bpmnElement="Flow_104hlf4">
+        <di:waypoint x="400" y="179" />
+        <di:waypoint x="400" y="118" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_07piwol_di" bpmnElement="Flow_07piwol">
+        <di:waypoint x="450" y="237" />
+        <di:waypoint x="632" y="237" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

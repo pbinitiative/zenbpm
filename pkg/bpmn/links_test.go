@@ -19,7 +19,7 @@ func TestLinkEventsAreThrownAndCaughtAndFlowContinued(t *testing.T) {
 
 	// then
 	assert.Nil(t, err)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 	assert.Equal(t, "Task-A,Task-B", cp.CallPath)
 }
 
@@ -36,12 +36,12 @@ func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
 
 	// then
 	assert.ErrorContains(t, err, "failed to find link")
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.Equal(t, "", cp.CallPath)
 
-	instanceDb, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceDb, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateFailed, instanceDb.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instanceDb.ProcessInstance().State)
 }
 
 func TestMissingIntermediateLinkVariablesMapped(t *testing.T) {
@@ -55,13 +55,13 @@ func TestMissingIntermediateLinkVariablesMapped(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Nil(t, err)
-	assert.Equal(t, instance.State, runtime.ActivityStateCompleted)
+	assert.Equal(t, instance.ProcessInstance().State, runtime.ActivityStateCompleted)
 	assert.Equal(t, "Task", cp.CallPath)
 
 	// then
-	assert.NotNil(t, instance.GetVariable("throw"))
-	assert.Equal(t, "throw", instance.GetVariable("throw").(string))
+	assert.NotNil(t, instance.ProcessInstance().GetVariable("throw"))
+	assert.Equal(t, "throw", instance.ProcessInstance().GetVariable("throw").(string))
 	// then
-	assert.NotNil(t, instance.GetVariable("catch"))
-	assert.Equal(t, "catch", instance.GetVariable("catch").(string))
+	assert.NotNil(t, instance.ProcessInstance().GetVariable("catch"))
+	assert.Equal(t, "catch", instance.ProcessInstance().GetVariable("catch").(string))
 }

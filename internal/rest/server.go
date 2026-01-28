@@ -7,6 +7,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/pprof"
+	"runtime"
+	rpprof "runtime/pprof"
 	"slices"
 	"sync"
 	"time"
@@ -22,7 +25,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -82,6 +85,86 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 			w.Write(state)
 			w.WriteHeader(200)
 		})
+
+		// register pprof debug endpoints for profiling
+		if conf.Debug.Enabled {
+			// Configure block and mutex profiling rates if specified
+			if conf.Debug.BlockProfileRate > 0 {
+				runtime.SetBlockProfileRate(conf.Debug.BlockProfileRate)
+				log.Info("Block profiling enabled with rate %d", conf.Debug.BlockProfileRate)
+			}
+			if conf.Debug.MutexProfileFraction > 0 {
+				runtime.SetMutexProfileFraction(conf.Debug.MutexProfileFraction)
+				log.Info("Mutex profiling enabled with fraction %d", conf.Debug.MutexProfileFraction)
+			}
+
+			log.Info("Debug pprof endpoints enabled at /system/debug/pprof/*")
+			r.Route("/debug/pprof", func(r chi.Router) {
+				// Index page with links to all profiles
+				r.Get("/", pprof.Index)
+				// Command-line compatible profile endpoints
+				r.Get("/cmdline", pprof.Cmdline)
+				// CPU profile (use: go tool pprof http://host:port/system/debug/pprof/profile?seconds=30)
+				r.Get("/profile", pprof.Profile)
+				// Symbol lookup for profiles
+				r.Get("/symbol", pprof.Symbol)
+				// Execution trace (use: go tool trace http://host:port/system/debug/pprof/trace?seconds=5)
+				r.Get("/trace", pprof.Trace)
+
+				// Named profiles - mount each profile handler
+				// goroutine: stack traces of all current goroutines (thread dump equivalent)
+				r.Get("/goroutine", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("goroutine").ServeHTTP(w, req)
+				})
+				// heap: memory allocation sampling (heap dump)
+				r.Get("/heap", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("heap").ServeHTTP(w, req)
+				})
+				// allocs: all past memory allocations
+				r.Get("/allocs", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("allocs").ServeHTTP(w, req)
+				})
+				// block: stack traces of goroutines blocked on synchronization primitives
+				r.Get("/block", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("block").ServeHTTP(w, req)
+				})
+				// mutex: stack traces of holders of contended mutexes
+				r.Get("/mutex", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("mutex").ServeHTTP(w, req)
+				})
+				// threadcreate: stack traces that led to creation of new OS threads
+				r.Get("/threadcreate", func(w http.ResponseWriter, req *http.Request) {
+					pprof.Handler("threadcreate").ServeHTTP(w, req)
+				})
+
+				// Custom runtime info endpoint
+				r.Get("/runtime", func(w http.ResponseWriter, req *http.Request) {
+					var memStats runtime.MemStats
+					runtime.ReadMemStats(&memStats)
+
+					info := map[string]interface{}{
+						"numGoroutines":  runtime.NumGoroutine(),
+						"numCPU":         runtime.NumCPU(),
+						"goMaxProcs":     runtime.GOMAXPROCS(0),
+						"goVersion":      runtime.Version(),
+						"memAlloc":       memStats.Alloc,
+						"memTotalAlloc":  memStats.TotalAlloc,
+						"memSys":         memStats.Sys,
+						"memHeapAlloc":   memStats.HeapAlloc,
+						"memHeapSys":     memStats.HeapSys,
+						"memHeapIdle":    memStats.HeapIdle,
+						"memHeapInuse":   memStats.HeapInuse,
+						"memHeapObjects": memStats.HeapObjects,
+						"numGC":          memStats.NumGC,
+						"gcPauseNs":      memStats.PauseNs[(memStats.NumGC+255)%256],
+						"lastGC":         time.Unix(0, int64(memStats.LastGC)),
+						"profiles":       getProfileInfo(),
+					}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(info)
+				})
+			})
+		}
 	})
 	return &s
 }
@@ -501,7 +584,7 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		Key:                  process.GetKey(),
 		ProcessDefinitionKey: process.GetDefinitionKey(),
 		// TODO: make sure its the same string
-		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+		State:     public.ProcessInstanceState(bpmnruntime.ActivityState(process.GetState()).String()),
 		Variables: processVars,
 	}, nil
 }
@@ -531,7 +614,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 		Key:                  process.GetKey(),
 		ProcessDefinitionKey: process.GetDefinitionKey(),
 		// TODO: make sure its the same string
-		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+		State:     public.ProcessInstanceState(bpmnruntime.ActivityState(process.GetState()).String()),
 		Variables: processVars,
 	}, nil
 }
@@ -548,13 +631,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
 		case public.GetProcessInstancesParamsStateActive:
-			state = ptr.To(int64(runtime.ActivityStateActive))
+			state = ptr.To(int64(bpmnruntime.ActivityStateActive))
 		case public.GetProcessInstancesParamsStateCompleted:
-			state = ptr.To(int64(runtime.ActivityStateCompleted))
+			state = ptr.To(int64(bpmnruntime.ActivityStateCompleted))
 		case public.GetProcessInstancesParamsStateTerminated:
-			state = ptr.To(int64(runtime.ActivityStateTerminated))
+			state = ptr.To(int64(bpmnruntime.ActivityStateTerminated))
 		case public.GetProcessInstancesParamsStateFailed:
-			state = ptr.To(int64(runtime.ActivityStateFailed))
+			state = ptr.To(int64(bpmnruntime.ActivityStateFailed))
 		default:
 			return public.GetProcessInstances400JSONResponse{
 				Code:    "TODO",
@@ -649,7 +732,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				Key:                    instance.GetKey(),
 				BpmnProcessId:          instance.ProcessId,
 				ProcessDefinitionKey:   instance.GetDefinitionKey(),
-				State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+				State:                  getRestProcessInstanceState(bpmnruntime.ActivityState(instance.GetState())),
 				BusinessKey:            instance.BusinessKey,
 				Variables:              vars,
 			}
@@ -686,7 +769,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
 			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
-			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+			State:              bpmnruntime.ActivityState(elementInstance.GetState()).String(),
 		})
 	}
 
@@ -696,7 +779,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		Key:                    instance.GetKey(),
 		BusinessKey:            instance.BusinessKey,
 		ProcessDefinitionKey:   instance.GetDefinitionKey(),
-		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+		State:                  getRestProcessInstanceState(bpmnruntime.ActivityState(instance.GetState())),
 		Variables:              vars,
 	}, nil
 }
@@ -709,7 +792,7 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 			Message: err.Error(),
 		}, nil
 	}
-	if process.GetState() != int64(runtime.ActivityStateActive) {
+	if process.GetState() != int64(bpmnruntime.ActivityStateActive) {
 		return public.UpdateProcessInstanceVariables400JSONResponse{
 			Code:    "INVALID_STATE",
 			Message: "Can update variables only for process instances in active state",
@@ -749,7 +832,7 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 			Message: fmt.Sprintf("Variable %v does not exist for process instance with key=%v", request.VariableName, request.ProcessInstanceKey),
 		}, nil
 	}
-	if process.GetState() != int64(runtime.ActivityStateActive) {
+	if process.GetState() != int64(bpmnruntime.ActivityStateActive) {
 		return public.DeleteProcessInstanceVariable400JSONResponse{
 			Code:    "INVALID_STATE",
 			Message: "Can delete variables only for process instances in active state",
@@ -822,7 +905,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 			ElementId:          job.GetElementId(),
 			Key:                job.GetKey(),
 			ProcessInstanceKey: job.GetProcessInstanceKey(),
-			State:              getRestJobState(runtime.ActivityState(job.GetState())),
+			State:              getRestJobState(bpmnruntime.ActivityState(job.GetState())),
 			Type:               job.GetType(),
 			Variables:          vars,
 		}
@@ -841,15 +924,15 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 
 func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObject) (public.GetJobsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	var reqState *runtime.ActivityState
+	var reqState *bpmnruntime.ActivityState
 	if request.Params.State != nil {
 		switch *request.Params.State {
 		case public.JobStateActive:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = ptr.To(bpmnruntime.ActivityStateActive)
 		case public.JobStateCompleted:
-			reqState = ptr.To(runtime.ActivityStateCompleted)
+			reqState = ptr.To(bpmnruntime.ActivityStateCompleted)
 		case public.JobStateTerminated:
-			reqState = ptr.To(runtime.ActivityStateActive)
+			reqState = ptr.To(bpmnruntime.ActivityStateActive)
 		default:
 			panic("unexpected public.JobState")
 		}
@@ -885,7 +968,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
-				State:              getRestJobState(runtime.ActivityState(job.GetState())),
+				State:              getRestJobState(bpmnruntime.ActivityState(job.GetState())),
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
@@ -922,41 +1005,41 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 		ElementId:          job.GetElementId(),
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
-		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		State:              getRestJobState(bpmnruntime.ActivityState(job.GetState())),
 		Type:               job.GetType(),
 		Variables:          jobVars,
 	}, nil
 }
 
-func getRestJobState(state runtime.ActivityState) public.JobState {
+func getRestJobState(state bpmnruntime.ActivityState) public.JobState {
 	switch state {
-	case runtime.ActivityStateActive:
+	case bpmnruntime.ActivityStateActive:
 		return public.JobStateActive
-	case runtime.ActivityStateCompleted:
+	case bpmnruntime.ActivityStateCompleted:
 		return public.JobStateCompleted
-	case runtime.ActivityStateTerminated:
+	case bpmnruntime.ActivityStateTerminated:
 		return public.JobStateTerminated
-	case runtime.ActivityStateFailed:
+	case bpmnruntime.ActivityStateFailed:
 		return public.JobStateFailed
 	default:
-		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+		panic(fmt.Sprintf("unexpected bpmnruntime.ActivityState: %#v", state))
 	}
 }
 
-func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInstanceState {
+func getRestProcessInstanceState(state bpmnruntime.ActivityState) public.ProcessInstanceState {
 	switch state {
-	case runtime.ActivityStateReady:
+	case bpmnruntime.ActivityStateReady:
 		return public.ProcessInstanceStateActive
-	case runtime.ActivityStateActive:
+	case bpmnruntime.ActivityStateActive:
 		return public.ProcessInstanceStateActive
-	case runtime.ActivityStateCompleted:
+	case bpmnruntime.ActivityStateCompleted:
 		return public.ProcessInstanceStateCompleted
-	case runtime.ActivityStateFailed:
+	case bpmnruntime.ActivityStateFailed:
 		return public.ProcessInstanceStateFailed
-	case runtime.ActivityStateTerminated:
+	case bpmnruntime.ActivityStateTerminated:
 		return public.ProcessInstanceStateTerminated
 	default:
-		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+		panic(fmt.Sprintf("unexpected bpmnruntime.ActivityState: %#v", state))
 	}
 }
 
@@ -1057,7 +1140,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
 			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
-			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+			State:              bpmnruntime.ActivityState(elementInstance.GetState()).String(),
 		})
 	}
 
@@ -1066,7 +1149,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
-			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
+			State:                public.ProcessInstanceState(bpmnruntime.ActivityState(process.GetState()).String()),
 			Variables:            processVars,
 		},
 		ActiveElementInstances: &respActiveElementInstances,
@@ -1092,4 +1175,17 @@ func defaultPagination(page **int32, size **int32) {
 		s := PaginationDefaultSize
 		*size = &s
 	}
+}
+
+// getProfileInfo returns information about available pprof profiles
+func getProfileInfo() []map[string]interface{} {
+	profiles := rpprof.Profiles()
+	info := make([]map[string]interface{}, len(profiles))
+	for i, p := range profiles {
+		info[i] = map[string]interface{}{
+			"name":  p.Name(),
+			"count": p.Count(),
+		}
+	}
+	return info
 }

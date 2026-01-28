@@ -28,6 +28,18 @@ type Config struct {
 	GrpcServer GrpcServer `yaml:"grpcServer" json:"grpcServer"` // configuration of the public GRPC server
 	Tracing    Tracing    `yaml:"tracing" json:"tracing"`
 	Cluster    Cluster    `yaml:"cluster" json:"cluster"`
+	Debug      Debug      `yaml:"debug" json:"debug"`
+}
+
+// Debug configuration for profiling and diagnostics
+type Debug struct {
+	// Enabled controls whether pprof profiling endpoints are available at /system/debug/pprof/*
+	// When true, exposes heap, goroutine, CPU, block, mutex, and trace profiling
+	Enabled bool `yaml:"enabled" json:"enabled" env:"DEBUG_PPROF_ENABLED" env-default:"true"`
+	// BlockProfileRate controls the fraction of goroutine blocking events reported (0 = disabled)
+	BlockProfileRate int `yaml:"blockProfileRate" json:"blockProfileRate" env:"DEBUG_BLOCK_PROFILE_RATE" env-default:"0"`
+	// MutexProfileFraction controls the fraction of mutex contention events reported (0 = disabled)
+	MutexProfileFraction int `yaml:"mutexProfileFraction" json:"mutexProfileFraction" env:"DEBUG_MUTEX_PROFILE_FRACTION" env-default:"0"`
 }
 
 // TODO: clean up cluster & rqlite configuration

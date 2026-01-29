@@ -245,12 +245,11 @@ message ProcessInstance {
 message DecisionInstance {
   int64 key = 1;
   int64 dmn_resource_definition_key = 2;
-  string dmn_resource_definition_id = 3;
-  int64 dmn_resource_definition_version = 4;
-  int64 process_instance_key = 5;
-  int64 evaluated_at = 6;
-  bytes evaluated_decisions = 7;
-  bytes decision_output = 8;
+  int64 process_instance_key = 3;
+  int64 evaluated_at = 4;
+  int64 flow_element_instance_key = 5;
+  bytes evaluated_decisions = 6;
+  bytes decision_output = 7;
 }
 
 message ExecutionToken {

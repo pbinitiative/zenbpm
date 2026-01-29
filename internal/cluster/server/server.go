@@ -768,17 +768,6 @@ func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecision
 		}, err
 	}
 
-	dmnResourceDefinition, err := queries.FindDmnResourceDefinitionByKey(ctx, decisionInstance.DmnResourceDefinitionKey)
-	if err != nil {
-		err := fmt.Errorf("failed to find dmn resource definition %d", decisionInstance.DmnResourceDefinitionKey)
-		return &proto.GetDecisionInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
-	}
-
 	evaluatedDecisions, err := json.Marshal(decisionInstance.EvaluatedDecisions)
 	if err != nil {
 		err := fmt.Errorf("failed to marshal evaluatedDecisions of decisionInstance %d", req.GetDecisionInstanceKey())
@@ -805,16 +794,19 @@ func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecision
 	if decisionInstance.ProcessInstanceKey.Valid {
 		processInstanceKey = &decisionInstance.ProcessInstanceKey.Int64
 	}
+	var flowElementInstanceKey *int64
+	if decisionInstance.FlowElementInstanceKey.Valid {
+		flowElementInstanceKey = &decisionInstance.FlowElementInstanceKey.Int64
+	}
 	return &proto.GetDecisionInstanceResponse{
 		DecisionInstance: &proto.DecisionInstance{
-			Key:                          &decisionInstance.Key,
-			DmnResourceDefinitionKey:     &decisionInstance.DmnResourceDefinitionKey,
-			DmnResourceDefinitionId:      &dmnResourceDefinition.DmnResourceDefinitionID,
-			DmnResourceDefinitionVersion: &dmnResourceDefinition.Version,
-			ProcessInstanceKey:           processInstanceKey,
-			EvaluatedAt:                  &decisionInstance.CreatedAt,
-			EvaluatedDecisions:           evaluatedDecisions,
-			DecisionOutput:               outputVariables,
+			Key:                      &decisionInstance.Key,
+			DmnResourceDefinitionKey: &decisionInstance.DmnResourceDefinitionKey,
+			ProcessInstanceKey:       processInstanceKey,
+			FlowElementInstanceKey:   flowElementInstanceKey,
+			EvaluatedAt:              &decisionInstance.CreatedAt,
+			EvaluatedDecisions:       evaluatedDecisions,
+			DecisionOutput:           outputVariables,
 		},
 	}, nil
 }

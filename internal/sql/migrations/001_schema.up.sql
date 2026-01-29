@@ -150,9 +150,11 @@ CREATE TABLE IF NOT EXISTS decision_instance(
       dmn_resource_definition_key INTEGER NOT NULL, -- int64 reference to dmn resource definition
       decision_definition_key INTEGER NOT NULL, -- int64 reference to decision definition
       process_instance_key INTEGER, -- nullable int64 reference to parent process instance
+      flow_element_instance_key INTEGER, -- nullable int64 reference to flow_element_history
       FOREIGN KEY (dmn_resource_definition_key) REFERENCES dmn_resource_definition(key), -- reference to dmn resource definition
       FOREIGN KEY (decision_definition_key) REFERENCES decision_definition(key), -- reference to decision definition
-      FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to parent process instance
+      FOREIGN KEY (process_instance_key) REFERENCES process_instance(key), -- reference to parent process instance
+      FOREIGN KEY (flow_element_instance_key) REFERENCES flow_element_history(key) -- reference to parent process instance
 );
 
 -- TODO: create a table for dumb activities like gateway/...

@@ -361,60 +361,14 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		}, nil
 	}
 
-	responseEvaluatedDecisions := make([]public.EvaluatedDecision, 0)
-	for decisionIdx := range evaluatedDecisions {
-		evaluatedDecision := evaluatedDecisions[decisionIdx]
-		responseEvaluatedInputs := make([]public.EvaluatedInput, 0)
-		for inputIdx := range evaluatedDecision.EvaluatedInputs {
-			evaluatedInput := evaluatedDecision.EvaluatedInputs[inputIdx]
-			responseEvaluatedInputs = append(responseEvaluatedInputs, public.EvaluatedInput{
-				InputId:         &evaluatedInput.InputId,
-				InputExpression: &evaluatedInput.InputExpression,
-				InputName:       &evaluatedInput.InputName,
-				InputValue:      &evaluatedInput.InputValue,
-			})
-		}
-		responseMatchedRules := make([]public.MatchedRule, 0)
-		for ruleIdx := range evaluatedDecision.MatchedRules {
-			matchedRule := evaluatedDecision.MatchedRules[ruleIdx]
-			responseOutputs := make([]public.EvaluatedOutput, 0)
-			for outputIdx := range matchedRule.EvaluatedOutputs {
-				evaluatedOutput := matchedRule.EvaluatedOutputs[outputIdx]
-				responseOutputs = append(responseOutputs, public.EvaluatedOutput{
-					OutputId:    &evaluatedOutput.OutputId,
-					OutputName:  &evaluatedOutput.OutputName,
-					OutputValue: &evaluatedOutput.OutputValue,
-				})
-			}
-			responseMatchedRules = append(responseMatchedRules, public.MatchedRule{
-				RuleId:           &matchedRule.RuleId,
-				RuleIndex:        &matchedRule.RuleIndex,
-				EvaluatedOutputs: &responseOutputs,
-			})
-		}
-		responseEvaluatedDecisions = append(responseEvaluatedDecisions, public.EvaluatedDecision{
-			DecisionId:   &evaluatedDecision.DecisionId,
-			DecisionName: &evaluatedDecision.DecisionName,
-			DecisionType: ptr.To(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
-			Inputs:       &responseEvaluatedInputs,
-			MatchedRules: &responseMatchedRules, // TODO Why mentioned in YAML: For DECISION_TABLE type only?
-			Outputs:      nil,                   // TODO What should be here? Total matchedRules outputs?
-
-		})
-	}
-
 	return &public.GetDecisionInstance200JSONResponse{
-		Key:                          instance.GetKey(),
-		ProcessInstanceKey:           instance.ProcessInstanceKey,
-		DmnResourceDefinitionKey:     *instance.DmnResourceDefinitionKey,
-		DmnResourceDefinitionId:      *instance.DmnResourceDefinitionId,
-		DmnResourceDefinitionVersion: int(*instance.DmnResourceDefinitionVersion),
-		EvaluatedAt:                  time.UnixMilli(instance.GetEvaluatedAt()),
-		EvaluatedDecisions:           responseEvaluatedDecisions,
-		DecisionOutput:               &decisionOutput,
-		DecisionRequirementsId:       nil, // TODO What should be here?
-		DecisionRequirementsKey:      nil, // TODO What should be here?
-		FlowElementInstanceKey:       nil, // TODO What should be here?
+		Key:                      instance.GetKey(),
+		ProcessInstanceKey:       instance.ProcessInstanceKey,
+		DmnResourceDefinitionKey: *instance.DmnResourceDefinitionKey,
+		EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
+		EvaluatedDecisions:       getEvaluatedDecisionsResponse(evaluatedDecisions),
+		DecisionOutput:           &decisionOutput,
+		FlowElementInstanceKey:   instance.FlowElementInstanceKey,
 	}, nil
 }
 
@@ -1182,6 +1136,50 @@ func defaultPagination(page **int32, size **int32) {
 		s := PaginationDefaultSize
 		*size = &s
 	}
+}
+
+func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {
+	responseEvaluatedDecisions := make([]public.EvaluatedDecision, 0)
+	for decisionIdx := range evaluatedDecisions {
+		evaluatedDecision := evaluatedDecisions[decisionIdx]
+		responseEvaluatedInputs := make([]public.EvaluatedInput, 0)
+		for inputIdx := range evaluatedDecision.EvaluatedInputs {
+			evaluatedInput := evaluatedDecision.EvaluatedInputs[inputIdx]
+			responseEvaluatedInputs = append(responseEvaluatedInputs, public.EvaluatedInput{
+				InputId:         &evaluatedInput.InputId,
+				InputExpression: &evaluatedInput.InputExpression,
+				InputName:       &evaluatedInput.InputName,
+				InputValue:      &evaluatedInput.InputValue,
+			})
+		}
+		responseMatchedRules := make([]public.MatchedRule, 0)
+		for ruleIdx := range evaluatedDecision.MatchedRules {
+			matchedRule := evaluatedDecision.MatchedRules[ruleIdx]
+			responseOutputs := make([]public.EvaluatedOutput, 0)
+			for outputIdx := range matchedRule.EvaluatedOutputs {
+				evaluatedOutput := matchedRule.EvaluatedOutputs[outputIdx]
+				responseOutputs = append(responseOutputs, public.EvaluatedOutput{
+					OutputId:    &evaluatedOutput.OutputId,
+					OutputName:  &evaluatedOutput.OutputName,
+					OutputValue: &evaluatedOutput.OutputValue,
+				})
+			}
+			responseMatchedRules = append(responseMatchedRules, public.MatchedRule{
+				RuleId:           &matchedRule.RuleId,
+				RuleIndex:        &matchedRule.RuleIndex,
+				EvaluatedOutputs: &responseOutputs,
+			})
+		}
+		responseEvaluatedDecisions = append(responseEvaluatedDecisions, public.EvaluatedDecision{
+			DecisionId:   &evaluatedDecision.DecisionId,
+			DecisionName: &evaluatedDecision.DecisionName,
+			DecisionType: ptr.To(public.EvaluatedDecisionDecisionType(evaluatedDecision.DecisionType)),
+			Inputs:       &responseEvaluatedInputs,
+			MatchedRules: &responseMatchedRules,
+			Outputs:      nil, // TODO What should be here? Total matchedRules outputs?
+		})
+	}
+	return responseEvaluatedDecisions
 }
 
 func cleanJson(json string) string {

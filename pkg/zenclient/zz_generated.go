@@ -138,12 +138,10 @@ type DecisionInstanceDetail struct {
 	DecisionRequirementsId *string `json:"decisionRequirementsId,omitempty"`
 
 	// DecisionRequirementsKey Key of the DRD
-	DecisionRequirementsKey      *int64              `json:"decisionRequirementsKey,omitempty"`
-	DmnResourceDefinitionId      string              `json:"dmnResourceDefinitionId"`
-	DmnResourceDefinitionKey     int64               `json:"dmnResourceDefinitionKey"`
-	DmnResourceDefinitionVersion int                 `json:"dmnResourceDefinitionVersion"`
-	EvaluatedAt                  time.Time           `json:"evaluatedAt"`
-	EvaluatedDecisions           []EvaluatedDecision `json:"evaluatedDecisions"`
+	DecisionRequirementsKey  *int64              `json:"decisionRequirementsKey,omitempty"`
+	DmnResourceDefinitionKey int64               `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time           `json:"evaluatedAt"`
+	EvaluatedDecisions       []EvaluatedDecision `json:"evaluatedDecisions"`
 
 	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
 	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`

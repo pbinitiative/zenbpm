@@ -1637,10 +1637,8 @@ components:
       required:
         - key
         - dmnResourceDefinitionKey
-        - dmnResourceDefinitionId
         - evaluatedAt
         - evaluatedDecisions
-        - dmnResourceDefinitionVersion
       properties:
         key:
           type: integer
@@ -1648,10 +1646,6 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        dmnResourceDefinitionId:
-          type: string
-        dmnResourceDefinitionVersion:
-          type: integer
         processInstanceKey:
           type: integer
           format: int64

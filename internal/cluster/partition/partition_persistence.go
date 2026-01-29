@@ -120,8 +120,16 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		Int64: currTime.Unix(),
 		Valid: true,
 	})
+	processesNullInt64 := make([]ssql.NullInt64, 0)
+	for _, processId := range processes {
+		processesNullInt64 = append(processesNullInt64, ssql.NullInt64{
+			Int64: processId,
+			Valid: true,
+		})
+	}
 	var err error
 	if len(processes) > rq.historyDeleteThreshold {
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
@@ -130,7 +138,6 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
 	}
-	// TODO: add cleanup for DecisionInstances
 	return err
 }
 
@@ -640,6 +647,7 @@ var _ storage.DecisionInstanceStorageWriter = &DB{}
 
 func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
 	partitionInstanceKey, pikFound := appcontext.ProcessInstanceKeyFromContext(ctx)
+	flowElementInstanceKey, feikFound := appcontext.ExecutionTokenKeyFromContext(ctx)
 
 	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
 		Key:                      result.Key,
@@ -650,6 +658,7 @@ func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.Decisi
 		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
 		DecisionDefinitionKey:    result.DecisionDefinitionKey,
 		ProcessInstanceKey:       ssql.NullInt64{Int64: partitionInstanceKey, Valid: pikFound},
+		FlowElementInstanceKey:   ssql.NullInt64{Int64: flowElementInstanceKey, Valid: feikFound},
 	})
 }
 

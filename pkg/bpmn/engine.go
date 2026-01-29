@@ -1067,6 +1067,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 
 	ctx = appcontext.WithProcessInstanceKey(ctx, instance.Key)
+	ctx = appcontext.WithExecutionTokenKey(ctx, token.Key)
 
 	result, err := engine.dmnEngine.FindAndEvaluateDRD(
 		ctx,

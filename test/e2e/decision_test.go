@@ -110,9 +110,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		assert.NoError(t, err)
 		decisionInstanceDetail := decisionInstanceRes.JSON200
 		assert.Equal(t, map[string]interface{}{"canAutoLiquidate": true}, *decisionInstanceDetail.DecisionOutput)
-		assert.Equal(t, "example_canAutoLiquidate", decisionInstanceDetail.DmnResourceDefinitionId)
 		assert.Equal(t, dmnResourceDefinition.Key, decisionInstanceDetail.DmnResourceDefinitionKey)
-		assert.Equal(t, dmnResourceDefinition.Version, decisionInstanceDetail.DmnResourceDefinitionVersion)
 		assert.NotEmpty(t, decisionInstanceDetail.EvaluatedAt)
 		assert.Equal(t, 1, len(decisionInstanceDetail.EvaluatedDecisions))
 		evaluateDec := decisionInstanceDetail.EvaluatedDecisions[0]

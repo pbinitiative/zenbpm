@@ -14,6 +14,7 @@ type Querier interface {
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementHistory(ctx context.Context, keys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error

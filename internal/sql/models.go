@@ -26,6 +26,7 @@ type DecisionInstance struct {
 	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
 	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
 	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
+	FlowElementInstanceKey   sql.NullInt64 `json:"flow_element_instance_key"`
 }
 
 type DmnResourceDefinition struct {

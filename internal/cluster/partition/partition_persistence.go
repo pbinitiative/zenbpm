@@ -1412,6 +1412,9 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 		if errors.Is(err, sql.ErrNoRows) {
 			return upsertPointer()
 		}
+		if pointer.State != int64(bpmnruntime.ActivityStateActive) {
+			return upsertPointer()
+		}
 
 		// check if message is active in partition
 		msgPartitionId := zenflake.GetPartitionId(oldPointer.MessageSubscriptionKey)
@@ -1515,11 +1518,12 @@ func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64,
 
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token:                token,
@@ -1539,11 +1543,12 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 		return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, err)
 	}
 	res = bpmnruntime.MessageSubscription{
-		ElementId:            dbMessage.ElementID,
 		Key:                  dbMessage.Key,
+		ElementId:            dbMessage.ElementID,
 		ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
 		ProcessInstanceKey:   dbMessage.ProcessInstanceKey,
 		Name:                 dbMessage.Name,
+		CorrelationKey:       dbMessage.CorrelationKey,
 		State:                bpmnruntime.ActivityState(dbMessage.State),
 		CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 		Token: bpmnruntime.ExecutionToken{
@@ -1579,11 +1584,12 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token: bpmnruntime.ExecutionToken{

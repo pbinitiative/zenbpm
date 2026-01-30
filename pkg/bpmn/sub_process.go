@@ -557,6 +557,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 
 func (engine *Engine) handleParentProcessContinuation(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, flowNode bpmn20.FlowNode) error {
 	switch inst := instance.(type) {
+	//batch.TakeOverParentInstance()
 	case *runtime.SubProcessInstance:
 		err := engine.handleParentProcessContinuationForSubProcess(ctx, batch, inst, flowNode)
 		if err != nil {

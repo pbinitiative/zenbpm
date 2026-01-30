@@ -1672,13 +1672,6 @@ components:
         evaluatedAt:
           type: string
           format: date-time
-        decisionRequirementsKey:
-          type: integer
-          format: int64
-          description: "Key of the DRD"
-        decisionRequirementsId:
-          type: string
-          description: "ID of the DRD"
         evaluatedDecisions:
           type: array
           items:

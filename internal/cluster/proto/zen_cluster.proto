@@ -66,6 +66,7 @@ service ZenService {
   rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
   rpc GetDecisionInstance(GetDecisionInstanceRequest) returns (GetDecisionInstanceResponse);
+  rpc GetDecisionInstances(GetDecisionInstancesRequest) returns (GetDecisionInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
@@ -459,6 +460,18 @@ message GetDecisionInstanceRequest {
   int64 decision_instance_key = 1;
 }
 
+message GetDecisionInstancesRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  int64 dmn_resource_definition_key = 4;
+  string dmn_resource_definition_id = 5;
+  int64 process_instance_key = 6;
+  int64 evaluated_from = 7;
+  int64 evaluated_to = 8;
+  string sort_by_order = 9;
+}
+
 message GetDmnResourceDefinitionsRequest {
   int32 page = 1;
   int32 size = 2;
@@ -479,9 +492,20 @@ message PartitionedProcessInstances {
   int32 totalCount = 3;
 }
 
+message PartitionedDecisionInstances {
+  uint32 partition_id = 1;
+  repeated DecisionInstance decisionInstances = 2;
+  int32 totalCount = 3;
+}
+
 message GetProcessInstancesResponse {
   ErrorResult error = 1;
   repeated PartitionedProcessInstances partitions = 2;
+}
+
+message GetDecisionInstancesResponse {
+  ErrorResult error = 1;
+  repeated PartitionedDecisionInstances partitions = 2;
 }
 
 message GetProcessInstanceRequest {

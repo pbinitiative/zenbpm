@@ -823,8 +823,7 @@ func (node *ZenNode) GetProcessInstances(
 	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
 
 	for partitionId := range state.Partitions {
-		completeGetProcessInstancesRequest := *getProcessInstancesRequest
-		completeGetProcessInstancesRequest.Partitions = []uint32{partitionId}
+		getProcessInstancesRequest.Partitions = []uint32{partitionId}
 		// TODO: we can smack these into goroutines
 		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
@@ -834,7 +833,7 @@ func (node *ZenNode) GetProcessInstances(
 		if err != nil {
 			return result, fmt.Errorf("failed to get client to get process instances: %w", err)
 		}
-		resp, err := client.GetProcessInstances(ctx, &completeGetProcessInstancesRequest)
+		resp, err := client.GetProcessInstances(ctx, getProcessInstancesRequest)
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process instances from partition %d", partitionId)
 			if err != nil {
@@ -900,6 +899,39 @@ func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKe
 	}
 
 	return resp.DecisionInstance, nil
+}
+
+// GetDecisionInstances will contact follower nodes and return decision instances in partitions they are following
+func (node *ZenNode) GetDecisionInstances(
+	ctx context.Context,
+	getDecisionInstancesRequest *proto.GetDecisionInstancesRequest,
+) ([]*proto.PartitionedDecisionInstances, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedDecisionInstances, 0, len(state.Partitions))
+
+	for partitionId := range state.Partitions {
+		getDecisionInstancesRequest.Partitions = []uint32{partitionId}
+		follower, err := state.GetPartitionFollower(partitionId)
+		if err != nil {
+			return result, fmt.Errorf("failed to get follower node to get decision instances: %w", err)
+		}
+		client, err := node.client.For(follower.Addr)
+		if err != nil {
+			return result, fmt.Errorf("failed to get client to get decision instances: %w", err)
+		}
+		resp, err := client.GetDecisionInstances(ctx, getDecisionInstancesRequest)
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to get decision instances from partition %d", partitionId)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		result = append(result, resp.Partitions...)
+	}
+
+	return result, nil
 }
 
 // GetProcessInstanceJobs will contact follower node of partition that contains process instance jobs

@@ -349,6 +349,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DecisionInstancePartitionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /decision-instances/{decisionInstanceKey}:
     get:
@@ -1614,8 +1632,6 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        dmnResourceDefinitionId:
-          type: string
         processInstanceKey:
           type: integer
           format: int64

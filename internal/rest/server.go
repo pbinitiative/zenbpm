@@ -332,8 +332,112 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 }
 
 func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDecisionInstancesRequestObject) (public.GetDecisionInstancesResponseObject, error) {
-	//TODO implement me
-	panic("implement me")
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	var evaluatedFrom, evaluatedTo *int64
+	if request.Params.EvaluatedFrom != nil {
+		evaluatedFrom = ptr.To(request.Params.EvaluatedFrom.UnixMilli())
+	}
+	if request.Params.EvaluatedTo != nil {
+		evaluatedTo = ptr.To(request.Params.EvaluatedTo.UnixMilli())
+	}
+	var sortByColumn *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		switch *request.Params.SortBy {
+		case public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt:
+			sortByColumn = &s
+		default:
+			supportedSortBy := []public.GetDecisionInstancesParamsSortBy{public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt}
+			return public.GetDecisionInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetDecisionInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
+			}, nil
+		}
+	}
+	if request.Params.SortOrder != nil {
+		supportedSortOrder := []public.GetDecisionInstancesParamsSortOrder{public.GetDecisionInstancesParamsSortOrderAsc, public.GetDecisionInstancesParamsSortOrderDesc}
+		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
+			return public.GetDecisionInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetDecisionInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
+			}, nil
+		}
+	} else {
+		request.Params.SortOrder = ptr.To(public.GetDecisionInstancesParamsSortOrderDesc)
+	}
+	sortByOrder := sql.SortString(request.Params.SortOrder, sortByColumn)
+
+	partitionedInstances, err := s.node.GetDecisionInstances(
+		ctx,
+		&proto.GetDecisionInstancesRequest{
+			Page:                     request.Params.Page,
+			Size:                     request.Params.Size,
+			DmnResourceDefinitionKey: request.Params.DmnResourceDefinitionKey,
+			DmnResourceDefinitionId:  request.Params.DmnResourceDefinitionId,
+			ProcessInstanceKey:       request.Params.ProcessInstanceKey,
+			EvaluatedFrom:            evaluatedFrom,
+			EvaluatedTo:              evaluatedTo,
+			SortByOrder:              (*string)(sortByOrder),
+		},
+	)
+	if err != nil {
+		return public.GetDecisionInstances502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	decisionInstancesPage := public.GetDecisionInstances200JSONResponse{
+		Partitions: make([]public.PartitionDecisionInstances, len(partitionedInstances)),
+		PartitionedPageMetadata: public.PartitionedPageMetadata{
+			Page: int(*request.Params.Page),
+			Size: int(*request.Params.Size),
+		},
+	}
+
+	count := 0
+	totalCount := 0
+	for i, partitionInstances := range partitionedInstances {
+		decisionInstancesPage.Partitions[i] = public.PartitionDecisionInstances{
+			Items:     make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
+			Partition: int(partitionInstances.GetPartitionId()),
+			Count:     ptr.To(len(partitionInstances.GetDecisionInstances())),
+		}
+		count += len(partitionInstances.GetDecisionInstances())
+		totalCount += int(partitionInstances.GetTotalCount())
+		for k, instance := range partitionInstances.GetDecisionInstances() {
+			var evaluatedDecisions []dmn.EvaluatedDecisionResult
+			err = json.Unmarshal([]byte(cleanJson(string(instance.EvaluatedDecisions))), &evaluatedDecisions)
+			if err != nil {
+				return public.GetDecisionInstances500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			var decisionOutput map[string]interface{}
+			err = json.Unmarshal([]byte(cleanJson(string(instance.DecisionOutput))), &decisionOutput)
+			if err != nil {
+				return public.GetDecisionInstances500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			_, inputCount, outputCount := getEvaluatedDecisionsResponse(evaluatedDecisions)
+			decisionInstancesPage.Partitions[i].Items[k] = public.DecisionInstanceSummary{
+				Key:                      instance.GetKey(),
+				DmnResourceDefinitionKey: instance.GetDmnResourceDefinitionKey(),
+				EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
+				ProcessInstanceKey:       instance.ProcessInstanceKey,
+				FlowElementInstanceKey:   instance.FlowElementInstanceKey,
+				InputCount:               ptr.To(inputCount),
+				OutputCount:              ptr.To(outputCount),
+			}
+		}
+	}
+	decisionInstancesPage.Count = count
+	decisionInstancesPage.TotalCount = totalCount
+	return decisionInstancesPage, nil
 }
 
 func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDecisionInstanceRequestObject) (public.GetDecisionInstanceResponseObject, error) {
@@ -361,12 +465,13 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		}, nil
 	}
 
+	evaluatedDecisionsResponse, _, _ := getEvaluatedDecisionsResponse(evaluatedDecisions)
 	return &public.GetDecisionInstance200JSONResponse{
 		Key:                      instance.GetKey(),
 		ProcessInstanceKey:       instance.ProcessInstanceKey,
 		DmnResourceDefinitionKey: *instance.DmnResourceDefinitionKey,
 		EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
-		EvaluatedDecisions:       getEvaluatedDecisionsResponse(evaluatedDecisions),
+		EvaluatedDecisions:       evaluatedDecisionsResponse,
 		DecisionOutput:           &decisionOutput,
 		FlowElementInstanceKey:   instance.FlowElementInstanceKey,
 	}, nil
@@ -1138,12 +1243,13 @@ func defaultPagination(page **int32, size **int32) {
 	}
 }
 
-func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {
+func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) (evResponse []public.EvaluatedDecision, inputCount, outputCount int) {
 	responseEvaluatedDecisions := make([]public.EvaluatedDecision, 0)
 	for decisionIdx := range evaluatedDecisions {
 		evaluatedDecision := evaluatedDecisions[decisionIdx]
 		responseEvaluatedInputs := make([]public.EvaluatedInput, 0)
 		for inputIdx := range evaluatedDecision.EvaluatedInputs {
+			inputCount++
 			evaluatedInput := evaluatedDecision.EvaluatedInputs[inputIdx]
 			responseEvaluatedInputs = append(responseEvaluatedInputs, public.EvaluatedInput{
 				InputId:         &evaluatedInput.InputId,
@@ -1157,6 +1263,7 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 			matchedRule := evaluatedDecision.MatchedRules[ruleIdx]
 			responseOutputs := make([]public.EvaluatedOutput, 0)
 			for outputIdx := range matchedRule.EvaluatedOutputs {
+				outputCount++
 				evaluatedOutput := matchedRule.EvaluatedOutputs[outputIdx]
 				responseOutputs = append(responseOutputs, public.EvaluatedOutput{
 					OutputId:    &evaluatedOutput.OutputId,
@@ -1179,7 +1286,8 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 			Outputs:      nil, // TODO What should be here? Total matchedRules outputs?
 		})
 	}
-	return responseEvaluatedDecisions
+	evResponse = responseEvaluatedDecisions
+	return
 }
 
 func cleanJson(json string) string {

@@ -167,7 +167,6 @@ type DecisionInstancePartitionPage struct {
 
 // DecisionInstanceSummary defines model for DecisionInstanceSummary.
 type DecisionInstanceSummary struct {
-	DmnResourceDefinitionId  string    `json:"dmnResourceDefinitionId"`
 	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
 	EvaluatedAt              time.Time `json:"evaluatedAt"`
 
@@ -3268,6 +3267,9 @@ type GetDecisionInstancesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *DecisionInstancePartitionPage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -4214,6 +4216,27 @@ func ParseGetDecisionInstancesResponse(rsp *http.Response) (*GetDecisionInstance
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

@@ -551,6 +551,7 @@ message GetIncidentsRequest {
   int64 process_instance_key = 1;
   int32 page = 2;
   int32 size = 3;
+  string state = 4;
 }
 
 message GetIncidentsResponse {

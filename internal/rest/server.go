@@ -630,9 +630,8 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 		Key:                  process.GetKey(),
 		ProcessDefinitionKey: process.GetDefinitionKey(),
-		// TODO: make sure its the same string
-		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
-		Variables: processVars,
+		State:                getRestProcessInstanceState(runtime.ActivityState(process.GetState())),
+		Variables:            processVars,
 	}, nil
 }
 
@@ -839,10 +838,10 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 			Message: err.Error(),
 		}, nil
 	}
-	if process.GetState() != int64(runtime.ActivityStateActive) {
+	if process.GetState() != int64(runtime.ActivityStateActive) && process.GetState() != int64(runtime.ActivityStateFailed) {
 		return public.UpdateProcessInstanceVariables400JSONResponse{
 			Code:    "INVALID_STATE",
-			Message: "Can update variables only for process instances in active state",
+			Message: "Can update variables only for process instances in active or failed state",
 		}, nil
 	}
 	err = s.node.UpdateProcessInstanceVariables(ctx, request.ProcessInstanceKey, request.Body.Variables)
@@ -1092,7 +1091,11 @@ func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInst
 
 func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	incidents, err := s.node.GetIncidents(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
+	var state *string
+	if request.Params.State != nil {
+		state = (*string)(request.Params.State)
+	}
+	incidents, err := s.node.GetIncidents(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, state)
 	if err != nil {
 		return public.GetIncidents502JSONResponse{
 			Code:    "TODO",

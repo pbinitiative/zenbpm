@@ -118,6 +118,12 @@ const (
 	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
 )
 
+// Defines values for GetIncidentsParamsState.
+const (
+	GetIncidentsParamsStateResolved   GetIncidentsParamsState = "resolved"
+	GetIncidentsParamsStateUnresolved GetIncidentsParamsState = "unresolved"
+)
+
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
 	// Embedded struct due to allOf(#/components/schemas/DmnResourceDefinitionSimple)
@@ -575,12 +581,17 @@ type GetHistoryParams struct {
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
+	State *GetIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetIncidentsParamsState defines parameters for GetIncidents.
+type GetIncidentsParamsState string
 
 // GetProcessInstanceJobsParams defines parameters for GetProcessInstanceJobs.
 type GetProcessInstanceJobsParams struct {
@@ -1504,6 +1515,14 @@ func (siw *ServerInterfaceWrapper) GetIncidents(w http.ResponseWriter, r *http.R
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetIncidentsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
 
 	// ------------- Optional query parameter "page" -------------
 
@@ -3628,17 +3647,18 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
+	"AP//gwnkR6GcAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

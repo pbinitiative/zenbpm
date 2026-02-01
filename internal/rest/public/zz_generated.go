@@ -25,6 +25,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EvaluatedDecisionDecisionType.
+const (
+	EvaluatedDecisionDecisionTypeDECISIONTABLE     EvaluatedDecisionDecisionType = "DECISION_TABLE"
+	EvaluatedDecisionDecisionTypeLITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
+)
+
 // Defines values for JobState.
 const (
 	JobStateActive     JobState = "active"
@@ -52,6 +58,18 @@ const (
 	EvaluateDecisionJSONBodyBindingTypeDeployment EvaluateDecisionJSONBodyBindingType = "deployment"
 	EvaluateDecisionJSONBodyBindingTypeLatest     EvaluateDecisionJSONBodyBindingType = "latest"
 	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+)
+
+// Defines values for GetDecisionInstancesParamsSortBy.
+const (
+	GetDecisionInstancesParamsSortByEvaluatedAt GetDecisionInstancesParamsSortBy = "evaluatedAt"
+	GetDecisionInstancesParamsSortByKey         GetDecisionInstancesParamsSortBy = "key"
+)
+
+// Defines values for GetDecisionInstancesParamsSortOrder.
+const (
+	GetDecisionInstancesParamsSortOrderAsc  GetDecisionInstancesParamsSortOrder = "asc"
+	GetDecisionInstancesParamsSortOrderDesc GetDecisionInstancesParamsSortOrder = "desc"
 )
 
 // Defines values for GetDmnResourceDefinitionsParamsSortBy.
@@ -124,6 +142,39 @@ const (
 	GetIncidentsParamsStateUnresolved GetIncidentsParamsState = "unresolved"
 )
 
+// DecisionInstanceDetail defines model for DecisionInstanceDetail.
+type DecisionInstanceDetail struct {
+	// DecisionOutput Final output of the requested decision
+	DecisionOutput           *map[string]interface{} `json:"decisionOutput,omitempty"`
+	DmnResourceDefinitionKey int64                   `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time               `json:"evaluatedAt"`
+	EvaluatedDecisions       []EvaluatedDecision     `json:"evaluatedDecisions"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
+}
+
+// DecisionInstancePartitionPage defines model for DecisionInstancePartitionPage.
+type DecisionInstancePartitionPage struct {
+	// Embedded fields due to inline allOf schema
+	Partitions []PartitionDecisionInstances `json:"partitions"`
+	// Embedded struct due to allOf(#/components/schemas/PartitionedPageMetadata)
+	PartitionedPageMetadata `yaml:",inline"`
+}
+
+// DecisionInstanceSummary defines model for DecisionInstanceSummary.
+type DecisionInstanceSummary struct {
+	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time `json:"evaluatedAt"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
+}
+
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
 type DmnResourceDefinitionDetail struct {
 	// Embedded struct due to allOf(#/components/schemas/DmnResourceDefinitionSimple)
@@ -134,10 +185,10 @@ type DmnResourceDefinitionDetail struct {
 
 // DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
 type DmnResourceDefinitionSimple struct {
-	DmnDefinitionName       string  `json:"dmnDefinitionName"`
-	DmnResourceDefinitionId *string `json:"dmnResourceDefinitionId,omitempty"`
-	Key                     int64   `json:"key"`
-	Version                 int     `json:"version"`
+	DmnDefinitionName       string `json:"dmnDefinitionName"`
+	DmnResourceDefinitionId string `json:"dmnResourceDefinitionId"`
+	Key                     int64  `json:"key"`
+	Version                 int    `json:"version"`
 }
 
 // DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
@@ -164,9 +215,28 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     interface{}               `json:"decisionOutput"`
-	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
+	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
+	DecisionOutput      interface{}               `json:"decisionOutput"`
+	EvaluatedDecisions  []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
+
+// EvaluatedDecision defines model for EvaluatedDecision.
+type EvaluatedDecision struct {
+	DecisionId   *string                        `json:"decisionId,omitempty"`
+	DecisionName *string                        `json:"decisionName,omitempty"`
+	DecisionType *EvaluatedDecisionDecisionType `json:"decisionType,omitempty"`
+
+	// EvaluationOrder Order in which this decision was evaluated
+	EvaluationOrder *int              `json:"evaluationOrder,omitempty"`
+	Inputs          *[]EvaluatedInput `json:"inputs,omitempty"`
+
+	// MatchedRules For DECISION_TABLE type only
+	MatchedRules *[]MatchedRule     `json:"matchedRules,omitempty"`
+	Outputs      *[]EvaluatedOutput `json:"outputs,omitempty"`
+}
+
+// EvaluatedDecisionDecisionType defines model for EvaluatedDecision.DecisionType.
+type EvaluatedDecisionDecisionType string
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
@@ -185,12 +255,12 @@ type EvaluatedDecisionOutput struct {
 
 // EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
 type EvaluatedDecisionResult struct {
-	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
 	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
 	DecisionId                string                   `json:"decisionId"`
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
+	DmnResourceDefinitionId   string                   `json:"dmnResourceDefinitionId"`
 	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
@@ -201,6 +271,25 @@ type EvaluatedDecisionRule struct {
 	EvaluatedOutputs []EvaluatedDecisionOutput `json:"evaluatedOutputs"`
 	RuleId           string                    `json:"ruleId"`
 	RuleIndex        int                       `json:"ruleIndex"`
+}
+
+// EvaluatedInput defines model for EvaluatedInput.
+type EvaluatedInput struct {
+	InputExpression *string `json:"inputExpression,omitempty"`
+	InputId         *string `json:"inputId,omitempty"`
+	InputName       *string `json:"inputName,omitempty"`
+
+	// InputValue The evaluated input value (any type)
+	InputValue *interface{} `json:"inputValue,omitempty"`
+}
+
+// EvaluatedOutput defines model for EvaluatedOutput.
+type EvaluatedOutput struct {
+	OutputId   *string `json:"outputId,omitempty"`
+	OutputName *string `json:"outputName,omitempty"`
+
+	// OutputValue The output value (any type)
+	OutputValue *interface{} `json:"outputValue,omitempty"`
 }
 
 // FlowElementHistory defines model for FlowElementHistory.
@@ -270,6 +359,13 @@ type JobPartitionPage struct {
 // JobState defines model for JobState.
 type JobState string
 
+// MatchedRule defines model for MatchedRule.
+type MatchedRule struct {
+	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
+	RuleId           *string            `json:"ruleId,omitempty"`
+	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
 // PageMetadata defines model for PageMetadata.
 type PageMetadata struct {
 	// Count Number of items returned in the current page
@@ -283,6 +379,14 @@ type PageMetadata struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// PartitionDecisionInstances defines model for PartitionDecisionInstances.
+type PartitionDecisionInstances struct {
+	// Count Total decision instances in this partition
+	Count     *int                      `json:"count,omitempty"`
+	Items     []DecisionInstanceSummary `json:"items"`
+	Partition int                       `json:"partition"`
 }
 
 // PartitionJobs defines model for PartitionJobs.
@@ -380,9 +484,9 @@ type SortOrder string
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
 
-	// DecisionDefinitionId Can be used in combination with bindingType latest
-	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
-	Variables            *map[string]interface{} `json:"variables,omitempty"`
+	// DmnResourceDefinitionId Can be used in combination with bindingType latest
+	DmnResourceDefinitionId *string                 `json:"dmnResourceDefinitionId,omitempty"`
+	Variables               *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
 	VersionTag *string `json:"versionTag,omitempty"`
@@ -390,6 +494,42 @@ type EvaluateDecisionJSONBody struct {
 
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBodyBindingType string
+
+// GetDecisionInstancesParams defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParams struct {
+	// DmnResourceDefinitionKey Filter by DMN resource definition key
+	DmnResourceDefinitionKey *int64 `form:"dmnResourceDefinitionKey,omitempty" json:"dmnResourceDefinitionKey,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// EvaluatedFrom Filter: evaluated after this date
+	EvaluatedFrom *time.Time `form:"evaluatedFrom,omitempty" json:"evaluatedFrom,omitempty"`
+
+	// EvaluatedTo Filter: evaluated before this date
+	EvaluatedTo *time.Time `form:"evaluatedTo,omitempty" json:"evaluatedTo,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetDecisionInstancesParamsSortBy defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortBy string
+
+// GetDecisionInstancesParamsSortOrder defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortOrder string
 
 // GetDmnResourceDefinitionsParams defines parameters for GetDmnResourceDefinitions.
 type GetDmnResourceDefinitionsParams struct {
@@ -636,6 +776,12 @@ type ServerInterface interface {
 	// Evaluate latest version of decision definition directly in engine
 	// (POST /decision-definitions/{decisionId}/evaluate)
 	EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string)
+	// Get list of decision instances
+	// (GET /decision-instances)
+	GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams)
+	// Get decision instance details
+	// (GET /decision-instances/{decisionInstanceKey})
+	GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64)
 	// Get list of dmn resource definitions
 	// (GET /dmn-resource-definitions)
 	GetDmnResourceDefinitions(w http.ResponseWriter, r *http.Request, params GetDmnResourceDefinitionsParams)
@@ -714,6 +860,18 @@ type Unimplemented struct{}
 // Evaluate latest version of decision definition directly in engine
 // (POST /decision-definitions/{decisionId}/evaluate)
 func (_ Unimplemented) EvaluateDecision(w http.ResponseWriter, r *http.Request, decisionId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get list of decision instances
+// (GET /decision-instances)
+func (_ Unimplemented) GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get decision instance details
+// (GET /decision-instances/{decisionInstanceKey})
+func (_ Unimplemented) GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -880,6 +1038,122 @@ func (siw *ServerInterfaceWrapper) EvaluateDecision(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EvaluateDecision(w, r, decisionId)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDecisionInstances operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionInstances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDecisionInstancesParams
+
+	// ------------- Optional query parameter "dmnResourceDefinitionKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dmnResourceDefinitionKey", r.URL.Query(), &params.DmnResourceDefinitionKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dmnResourceDefinitionKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "dmnResourceDefinitionId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "dmnResourceDefinitionId", r.URL.Query(), &params.DmnResourceDefinitionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dmnResourceDefinitionId", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "processInstanceKey" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "processInstanceKey", r.URL.Query(), &params.ProcessInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "evaluatedFrom" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "evaluatedFrom", r.URL.Query(), &params.EvaluatedFrom)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "evaluatedFrom", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "evaluatedTo" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "evaluatedTo", r.URL.Query(), &params.EvaluatedTo)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "evaluatedTo", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionInstances(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDecisionInstance operation middleware
+func (siw *ServerInterfaceWrapper) GetDecisionInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "decisionInstanceKey" -------------
+	var decisionInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "decisionInstanceKey", chi.URLParam(r, "decisionInstanceKey"), &decisionInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decisionInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDecisionInstance(w, r, decisionInstanceKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -1821,6 +2095,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/decision-definitions/{decisionId}/evaluate", wrapper.EvaluateDecision)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-instances", wrapper.GetDecisionInstances)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/decision-instances/{decisionInstanceKey}", wrapper.GetDecisionInstance)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/dmn-resource-definitions", wrapper.GetDmnResourceDefinitions)
 	})
 	r.Group(func(r chi.Router) {
@@ -1916,6 +2196,93 @@ type EvaluateDecision500JSONResponse Error
 func (response EvaluateDecision500JSONResponse) VisitEvaluateDecisionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstancesRequestObject struct {
+	Params GetDecisionInstancesParams
+}
+
+type GetDecisionInstancesResponseObject interface {
+	VisitGetDecisionInstancesResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionInstances200JSONResponse DecisionInstancePartitionPage
+
+func (response GetDecisionInstances200JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstances400JSONResponse Error
+
+func (response GetDecisionInstances400JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstances500JSONResponse Error
+
+func (response GetDecisionInstances500JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstances502JSONResponse Error
+
+func (response GetDecisionInstances502JSONResponse) VisitGetDecisionInstancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstanceRequestObject struct {
+	DecisionInstanceKey int64 `json:"decisionInstanceKey"`
+}
+
+type GetDecisionInstanceResponseObject interface {
+	VisitGetDecisionInstanceResponse(w http.ResponseWriter) error
+}
+
+type GetDecisionInstance200JSONResponse DecisionInstanceDetail
+
+func (response GetDecisionInstance200JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstance404Response struct {
+}
+
+func (response GetDecisionInstance404Response) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetDecisionInstance500JSONResponse Error
+
+func (response GetDecisionInstance500JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDecisionInstance502JSONResponse Error
+
+func (response GetDecisionInstance502JSONResponse) VisitGetDecisionInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2793,6 +3160,12 @@ type StrictServerInterface interface {
 	// Evaluate latest version of decision definition directly in engine
 	// (POST /decision-definitions/{decisionId}/evaluate)
 	EvaluateDecision(ctx context.Context, request EvaluateDecisionRequestObject) (EvaluateDecisionResponseObject, error)
+	// Get list of decision instances
+	// (GET /decision-instances)
+	GetDecisionInstances(ctx context.Context, request GetDecisionInstancesRequestObject) (GetDecisionInstancesResponseObject, error)
+	// Get decision instance details
+	// (GET /decision-instances/{decisionInstanceKey})
+	GetDecisionInstance(ctx context.Context, request GetDecisionInstanceRequestObject) (GetDecisionInstanceResponseObject, error)
 	// Get list of dmn resource definitions
 	// (GET /dmn-resource-definitions)
 	GetDmnResourceDefinitions(ctx context.Context, request GetDmnResourceDefinitionsRequestObject) (GetDmnResourceDefinitionsResponseObject, error)
@@ -2919,6 +3292,58 @@ func (sh *strictHandler) EvaluateDecision(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EvaluateDecisionResponseObject); ok {
 		if err := validResponse.VisitEvaluateDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDecisionInstances operation middleware
+func (sh *strictHandler) GetDecisionInstances(w http.ResponseWriter, r *http.Request, params GetDecisionInstancesParams) {
+	var request GetDecisionInstancesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionInstances(ctx, request.(GetDecisionInstancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionInstances")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionInstancesResponseObject); ok {
+		if err := validResponse.VisitGetDecisionInstancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDecisionInstance operation middleware
+func (sh *strictHandler) GetDecisionInstance(w http.ResponseWriter, r *http.Request, decisionInstanceKey int64) {
+	var request GetDecisionInstanceRequestObject
+
+	request.DecisionInstanceKey = decisionInstanceKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDecisionInstance(ctx, request.(GetDecisionInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDecisionInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDecisionInstanceResponseObject); ok {
+		if err := validResponse.VisitGetDecisionInstanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3570,95 +3995,102 @@ func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"AP//gwnkR6GcAAA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

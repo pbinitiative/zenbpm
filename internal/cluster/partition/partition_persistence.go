@@ -647,7 +647,7 @@ var _ storage.DecisionInstanceStorageWriter = &DB{}
 
 func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
 	partitionInstanceKey, pikFound := appcontext.ProcessInstanceKeyFromContext(ctx)
-	flowElementInstanceKey, feikFound := appcontext.ExecutionTokenKeyFromContext(ctx)
+	flowElementInstanceKey, feikFound := appcontext.ElementInstanceKeyFromContext(ctx)
 
 	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
 		Key:                      result.Key,

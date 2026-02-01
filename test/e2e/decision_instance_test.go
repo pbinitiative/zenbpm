@@ -113,8 +113,6 @@ func TestDecisionInstances(t *testing.T) {
 		assert.Equal(t, len(decisionInstancePartitionPage.Partitions), 1)
 		assert.Equal(t, len(decisionInstancePartitionPage.Partitions[0].Items), 1)
 		assert.Equal(t, decisionInstancePartitionPage.Partitions[0].Items[0].DmnResourceDefinitionKey, resDefId1Key)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[0].InputCount, 2)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[0].OutputCount, 1)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[0].Key)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[0].EvaluatedAt)
 	})
@@ -163,14 +161,10 @@ func TestDecisionInstances(t *testing.T) {
 		assert.Equal(t, len(decisionInstancePartitionPage.Partitions[0].Items), 2)
 
 		assert.Equal(t, decisionInstancePartitionPage.Partitions[0].Items[0].DmnResourceDefinitionKey, redDefId2Key)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[0].InputCount, 2)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[0].OutputCount, 1)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[0].Key)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[0].EvaluatedAt)
 
 		assert.Equal(t, decisionInstancePartitionPage.Partitions[0].Items[1].DmnResourceDefinitionKey, redDefId2Key)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[1].InputCount, 2)
-		assert.Equal(t, *decisionInstancePartitionPage.Partitions[0].Items[1].OutputCount, 1)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[1].Key)
 		assert.NotEmpty(t, decisionInstancePartitionPage.Partitions[0].Items[1].EvaluatedAt)
 

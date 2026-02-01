@@ -407,31 +407,12 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		count += len(partitionInstances.GetDecisionInstances())
 		totalCount += int(partitionInstances.GetTotalCount())
 		for k, instance := range partitionInstances.GetDecisionInstances() {
-			var evaluatedDecisions []dmn.EvaluatedDecisionResult
-			err = json.Unmarshal([]byte(cleanJson(string(instance.EvaluatedDecisions))), &evaluatedDecisions)
-			if err != nil {
-				return public.GetDecisionInstances500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-			var decisionOutput map[string]interface{}
-			err = json.Unmarshal([]byte(cleanJson(string(instance.DecisionOutput))), &decisionOutput)
-			if err != nil {
-				return public.GetDecisionInstances500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
-			}
-			_, inputCount, outputCount := getEvaluatedDecisionsResponse(evaluatedDecisions)
 			decisionInstancesPage.Partitions[i].Items[k] = public.DecisionInstanceSummary{
 				Key:                      instance.GetKey(),
 				DmnResourceDefinitionKey: instance.GetDmnResourceDefinitionKey(),
 				EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
 				ProcessInstanceKey:       instance.ProcessInstanceKey,
 				FlowElementInstanceKey:   instance.FlowElementInstanceKey,
-				InputCount:               ptr.To(inputCount),
-				OutputCount:              ptr.To(outputCount),
 			}
 		}
 	}
@@ -465,7 +446,7 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		}, nil
 	}
 
-	evaluatedDecisionsResponse, _, _ := getEvaluatedDecisionsResponse(evaluatedDecisions)
+	evaluatedDecisionsResponse := getEvaluatedDecisionsResponse(evaluatedDecisions)
 	return &public.GetDecisionInstance200JSONResponse{
 		Key:                      instance.GetKey(),
 		ProcessInstanceKey:       instance.ProcessInstanceKey,
@@ -1243,13 +1224,12 @@ func defaultPagination(page **int32, size **int32) {
 	}
 }
 
-func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) (evResponse []public.EvaluatedDecision, inputCount, outputCount int) {
+func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {
 	responseEvaluatedDecisions := make([]public.EvaluatedDecision, 0)
 	for decisionIdx := range evaluatedDecisions {
 		evaluatedDecision := evaluatedDecisions[decisionIdx]
 		responseEvaluatedInputs := make([]public.EvaluatedInput, 0)
 		for inputIdx := range evaluatedDecision.EvaluatedInputs {
-			inputCount++
 			evaluatedInput := evaluatedDecision.EvaluatedInputs[inputIdx]
 			responseEvaluatedInputs = append(responseEvaluatedInputs, public.EvaluatedInput{
 				InputId:         &evaluatedInput.InputId,
@@ -1263,7 +1243,6 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 			matchedRule := evaluatedDecision.MatchedRules[ruleIdx]
 			responseOutputs := make([]public.EvaluatedOutput, 0)
 			for outputIdx := range matchedRule.EvaluatedOutputs {
-				outputCount++
 				evaluatedOutput := matchedRule.EvaluatedOutputs[outputIdx]
 				responseOutputs = append(responseOutputs, public.EvaluatedOutput{
 					OutputId:    &evaluatedOutput.OutputId,
@@ -1286,8 +1265,7 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 			Outputs:      nil, // TODO What should be here? Total matchedRules outputs?
 		})
 	}
-	evResponse = responseEvaluatedDecisions
-	return
+	return responseEvaluatedDecisions
 }
 
 func cleanJson(json string) string {

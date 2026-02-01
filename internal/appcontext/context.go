@@ -9,12 +9,12 @@ import (
 type historyTTLKeyType struct{}
 type businessKeyKeyType struct{}
 type processInstanceKeyKeyType struct{}
-type executionTokenKeyKeyType struct{}
+type elementInstanceKeyKeyType struct{}
 
 var historyTTLKey = historyTTLKeyType{}
 var businessKeyKey = businessKeyKeyType{}
 var processInstanceKey = processInstanceKeyKeyType{}
-var executionTokenKey = executionTokenKeyKeyType{}
+var elementInstanceKey = elementInstanceKeyKeyType{}
 
 func WithHistoryTTL(ctx context.Context, ttl types.TTL) context.Context {
 	return context.WithValue(ctx, historyTTLKey, ttl)
@@ -43,11 +43,11 @@ func ProcessInstanceKeyFromContext(ctx context.Context) (int64, bool) {
 	return processInstanceKey, ok
 }
 
-func WithExecutionTokenKey(ctx context.Context, executionTokenKey int64) context.Context {
-	return context.WithValue(ctx, executionTokenKey, executionTokenKey)
+func WithElementInstanceKey(ctx context.Context, elementInstanceKey int64) context.Context {
+	return context.WithValue(ctx, elementInstanceKey, elementInstanceKey)
 }
 
-func ExecutionTokenKeyFromContext(ctx context.Context) (int64, bool) {
-	executionTokenKey, ok := ctx.Value(executionTokenKey).(int64)
-	return executionTokenKey, ok
+func ElementInstanceKeyFromContext(ctx context.Context) (int64, bool) {
+	elementInstanceKey, ok := ctx.Value(elementInstanceKey).(int64)
+	return elementInstanceKey, ok
 }

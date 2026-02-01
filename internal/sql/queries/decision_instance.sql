@@ -14,7 +14,7 @@ WHERE process_instance_key IN (sqlc.slice('keys'));
 
 -- name: FindDecisionInstancesPage :many
 SELECT
-    di.*,
+    di."key", di.decision_id, di.created_at, di.dmn_resource_definition_key, di.decision_definition_key, di.process_instance_key, di.flow_element_instance_key,
     COUNT(*) OVER () AS total_count
 FROM
     decision_instance AS di

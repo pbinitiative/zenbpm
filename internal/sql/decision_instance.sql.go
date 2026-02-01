@@ -56,7 +56,7 @@ func (q *Queries) FindDecisionInstanceByKey(ctx context.Context, key int64) (Dec
 
 const findDecisionInstancesPage = `-- name: FindDecisionInstancesPage :many
 SELECT
-    di."key", di.decision_id, di.created_at, di.output_variables, di.evaluated_decisions, di.dmn_resource_definition_key, di.decision_definition_key, di.process_instance_key, di.flow_element_instance_key,
+    di."key", di.decision_id, di.created_at, di.dmn_resource_definition_key, di.decision_definition_key, di.process_instance_key, di.flow_element_instance_key,
     COUNT(*) OVER () AS total_count
 FROM
     decision_instance AS di
@@ -123,8 +123,6 @@ type FindDecisionInstancesPageRow struct {
 	Key                      int64         `json:"key"`
 	DecisionID               string        `json:"decision_id"`
 	CreatedAt                int64         `json:"created_at"`
-	OutputVariables          string        `json:"output_variables"`
-	EvaluatedDecisions       string        `json:"evaluated_decisions"`
 	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
 	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
 	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
@@ -155,8 +153,6 @@ func (q *Queries) FindDecisionInstancesPage(ctx context.Context, arg FindDecisio
 			&i.Key,
 			&i.DecisionID,
 			&i.CreatedAt,
-			&i.OutputVariables,
-			&i.EvaluatedDecisions,
 			&i.DmnResourceDefinitionKey,
 			&i.DecisionDefinitionKey,
 			&i.ProcessInstanceKey,

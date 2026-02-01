@@ -166,14 +166,8 @@ type DecisionInstanceSummary struct {
 
 	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
 	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
-
-	// InputCount Number of input variables
-	InputCount *int  `json:"inputCount,omitempty"`
-	Key        int64 `json:"key"`
-
-	// OutputCount Number of output variables
-	OutputCount        *int   `json:"outputCount,omitempty"`
-	ProcessInstanceKey *int64 `json:"processInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
 }
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.

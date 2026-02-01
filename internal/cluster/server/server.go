@@ -857,34 +857,12 @@ func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisio
 			if di.FlowElementInstanceKey.Valid {
 				flowElementInstanceKey = &di.FlowElementInstanceKey.Int64
 			}
-			evaluatedDecisions, err := json.Marshal(di.EvaluatedDecisions)
-			if err != nil {
-				err := fmt.Errorf("failed to marshal evaluatedDecisions of decisionInstance %d", di.Key)
-				return &proto.GetDecisionInstancesResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: ptr.To(err.Error()),
-					},
-				}, err
-			}
-			outputVariables, err := json.Marshal(di.OutputVariables)
-			if err != nil {
-				err := fmt.Errorf("failed to marshal outputVariables of decisionInstance %d", di.Key)
-				return &proto.GetDecisionInstancesResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: ptr.To(err.Error()),
-					},
-				}, err
-			}
 			decisionInstances[i] = &proto.DecisionInstance{
 				Key:                      &di.Key,
 				DmnResourceDefinitionKey: &di.DmnResourceDefinitionKey,
 				ProcessInstanceKey:       processInstanceKey,
 				EvaluatedAt:              &di.CreatedAt,
 				FlowElementInstanceKey:   flowElementInstanceKey,
-				EvaluatedDecisions:       evaluatedDecisions,
-				DecisionOutput:           outputVariables,
 			}
 		}
 		resp = append(resp, &proto.PartitionedDecisionInstances{

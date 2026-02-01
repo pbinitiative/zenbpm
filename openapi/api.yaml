@@ -1642,12 +1642,6 @@ components:
         evaluatedAt:
           type: string
           format: date-time
-        inputCount:
-          type: integer
-          description: "Number of input variables"
-        outputCount:
-          type: integer
-          description: "Number of output variables"
     DecisionInstanceDetail:
       type: object
       required:

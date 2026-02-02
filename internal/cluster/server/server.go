@@ -769,28 +769,6 @@ func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecision
 		}, err
 	}
 
-	evaluatedDecisions, err := json.Marshal(decisionInstance.EvaluatedDecisions)
-	if err != nil {
-		err := fmt.Errorf("failed to marshal evaluatedDecisions of decisionInstance %d", req.GetDecisionInstanceKey())
-		return &proto.GetDecisionInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
-	}
-
-	outputVariables, err := json.Marshal(decisionInstance.OutputVariables)
-	if err != nil {
-		err := fmt.Errorf("failed to marshal outputVariables of decisionInstance %d", req.GetDecisionInstanceKey())
-		return &proto.GetDecisionInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
-	}
-
 	var processInstanceKey *int64
 	if decisionInstance.ProcessInstanceKey.Valid {
 		processInstanceKey = &decisionInstance.ProcessInstanceKey.Int64
@@ -806,8 +784,8 @@ func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecision
 			ProcessInstanceKey:       processInstanceKey,
 			FlowElementInstanceKey:   flowElementInstanceKey,
 			EvaluatedAt:              &decisionInstance.CreatedAt,
-			EvaluatedDecisions:       evaluatedDecisions,
-			DecisionOutput:           outputVariables,
+			EvaluatedDecisions:       &decisionInstance.EvaluatedDecisions,
+			DecisionOutput:           &decisionInstance.OutputVariables,
 		},
 	}, nil
 }

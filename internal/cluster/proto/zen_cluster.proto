@@ -249,8 +249,8 @@ message DecisionInstance {
   int64 process_instance_key = 3;
   int64 evaluated_at = 4;
   int64 flow_element_instance_key = 5;
-  bytes evaluated_decisions = 6;
-  bytes decision_output = 7;
+  string evaluated_decisions = 6;
+  string decision_output = 7;
 }
 
 message ExecutionToken {

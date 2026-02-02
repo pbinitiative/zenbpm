@@ -11,8 +11,9 @@ import (
 
 type Querier interface {
 	CountActiveProcessInstances(ctx context.Context) (int64, error)
+	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
-	DeleteFlowElementHistory(ctx context.Context, keys []int64) error
+	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
@@ -76,7 +77,8 @@ type Querier interface {
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
 	GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
-	GetFlowElementHistory(ctx context.Context, arg GetFlowElementHistoryParams) ([]GetFlowElementHistoryRow, error)
+	GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error)
+	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
@@ -86,7 +88,7 @@ type Querier interface {
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
 	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error
-	SaveFlowElementHistory(ctx context.Context, arg SaveFlowElementHistoryParams) error
+	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error
 	SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error
@@ -97,6 +99,7 @@ type Querier interface {
 	SaveTimer(ctx context.Context, arg SaveTimerParams) error
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 	SetProcessInstanceTTL(ctx context.Context, arg SetProcessInstanceTTLParams) error
+	UpdateOutputFlowElementInstance(ctx context.Context, arg UpdateOutputFlowElementInstanceParams) error
 }
 
 var _ Querier = (*Queries)(nil)

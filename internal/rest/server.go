@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -430,20 +429,24 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		}, nil
 	}
 	var evaluatedDecisions []dmn.EvaluatedDecisionResult
-	err = json.Unmarshal([]byte(cleanJson(string(instance.EvaluatedDecisions))), &evaluatedDecisions)
-	if err != nil {
-		return public.GetDecisionInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+	if instance.EvaluatedDecisions != nil {
+		err = json.Unmarshal([]byte(*instance.EvaluatedDecisions), &evaluatedDecisions)
+		if err != nil {
+			return public.GetDecisionInstance500JSONResponse{
+				Code:    "TODO",
+				Message: err.Error(),
+			}, nil
+		}
 	}
 	var decisionOutput map[string]interface{}
-	err = json.Unmarshal([]byte(cleanJson(string(instance.DecisionOutput))), &decisionOutput)
-	if err != nil {
-		return public.GetDecisionInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+	if instance.DecisionOutput != nil {
+		err = json.Unmarshal([]byte(*instance.DecisionOutput), &decisionOutput)
+		if err != nil {
+			return public.GetDecisionInstance500JSONResponse{
+				Code:    "TODO",
+				Message: err.Error(),
+			}, nil
+		}
 	}
 
 	evaluatedDecisionsResponse := getEvaluatedDecisionsResponse(evaluatedDecisions)
@@ -1269,11 +1272,4 @@ func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionRes
 		})
 	}
 	return responseEvaluatedDecisions
-}
-
-func cleanJson(json string) string {
-	res := strings.TrimSpace(json)
-	res = strings.TrimPrefix(res, "\"")
-	res = strings.TrimSuffix(res, "\"")
-	return strings.ReplaceAll(res, "\\\"", "\"")
 }

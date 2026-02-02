@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/appcontext"
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/script/js"
@@ -676,6 +677,9 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			OutputVariables:    nil,
 		},
 	)
+
+	ctx = appcontext.WithProcessInstanceKey(ctx, instance.ProcessInstance().Key)
+	ctx = appcontext.WithElementInstanceKey(ctx, currentToken.ElementInstanceKey)
 
 	result, err := engine.dmnEngine.FindAndEvaluateDRD(
 		ctx,

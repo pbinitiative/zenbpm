@@ -8,9 +8,13 @@ import (
 
 type historyTTLKeyType struct{}
 type businessKeyKeyType struct{}
+type processInstanceKeyKeyType struct{}
+type elementInstanceKeyKeyType struct{}
 
 var historyTTLKey = historyTTLKeyType{}
 var businessKeyKey = businessKeyKeyType{}
+var processInstanceKey = processInstanceKeyKeyType{}
+var elementInstanceKey = elementInstanceKeyKeyType{}
 
 func WithHistoryTTL(ctx context.Context, ttl types.TTL) context.Context {
 	return context.WithValue(ctx, historyTTLKey, ttl)
@@ -28,4 +32,22 @@ func WithBusinessKey(ctx context.Context, businessKey string) context.Context {
 func BusinessKeyFromContext(ctx context.Context) (string, bool) {
 	businessKey, ok := ctx.Value(businessKeyKey).(string)
 	return businessKey, ok
+}
+
+func WithProcessInstanceKey(ctx context.Context, processInstanceKey int64) context.Context {
+	return context.WithValue(ctx, processInstanceKey, processInstanceKey)
+}
+
+func ProcessInstanceKeyFromContext(ctx context.Context) (int64, bool) {
+	processInstanceKey, ok := ctx.Value(processInstanceKey).(int64)
+	return processInstanceKey, ok
+}
+
+func WithElementInstanceKey(ctx context.Context, elementInstanceKey int64) context.Context {
+	return context.WithValue(ctx, elementInstanceKey, elementInstanceKey)
+}
+
+func ElementInstanceKeyFromContext(ctx context.Context) (int64, bool) {
+	elementInstanceKey, ok := ctx.Value(elementInstanceKey).(int64)
+	return elementInstanceKey, ok
 }

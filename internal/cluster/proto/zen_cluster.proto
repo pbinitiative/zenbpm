@@ -65,6 +65,8 @@ service ZenService {
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
   rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetDecisionInstance(GetDecisionInstanceRequest) returns (GetDecisionInstanceResponse);
+  rpc GetDecisionInstances(GetDecisionInstancesRequest) returns (GetDecisionInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
@@ -164,8 +166,9 @@ message EvaluateDecisionRequest {
 
 message EvaluatedDRDResult {
   ErrorResult error = 1;
-  repeated EvaluatedDecisionResult evaluatedDecisions = 2;
-  bytes DecisionOutput = 3;
+  repeated EvaluatedDecisionResult evaluated_decisions = 2;
+  bytes decision_output = 3;
+  int64 decision_instance_key = 4;
 }
 
 message EvaluatedDecisionResult {
@@ -212,7 +215,7 @@ message DecisionDefinition {
   int32 version = 2;
   string decision_id = 3;
   string version_tag = 4;
-  string decision_definition_id = 5;
+  string dmn_resource_definition_id = 5;
   string dmn_resource_definition_key = 6;
 }
 
@@ -238,6 +241,16 @@ message ProcessInstance {
   int64 definition_key = 6;
   int64 parent_key = 7;
   string business_key = 8;
+}
+
+message DecisionInstance {
+  int64 key = 1;
+  int64 dmn_resource_definition_key = 2;
+  int64 process_instance_key = 3;
+  int64 evaluated_at = 4;
+  int64 flow_element_instance_key = 5;
+  string evaluated_decisions = 6;
+  string decision_output = 7;
 }
 
 message ExecutionToken {
@@ -443,6 +456,22 @@ message GetProcessInstancesRequest {
   string sort_by_order = 11;
 }
 
+message GetDecisionInstanceRequest {
+  int64 decision_instance_key = 1;
+}
+
+message GetDecisionInstancesRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  int64 dmn_resource_definition_key = 4;
+  string dmn_resource_definition_id = 5;
+  int64 process_instance_key = 6;
+  int64 evaluated_from = 7;
+  int64 evaluated_to = 8;
+  string sort_by_order = 9;
+}
+
 message GetDmnResourceDefinitionsRequest {
   int32 page = 1;
   int32 size = 2;
@@ -463,9 +492,20 @@ message PartitionedProcessInstances {
   int32 totalCount = 3;
 }
 
+message PartitionedDecisionInstances {
+  uint32 partition_id = 1;
+  repeated DecisionInstance decisionInstances = 2;
+  int32 totalCount = 3;
+}
+
 message GetProcessInstancesResponse {
   ErrorResult error = 1;
   repeated PartitionedProcessInstances partitions = 2;
+}
+
+message GetDecisionInstancesResponse {
+  ErrorResult error = 1;
+  repeated PartitionedDecisionInstances partitions = 2;
 }
 
 message GetProcessInstanceRequest {
@@ -476,6 +516,11 @@ message GetProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance processes = 2;
   repeated ExecutionToken execution_tokens = 3;
+}
+
+message GetDecisionInstanceResponse {
+  ErrorResult error = 1;
+  DecisionInstance decision_instance = 2;
 }
 
 message GetProcessInstanceJobsRequest {

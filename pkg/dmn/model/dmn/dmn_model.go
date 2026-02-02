@@ -202,3 +202,11 @@ const (
 	HitPolicyAggregationMax   HitPolicyAggregation = "MAX"
 	HitPolicyAggregationCount HitPolicyAggregation = "COUNT"
 )
+
+type EvaluatedDecisionType string
+
+const (
+	DecisionTable     EvaluatedDecisionType = "DECISION_TABLE"
+	LiteralExpression EvaluatedDecisionType = "LITERAL_EXPRESSION"
+	Context           EvaluatedDecisionType = "CONTEXT"
+)

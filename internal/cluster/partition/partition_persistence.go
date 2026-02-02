@@ -121,8 +121,16 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		Int64: currTime.Unix(),
 		Valid: true,
 	})
+	processesNullInt64 := make([]ssql.NullInt64, 0)
+	for _, processId := range processes {
+		processesNullInt64 = append(processesNullInt64, ssql.NullInt64{
+			Int64: processId,
+			Valid: true,
+		})
+	}
 	var err error
 	if len(processes) > rq.historyDeleteThreshold {
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
@@ -131,7 +139,6 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
 	}
-	// TODO: add cleanup for DecisionInstances
 	return err
 }
 
@@ -390,6 +397,7 @@ func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId st
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      decisionDefinition.Key,
 		Version:                  decisionDefinition.Version,
 		Id:                       decisionDefinition.DecisionID,
 		VersionTag:               decisionDefinition.VersionTag,
@@ -409,6 +417,7 @@ func (rq *DB) GetDecisionDefinitionsById(ctx context.Context, decisionId string)
 	res := make([]dmnruntime.DecisionDefinition, len(decisionDefinitions))
 	for i, dec := range decisionDefinitions {
 		res[i] = dmnruntime.DecisionDefinition{
+			Key:                      dec.Key,
 			Version:                  dec.Version,
 			Id:                       dec.DecisionID,
 			VersionTag:               dec.VersionTag,
@@ -432,6 +441,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -444,17 +454,18 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 
 func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	var res dmnruntime.DecisionDefinition
-	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx,
-		sql.FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams{
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams{
 			DecisionID:              decisionId,
 			DmnResourceDefinitionID: dmnResourceDefinitionId,
 		},
 	)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision by id and decisionDefinitionId: %w", err)
+		return res, fmt.Errorf("failed to find latest decision by id and dmnResourceDefinitionId: %w", err)
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -478,6 +489,7 @@ func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.C
 	}
 
 	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
 		Version:                  dbDecision.Version,
 		Id:                       dbDecision.DecisionID,
 		VersionTag:               dbDecision.VersionTag,
@@ -496,6 +508,7 @@ func (rq *DB) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.De
 
 func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.DecisionDefinition) error {
 	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+		Key:                      decision.Key,
 		Version:                  decision.Version,
 		DecisionID:               decision.Id,
 		VersionTag:               decision.VersionTag,
@@ -531,9 +544,9 @@ func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definit
 
 var _ storage.DmnResourceDefinitionStorageReader = &DB{}
 
-func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
+func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
 	var res dmnruntime.DmnResourceDefinition
-	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, decisionDefinitionId)
+	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, dmnResourceDefinitionId)
 	if err != nil {
 		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
@@ -597,8 +610,8 @@ func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDef
 	return res, nil
 }
 
-func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
-	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, decisionDefinitionId)
+func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
+	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, dmnResourceDefinitionId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find dmn resource definitions by id: %w", err)
 	}
@@ -634,12 +647,19 @@ func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, decisionDefini
 var _ storage.DecisionInstanceStorageWriter = &DB{}
 
 func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
+	partitionInstanceKey, pikFound := appcontext.ProcessInstanceKeyFromContext(ctx)
+	flowElementInstanceKey, feikFound := appcontext.ElementInstanceKeyFromContext(ctx)
+
 	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
-		Key:                result.Key,
-		DecisionID:         result.DecisionId,
-		OutputVariables:    result.OutputVariables,
-		EvaluatedDecisions: result.EvaluatedDecisions,
-		CreatedAt:          result.CreatedAt.UnixMilli(),
+		Key:                      result.Key,
+		DecisionID:               result.DecisionId,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                result.CreatedAt.UnixMilli(),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       ssql.NullInt64{Int64: partitionInstanceKey, Valid: pikFound},
+		FlowElementInstanceKey:   ssql.NullInt64{Int64: flowElementInstanceKey, Valid: feikFound},
 	})
 }
 
@@ -650,12 +670,19 @@ func (rq *DB) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnrunt
 	if err != nil {
 		return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision results by execution token ids: %w", err)
 	}
+	var processInstanceKey int64
+	if result.ProcessInstanceKey.Valid {
+		processInstanceKey = result.ProcessInstanceKey.Int64
+	}
 	return dmnruntime.DecisionInstance{
-		Key:                result.Key,
-		DecisionId:         result.DecisionID,
-		OutputVariables:    result.OutputVariables,
-		EvaluatedDecisions: result.EvaluatedDecisions,
-		CreatedAt:          time.UnixMilli(result.CreatedAt),
+		Key:                      result.Key,
+		DecisionId:               result.DecisionID,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                time.UnixMilli(result.CreatedAt),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       processInstanceKey,
 	}, nil
 }
 

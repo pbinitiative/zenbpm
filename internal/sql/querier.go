@@ -15,6 +15,7 @@ type Querier interface {
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
@@ -28,6 +29,8 @@ type Querier interface {
 	FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, arg FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams) (DecisionDefinition, error)
 	FindDecisionDefinitionsById(ctx context.Context, decisionID string) ([]DecisionDefinition, error)
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (DecisionInstance, error)
+	// workaround for sqlc which does not replace params in order by
+	FindDecisionInstancesPage(ctx context.Context, arg FindDecisionInstancesPageParams) ([]FindDecisionInstancesPageRow, error)
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
@@ -44,7 +47,7 @@ type Querier interface {
 	// workaround for sqlc does not replace params in order by
 	FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsRow, error)
 	FindLatestDecisionDefinitionById(ctx context.Context, decisionID string) (DecisionDefinition, error)
-	FindLatestDecisionDefinitionByIdAndDecisionDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDecisionDefinitionIdParams) (DecisionDefinition, error)
+	FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams) (DecisionDefinition, error)
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)
 	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionID string) (DmnResourceDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)

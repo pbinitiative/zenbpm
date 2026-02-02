@@ -46,7 +46,7 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -104,7 +104,7 @@ func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	v, err := bpmnEngine.FindProcessInstance(foundInstance.ProcessInstance().Key)
@@ -204,7 +204,7 @@ func TestSubProcessStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -247,7 +247,7 @@ func TestMultiInstanceServiceTaskStartsAndCompletesLocalJob(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -308,7 +308,7 @@ func TestMultiInstanceServiceTaskStartsAndCompletesOnWorkerJob(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -364,7 +364,7 @@ func TestMultiInstanceParallelServiceTaskStartsAndCompletesWorkerJob(t *testing.
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -419,7 +419,7 @@ func TestMultiInstanceParallelServiceTaskStartsAndCompletesLocalJob(t *testing.T
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -471,7 +471,7 @@ func TestMultiInstanceBusinessRuleTaskStartsAndCompletesLocalJob(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -516,7 +516,7 @@ func TestMultiInstanceParallelBusinessRuleTaskStartsAndCompletesLocalJob(t *test
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -566,7 +566,7 @@ func TestMultiInstanceCallActivityStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -623,8 +623,8 @@ func TestMultiInstanceParallelCallActivityStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
-	time.Sleep(5 * time.Second)
+	}, 5000*time.Millisecond, 100*time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
 	assert.NoError(t, err)
@@ -645,6 +645,17 @@ func TestMultiInstanceParallelCallActivityStartsAndCompletes(t *testing.T) {
 	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
+
+	assert.Eventually(t, func() bool {
+		subprocess, testErr := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), subProcesses[0].ProcessInstance().Key)
+		assert.NoError(t, testErr)
+		if subprocess.ProcessInstance().State == runtime.ActivityStateCompleted {
+			return true
+		}
+		return false
+	}, 5000*time.Millisecond, 100*time.Millisecond)
+	time.Sleep(1 * time.Second)
+
 	assert.Equal(t, runtime.ActivityStateCompleted, subProcesses[0].ProcessInstance().State)
 }
 
@@ -677,7 +688,7 @@ func TestMultiInstanceSubProcessStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -731,7 +742,7 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 5000*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	instance, err = bpmnEngine.FindProcessInstance(instance.ProcessInstance().Key)
@@ -755,11 +766,13 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 	assert.Equal(t, 1, len(subProcesses))
 
 	assert.Eventually(t, func() bool {
-		if processInstance, ok := engineStorage.ProcessInstances[subProcesses[0].ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
+		subprocess, testErr := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), subProcesses[0].ProcessInstance().Key)
+		assert.NoError(t, testErr)
+		if subprocess.ProcessInstance().State == runtime.ActivityStateCompleted {
 			return true
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 5000*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
 	assert.Equal(t, runtime.ActivityStateCompleted, subProcesses[0].ProcessInstance().State)

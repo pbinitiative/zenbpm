@@ -29,7 +29,7 @@ func (engine *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, p
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	for _, exp := range engine.exporters {
 		exp.EndProcessEvent(&event)
@@ -41,7 +41,7 @@ func (engine *Engine) exportProcessInstanceEvent(process runtime.ProcessDefiniti
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	for _, exp := range engine.exporters {
 		exp.NewProcessInstanceEvent(&event)
@@ -53,7 +53,7 @@ func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, proc
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	info := exporter.ElementInfo{
 		BpmnElementType: string(element.GetType()),
@@ -70,7 +70,7 @@ func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition,
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	info := exporter.ElementInfo{
 		BpmnElementType: string(bpmn20.ElementTypeSequenceFlow),

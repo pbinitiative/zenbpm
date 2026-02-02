@@ -26,7 +26,8 @@ type Storage interface {
 	TokenStorageReader
 	TokenStorageWriter
 	DecisionStorage
-	FlowElementHistoryWriter
+	FlowElementInstanceReader
+	FlowElementInstanceWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 
@@ -53,13 +54,15 @@ type Batch interface {
 	JobStorageWriter
 	MessageStorageWriter
 	TokenStorageWriter
-	FlowElementHistoryWriter
+	FlowElementInstanceWriter
 	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
+
 	// AddPreFlushAction registers a function f that will be called after a before flush. If error is returned flush is not performed
 	AddPreFlushAction(ctx context.Context, f func() error)
+
 	// AddPostFlushAction registers a function f that will be called after a successful flush has been performed
 	AddPostFlushAction(ctx context.Context, f func())
 }
@@ -185,15 +188,24 @@ type MessageStorageWriter interface {
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {
 	SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error
 }
 
-type FlowElementHistoryWriter interface {
-	SaveFlowElementHistory(ctx context.Context, item bpmnruntime.FlowElementHistoryItem) error
+type FlowElementInstanceReader interface {
+	GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int64, error)
+	GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error)
+	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error)
+}
+
+type FlowElementInstanceWriter interface {
+	SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
+	UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 }
 
 type IncidentStorageReader interface {

@@ -17,7 +17,7 @@ const (
 func increaseCounterHandler(job ActivatedJob) {
 	counter := job.Variable(varCounter)
 	counter = counter.(int64) + 1
-	job.SetVariable(varCounter, counter)
+	job.SetOutputVariable(varCounter, counter)
 	job.Complete()
 }
 
@@ -36,13 +36,22 @@ func TestAJobCanFailAndMovesProcessToFailedState(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.NoError(t, err)
+	assert.Error(t, err)
 
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	jobs, err := bpmnEngine.persistence.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+
+	assert.Equal(t, runtime.TokenStateFailed, tokens[0].State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 }
 
 // TestSimpleCountLoop requires correct Task-Output-Mapping in the BPMN file
@@ -57,8 +66,8 @@ func TestSimpleCountLoop(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars)
 	assert.NoError(t, err)
 
-	assert.Equal(t, int64(4), instance.GetVariable(varCounter))
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, int64(4), instance.ProcessInstance().GetVariable(varCounter))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }
 
 func TestSimpleCountLoopWithMessage(t *testing.T) {
@@ -75,8 +84,8 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 		attempts := attemptsVariable.(int64)
 		foobar := attempts >= 1
 		attempts++
-		job.SetVariable(varEngineValidationAttempts, attempts)
-		job.SetVariable(varHasReachedMaxAttempts, foobar)
+		job.SetOutputVariable(varEngineValidationAttempts, attempts)
+		job.SetOutputVariable(varHasReachedMaxAttempts, foobar)
 		job.Complete()
 	})
 	defer bpmnEngine.RemoveHandler(validate)
@@ -98,17 +107,17 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 		}
 	}
 
-	*instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
-	assert.True(t, instance.GetVariable(varHasReachedMaxAttempts).(bool))
-	assert.Equal(t, int64(2), instance.GetVariable(varEngineValidationAttempts))
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.True(t, instance.ProcessInstance().GetVariable(varHasReachedMaxAttempts).(bool))
+	assert.Equal(t, int64(2), instance.ProcessInstance().GetVariable(varEngineValidationAttempts))
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
 	// internal State expected
 	messages := make([]runtime.MessageSubscription, int64(0))
 	for _, mes := range engineStorage.MessageSubscriptions {
-		if mes.ProcessInstanceKey == instance.Key {
+		if mes.ProcessInstanceKey == instance.ProcessInstance().Key {
 			messages = append(messages, mes)
 		}
 
@@ -134,7 +143,7 @@ func TestActivatedJobData(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 }
 
 func TestTaskInputOutputMappingHappyPath(t *testing.T) {
@@ -155,7 +164,7 @@ func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 	// then
 	jobs := make([]runtime.Job, 0)
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key {
 			jobs = append(jobs, job)
 		}
 	}
@@ -164,16 +173,18 @@ func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 	}
 	assert.Equal(t, "service-task-1,user-task-2", cp.CallPath)
 	// id from input should not exist in instance scope
-	assert.Nil(t, pi.GetVariable("id"))
+	assert.Nil(t, pi.ProcessInstance().GetVariable("id"))
 	// output should exist in instance scope
-	assert.Equal(t, "beijing", pi.GetVariable("dstcity"))
-	assert.Equal(t, pi.GetVariable("order"), map[string]interface{}{
+	assert.Equal(t, "beijing", pi.ProcessInstance().GetVariable("dstcity"))
+	assert.Equal(t, pi.ProcessInstance().GetVariable("order"), map[string]interface{}{
 		"name": "order1",
 		"id":   "1234",
 	})
-	assert.Equal(t, int64(1234), pi.GetVariable("orderId"))
-	assert.Equal(t, "order1", pi.GetVariable("orderName"))
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
+	assert.Equal(t, int64(1234), pi.ProcessInstance().GetVariable("orderId"))
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().State)
+
+	//input is not supposed to propagated into process instance
+	assert.Nil(t, pi.ProcessInstance().GetVariable("orderName"))
 }
 
 func TestInstanceFailsOnInvalidInputMapping(t *testing.T) {
@@ -192,13 +203,13 @@ func TestInstanceFailsOnInvalidInputMapping(t *testing.T) {
 	// then
 	jobs := make([]runtime.Job, 0)
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key {
 			jobs = append(jobs, job)
 		}
 	}
 	assert.Equal(t, "", cp.CallPath)
 	assert.Len(t, jobs, 0)
-	assert.Equal(t, runtime.ActivityStateFailed, pi.GetState())
+	assert.Equal(t, runtime.ActivityStateFailed, pi.ProcessInstance().GetState())
 }
 
 func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
@@ -212,20 +223,28 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 
 	// when
 	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, err)
+	assert.Error(t, err)
 
 	// then
 	assert.Equal(t, "invalid-output", cp.CallPath)
-	assert.Nil(t, pi.GetVariable("order"))
+	assert.Nil(t, pi.ProcessInstance().GetVariable("order"))
 
 	jobs := make([]runtime.Job, 0)
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key {
 			jobs = append(jobs, job)
 		}
 	}
-	assert.Equal(t, runtime.ActivityStateFailed.String(), jobs[0].State.String())
-	assert.Equal(t, runtime.ActivityStateFailed.String(), pi.GetState().String())
+	tokens, err := engineStorage.GetAllTokensForProcessInstance(t.Context(), pi.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+	assert.Equal(t, 1, len(tokens))
+	assert.Equal(t, runtime.TokenStateFailed.String(), tokens[0].State.String())
+	assert.Equal(t, runtime.ActivityStateFailed.String(), pi.ProcessInstance().GetState().String())
+
+	incidents, err := engineStorage.FindIncidentsByExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(incidents))
 }
 
 func TestTaskTypeHandler(t *testing.T) {
@@ -245,7 +264,7 @@ func TestTaskTypeHandler(t *testing.T) {
 
 	// then
 	assert.Equal(t, "id", cp.CallPath)
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().GetState())
 }
 
 func TestTaskTypeHandlerIDHandlerHasPrecedence(t *testing.T) {
@@ -275,7 +294,7 @@ func TestTaskTypeHandlerIDHandlerHasPrecedence(t *testing.T) {
 
 	// then
 	assert.Equal(t, "ID", calledHandler)
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().GetState())
 }
 
 func TestJustOneHandlerCalled(t *testing.T) {
@@ -299,7 +318,7 @@ func TestJustOneHandlerCalled(t *testing.T) {
 
 	// then
 	assert.Equal(t, "id", cp.CallPath, "just one execution")
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().GetState())
 }
 
 func TestAssigneeAndCandidateGroupsAreAssignedToHandler(t *testing.T) {
@@ -321,22 +340,22 @@ func TestAssigneeAndCandidateGroupsAreAssignedToHandler(t *testing.T) {
 
 	// then
 	assert.Equal(t, "assignee-task,group-task", cp.CallPath)
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.GetState())
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().GetState())
 }
 
 func TestTaskDefaultAllOutputVariablesMapToProcessInstance(t *testing.T) {
 	// setup
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
-		job.SetVariable("aVariable", true)
+		job.SetOutputVariable("aVariable", true)
 		job.Complete()
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
-	assert.True(t, instance.GetVariable("aVariable").(bool))
+	assert.True(t, instance.ProcessInstance().GetVariable("aVariable").(bool))
 }
 
 func TestTaskNoOutputVariablesMappingOnFailure(t *testing.T) {
@@ -345,14 +364,14 @@ func TestTaskNoOutputVariablesMappingOnFailure(t *testing.T) {
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-no_output_mapping.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
-		job.SetVariable("aVariable", true)
+		job.SetOutputVariable("aVariable", true)
 		job.Fail("because I can")
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
-	assert.Nil(t, instance.GetVariable("aVariable"))
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
+	assert.Nil(t, instance.ProcessInstance().GetVariable("aVariable"))
 }
 
 func TestTaskJustDeclaredOutputVariablesMapToProcessInstance(t *testing.T) {
@@ -361,17 +380,17 @@ func TestTaskJustDeclaredOutputVariablesMapToProcessInstance(t *testing.T) {
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task-with_output_mapping.bpmn")
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(func(job ActivatedJob) {
-		job.SetVariable("valueFromHandler", true)
-		job.SetVariable("otherVariable", "value")
+		job.SetOutputVariable("valueFromHandler", true)
+		job.SetOutputVariable("otherVariable", "value")
 		job.Complete()
 	})
 	defer bpmnEngine.RemoveHandler(h)
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
-	assert.True(t, instance.GetVariable("valueFromHandler").(bool))
-	assert.Nil(t, instance.GetVariable("otherVariable"))
+	assert.True(t, instance.ProcessInstance().GetVariable("valueFromHandler").(bool))
+	assert.Nil(t, instance.ProcessInstance().GetVariable("otherVariable"))
 }
 
 func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
@@ -389,7 +408,7 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(ah)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
-	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 	assert.Equal(t, "id-a-1", cp.CallPath)
 
 	// when
@@ -397,11 +416,11 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(bh)
 	b2h := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(b2h)
-	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.Key)
+	tokens, err := bpmnEngine.persistence.GetActiveTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	bpmnEngine.runProcessInstance(t.Context(), instance, tokens)
+	bpmnEngine.RunProcessInstance(t.Context(), instance, tokens)
 	assert.NotNil(t, instance)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
 	// then
 	assert.Nil(t, err)
@@ -416,7 +435,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 
 	foundServiceJob := runtime.Job{}
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key && job.ElementId == "service-task-1" {
 			foundServiceJob = job
 			break
 		}
@@ -437,7 +456,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 
 	foundUserJob := runtime.Job{}
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key && job.ElementId == "user-task-2" {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key && job.ElementId == "user-task-2" {
 			foundUserJob = job
 			break
 		}
@@ -456,20 +475,20 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	assert.NotZero(t, userToken, "expected to find token from user-task-2 job")
 	assert.NotEqual(t, foundUserJob.ElementId, userToken.ElementId)
 
-	*pi, err = engineStorage.FindProcessInstanceByKey(t.Context(), pi.Key)
+	pi, err = engineStorage.FindProcessInstanceByKey(t.Context(), pi.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// id from input should not exist in instance scope
-	assert.Nil(t, pi.GetVariable("id"))
+	assert.Nil(t, pi.ProcessInstance().GetVariable("id"))
 	// output should exist in instance scope
-	assert.Equal(t, "beijing", pi.GetVariable("dstcity"))
-	assert.Equal(t, pi.GetVariable("order"), map[string]interface{}{
+	assert.Equal(t, "beijing", pi.ProcessInstance().GetVariable("dstcity"))
+	assert.Equal(t, pi.ProcessInstance().GetVariable("order"), map[string]interface{}{
 		"name": "order1",
 		"id":   "1234",
 	})
-	assert.Equal(t, int64(1234), pi.GetVariable("orderId"))
-	assert.Equal(t, "order1", pi.GetVariable("orderName"))
-	assert.Equal(t, runtime.ActivityStateCompleted, pi.State)
+	assert.Equal(t, int64(1234), pi.ProcessInstance().GetVariable("orderId"))
+	assert.Equal(t, "order1", pi.ProcessInstance().GetVariable("orderName"))
+	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().State)
 }
 
 func TestJobFailIsHandledCorrectly(t *testing.T) {
@@ -480,7 +499,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 
 	foundServiceJob := runtime.Job{}
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key && job.ElementId == "service-task-1" {
 			foundServiceJob = job
 			break
 		}
@@ -491,7 +510,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, job := range engineStorage.Jobs {
-		if job.ProcessInstanceKey == pi.Key && job.ElementId == "service-task-1" {
+		if job.ProcessInstanceKey == pi.ProcessInstance().Key && job.ElementId == "service-task-1" {
 			foundServiceJob = job
 			break
 		}
@@ -500,7 +519,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	assert.Equal(t, foundServiceJob.State, runtime.ActivityStateFailed)
 
 	var incidents []runtime.Incident
-	incidents, err = engineStorage.FindIncidentsByProcessInstanceKey(t.Context(), pi.Key)
+	incidents, err = engineStorage.FindIncidentsByProcessInstanceKey(t.Context(), pi.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Len(t, incidents, 1)
 	assert.Contains(t, incidents[0].Message, "testing fail job")
@@ -523,7 +542,7 @@ func TestBusinessRuleTaskExternalActivated(t *testing.T) {
 
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
-	assert.Equal(t, runtime.ActivityStateActive, instance.State)
+	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 }
 
 func TestBusinessRuleTaskExternalComplete(t *testing.T) {
@@ -537,5 +556,5 @@ func TestBusinessRuleTaskExternalComplete(t *testing.T) {
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.Equal(t, "BusinessRuleTask1", cp.CallPath)
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }

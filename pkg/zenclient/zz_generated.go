@@ -73,10 +73,9 @@ const (
 
 // Defines values for GetDmnResourceDefinitionsParamsSortBy.
 const (
+	GetDmnResourceDefinitionsParamsSortByDmnDefinitionName       GetDmnResourceDefinitionsParamsSortBy = "dmnDefinitionName"
 	GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId GetDmnResourceDefinitionsParamsSortBy = "dmnResourceDefinitionId"
 	GetDmnResourceDefinitionsParamsSortByKey                     GetDmnResourceDefinitionsParamsSortBy = "key"
-	GetDmnResourceDefinitionsParamsSortByName                    GetDmnResourceDefinitionsParamsSortBy = "name"
-	GetDmnResourceDefinitionsParamsSortByResourceName            GetDmnResourceDefinitionsParamsSortBy = "resourceName"
 	GetDmnResourceDefinitionsParamsSortByVersion                 GetDmnResourceDefinitionsParamsSortBy = "version"
 )
 
@@ -179,18 +178,10 @@ const (
 // DecisionInstanceDetail defines model for DecisionInstanceDetail.
 type DecisionInstanceDetail struct {
 	// DecisionOutput Final output of the requested decision
-	DecisionOutput *map[string]interface{} `json:"decisionOutput,omitempty"`
-
-	// DecisionRequirementsId ID of the DRD
-	DecisionRequirementsId *string `json:"decisionRequirementsId,omitempty"`
-
-	// DecisionRequirementsKey Key of the DRD
-	DecisionRequirementsKey      *int64              `json:"decisionRequirementsKey,omitempty"`
-	DmnResourceDefinitionId      string              `json:"dmnResourceDefinitionId"`
-	DmnResourceDefinitionKey     int64               `json:"dmnResourceDefinitionKey"`
-	DmnResourceDefinitionVersion *int                `json:"dmnResourceDefinitionVersion,omitempty"`
-	EvaluatedAt                  time.Time           `json:"evaluatedAt"`
-	EvaluatedDecisions           []EvaluatedDecision `json:"evaluatedDecisions"`
+	DecisionOutput           *map[string]interface{} `json:"decisionOutput,omitempty"`
+	DmnResourceDefinitionKey int64                   `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time               `json:"evaluatedAt"`
+	EvaluatedDecisions       []EvaluatedDecision     `json:"evaluatedDecisions"`
 
 	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
 	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
@@ -216,20 +207,13 @@ type DecisionInstancePartitionPage struct {
 
 // DecisionInstanceSummary defines model for DecisionInstanceSummary.
 type DecisionInstanceSummary struct {
-	DmnResourceDefinitionId  string    `json:"dmnResourceDefinitionId"`
 	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
 	EvaluatedAt              time.Time `json:"evaluatedAt"`
 
 	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
 	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
-
-	// InputCount Number of input variables
-	InputCount *int  `json:"inputCount,omitempty"`
-	Key        int64 `json:"key"`
-
-	// OutputCount Number of output variables
-	OutputCount        *int   `json:"outputCount,omitempty"`
-	ProcessInstanceKey *int64 `json:"processInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
 }
 
 // DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
@@ -300,8 +284,9 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     interface{}               `json:"decisionOutput"`
-	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
+	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
+	DecisionOutput      interface{}               `json:"decisionOutput"`
+	EvaluatedDecisions  []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
 
 // EvaluatedDecision defines model for EvaluatedDecision.
@@ -339,12 +324,12 @@ type EvaluatedDecisionOutput struct {
 
 // EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
 type EvaluatedDecisionResult struct {
-	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
 	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
 	DecisionId                string                   `json:"decisionId"`
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
+	DmnResourceDefinitionId   string                   `json:"dmnResourceDefinitionId"`
 	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
@@ -719,9 +704,9 @@ type SortOrder string
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
 
-	// DecisionDefinitionId Can be used in combination with bindingType latest
-	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
-	Variables            *map[string]interface{} `json:"variables,omitempty"`
+	// DmnResourceDefinitionId Can be used in combination with bindingType latest
+	DmnResourceDefinitionId *string                 `json:"dmnResourceDefinitionId,omitempty"`
+	Variables               *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
 	VersionTag *string `json:"versionTag,omitempty"`
@@ -786,8 +771,8 @@ type GetDmnResourceDefinitionsParams struct {
 	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
 	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
 
-	// Name Filter by name (partial match)
-	Name *string `form:"name,omitempty" json:"name,omitempty"`
+	// DmnDefinitionName Filter by name (partial match)
+	DmnDefinitionName *string `form:"dmnDefinitionName,omitempty" json:"dmnDefinitionName,omitempty"`
 }
 
 // GetDmnResourceDefinitionsParamsSortBy defines parameters for GetDmnResourceDefinitions.
@@ -2147,9 +2132,9 @@ func NewGetDmnResourceDefinitionsRequest(server string, params *GetDmnResourceDe
 
 		}
 
-		if params.Name != nil {
+		if params.DmnDefinitionName != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "name", runtime.ParamLocationQuery, *params.Name); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnDefinitionName", runtime.ParamLocationQuery, *params.DmnDefinitionName); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -3852,7 +3837,7 @@ func NewUpdateProcessInstanceVariablesRequestWithBody(server string, processInst
 		return nil, err
 	}
 
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -4153,6 +4138,7 @@ type GetDecisionInstancesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *DecisionInstancePartitionPage
+	JSON400      *Error
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5280,6 +5266,13 @@ func ParseGetDecisionInstancesResponse(rsp *http.Response) (*GetDecisionInstance
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

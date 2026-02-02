@@ -235,7 +235,7 @@ paths:
                     - latest
                     - deployment #TODO: unsupported
                     - versionTag
-                decisionDefinitionId:
+                dmnResourceDefinitionId:
                   description: Can be used in combination with bindingType latest
                   type: string
                 versionTag:
@@ -262,7 +262,7 @@ paths:
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
                     dmnResourceDefinitionKey: 4503599627370495
-                    decisionDefinitionId: "loan-approval"
+                    dmnResourceDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
                         ruleIndex: 0
@@ -347,12 +347,7 @@ paths:
             type: string
             enum: [evaluatedAt, key]
           description: Sort field
-        - name: sortOrder
-          in: query
-          schema:
-            type: string
-            enum: [asc, desc]
-          description: Sort direction
+        - $ref: "#/components/parameters/sortOrder"
       responses:
         200:
           description: List of decision instances
@@ -388,6 +383,12 @@ paths:
                 size: 10
                 count: 2
                 totalCount: 254
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -425,13 +426,9 @@ paths:
               example:
                 key: 4503599627370600
                 dmnResourceDefinitionKey: 4503599627370495
-                dmnResourceDefinitionId: "loan-approval"
-                dmnResourceDefinitionVersion: 1
                 processInstanceKey: 4503599627370501
                 flowElementInstanceKey: 4503599627370550
                 evaluatedAt: "2025-08-22T14:30:25Z"
-                decisionRequirementsKey: 4503599627370490
-                decisionRequirementsId: "loan-drd"
                 evaluatedDecisions:
                   - decisionId: "loan-approval"
                     decisionName: "Loan Approval"
@@ -2145,6 +2142,7 @@ components:
         - key
         - version
         - dmnResourceDefinitionId
+        - dmnDefinitionName 
       properties:
         key:
           type: integer
@@ -2172,9 +2170,13 @@ components:
     EvaluatedDRDResult:
       type: object
       required:
+        - decisionInstanceKey 
         - evaluatedDecisions
         - decisionOutput
       properties:
+        decisionInstanceKey:
+          type: integer
+          format: int64
         evaluatedDecisions:
           type: array
           items:
@@ -2188,7 +2190,7 @@ components:
         - decisionType
         - decisionDefinitionVersion
         - dmnResourceDefinitionKey
-        - decisionDefinitionId
+        - dmnResourceDefinitionId
         - matchedRules
         - decisionOutput
         - evaluatedInputs
@@ -2204,7 +2206,7 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
         matchedRules:
           type: array
@@ -2636,7 +2638,6 @@ components:
       required:
         - key
         - dmnResourceDefinitionKey
-        - dmnResourceDefinitionId
         - evaluatedAt
       properties:
         key:
@@ -2645,8 +2646,6 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        dmnResourceDefinitionId:
-          type: string
         processInstanceKey:
           type: integer
           format: int64
@@ -2657,18 +2656,11 @@ components:
         evaluatedAt:
           type: string
           format: date-time
-        inputCount:
-          type: integer
-          description: Number of input variables
-        outputCount:
-          type: integer
-          description: Number of output variables
     DecisionInstanceDetail:
       type: object
       required:
         - key
         - dmnResourceDefinitionKey
-        - dmnResourceDefinitionId
         - evaluatedAt
         - evaluatedDecisions
       properties:
@@ -2678,10 +2670,6 @@ components:
         dmnResourceDefinitionKey:
           type: integer
           format: int64
-        dmnResourceDefinitionId:
-          type: string
-        dmnResourceDefinitionVersion:
-          type: integer
         processInstanceKey:
           type: integer
           format: int64
@@ -2692,13 +2680,6 @@ components:
         evaluatedAt:
           type: string
           format: date-time
-        decisionRequirementsKey:
-          type: integer
-          format: int64
-          description: Key of the DRD
-        decisionRequirementsId:
-          type: string
-          description: ID of the DRD
         evaluatedDecisions:
           type: array
           items:

@@ -678,8 +678,8 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		},
 	)
 
-	ctx = appcontext.WithProcessInstanceKey(ctx, instance.Key)
-	ctx = appcontext.WithElementInstanceKey(ctx, token.ElementInstanceKey)
+	ctx = appcontext.WithProcessInstanceKey(ctx, instance.ProcessInstance().Key)
+	ctx = appcontext.WithElementInstanceKey(ctx, currentToken.ElementInstanceKey)
 
 	result, err := engine.dmnEngine.FindAndEvaluateDRD(
 		ctx,

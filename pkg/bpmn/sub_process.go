@@ -374,6 +374,12 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 	}
 
+	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance, &updatedParentToken)
+	if err != nil {
+		batch.Clear(ctx)
+		return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
 	//handle the finalization
 	tokens, err := engine.handleElementTransition(ctx, batch, parentInstance, parentElement, updatedParentToken)
 	if err != nil {
@@ -443,6 +449,12 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	if err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
+	}
+
+	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance, &updatedParentToken)
+	if err != nil {
+		batch.Clear(ctx)
+		return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	//handle the finalization
@@ -527,6 +539,12 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		outputCollection = append(outputCollection, evaluatedOutput)
 	}
 	parentInstance.ProcessInstance().VariableHolder.SetLocalVariable(parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName, outputCollection)
+
+	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance, &updatedParentToken)
+	if err != nil {
+		batch.Clear(ctx)
+		return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	//handle the finalization
 	tokens, err := engine.handleElementTransition(ctx, batch, parentInstance, parentElement, updatedParentToken)

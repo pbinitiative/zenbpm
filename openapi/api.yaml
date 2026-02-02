@@ -1628,7 +1628,6 @@ components:
       required:
         - key
         - dmnResourceDefinitionKey
-        - dmnResourceDefinitionId
         - evaluatedAt
       properties:
         key:

@@ -49,6 +49,8 @@ const (
 	ZenService_ModifyProcessInstance_FullMethodName          = "/cluster.ZenService/ModifyProcessInstance"
 	ZenService_DeleteProcessInstanceVariable_FullMethodName  = "/cluster.ZenService/DeleteProcessInstanceVariable"
 	ZenService_GetProcessInstances_FullMethodName            = "/cluster.ZenService/GetProcessInstances"
+	ZenService_GetDecisionInstance_FullMethodName            = "/cluster.ZenService/GetDecisionInstance"
+	ZenService_GetDecisionInstances_FullMethodName           = "/cluster.ZenService/GetDecisionInstances"
 	ZenService_GetJobs_FullMethodName                        = "/cluster.ZenService/GetJobs"
 	ZenService_GetJob_FullMethodName                         = "/cluster.ZenService/GetJob"
 	ZenService_GetProcessInstance_FullMethodName             = "/cluster.ZenService/GetProcessInstance"
@@ -110,6 +112,8 @@ type ZenServiceClient interface {
 	ModifyProcessInstance(ctx context.Context, in *ModifyProcessInstanceRequest, opts ...grpc.CallOption) (*ModifyProcessInstanceResponse, error)
 	DeleteProcessInstanceVariable(ctx context.Context, in *DeleteProcessInstanceVariableRequest, opts ...grpc.CallOption) (*DeleteProcessInstanceVariableResponse, error)
 	GetProcessInstances(ctx context.Context, in *GetProcessInstancesRequest, opts ...grpc.CallOption) (*GetProcessInstancesResponse, error)
+	GetDecisionInstance(ctx context.Context, in *GetDecisionInstanceRequest, opts ...grpc.CallOption) (*GetDecisionInstanceResponse, error)
+	GetDecisionInstances(ctx context.Context, in *GetDecisionInstancesRequest, opts ...grpc.CallOption) (*GetDecisionInstancesResponse, error)
 	GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error)
 	GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*GetJobResponse, error)
 	GetProcessInstance(ctx context.Context, in *GetProcessInstanceRequest, opts ...grpc.CallOption) (*GetProcessInstanceResponse, error)
@@ -432,6 +436,26 @@ func (c *zenServiceClient) GetProcessInstances(ctx context.Context, in *GetProce
 	return out, nil
 }
 
+func (c *zenServiceClient) GetDecisionInstance(ctx context.Context, in *GetDecisionInstanceRequest, opts ...grpc.CallOption) (*GetDecisionInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDecisionInstanceResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetDecisionInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) GetDecisionInstances(ctx context.Context, in *GetDecisionInstancesRequest, opts ...grpc.CallOption) (*GetDecisionInstancesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDecisionInstancesResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetDecisionInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) GetJobs(ctx context.Context, in *GetJobsRequest, opts ...grpc.CallOption) (*GetJobsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetJobsResponse)
@@ -593,6 +617,8 @@ type ZenServiceServer interface {
 	ModifyProcessInstance(context.Context, *ModifyProcessInstanceRequest) (*ModifyProcessInstanceResponse, error)
 	DeleteProcessInstanceVariable(context.Context, *DeleteProcessInstanceVariableRequest) (*DeleteProcessInstanceVariableResponse, error)
 	GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error)
+	GetDecisionInstance(context.Context, *GetDecisionInstanceRequest) (*GetDecisionInstanceResponse, error)
+	GetDecisionInstances(context.Context, *GetDecisionInstancesRequest) (*GetDecisionInstancesResponse, error)
 	GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error)
 	GetJob(context.Context, *GetJobRequest) (*GetJobResponse, error)
 	GetProcessInstance(context.Context, *GetProcessInstanceRequest) (*GetProcessInstanceResponse, error)
@@ -702,6 +728,12 @@ func (UnimplementedZenServiceServer) DeleteProcessInstanceVariable(context.Conte
 }
 func (UnimplementedZenServiceServer) GetProcessInstances(context.Context, *GetProcessInstancesRequest) (*GetProcessInstancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessInstances not implemented")
+}
+func (UnimplementedZenServiceServer) GetDecisionInstance(context.Context, *GetDecisionInstanceRequest) (*GetDecisionInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDecisionInstance not implemented")
+}
+func (UnimplementedZenServiceServer) GetDecisionInstances(context.Context, *GetDecisionInstancesRequest) (*GetDecisionInstancesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDecisionInstances not implemented")
 }
 func (UnimplementedZenServiceServer) GetJobs(context.Context, *GetJobsRequest) (*GetJobsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetJobs not implemented")
@@ -1272,6 +1304,42 @@ func _ZenService_GetProcessInstances_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_GetDecisionInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDecisionInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetDecisionInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetDecisionInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetDecisionInstance(ctx, req.(*GetDecisionInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_GetDecisionInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDecisionInstancesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetDecisionInstances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetDecisionInstances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetDecisionInstances(ctx, req.(*GetDecisionInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_GetJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetJobsRequest)
 	if err := dec(in); err != nil {
@@ -1577,6 +1645,14 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessInstances",
 			Handler:    _ZenService_GetProcessInstances_Handler,
+		},
+		{
+			MethodName: "GetDecisionInstance",
+			Handler:    _ZenService_GetDecisionInstance_Handler,
+		},
+		{
+			MethodName: "GetDecisionInstances",
+			Handler:    _ZenService_GetDecisionInstances_Handler,
 		},
 		{
 			MethodName: "GetJobs",

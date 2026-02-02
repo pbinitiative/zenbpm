@@ -92,6 +92,7 @@ func getDecisionDefinition(r int64, dmnResourceDefinitionKey int64) dmnruntime.D
 	return dmnruntime.DecisionDefinition{
 		Version:                  1,
 		Id:                       fmt.Sprintf("id-%d", r),
+		Key:                      r,
 		VersionTag:               "123",
 		DmnResourceDefinitionId:  fmt.Sprintf("id-%d", dmnResourceDefinitionKey),
 		DmnResourceDefinitionKey: dmnResourceDefinitionKey,
@@ -735,18 +736,18 @@ func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t
 func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
-		decisionDefinitionKey := s.GenerateId()
-		def := getDmnResourceDefinition(decisionDefinitionKey)
+		dmnResourceDefinitionKey := s.GenerateId()
+		def := getDmnResourceDefinition(dmnResourceDefinitionKey)
 		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r := s.GenerateId()
-		dec := getDecisionDefinition(r, decisionDefinitionKey)
+		dec := getDecisionDefinition(r, dmnResourceDefinitionKey)
 		err = s.SaveDecisionDefinition(t.Context(), dec)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		dec2 := getDecisionDefinition(r2, decisionDefinitionKey)
+		dec2 := getDecisionDefinition(r2, dmnResourceDefinitionKey)
 		err = s.SaveDecisionDefinition(t.Context(), dec2)
 		assert.NoError(t, err)
 
@@ -754,7 +755,7 @@ func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage,
 		decisionDefinitions, err := s.GetDecisionDefinitionsById(t.Context(), dec.Id)
 		assert.NoError(t, err)
 		assert.Len(t, decisionDefinitions, 1)
-		assert.Equal(t, decisionDefinitionKey, decisionDefinitions[0].DmnResourceDefinitionKey)
+		assert.Equal(t, dmnResourceDefinitionKey, decisionDefinitions[0].DmnResourceDefinitionKey)
 		assert.Equal(t, dec.Id, decisionDefinitions[0].Id)
 	}
 }

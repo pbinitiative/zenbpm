@@ -591,7 +591,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 			DecisionType:                 &evaluatedDecision.DecisionType,
 			DmnResourceDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
 			DmnResourceDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
-			DmnResourceDefinitionId:      &evaluatedDecision.DecisionDefinitionId,
+			DmnResourceDefinitionId:      &evaluatedDecision.DmnResourceDefinitionId,
 			MatchedRules:                 matchedRules,
 			DecisionOutput:               evaluatedDecisionOutput,
 			EvaluatedInputs:              evaluatedInputs,
@@ -599,9 +599,10 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 	}
 
 	return &proto.EvaluatedDRDResult{
-		Error:              nil,
-		EvaluatedDecisions: evaluatedDecisions,
-		DecisionOutput:     decisionOutput,
+		Error:               nil,
+		EvaluatedDecisions:  evaluatedDecisions,
+		DecisionOutput:      decisionOutput,
+		DecisionInstanceKey: &result.DecisionInstanceKey,
 	}, nil
 }
 
@@ -741,6 +742,116 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 			BusinessKey:   instance.BusinessKey,
 		},
 		ExecutionTokens: respTokens,
+	}, nil
+}
+
+func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecisionInstanceRequest) (*proto.GetDecisionInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetDecisionInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d was not found", partitionId)
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	decisionInstance, err := queries.FindDecisionInstanceByKey(ctx, req.GetDecisionInstanceKey())
+	if err != nil {
+		err := fmt.Errorf("failed to find decision decisionInstance %d", req.GetDecisionInstanceKey())
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	var processInstanceKey *int64
+	if decisionInstance.ProcessInstanceKey.Valid {
+		processInstanceKey = &decisionInstance.ProcessInstanceKey.Int64
+	}
+	var flowElementInstanceKey *int64
+	if decisionInstance.FlowElementInstanceKey.Valid {
+		flowElementInstanceKey = &decisionInstance.FlowElementInstanceKey.Int64
+	}
+	return &proto.GetDecisionInstanceResponse{
+		DecisionInstance: &proto.DecisionInstance{
+			Key:                      &decisionInstance.Key,
+			DmnResourceDefinitionKey: &decisionInstance.DmnResourceDefinitionKey,
+			ProcessInstanceKey:       processInstanceKey,
+			FlowElementInstanceKey:   flowElementInstanceKey,
+			EvaluatedAt:              &decisionInstance.CreatedAt,
+			EvaluatedDecisions:       &decisionInstance.EvaluatedDecisions,
+			DecisionOutput:           &decisionInstance.OutputVariables,
+		},
+	}, nil
+}
+
+func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisionInstancesRequest) (*proto.GetDecisionInstancesResponse, error) {
+	resp := make([]*proto.PartitionedDecisionInstances, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetDecisionInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+		instances, err := queries.FindDecisionInstancesPage(ctx, sql.FindDecisionInstancesPageParams{
+			DmnResourceDefinitionKey: sql.ToNullInt64(req.DmnResourceDefinitionKey),
+			DmnResourceDefinitionID:  sql.ToNullString(req.DmnResourceDefinitionId),
+			ProcessInstanceKey:       sql.ToNullInt64(req.ProcessInstanceKey),
+			EvaluatedFrom:            sql.ToNullInt64(req.EvaluatedFrom),
+			EvaluatedTo:              sql.ToNullInt64(req.EvaluatedTo),
+			SortByOrder:              sql.ToNullString(req.SortByOrder),
+			Offset:                   int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:                     int64(req.GetSize()),
+		})
+		if err != nil {
+			err := fmt.Errorf("failed to find decision instances for request %v", req)
+			return &proto.GetDecisionInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+		totalCount := int32(0)
+		if len(instances) > 0 {
+			totalCount = int32(instances[0].TotalCount)
+		}
+		decisionInstances := make([]*proto.DecisionInstance, len(instances))
+		for i, di := range instances {
+			var processInstanceKey *int64
+			if di.ProcessInstanceKey.Valid {
+				processInstanceKey = &di.ProcessInstanceKey.Int64
+			}
+			var flowElementInstanceKey *int64
+			if di.FlowElementInstanceKey.Valid {
+				flowElementInstanceKey = &di.FlowElementInstanceKey.Int64
+			}
+			decisionInstances[i] = &proto.DecisionInstance{
+				Key:                      &di.Key,
+				DmnResourceDefinitionKey: &di.DmnResourceDefinitionKey,
+				ProcessInstanceKey:       processInstanceKey,
+				EvaluatedAt:              &di.CreatedAt,
+				FlowElementInstanceKey:   flowElementInstanceKey,
+			}
+		}
+		resp = append(resp, &proto.PartitionedDecisionInstances{
+			PartitionId:       &partitionId,
+			DecisionInstances: decisionInstances,
+			TotalCount:        ptr.To(totalCount),
+		})
+	}
+	return &proto.GetDecisionInstancesResponse{
+		Partitions: resp,
 	}, nil
 }
 

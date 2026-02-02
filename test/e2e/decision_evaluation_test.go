@@ -10,23 +10,23 @@ import (
 
 func TestRestApiEvaluateDecision(t *testing.T) {
 	var result *zenclient.EvaluatedDRDResult
-	var definition zenclient.DmnResourceDefinitionSimple
+	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
 	err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if *def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
-			definition = def
+		if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
+			dmnResourceDefinition = def
 			break
 		}
 	}
 
-	t.Run("evaluate decision BindingType Latest with DecisionDefinitionId", func(t *testing.T) {
+	t.Run("evaluate decision BindingType Latest with DmnResourceDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
-			definition.DmnResourceDefinitionId,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{
@@ -61,7 +61,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeVersionTag,
-			definition.DmnResourceDefinitionId,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			&versionTag,
 			map[string]any{
@@ -78,7 +78,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
 			zenclient.EvaluateDecisionJSONBodyBindingTypeDeployment,
-			definition.DmnResourceDefinitionId,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{
@@ -90,12 +90,12 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	})
 }
 
-func evaluateDecision(t testing.TB, bindingType zenclient.EvaluateDecisionJSONBodyBindingType, decisionDefinitionId *string, decisionId string, versionTag *string, variables map[string]any) (*zenclient.EvaluatedDRDResult, error) {
+func evaluateDecision(t testing.TB, bindingType zenclient.EvaluateDecisionJSONBodyBindingType, dmnResourceDefinitionId *string, decisionId string, versionTag *string, variables map[string]any) (*zenclient.EvaluatedDRDResult, error) {
 	req := zenclient.EvaluateDecisionJSONRequestBody{
-		BindingType:          bindingType,
-		DecisionDefinitionId: decisionDefinitionId,
-		Variables:            &variables,
-		VersionTag:           versionTag,
+		BindingType:             bindingType,
+		DmnResourceDefinitionId: dmnResourceDefinitionId,
+		Variables:               &variables,
+		VersionTag:              versionTag,
 	}
 	resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), decisionId, req)
 	if err != nil {

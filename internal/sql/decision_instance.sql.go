@@ -7,10 +7,32 @@ package sql
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 )
 
+const deleteProcessInstancesDecisionInstances = `-- name: DeleteProcessInstancesDecisionInstances :exec
+DELETE FROM decision_instance
+WHERE process_instance_key IN (/*SLICE:keys*/?)
+`
+
+func (q *Queries) DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error {
+	query := deleteProcessInstancesDecisionInstances
+	var queryParams []interface{}
+	if len(keys) > 0 {
+		for _, v := range keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const findDecisionInstanceByKey = `-- name: FindDecisionInstanceByKey :one
-SELECT "key", decision_id, created_at, output_variables, evaluated_decisions
+SELECT "key", decision_id, created_at, output_variables, evaluated_decisions, dmn_resource_definition_key, decision_definition_key, process_instance_key, flow_element_instance_key
 FROM decision_instance
 WHERE key = ?1
 `
@@ -24,21 +46,148 @@ func (q *Queries) FindDecisionInstanceByKey(ctx context.Context, key int64) (Dec
 		&i.CreatedAt,
 		&i.OutputVariables,
 		&i.EvaluatedDecisions,
+		&i.DmnResourceDefinitionKey,
+		&i.DecisionDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.FlowElementInstanceKey,
 	)
 	return i, err
 }
 
+const findDecisionInstancesPage = `-- name: FindDecisionInstancesPage :many
+SELECT
+    di."key", di.decision_id, di.created_at, di.dmn_resource_definition_key, di.decision_definition_key, di.process_instance_key, di.flow_element_instance_key,
+    COUNT(*) OVER () AS total_count
+FROM
+    decision_instance AS di
+WHERE
+  -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+  CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+  AND
+  CASE WHEN ?2 <> 0 THEN
+      di.dmn_resource_definition_key = ?2
+  ELSE
+      1
+  END
+  AND CASE WHEN ?3 <> 0 THEN
+      di.dmn_resource_definition_key IN (
+          SELECT
+              dmn_resource_definition.key
+          FROM
+              dmn_resource_definition
+          WHERE
+              dmn_resource_definition.dmn_resource_definition_id = ?3)
+  ELSE
+      1
+  END
+  AND
+  CASE WHEN ?4 IS NOT NULL THEN
+      di.process_instance_key = ?4
+  ELSE
+      1
+  END
+  AND
+  CASE WHEN ?5 IS NOT NULL THEN
+      di.created_at >= ?5
+  ELSE
+      1
+  END
+  AND
+  CASE WHEN ?6 IS NOT NULL THEN
+      di.created_at <= ?6
+  ELSE
+      1
+  END
+ORDER BY
+CASE CAST(?1 AS TEXT) WHEN 'evaluatedAt_asc'  THEN di.created_at END ASC,
+CASE CAST(?1 AS TEXT) WHEN 'evaluatedAt_desc' THEN di.created_at END DESC,
+CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN di."key" END ASC,
+CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN di."key" END DESC,
+di.created_at DESC
+
+LIMIT ?8 OFFSET ?7
+`
+
+type FindDecisionInstancesPageParams struct {
+	SortByOrder              interface{} `json:"sort_by_order"`
+	DmnResourceDefinitionKey interface{} `json:"dmn_resource_definition_key"`
+	DmnResourceDefinitionID  interface{} `json:"dmn_resource_definition_id"`
+	ProcessInstanceKey       interface{} `json:"process_instance_key"`
+	EvaluatedFrom            interface{} `json:"evaluated_from"`
+	EvaluatedTo              interface{} `json:"evaluated_to"`
+	Offset                   int64       `json:"offset"`
+	Size                     int64       `json:"size"`
+}
+
+type FindDecisionInstancesPageRow struct {
+	Key                      int64         `json:"key"`
+	DecisionID               string        `json:"decision_id"`
+	CreatedAt                int64         `json:"created_at"`
+	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
+	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
+	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
+	FlowElementInstanceKey   sql.NullInt64 `json:"flow_element_instance_key"`
+	TotalCount               int64         `json:"total_count"`
+}
+
+// workaround for sqlc which does not replace params in order by
+func (q *Queries) FindDecisionInstancesPage(ctx context.Context, arg FindDecisionInstancesPageParams) ([]FindDecisionInstancesPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, findDecisionInstancesPage,
+		arg.SortByOrder,
+		arg.DmnResourceDefinitionKey,
+		arg.DmnResourceDefinitionID,
+		arg.ProcessInstanceKey,
+		arg.EvaluatedFrom,
+		arg.EvaluatedTo,
+		arg.Offset,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindDecisionInstancesPageRow{}
+	for rows.Next() {
+		var i FindDecisionInstancesPageRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.DecisionID,
+			&i.CreatedAt,
+			&i.DmnResourceDefinitionKey,
+			&i.DecisionDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.FlowElementInstanceKey,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveDecisionInstance = `-- name: SaveDecisionInstance :exec
-INSERT INTO decision_instance ( key,  decision_id, created_at, output_variables, evaluated_decisions)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO decision_instance (key, decision_id, created_at, output_variables, evaluated_decisions, dmn_resource_definition_key,
+                               decision_definition_key, process_instance_key, flow_element_instance_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type SaveDecisionInstanceParams struct {
-	Key                int64  `json:"key"`
-	DecisionID         string `json:"decision_id"`
-	CreatedAt          int64  `json:"created_at"`
-	OutputVariables    string `json:"output_variables"`
-	EvaluatedDecisions string `json:"evaluated_decisions"`
+	Key                      int64         `json:"key"`
+	DecisionID               string        `json:"decision_id"`
+	CreatedAt                int64         `json:"created_at"`
+	OutputVariables          string        `json:"output_variables"`
+	EvaluatedDecisions       string        `json:"evaluated_decisions"`
+	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
+	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
+	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
+	FlowElementInstanceKey   sql.NullInt64 `json:"flow_element_instance_key"`
 }
 
 func (q *Queries) SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error {
@@ -48,6 +197,10 @@ func (q *Queries) SaveDecisionInstance(ctx context.Context, arg SaveDecisionInst
 		arg.CreatedAt,
 		arg.OutputVariables,
 		arg.EvaluatedDecisions,
+		arg.DmnResourceDefinitionKey,
+		arg.DecisionDefinitionKey,
+		arg.ProcessInstanceKey,
+		arg.FlowElementInstanceKey,
 	)
 	return err
 }

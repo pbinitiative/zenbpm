@@ -55,6 +55,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	case *bpmn20.TEventBasedGateway:
 		t, err := engine.publishEventOnEventGateway(ctx, &batch, nodeT, timer, instance, nil)
 		if err != nil {
+			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer event gateway transition %+v: %w", timer, err)
 		}
 		tokens = t
@@ -68,15 +69,17 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 		//TODO: BUG ? Tokens are never saved
 		tokens, err = engine.handleElementTransition(ctx, &batch, instance, nodeT, timer.Token)
 		if err != nil {
+			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity:
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
 		tokens, err = engine.handleBoundaryTimer(ctx, &batch, timer, instance, timer.Token)
 		if err != nil {
+			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to handle timer transition %+v: %w", timer, err)
 		}
 		err = batch.Flush(ctx)

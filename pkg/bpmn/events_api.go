@@ -41,6 +41,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	case *bpmn20.TEventBasedGateway:
 		tokens, err := engine.publishEventOnEventGateway(ctx, &batch, nodeT, message, instance, variables)
 		if err != nil {
+			batch.Clear(ctx)
 			return newEngineErrorf("failed to publish message %s to event gateway in instance %d. Unexpected node type %T", message.Name, message.ProcessInstanceKey, nodeT)
 		}
 		err = batch.Flush(ctx)
@@ -56,6 +57,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			batch.WriteMessageIncident(ctx, message, instance, err)
 			err := batch.Flush(ctx)
 			if err != nil {
+				batch.Clear(ctx)
 				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
 			}
 			return errors.Join(newEngineErrorf("failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
@@ -65,7 +67,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity:
+	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
 		tokens, err := engine.handleBoundaryMessage(ctx, &batch, message, instance, variables)
 		if err != nil {
 			message.State = runtime.ActivityStateFailed
@@ -73,6 +75,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			batch.WriteMessageIncident(ctx, message, instance, err)
 			err := batch.Flush(ctx)
 			if err != nil {
+				batch.Clear(ctx)
 				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
 			}
 			return errors.Join(newEngineErrorf("failed to publish message %s to task %d. ", message.Name, message.ProcessInstanceKey), err)

@@ -339,7 +339,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddLockedInstance(ctx, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddLockedInstance(ctx, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -482,7 +482,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddLockedInstance(ctx, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -557,7 +557,6 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 
 func (engine *Engine) handleParentProcessContinuation(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, flowNode bpmn20.FlowNode) error {
 	switch inst := instance.(type) {
-	//batch.TakeOverParentInstance()
 	case *runtime.SubProcessInstance:
 		err := engine.handleParentProcessContinuationForSubProcess(ctx, batch, inst, flowNode)
 		if err != nil {

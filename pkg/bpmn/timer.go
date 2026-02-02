@@ -97,18 +97,20 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 		if err != nil {
 			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
 		}
-		engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+		err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+		if err != nil {
+			return nil, err
+		}
 		// cancel all called processes
 		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}
 		for _, calledProcess := range calledProcesses {
-			err := batch.AddLockedInstance(ctx, calledProcess)
+			err := engine.cancelInstance(ctx, calledProcess, batch)
 			if err != nil {
 				return nil, err
 			}
-			engine.cancelInstance(ctx, calledProcess, batch)
 		}
 	} else {
 		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)

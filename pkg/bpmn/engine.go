@@ -120,8 +120,12 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 	return engine.dmnEngine
 }
 
-// TODO: refactor this into a method that will lock its instance
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
+	err := batch.AddLockedInstance(ctx, instance)
+	if err != nil {
+		return err
+	}
+
 	// Cancel all message subscriptions
 	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
 	if err != nil {
@@ -149,7 +153,7 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 		}
 	}
 
-	// Cancell all jobs
+	// Cancel all jobs
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.ProcessInstance().Key, err)
@@ -192,10 +196,6 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 		}
 
 		for _, calledProcess := range calledProcesses {
-			err := batch.AddLockedInstance(ctx, calledProcess)
-			if err != nil {
-				return err
-			}
 			err = engine.cancelInstance(ctx, calledProcess, batch)
 			if err != nil {
 				return fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
@@ -293,10 +293,6 @@ func (engine *Engine) terminateExecutionTokens(
 					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
 				for _, calledProcess := range calledProcesses {
-					err = batch.AddLockedInstance(ctx, calledProcess)
-					if err != nil {
-						return nil, err
-					}
 					err = engine.cancelInstance(ctx, calledProcess, batch)
 					if err != nil {
 						return nil, fmt.Errorf("failed to cancel called process for token %d: %w", activeToken.Key, err)

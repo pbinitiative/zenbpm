@@ -120,6 +120,11 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 	job := &j
 
+	if job.State == runtime.ActivityStateCompleted {
+		engine.logger.Error("job %d is already completed", job.Key)
+		return nil
+	}
+
 	ctx, completeJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
 		attribute.Int64("key", job.Key),
 	))
@@ -146,18 +151,15 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
 	}
 
-	if job.State == runtime.ActivityStateCompleted {
-		engine.logger.Error("job %d is already completed", job.Key)
-		return nil
-	}
-
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
+		batch.Clear(ctx)
 		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
 	}
 	outputVariables, err := variableHolder.PropagateOutputVariablesToParent(task.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
+		batch.Clear(ctx)
 		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}
 	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
@@ -167,11 +169,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	tokens, err := engine.handleElementTransition(ctx, &batch, instance, task, job.Token)
 	if err != nil {
+		batch.Clear(ctx)
 		return fmt.Errorf("failed to complete job %+v: %w", job, err)
 	}
 
 	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance, &job.Token)
 	if err != nil {
+		batch.Clear(ctx)
 		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 

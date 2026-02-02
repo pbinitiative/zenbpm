@@ -161,7 +161,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 		if runErr != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
 		}
-		err = batch.SaveProcessInstance(ctx, instance)
+		batch.SaveProcessInstance(ctx, instance)
 
 		if instance.ProcessInstance().State == runtime.ActivityStateCompleted {
 			if instance.Type() != runtime.ProcessTypeDefault {
@@ -339,12 +339,13 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key)
 	}
 
-	batch, err := engine.NewEngineBatch(ctx, instance)
+	batch, err := engine.NewEngineBatchClean()
 	if err != nil {
 		return fmt.Errorf("failed to create engine batch: %w", err)
 	}
 	err = engine.cancelInstance(ctx, instance, &batch)
 	if err != nil {
+		batch.Clear(ctx)
 		return err
 	}
 
@@ -373,6 +374,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	if len(elementInstanceIdsToTerminate) > 0 {
 		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
 		if err != nil {
+			batch.Clear(ctx)
 			createSpan.RecordError(err)
 			createSpan.SetStatus(codes.Error, err.Error())
 			return processInstance, nil, err
@@ -381,6 +383,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	startedTokens, err := engine.startExecutionTokens(ctx, &batch, elementIdsToStartInstance, processInstance)
 	if err != nil {
+		batch.Clear(ctx)
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
 		return processInstance, nil, err
@@ -393,6 +396,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	}
 	err = batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
+		batch.Clear(ctx)
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
 		return processInstance, nil, err
@@ -411,7 +415,6 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	return processInstance, activeTokens, nil
 }
 
-// TODO: this is from main
 func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanceKey int64, variable string) (runtime.ProcessInstance, error) {
 	engine.runningInstances.lockInstance(processInstanceKey)
 	instanceUnlocked := false

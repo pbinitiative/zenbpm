@@ -138,10 +138,10 @@ const (
 // DecisionInstanceDetail defines model for DecisionInstanceDetail.
 type DecisionInstanceDetail struct {
 	// DecisionOutput Final output of the requested decision
-	DecisionOutput           *map[string]interface{} `json:"decisionOutput,omitempty"`
-	DmnResourceDefinitionKey int64                   `json:"dmnResourceDefinitionKey"`
-	EvaluatedAt              time.Time               `json:"evaluatedAt"`
-	EvaluatedDecisions       []EvaluatedDecision     `json:"evaluatedDecisions"`
+	DecisionOutput           *json.RawMessage    `json:"decisionOutput,omitempty"`
+	DmnResourceDefinitionKey int64               `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time           `json:"evaluatedAt"`
+	EvaluatedDecisions       []EvaluatedDecision `json:"evaluatedDecisions"`
 
 	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
 	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`

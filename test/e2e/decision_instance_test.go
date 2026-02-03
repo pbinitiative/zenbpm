@@ -43,7 +43,7 @@ func TestDecisionInstance(t *testing.T) {
 		decisionInstanceRes, err = app.restClient.GetDecisionInstanceWithResponse(t.Context(), result.DecisionInstanceKey)
 		assert.NoError(t, err)
 		decisionInstanceDetail := decisionInstanceRes.JSON200
-		assert.Equal(t, map[string]interface{}{"canAutoLiquidate": true}, *decisionInstanceDetail.DecisionOutput)
+		assert.Equal(t, "{\"canAutoLiquidate\":true}", (string)(*decisionInstanceDetail.DecisionOutput))
 		assert.Equal(t, dmnResourceDefinition.Key, decisionInstanceDetail.DmnResourceDefinitionKey)
 		assert.NotEmpty(t, decisionInstanceDetail.EvaluatedAt)
 		assert.Equal(t, 1, len(decisionInstanceDetail.EvaluatedDecisions))

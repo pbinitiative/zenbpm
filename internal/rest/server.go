@@ -438,15 +438,10 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 			}, nil
 		}
 	}
-	var decisionOutput map[string]interface{}
+	var decisionOutput *json.RawMessage
 	if instance.DecisionOutput != nil {
-		err = json.Unmarshal([]byte(*instance.DecisionOutput), &decisionOutput)
-		if err != nil {
-			return public.GetDecisionInstance500JSONResponse{
-				Code:    "TODO",
-				Message: err.Error(),
-			}, nil
-		}
+		raw := json.RawMessage(*instance.DecisionOutput)
+		decisionOutput = &raw
 	}
 
 	evaluatedDecisionsResponse := getEvaluatedDecisionsResponse(evaluatedDecisions)
@@ -456,7 +451,7 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		DmnResourceDefinitionKey: *instance.DmnResourceDefinitionKey,
 		EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
 		EvaluatedDecisions:       evaluatedDecisionsResponse,
-		DecisionOutput:           &decisionOutput,
+		DecisionOutput:           decisionOutput,
 		FlowElementInstanceKey:   instance.FlowElementInstanceKey,
 	}, nil
 }

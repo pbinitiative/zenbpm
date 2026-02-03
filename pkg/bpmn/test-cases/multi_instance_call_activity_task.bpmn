@@ -36,7 +36,7 @@
   </bpmn:process>
   <bpmn:message id="Message_3314vbd" name="boundary message">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=1234" />
+      <zeebe:subscription correlationKey="=&#34;1234&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

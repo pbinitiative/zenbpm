@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
@@ -572,4 +573,347 @@ func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
 
+}
+
+func TestMessageEventMultiInstanceBusinessRule(t *testing.T) {
+	t.Skip("Business Rules dont support boundary events yet")
+
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_business_rule.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceCallActivity(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_call_activity_process.bpmn")
+	process, _ = bpmnEngine.LoadFromFile("./test-cases/multi_instance_call_activity_task.bpmn")
+
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceServiceTask(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_service_task.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceSubProcess(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_sub_process_task.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceParallelSubProcess(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_sub_process_task.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceParallelServiceTask(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_service_task.bpmn")
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceParallelCallActivity(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_call_activity_process.bpmn")
+	process, _ = bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_call_activity_task.bpmn")
+
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
+}
+
+func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
+	t.Skip("Business Rules dont support boundary events yet")
+	cleanUpMessageSubscriptions()
+	// given
+	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_business_rule.bpmn")
+
+	variableContext := make(map[string]interface{}, 1)
+	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// when
+	count := 0
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			assert.NoError(t, err)
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+
+	// then
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(subscriptions))
+
+	tokens, err := bpmnEngine.persistence.GetAllTokensForProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
 }

@@ -28,15 +28,15 @@
       </bpmn:multiInstanceLoopCharacteristics>
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="Flow_104hlf4" sourceRef="Event_15f0ox7" targetRef="Event_1vd6rls" />
-    <bpmn:intermediateCatchEvent id="Event_15f0ox7">
-      <bpmn:outgoing>Flow_104hlf4</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_1xfmqb6" messageRef="Message_3314vbd" />
-    </bpmn:intermediateCatchEvent>
     <bpmn:sequenceFlow id="Flow_1nyvqiu" sourceRef="Activity_0rae016" targetRef="Event_1j4mcqg" />
+    <bpmn:boundaryEvent id="Event_15f0ox7" attachedToRef="Activity_0rae016">
+      <bpmn:outgoing>Flow_104hlf4</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_1u9805t" messageRef="Message_3314vbd" />
+    </bpmn:boundaryEvent>
   </bpmn:process>
   <bpmn:message id="Message_3314vbd" name="boundary message">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=1234" />
+      <zeebe:subscription correlationKey="=&#34;1234&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
@@ -47,21 +47,21 @@
       <bpmndi:BPMNShape id="Event_1j4mcqg_di" bpmnElement="Event_1j4mcqg">
         <dc:Bounds x="542" y="239" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_1vd6rls_di" bpmnElement="Event_1vd6rls">
-        <dc:Bounds x="350" y="82" width="36" height="36" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0vwe2dk_di" bpmnElement="Activity_0rae016">
         <dc:Bounds x="318" y="217" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0wzyg8x_di" bpmnElement="Event_15f0ox7">
-        <dc:Bounds x="350" y="192" width="36" height="36" />
+      <bpmndi:BPMNShape id="Event_1vd6rls_di" bpmnElement="Event_1vd6rls">
+        <dc:Bounds x="350" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0hca92o_di" bpmnElement="Event_15f0ox7">
+        <dc:Bounds x="350" y="199" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0xt1d7q_di" bpmnElement="Flow_0xt1d7q">
         <di:waypoint x="188" y="257" />
         <di:waypoint x="318" y="257" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_104hlf4_di" bpmnElement="Flow_104hlf4">
-        <di:waypoint x="368" y="192" />
+        <di:waypoint x="368" y="199" />
         <di:waypoint x="368" y="118" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1nyvqiu_di" bpmnElement="Flow_1nyvqiu">

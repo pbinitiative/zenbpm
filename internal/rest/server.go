@@ -438,9 +438,10 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 			}, nil
 		}
 	}
-	var decisionOutput json.RawMessage
+	var decisionOutput *json.RawMessage
 	if instance.DecisionOutput != nil {
-		decisionOutput = (json.RawMessage)(*instance.DecisionOutput)
+		raw := json.RawMessage(*instance.DecisionOutput)
+		decisionOutput = &raw
 	}
 
 	evaluatedDecisionsResponse := getEvaluatedDecisionsResponse(evaluatedDecisions)
@@ -450,7 +451,7 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		DmnResourceDefinitionKey: *instance.DmnResourceDefinitionKey,
 		EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
 		EvaluatedDecisions:       evaluatedDecisionsResponse,
-		DecisionOutput:           &decisionOutput,
+		DecisionOutput:           decisionOutput,
 		FlowElementInstanceKey:   instance.FlowElementInstanceKey,
 	}, nil
 }

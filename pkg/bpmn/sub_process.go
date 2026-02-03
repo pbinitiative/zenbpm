@@ -135,11 +135,21 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 
 		switch activityState {
 		case runtime.ActivityStateActive:
+			err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+			if err != nil {
+				return nil, fmt.Errorf("failed to process boundary events for %s %d: %w", element.GetType(), activity.GetKey(), err)
+			}
 			currentToken.State = runtime.TokenStateWaiting
 			return []runtime.ExecutionToken{currentToken}, nil
 		case runtime.ActivityStateFailed:
 			currentToken.State = runtime.TokenStateFailed
 			return []runtime.ExecutionToken{currentToken}, nil
+		case runtime.ActivityStateCompleted:
+			tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.Element(), currentToken)
+			if err != nil {
+				return nil, fmt.Errorf("failed to process %s flow transition %d: %w", element.GetType(), activity.GetKey(), err)
+			}
+			return tokens, nil
 		default:
 			return []runtime.ExecutionToken{}, fmt.Errorf("unsupported activity state: %s", activityState)
 		}
@@ -236,6 +246,11 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 		OutputVariables:    nil,
 	})
 
+	if len(inputCollection) == 0 {
+		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		return runtime.ActivityStateCompleted, nil
+	}
+
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(inputCollection))
 	for _, _ = range inputCollection {
 		startingFlowNodes = append(startingFlowNodes, activity.Element())
@@ -299,6 +314,11 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
 		OutputVariables:    nil,
 	})
+
+	if len(inputCollection) == 0 {
+		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
+		return runtime.ActivityStateCompleted, nil
+	}
 
 	sequentialMultiInstance, tokens, err := engine.createInstanceWithStartingElements(
 		ctx,

@@ -8,7 +8,7 @@ import (
 )
 
 func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joinAddresses []string) config.RqLite {
-	
+
 	return config.RqLite{
 		DataPath:                    dataPath,
 		AuthFile:                    "",

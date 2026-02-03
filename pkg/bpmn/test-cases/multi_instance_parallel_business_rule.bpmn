@@ -37,7 +37,7 @@
   </bpmn:process>
   <bpmn:message id="Message_3314vbd" name="boundary message">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=1234" />
+      <zeebe:subscription correlationKey="=&#34;1234&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
@@ -61,13 +61,13 @@
         <di:waypoint x="188" y="257" />
         <di:waypoint x="318" y="257" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_1nyvqiu_di" bpmnElement="Flow_1nyvqiu">
-        <di:waypoint x="418" y="257" />
-        <di:waypoint x="542" y="257" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_104hlf4_di" bpmnElement="Flow_104hlf4">
         <di:waypoint x="368" y="199" />
         <di:waypoint x="368" y="118" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1nyvqiu_di" bpmnElement="Flow_1nyvqiu">
+        <di:waypoint x="418" y="257" />
+        <di:waypoint x="542" y="257" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

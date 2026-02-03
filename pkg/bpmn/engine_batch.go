@@ -118,6 +118,8 @@ func (b *EngineBatch) Clear(ctx context.Context) {
 
 func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.ExecutionToken, instance bpmnruntime.ProcessInstance, err error) {
 	b.b = b.engine.persistence.NewBatch()
+	b.preFlushActions = []func() error{}
+	b.postFlushActions = []func(){}
 	token.State = bpmnruntime.TokenStateFailed
 	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
 	b.b.SaveToken(ctx, token)
@@ -127,6 +129,8 @@ func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.
 
 func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) {
 	b.b = b.engine.persistence.NewBatch()
+	b.preFlushActions = []func() error{}
+	b.postFlushActions = []func(){}
 	b.b.SaveMessageSubscription(ctx, message)
 	b.b.SaveProcessInstance(ctx, instance)
 }

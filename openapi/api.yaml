@@ -1675,7 +1675,9 @@ components:
           items:
             $ref: "#/components/schemas/EvaluatedDecision"
         decisionOutput:
-          type: object
+          type: string
+          format: json
+          x-go-type: json.RawMessage
           description: "Final output of the requested decision"
     EvaluatedDecision:
       type: object

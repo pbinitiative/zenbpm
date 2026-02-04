@@ -440,12 +440,18 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 	}
 	var decisionOutput map[string]interface{}
 	if instance.DecisionOutput != nil {
-		err = json.Unmarshal([]byte(*instance.DecisionOutput), &decisionOutput)
+		var raw interface{}
+		err = json.Unmarshal([]byte(*instance.DecisionOutput), &raw)
 		if err != nil {
 			return public.GetDecisionInstance500JSONResponse{
 				Code:    "TODO",
 				Message: err.Error(),
 			}, nil
+		}
+		if m, ok := raw.(map[string]interface{}); ok {
+			decisionOutput = m
+		} else {
+			decisionOutput = map[string]interface{}{"result": raw}
 		}
 	}
 

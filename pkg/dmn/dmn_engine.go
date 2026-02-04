@@ -269,7 +269,7 @@ func (engine *ZenDmnEngine) evaluateDRD(
 
 	// TODO save here to decision_instance
 
-	outputVariables, err := json.Marshal(decisionOutput)
+	outputVariables, err := json.Marshal(result.DecisionOutput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal business rule output variables: %w", err)
 	}

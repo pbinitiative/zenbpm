@@ -928,13 +928,13 @@ func (engine *Engine) processFlowNode(
 		}
 		return tokens, nil
 	case *bpmn20.TExclusiveGateway:
-		tokens, err := engine.handleExclusiveGateway(ctx, instance, element, currentToken)
+		tokens, err := engine.handleExclusiveGateway(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process ExclusiveGateway %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
 	case *bpmn20.TInclusiveGateway:
-		tokens, err := engine.handleInclusiveGateway(ctx, instance, element, currentToken)
+		tokens, err := engine.handleInclusiveGateway(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process InclusiveGateway %d: %w", activity.GetKey(), err)
 		}
@@ -1147,6 +1147,17 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch storage.B
 	currentToken.State = runtime.TokenStateCompleted
 	resTokens[0] = currentToken
 	for i, flow := range outgoing {
+		err = batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 		resTokens[i+1] = runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
@@ -1190,7 +1201,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch storage
 // handleExclusiveGateway handles Exclusive gateway behaviour
 // A diverging Exclusive Gateway (Decision) is used to create alternative paths within a Process flow. This is basically
 // the “diversion point in the road” for a Process. For a given instance of the Process, only one of the paths can be taken.
-func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleExclusiveGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
 	activatedFlows, err := engine.exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
@@ -1199,13 +1210,24 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance *runt
 		return nil, fmt.Errorf("failed to filter outgoing associations from ExclusiveGateway: %w", err)
 	}
 	if len(activatedFlows) != 0 {
+		err = batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          activatedFlows[0].GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 		currentToken.ElementId = activatedFlows[0].GetTargetRef().GetId()
 		currentToken.ElementInstanceKey = engine.generateKey()
 	}
 	return []runtime.ExecutionToken{currentToken}, nil
 }
 
-func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleInclusiveGateway(ctx context.Context, batch storage.Batch, instance *runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
 	activatedFlows, err := engine.inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.VariableHolder.LocalVariables())
@@ -1217,6 +1239,17 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance *runt
 	currentToken.State = runtime.TokenStateCompleted
 	resTokens[0] = currentToken
 	for i, flow := range activatedFlows {
+		err = batch.SaveFlowElementHistory(ctx,
+			runtime.FlowElementHistoryItem{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element history: %w", err)
+		}
 		resTokens[i+1] = runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),

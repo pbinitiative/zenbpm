@@ -120,6 +120,75 @@ func TestLoadingTheSameDecisionDefinitionWithModificationWillCreateNewVersion(t 
 	assert.NotEqual(t, decisionDefinition2.Key, decisionDefinition1.Key)
 }
 
+func TestLoadingExecutingLatestDecisionDefinitionWillResultInCorrectResult(t *testing.T) {
+	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	definition2, xmldata2, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified.dmn"))
+	assert.NoError(t, err)
+
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition2, xmldata2, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	_, decisions3, err := dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+
+	result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "latest", decisions3[0].Id, "", map[string]interface{}{
+		"claim": map[string]interface{}{"amountOfDamage": 1000, "insuranceType": "MAJ"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"canAutoLiquidate": true}, result.DecisionOutput)
+
+}
+
+func TestLoadingExecutingLatestDecisionDefinitionWithSpecifiedIdWillResultInCorrectResult(t *testing.T) {
+	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	definition2, xmldata2, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified.dmn"))
+	assert.NoError(t, err)
+	definition3, xmldata3, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified-v2.dmn"))
+	assert.NoError(t, err)
+
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition2, xmldata2, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	drd3, decisions3, err := dmnEngine.SaveDmnResourceDefinition(t.Context(), definition3, xmldata3, dmnEngine.generateKey())
+	assert.NoError(t, err)
+
+	result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "latest", drd3.Id+"."+decisions3[0].Id, "", map[string]interface{}{
+		"claim": map[string]interface{}{"amountOfDamage": 1000, "insuranceType": "MAJ"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"canAutoLiquidate": "ree"}, result.DecisionOutput)
+}
+
+func TestLoadingExecutingVersionTaggedDecisionDefinitionWillResultInCorrectResult(t *testing.T) {
+	// setup
+	dmnEngine.persistence = inmemory.NewStorage()
+	definition, xmldata, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
+	assert.NoError(t, err)
+	definition2, xmldata2, err := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule-modified.dmn"))
+	assert.NoError(t, err)
+
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	_, decision2, err := dmnEngine.SaveDmnResourceDefinition(t.Context(), definition2, xmldata2, dmnEngine.generateKey())
+	assert.NoError(t, err)
+	_, _, err = dmnEngine.SaveDmnResourceDefinition(t.Context(), definition, xmldata, dmnEngine.generateKey())
+	assert.NoError(t, err)
+
+	result, err := dmnEngine.FindAndEvaluateDRD(t.Context(), "versionTag", decision2[0].Id, "testVersionTag", map[string]interface{}{
+		"claim": map[string]interface{}{"amountOfDamage": 1000, "insuranceType": "MAJ"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"canAutoLiquidate": false}, result.DecisionOutput)
+}
+
 func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	// setup
 	dmnEngine.persistence = inmemory.NewStorage()
@@ -165,6 +234,7 @@ func TestBulkEvaluateDRD(t *testing.T) {
 	}
 
 	for _, configuration := range bulkTestConfigs {
+		dmnEngine.persistence = inmemory.NewStorage()
 		definition, xmldata, loadErr := dmnEngine.ParseDmnFromFile(filepath.Join(".", "test-data", "bulk-evaluation-test", configuration.DMN))
 		if loadErr != nil {
 			t.Fatalf("Failed to saveDecisionDefinition DMN file - %v", loadErr.Error())

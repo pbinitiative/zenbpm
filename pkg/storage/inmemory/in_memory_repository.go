@@ -19,7 +19,7 @@ import (
 // please use NewStorage to create a new object of this type.
 type Storage struct {
 	DmnResourceDefinitions map[int64]dmnruntime.DmnResourceDefinition
-	DecisionDefinitions    map[string]map[int64]dmnruntime.DecisionDefinition
+	DecisionDefinitions    map[int64]dmnruntime.DecisionDefinition
 	DecisionInstances      map[int64]dmnruntime.DecisionInstance
 	ProcessDefinitions     map[int64]bpmnruntime.ProcessDefinition
 	ProcessInstances       map[int64]bpmnruntime.ProcessInstance
@@ -27,7 +27,7 @@ type Storage struct {
 	Timers                 map[int64]bpmnruntime.Timer
 	Jobs                   map[int64]bpmnruntime.Job
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
-	FlowElementInstance     map[int64]bpmnruntime.FlowElementInstance
+	FlowElementInstance    map[int64]bpmnruntime.FlowElementInstance
 	Incidents              map[int64]bpmnruntime.Incident
 }
 
@@ -38,7 +38,7 @@ func (mem *Storage) GenerateId() int64 {
 func NewStorage() *Storage {
 	return &Storage{
 		DmnResourceDefinitions: make(map[int64]dmnruntime.DmnResourceDefinition),
-		DecisionDefinitions:    make(map[string]map[int64]dmnruntime.DecisionDefinition),
+		DecisionDefinitions:    make(map[int64]dmnruntime.DecisionDefinition),
 		DecisionInstances:      make(map[int64]dmnruntime.DecisionInstance),
 		ProcessDefinitions:     make(map[int64]bpmnruntime.ProcessDefinition),
 		ProcessInstances:       make(map[int64]bpmnruntime.ProcessInstance),
@@ -46,7 +46,7 @@ func NewStorage() *Storage {
 		Timers:                 make(map[int64]bpmnruntime.Timer),
 		Jobs:                   make(map[int64]bpmnruntime.Job),
 		ExecutionTokens:        make(map[int64]bpmnruntime.ExecutionToken),
-		FlowElementInstance:     make(map[int64]bpmnruntime.FlowElementInstance),
+		FlowElementInstance:    make(map[int64]bpmnruntime.FlowElementInstance),
 		Incidents:              make(map[int64]bpmnruntime.Incident),
 	}
 }
@@ -100,8 +100,10 @@ var _ storage.DecisionDefinitionStorageReader = &Storage{}
 
 func (mem *Storage) GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
-	for _, dec := range mem.DecisionDefinitions[decisionId] {
-		res = append(res, dec)
+	for _, dec := range mem.DecisionDefinitions {
+		if dec.Id == decisionId {
+			res = append(res, dec)
+		}
 	}
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
 		return int(a.Version - b.Version)
@@ -115,19 +117,20 @@ func (mem *Storage) GetLatestDecisionDefinitionById(ctx context.Context, decisio
 
 func (mem *Storage) GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
-	for _, dec := range mem.DecisionDefinitions[decisionId] {
-		res = append(res, dec)
+	for _, dec := range mem.DecisionDefinitions {
+		if dec.Id == decisionId {
+			res = append(res, dec)
+		}
 	}
 	return res, nil
 }
 
 func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
-	for _, dec := range mem.DecisionDefinitions[decisionId] {
-		if dec.VersionTag != versionTag {
-			continue
+	for _, dec := range mem.DecisionDefinitions {
+		if dec.Id == decisionId && dec.VersionTag == versionTag {
+			res = append(res, dec)
 		}
-		res = append(res, dec)
 	}
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
 		return int(a.Version - b.Version)
@@ -141,11 +144,10 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Con
 
 func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
 	res := make([]dmnruntime.DecisionDefinition, 0)
-	for _, dec := range mem.DecisionDefinitions[decisionId] {
-		if dec.DmnResourceDefinitionId != dmnResourceDefinitionId {
-			continue
+	for _, dec := range mem.DecisionDefinitions {
+		if dec.Id == decisionId && dec.DmnResourceDefinitionId == dmnResourceDefinitionId {
+			res = append(res, dec)
 		}
-		res = append(res, dec)
 	}
 	slices.SortFunc(res, func(a, b dmnruntime.DecisionDefinition) int {
 		return int(a.Version - b.Version)
@@ -158,14 +160,18 @@ func (mem *Storage) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ct
 }
 
 func (mem *Storage) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
-	return mem.DecisionDefinitions[decisionId][decisionDefinitionKey], nil
+	for _, dd := range mem.DecisionDefinitions {
+		if dd.Id == decisionId && dd.DmnResourceDefinitionKey == decisionDefinitionKey {
+			return dd, nil
+		}
+	}
+	return dmnruntime.DecisionDefinition{}, storage.ErrNotFound
 }
 
 var _ storage.DecisionDefinitionStorageWriter = &Storage{}
 
 func (mem *Storage) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
-	mem.DecisionDefinitions[decision.Id] = make(map[int64]dmnruntime.DecisionDefinition)
-	mem.DecisionDefinitions[decision.Id][decision.DmnResourceDefinitionKey] = decision
+	mem.DecisionDefinitions[decision.Key] = decision
 	return nil
 }
 

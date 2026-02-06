@@ -665,11 +665,10 @@ func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
 
 func TestMessageEventMultiInstance(t *testing.T) {
 	bpmnFiles := map[string]string{
-		"TestMessageEventMultiInstanceParallelBusinessRule": "./test-cases/multi_instance_parallel_business_rule.bpmn",
-		"TestMessageEventMultiInstanceParallelServiceTask":  "./test-cases/multi_instance_parallel_service_task.bpmn",
-		"TestMessageEventMultiInstanceParallelSubProcess":   "./test-cases/multi_instance_parallel_sub_process_task.bpmn",
-		"TestMessageEventMultiInstanceSubProcess":           "./test-cases/multi_instance_sub_process_task.bpmn",
-		"TestMessageEventMultiInstanceServiceTask":          "./test-cases/multi_instance_service_task.bpmn",
+		"TestMessageEventMultiInstanceParallelServiceTask": "./test-cases/multi_instance_parallel_service_task.bpmn",
+		"TestMessageEventMultiInstanceParallelSubProcess":  "./test-cases/multi_instance_parallel_sub_process_task.bpmn",
+		"TestMessageEventMultiInstanceSubProcess":          "./test-cases/multi_instance_sub_process_task.bpmn",
+		"TestMessageEventMultiInstanceServiceTask":         "./test-cases/multi_instance_service_task.bpmn",
 	}
 	for testName, filePath := range bpmnFiles {
 		process, _ := bpmnEngine.LoadFromFile(filePath)

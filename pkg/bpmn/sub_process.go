@@ -363,6 +363,9 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return err
 	}
+	if parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted || parentInstance.ProcessInstance().State == runtime.ActivityStateTerminated {
+		return nil
+	}
 
 	updatedParentToken, err := engine.persistence.GetTokenByKey(ctx, parentTokenKey)
 	if err != nil {
@@ -439,6 +442,9 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
 	if err != nil {
 		return err
+	}
+	if parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted || parentInstance.ProcessInstance().State == runtime.ActivityStateTerminated {
+		return nil
 	}
 
 	updatedParentToken, err := engine.persistence.GetTokenByKey(ctx, parentTokenKey)
@@ -517,6 +523,9 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
 	if err != nil {
 		return err
+	}
+	if parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted || parentInstance.ProcessInstance().State == runtime.ActivityStateTerminated {
+		return nil
 	}
 
 	updatedParentToken, err := engine.persistence.GetTokenByKey(ctx, parentTokenKey)

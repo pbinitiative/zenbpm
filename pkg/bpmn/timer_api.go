@@ -74,6 +74,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
 	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
@@ -84,6 +85,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
 

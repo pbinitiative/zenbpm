@@ -121,7 +121,6 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			runErr = errors.Join(runErr, err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {
@@ -136,7 +135,6 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 		if err != nil {
 			runErr = errors.Join(runErr, err)
 			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
-			runErr = errors.Join(runErr, err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {

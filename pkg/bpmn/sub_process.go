@@ -167,7 +167,15 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		return []runtime.ExecutionToken{}, err
 	}
 
-	inputCollection := parentElementInstance.InputVariables[element.GetMultiInstance().LoopCharacteristics.InputElementName].([]interface{})
+	inputCollectionVariable, ok := parentElementInstance.InputVariables[element.GetMultiInstance().LoopCharacteristics.InputElementName]
+	if !ok {
+		return []runtime.ExecutionToken{}, fmt.Errorf("failed to handle multi instance activity activity input element")
+	}
+	inputCollection, ok := inputCollectionVariable.([]interface{})
+	if !ok {
+		return []runtime.ExecutionToken{}, fmt.Errorf("failed to handle multi instance activity activity input element")
+	}
+
 	//TODO: Optimize
 	multiInstancesAlreadyStarted, err := engine.persistence.GetFlowElementInstanceCountByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
 	if err != nil {
@@ -237,7 +245,7 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 			inputCollection[i] = rv.Index(i).Interface()
 		}
 	}
-	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
@@ -246,6 +254,9 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
 		OutputVariables:    nil,
 	})
+	if err != nil {
+		return runtime.ActivityStateFailed, err
+	}
 
 	if len(inputCollection) == 0 {
 		instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.OutputCollectionName, []interface{}{})
@@ -360,7 +371,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -390,7 +401,15 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	}()
 
 	//process variables
-	parentElement := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId).(*bpmn20.TSubProcess)
+	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId)
+	if parentFlowNode == nil {
+		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
+	}
+	parentElement, ok := parentFlowNode.(*bpmn20.TSubProcess)
+	if !ok {
+		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
+	}
+
 	variableHolder := runtime.NewVariableHolder(&parentInstance.ProcessInstance().VariableHolder, nil)
 	output, err := variableHolder.PropagateOutputVariablesToParent(parentElement.GetOutputMapping(), instance.ProcessInstance().VariableHolder.LocalVariables(), engine.evaluateExpression)
 	if err != nil {
@@ -413,7 +432,10 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	for _, tok := range tokens {
 		batch.SaveToken(ctx, tok)
 	}
-	batch.SaveProcessInstance(ctx, parentInstance)
+	err = batch.SaveProcessInstance(ctx, parentInstance)
+	if err != nil {
+		return fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
 		OutputVariables: output,
@@ -421,7 +443,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err = engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for multi instance %d: %w", instance.Key, err)
 			}
@@ -440,7 +462,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -470,7 +492,15 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	}()
 
 	//process variables
-	parentElement := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(updatedParentToken.ElementId).(*bpmn20.TCallActivity)
+	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(updatedParentToken.ElementId)
+	if parentFlowNode == nil {
+		return fmt.Errorf("failed to find flow node by id %s", updatedParentToken.ElementId)
+	}
+	parentElement, ok := parentFlowNode.(*bpmn20.TCallActivity)
+	if !ok {
+		return fmt.Errorf("failed to find flow node by id %s", updatedParentToken.ElementId)
+	}
+
 	variableHolder := runtime.NewVariableHolder(&parentInstance.ProcessInstance().VariableHolder, nil)
 	output, err := variableHolder.PropagateOutputVariablesToParent(parentElement.GetOutputMapping(), instance.ProcessInstance().VariableHolder.LocalVariables(), engine.evaluateExpression)
 	if err != nil {
@@ -501,7 +531,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err = engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for call activity %d: %w", instance.Key, err)
 			}
@@ -521,7 +551,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	if err != nil {
 		return fmt.Errorf("failed to find parent process instance %d: %w", parentProcessInstanceKey, err)
 	}
-	err = batch.AddParentLockedInstance(ctx, instance, parentInstance)
+	err = batch.AddParentLockedInstance(ctx, parentInstance)
 	if err != nil {
 		return err
 	}
@@ -551,11 +581,15 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	}()
 
 	//process variables
-	parentElement := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId).(bpmn20.Activity)
-	element, ok := flowNode.(bpmn20.Activity)
-	if !ok && element.GetMultiInstance() == nil {
-		log.Errorf(ctx, "cannot handle multiInstance Parent Process Continuation - MultiInstance missing data")
+	parentFlowNode := parentInstance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(parentProcessTargetElementId)
+	if parentFlowNode == nil {
+		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
 	}
+	parentElement, ok := parentFlowNode.(bpmn20.Activity)
+	if !ok || parentElement.GetMultiInstance() == nil {
+		return fmt.Errorf("failed to find flow node by id %s", parentProcessTargetElementId)
+	}
+
 	elementInstances, err := engine.persistence.GetFlowElementInstancesByProcessInstanceKey(ctx, instance.ProcessInstance().Key, true)
 	if err != nil {
 		return err
@@ -593,7 +627,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err = engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for multi instance %d: %w", instance.Key, err)
 			}
@@ -642,7 +676,16 @@ func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
 		currentToken.State = runtime.TokenStateFailed
 		return []runtime.ExecutionToken{currentToken}, err
 	}
-	multiInstanceInputCollectionLength := len(multiInstanceElementInstance.InputVariables[multiInstanceElement.GetMultiInstance().LoopCharacteristics.InputElementName].([]interface{}))
+	multiInstanceCollectionVariable, ok := multiInstanceElementInstance.InputVariables[multiInstanceElement.GetMultiInstance().LoopCharacteristics.InputElementName]
+	if !ok {
+		return nil, fmt.Errorf("failed to handle multi instance transition")
+	}
+	multiInstanceCollection, ok := multiInstanceCollectionVariable.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed to handle multi instance transition")
+	}
+
+	multiInstanceInputCollectionLength := len(multiInstanceCollection)
 
 	if multiInstanceElement.GetMultiInstance().IsSequential == true {
 		currentToken.State = runtime.TokenStateRunning

@@ -55,6 +55,9 @@ func (vh *VariableHolder) SetLocalVariables(variables map[string]interface{}) {
 // EvaluateAndSetMappingsToLocalVariables sets local variables according to mappings
 // uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
 func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
+	if vh.parent == nil {
+		return nil
+	}
 	for _, mapping := range mappings {
 		evalResult, err := evaluateExpression(mapping.Source, vh.parent.LocalVariables())
 		if err != nil {

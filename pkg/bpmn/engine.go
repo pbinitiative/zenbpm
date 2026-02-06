@@ -368,7 +368,10 @@ func (engine *Engine) createInstance(
 		createSpan.End()
 	}()
 
-	batch.SaveProcessInstance(ctx, instance)
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
@@ -417,7 +420,10 @@ func (engine *Engine) createInstanceWithStartingElements(
 		createSpan.End()
 	}()
 
-	batch.SaveProcessInstance(ctx, instance)
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	executionTokens := make([]runtime.ExecutionToken, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
@@ -511,7 +517,7 @@ func (engine *Engine) processFlowNode(
 		}
 		return tokens, nil
 	case *bpmn20.TServiceTask, *bpmn20.TUserTask, *bpmn20.TCallActivity, *bpmn20.TBusinessRuleTask, *bpmn20.TSendTask, *bpmn20.TSubProcess:
-		if element := element.(bpmn20.Activity); element.GetMultiInstance() != nil {
+		if element, ok := element.(bpmn20.Activity); ok && element.GetMultiInstance() != nil {
 			tokens, err := engine.handleMultiInstanceActivity(ctx, batch, instance, element, activity, currentToken)
 			if err != nil {
 				return nil, fmt.Errorf("failed to process MultiInstance%d: %w", activity.GetKey(), err)

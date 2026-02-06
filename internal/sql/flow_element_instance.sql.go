@@ -46,6 +46,30 @@ func (q *Queries) DeleteFlowElementInstance(ctx context.Context, keys []int64) e
 	return err
 }
 
+const getFlowElementInstanceByKey = `-- name: GetFlowElementInstanceByKey :one
+SELECT
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables
+FROM
+    flow_element_instance
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error) {
+	row := q.db.QueryRowContext(ctx, getFlowElementInstanceByKey, key)
+	var i FlowElementInstance
+	err := row.Scan(
+		&i.Key,
+		&i.ElementID,
+		&i.ProcessInstanceKey,
+		&i.ExecutionTokenKey,
+		&i.CreatedAt,
+		&i.InputVariables,
+		&i.OutputVariables,
+	)
+	return i, err
+}
+
 const getFlowElementInstanceByTokenKey = `-- name: GetFlowElementInstanceByTokenKey :one
 SELECT
     "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables
@@ -53,7 +77,6 @@ FROM
     flow_element_instance
 WHERE
     execution_token_key = ?1
-ORDER BY created_at DESC
 `
 
 func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error) {

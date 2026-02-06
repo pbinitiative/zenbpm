@@ -39,6 +39,7 @@ const (
 type ProcessInstance interface {
 	Type() ProcessType
 	ProcessInstance() *ProcessInstanceData
+	Apply(ProcessInstance) error
 }
 
 type SubProcessInstance struct {
@@ -56,6 +57,19 @@ func (s *SubProcessInstance) Type() ProcessType {
 	return ProcessTypeSubProcess
 }
 
+func (s *SubProcessInstance) Apply(processInstance ProcessInstance) error {
+	subProcessInstance, ok := processInstance.(*SubProcessInstance)
+	if !ok {
+		return fmt.Errorf("processInstance is not a SubProcessInstance")
+	}
+	s.ProcessInstanceData = *processInstance.ProcessInstance()
+	s.ParentProcessExecutionToken = subProcessInstance.ParentProcessExecutionToken
+	s.ParentProcessTargetElementInstanceKey = subProcessInstance.ParentProcessTargetElementInstanceKey
+	s.ParentProcessTargetElementId = subProcessInstance.ParentProcessTargetElementId
+
+	return nil
+}
+
 type MultiInstanceInstance struct {
 	ParentProcessExecutionToken           ExecutionToken
 	ParentProcessTargetElementInstanceKey int64
@@ -69,6 +83,19 @@ func (m *MultiInstanceInstance) ProcessInstance() *ProcessInstanceData {
 
 func (m *MultiInstanceInstance) Type() ProcessType {
 	return ProcessTypeMultiInstance
+}
+
+func (m *MultiInstanceInstance) Apply(processInstance ProcessInstance) error {
+	multiInstanceInstance, ok := processInstance.(*MultiInstanceInstance)
+	if !ok {
+		return fmt.Errorf("processInstance is not a SubProcessInstance")
+	}
+	m.ProcessInstanceData = *processInstance.ProcessInstance()
+	m.ParentProcessExecutionToken = multiInstanceInstance.ParentProcessExecutionToken
+	m.ParentProcessTargetElementInstanceKey = multiInstanceInstance.ParentProcessTargetElementInstanceKey
+	m.ParentProcessTargetElementId = multiInstanceInstance.ParentProcessTargetElementId
+
+	return nil
 }
 
 type CallActivityInstance struct {
@@ -85,6 +112,18 @@ func (c *CallActivityInstance) Type() ProcessType {
 	return ProcessTypeCallActivity
 }
 
+func (c *CallActivityInstance) Apply(processInstance ProcessInstance) error {
+	callActivityInstance, ok := processInstance.(*CallActivityInstance)
+	if !ok {
+		return fmt.Errorf("processInstance is not a SubProcessInstance")
+	}
+	c.ProcessInstanceData = *processInstance.ProcessInstance()
+	c.ParentProcessExecutionToken = callActivityInstance.ParentProcessExecutionToken
+	c.ParentProcessTargetElementInstanceKey = callActivityInstance.ParentProcessTargetElementInstanceKey
+
+	return nil
+}
+
 type DefaultProcessInstance struct {
 	ProcessInstanceData
 }
@@ -95,6 +134,12 @@ func (d *DefaultProcessInstance) ProcessInstance() *ProcessInstanceData {
 
 func (d *DefaultProcessInstance) Type() ProcessType {
 	return ProcessTypeDefault
+}
+
+func (d *DefaultProcessInstance) Apply(processInstance ProcessInstance) error {
+	d.ProcessInstanceData = *processInstance.ProcessInstance()
+
+	return nil
 }
 
 type ProcessInstanceData struct {

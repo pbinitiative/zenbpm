@@ -65,6 +65,9 @@ func (mem *Storage) Copy() *Storage {
 	for k, v := range mem.ProcessInstances {
 		c.ProcessInstances[k] = v
 	}
+	for k, v := range mem.ProcessDefinitions {
+		c.ProcessDefinitions[k] = v
+	}
 	for k, v := range mem.MessageSubscriptions {
 		c.MessageSubscriptions[k] = v
 	}
@@ -575,7 +578,10 @@ func (mem *Storage) GetCompletedTokensForProcessInstance(ctx context.Context, pr
 }
 
 func (mem *Storage) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
-	return mem.ExecutionTokens[key], nil
+	if result, ok := mem.ExecutionTokens[key]; ok {
+		return result, nil
+	}
+	return bpmnruntime.ExecutionToken{}, storage.ErrNotFound
 }
 
 // GetTokensForProcessInstance implements storage.TokenStorageReader.
@@ -659,7 +665,10 @@ func (mem *Storage) GetFlowElementInstancesByProcessInstanceKey(ctx context.Cont
 }
 
 func (mem *Storage) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
-	return mem.FlowElementInstance[key], nil
+	if result, ok := mem.FlowElementInstance[key]; ok {
+		return result, nil
+	}
+	return bpmnruntime.FlowElementInstance{}, storage.ErrNotFound
 }
 
 var _ storage.FlowElementInstanceWriter = &Storage{}

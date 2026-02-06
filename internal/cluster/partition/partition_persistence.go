@@ -1803,7 +1803,7 @@ func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, p
 		return nil, err
 	}
 
-	result := make([]bpmnruntime.FlowElementInstance, len(flowElementInstances))
+	result := make([]bpmnruntime.FlowElementInstance, 0, len(flowElementInstances))
 	for _, flowElementInstance := range flowElementInstances {
 		var inputVariables map[string]any
 		err = json.Unmarshal([]byte(flowElementInstance.InputVariables), &inputVariables)
@@ -1838,7 +1838,7 @@ func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, p
 
 func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
 	var res bpmnruntime.FlowElementInstance
-	flowElementInstance, err := rq.Queries.GetFlowElementInstanceByTokenKey(ctx, key)
+	flowElementInstance, err := rq.Queries.GetFlowElementInstanceByKey(ctx, key)
 	if err != nil {
 		return res, err
 	}

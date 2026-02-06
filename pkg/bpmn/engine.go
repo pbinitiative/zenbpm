@@ -531,13 +531,13 @@ func (engine *Engine) processFlowNode(
 		}
 		return tokens, nil
 	case *bpmn20.TExclusiveGateway:
-		tokens, err := engine.handleExclusiveGateway(ctx, instance, element, currentToken)
+		tokens, err := engine.handleExclusiveGateway(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process ExclusiveGateway %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
 	case *bpmn20.TInclusiveGateway:
-		tokens, err := engine.handleInclusiveGateway(ctx, instance, element, currentToken)
+		tokens, err := engine.handleInclusiveGateway(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process InclusiveGateway %d: %w", activity.GetKey(), err)
 		}
@@ -774,13 +774,23 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 	currentToken.State = runtime.TokenStateCompleted
 	resTokens[0] = currentToken
 	for i, flow := range outgoing {
-		resTokens[i+1] = runtime.ExecutionToken{
+		newToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          flow.GetTargetRef().GetId(),
 			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
+		batch.SaveFlowElementInstance(ctx,
+			runtime.FlowElementInstance{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+				ExecutionTokenKey:  newToken.Key,
+			},
+		)
+		resTokens[i+1] = newToken
 	}
 	return resTokens, nil
 }
@@ -817,7 +827,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch *Engine
 // handleExclusiveGateway handles Exclusive gateway behaviour
 // A diverging Exclusive Gateway (Decision) is used to create alternative paths within a Process flow. This is basically
 // the “diversion point in the road” for a Process. For a given instance of the Process, only one of the paths can be taken.
-func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleExclusiveGateway(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TExclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
 	activatedFlows, err := engine.exclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.ProcessInstance().VariableHolder.LocalVariables())
@@ -826,13 +836,22 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, instance runti
 		return nil, fmt.Errorf("failed to filter outgoing associations from ExclusiveGateway: %w", err)
 	}
 	if len(activatedFlows) != 0 {
+		batch.SaveFlowElementInstance(ctx,
+			runtime.FlowElementInstance{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+				ElementId:          activatedFlows[0].GetId(),
+				CreatedAt:          time.Now(),
+				ExecutionTokenKey:  currentToken.Key,
+			},
+		)
 		currentToken.ElementId = activatedFlows[0].GetTargetRef().GetId()
 		currentToken.ElementInstanceKey = engine.generateKey()
 	}
 	return []runtime.ExecutionToken{currentToken}, nil
 }
 
-func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
+func (engine *Engine) handleInclusiveGateway(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	// TODO: handle incoming mapping
 	outgoing := element.GetOutgoingAssociation()
 	activatedFlows, err := engine.inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.ProcessInstance().VariableHolder.LocalVariables())
@@ -844,13 +863,23 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, instance runti
 	currentToken.State = runtime.TokenStateCompleted
 	resTokens[0] = currentToken
 	for i, flow := range activatedFlows {
-		resTokens[i+1] = runtime.ExecutionToken{
+		newToken := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
 			ElementInstanceKey: engine.generateKey(),
 			ElementId:          flow.GetTargetRef().GetId(),
 			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
+		batch.SaveFlowElementInstance(ctx,
+			runtime.FlowElementInstance{
+				Key:                engine.generateKey(),
+				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+				ElementId:          flow.GetId(),
+				CreatedAt:          time.Now(),
+				ExecutionTokenKey:  newToken.Key,
+			},
+		)
+		resTokens[i+1] = newToken
 	}
 	return resTokens, nil
 }

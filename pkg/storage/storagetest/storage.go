@@ -523,9 +523,12 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t 
 
 		historyItem := bpmnruntime.FlowElementInstance{
 			Key:                r,
-			ProcessInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			ElementId:          "test-elem",
 			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"test": "test"},
+			OutputVariables:    map[string]any{"test": "test"},
 		}
 		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)

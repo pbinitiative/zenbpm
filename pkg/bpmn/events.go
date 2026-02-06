@@ -16,14 +16,20 @@ import (
 func (engine *Engine) publishMessageOnListener(ctx context.Context, batch *EngineBatch, listener *bpmn20.TIntermediateCatchEvent, message *runtime.MessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
 	message.State = runtime.ActivityStateCompleted
-	batch.SaveMessageSubscription(ctx, *message)
+	err := batch.SaveMessageSubscription(ctx, *message)
+	if err != nil {
+		return nil, err
+	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	_, err := variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression)
+	_, err = variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, token)
 	if err != nil {
@@ -127,7 +133,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 
 func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, token *runtime.ExecutionToken) error {
 	// cancel other message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
+	subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -203,7 +209,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 	case bpmn20.TTimerEventDefinition:
 		timer := event.(runtime.Timer)
 		timer.TimerState = runtime.TimerStateTriggered
-		batch.SaveTimer(ctx, timer)
+		err := batch.SaveTimer(ctx, timer)
+		if err != nil {
+			return nil, err
+		}
 		token = timer.Token
 	}
 	msubs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
@@ -215,7 +224,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 			continue
 		}
 		sub.State = runtime.ActivityStateTerminated
-		batch.SaveMessageSubscription(ctx, sub)
+		err := batch.SaveMessageSubscription(ctx, sub)
+		if err != nil {
+			return nil, err
+		}
 	}
 	tsubs, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
@@ -227,7 +239,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		}
 		sub.TimerState = runtime.TimerStateCancelled
 		engine.timerManager.removeTimer(sub)
-		batch.SaveTimer(ctx, sub)
+		err := batch.SaveTimer(ctx, sub)
+		if err != nil {
+			return nil, err
+		}
 	}
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, catchEvent, token)
 	if err != nil {

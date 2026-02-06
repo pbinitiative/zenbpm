@@ -26,12 +26,12 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 	}
 }
 
-func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error) {
+func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr error) {
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
-		if err != nil {
-			resoveIncidentSpan.RecordError(err)
-			resoveIncidentSpan.SetStatus(codes.Error, err.Error())
+		if retErr != nil {
+			resoveIncidentSpan.RecordError(retErr)
+			resoveIncidentSpan.SetStatus(codes.Error, retErr.Error())
 		}
 		resoveIncidentSpan.End()
 	}()
@@ -56,18 +56,32 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
 	}
 
+	batch, err := engine.NewEngineBatch(ctx, instance)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
+	}
+	defer func() {
+		if retErr != nil {
+			batch.Clear(ctx)
+		}
+	}()
+
+	//refresh
+	incident, err = engine.persistence.FindIncidentByKey(ctx, key)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
+	}
+
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
 	}
 
-	batch, err := engine.NewEngineBatch(ctx, instance)
-	if err != nil {
-		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
-	}
-
 	incident.ResolvedAt = ptr.To(time.Now())
-	batch.SaveIncident(ctx, incident)
+	err = batch.SaveIncident(ctx, incident)
+	if err != nil {
+		return err
+	}
 
 	// Checking for linked jobs as these need to be resolved as well
 	var job *runtime.Job
@@ -82,18 +96,26 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 	if job != nil {
 		incident.Token.State = runtime.TokenStateWaiting
 		job.State = runtime.ActivityStateActive
-		batch.SaveJob(ctx, *job)
+		err := batch.SaveJob(ctx, *job)
+		if err != nil {
+			return err
+		}
 	} else {
 		incident.Token.State = runtime.TokenStateRunning
 	}
-	batch.SaveToken(ctx, incident.Token)
+	err = batch.SaveToken(ctx, incident.Token)
+	if err != nil {
+		return err
+	}
 
 	instance.ProcessInstance().State = runtime.ActivityStateActive
-	batch.SaveProcessInstance(ctx, instance)
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		batch.Clear(ctx)
 		return errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
 	}
 

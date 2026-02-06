@@ -36,6 +36,14 @@ WHERE
     execution_token_key = @execution_token_key
 ORDER BY created_at DESC;
 
+-- name: GetFlowElementInstanceByKey :one
+SELECT
+    *
+FROM
+    flow_element_instance
+WHERE
+    key = @key;
+
 
 -- name: CountFlowElementInstances :one
 SELECT

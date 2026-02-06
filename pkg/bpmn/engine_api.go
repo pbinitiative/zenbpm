@@ -65,7 +65,7 @@ func (engine *Engine) Stop() {
 // As a first thing it will try to acquire a lock on the process instance key to prevent parallel runs of the same process instance by multiple goroutines.
 // Lock will be released once the RunProcessInstance function finishes the processing.
 // Processing is finished when all the tokens are consumed (TokenStateCompleted, TokenStateCanceled) or they reached waiting (TokenStateWaiting) state
-func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (err error) {
+func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.ProcessInstance, executionTokens []runtime.ExecutionToken) (retErr error) {
 	engine.metrics.ProcessesRunning.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 	))
@@ -76,6 +76,12 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	}()
 	engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
 	defer engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
+
+	//refresh
+	err := engine.RefreshProcessInstance(ctx, instance)
+	if err != nil {
+		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	process := instance.ProcessInstance().Definition
 	runningExecutionTokens := executionTokens
@@ -93,9 +99,9 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 		return errors.Join(newEngineErrorf("failed to save process instance %d status update", instance.ProcessInstance().Key), err)
 	}
 	defer func() {
-		if err != nil {
-			instanceSpan.RecordError(err)
-			instanceSpan.SetStatus(codes.Error, err.Error())
+		if retErr != nil {
+			instanceSpan.RecordError(retErr)
+			instanceSpan.SetStatus(codes.Error, retErr.Error())
 		}
 		instanceSpan.End()
 	}()
@@ -159,7 +165,19 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 		if runErr != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
 		}
-		batch.SaveProcessInstance(ctx, instance)
+		err = batch.SaveProcessInstance(ctx, instance)
+		if err != nil {
+			runErr = errors.Join(runErr, err)
+			engine.logger.Warn("failed to flush after processing the tokens parent", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			batch.WriteTokenIncident(ctx, currentToken, instance, err)
+			incidentError := batch.Flush(ctx)
+			if incidentError != nil {
+				err = errors.Join(err, incidentError)
+				runErr = errors.Join(runErr, incidentError)
+			}
+			endErrorSpan(tokenSpan, err)
+			return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
 
 		if instance.ProcessInstance().State == runtime.ActivityStateCompleted {
 			if instance.Type() != runtime.ProcessTypeDefault {
@@ -326,7 +344,7 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 	return instance, nil
 }
 
-func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) error {
+func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) (retError error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
@@ -341,16 +359,25 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 	if err != nil {
 		return fmt.Errorf("failed to create engine batch: %w", err)
 	}
+	defer func() {
+		if retError != nil {
+			batch.Clear(ctx)
+		}
+	}()
+
 	err = engine.cancelInstance(ctx, instance, &batch)
 	if err != nil {
-		batch.Clear(ctx)
 		return err
 	}
 
-	return batch.Flush(ctx)
+	err = batch.Flush(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (pi runtime.ProcessInstance, exTokens []runtime.ExecutionToken, retErr error) {
 	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.ProcessInstance().Key, err)
@@ -367,12 +394,16 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create engine batch: %w", err)
 	}
+	defer func() {
+		if retErr != nil {
+			batch.Clear(ctx)
+		}
+	}()
 
 	var activeTokensLeft []runtime.ExecutionToken
 	if len(elementInstanceIdsToTerminate) > 0 {
 		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
 		if err != nil {
-			batch.Clear(ctx)
 			createSpan.RecordError(err)
 			createSpan.SetStatus(codes.Error, err.Error())
 			return processInstance, nil, err
@@ -381,7 +412,6 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	startedTokens, err := engine.startExecutionTokens(ctx, &batch, elementIdsToStartInstance, processInstance)
 	if err != nil {
-		batch.Clear(ctx)
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
 		return processInstance, nil, err
@@ -394,7 +424,6 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	}
 	err = batch.SaveProcessInstance(ctx, processInstance)
 	if err != nil {
-		batch.Clear(ctx)
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
 		return processInstance, nil, err
@@ -458,6 +487,18 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 // and returns the corresponding processInstanceInfo, or otherwise nil
 func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
 	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
+}
+
+func (engine *Engine) RefreshProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
+	refreshedInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	err = instance.Apply(refreshedInstance)
+	if err != nil {
+		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	return nil
 }
 
 // FindProcessesById returns all registered processes with given ID

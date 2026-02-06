@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS flow_element_instance(
     execution_token_key integer NOT NULL, -- int64 id of execution token
     created_at integer NOT NULL, -- unix millis of when the process flow element was started
     input_variables text NOT NULL, -- variables that were inputted by activity
-    output_variables text NOT NULL -- variables that were outputted by activity
+    output_variables text NOT NULL, -- variables that were outputted by activity
+    FOREIGN KEY (process_instance_key) REFERENCES process_instance(key)
 );
 
 CREATE TABLE IF NOT EXISTS incident(

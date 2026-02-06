@@ -31,16 +31,6 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch *EngineBatch
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}
-	batch.SaveJob(ctx, job)
-	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                currentToken.ElementInstanceKey,
-		ProcessInstanceKey: instance.ProcessInstance().Key,
-		ElementId:          element.GetId(),
-		CreatedAt:          time.Now(),
-		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     jobVarHolder.LocalVariables(),
-		OutputVariables:    nil,
-	})
 	// Only evaluate assignee for UserTask elements
 	if userTask, ok := element.(bpmn20.UserTask); ok {
 		assigneeResult, err := engine.evaluateExpression(userTask.GetAssignmentAssignee(), jobVarHolder.LocalVariables())
@@ -61,6 +51,20 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch *EngineBatch
 	if err != nil {
 		job.State = runtime.ActivityStateFailed
 		return job.State, fmt.Errorf("failed to create job: %w", err)
+	}
+
+	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                currentToken.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		ElementId:          element.GetId(),
+		CreatedAt:          time.Now(),
+		ExecutionTokenKey:  currentToken.Key,
+		InputVariables:     jobVarHolder.LocalVariables(),
+		OutputVariables:    nil,
+	})
+	if err != nil {
+		job.State = runtime.ActivityStateFailed
+		return job.State, err
 	}
 
 	handler := engine.findTaskHandler(element)

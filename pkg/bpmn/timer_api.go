@@ -13,6 +13,7 @@ func (engine *Engine) ProcessTimer(ctx context.Context, timer runtime.Timer) {
 	instance, tokens, err := engine.TriggerTimer(ctx, timer)
 	if err != nil {
 		engine.logger.Error(fmt.Sprintf("failed to trigger timer %d: %s", timer.Key, err))
+		return
 	}
 
 	err = engine.RunProcessInstance(ctx, instance, tokens)
@@ -22,6 +23,7 @@ func (engine *Engine) ProcessTimer(ctx context.Context, timer runtime.Timer) {
 	}
 }
 
+// TODO: Fix this method needs to refresh after locking instance
 func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	instance runtime.ProcessInstance,
 	tokens []runtime.ExecutionToken,
@@ -65,7 +67,10 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 		}
 	case *bpmn20.TIntermediateCatchEvent:
 		timer.TimerState = runtime.TimerStateTriggered
-		batch.SaveTimer(ctx, timer)
+		err := batch.SaveTimer(ctx, timer)
+		if err != nil {
+			return nil, nil, err
+		}
 		//TODO: BUG ? Tokens are never saved
 		tokens, err = engine.handleElementTransition(ctx, &batch, instance, nodeT, timer.Token)
 		if err != nil {

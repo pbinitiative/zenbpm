@@ -513,3 +513,62 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }
+
+func TestExclusiveGatewaySequenceFlowSavedInHistory(t *testing.T) {
+	// This test verifies that sequence flows after exclusive gateways are saved in flow element history.
+	// See: https://github.com/pbinitiative/zenbpm/issues/370
+	//
+	// The bug: Gateway handlers (exclusive, inclusive, parallel) selected the outgoing flow and moved
+	// the token, but never called SaveFlowElementInstance() for the sequence flow itself.
+	// This caused the flow to be missing from the process instance history.
+
+	// setup - load a process with exclusive gateway
+	process, err := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
+	assert.NoError(t, err)
+
+	// Register handlers for the tasks
+	taskACalled := false
+	handlerA := bpmnEngine.NewTaskHandler().Type("task-a").Handler(func(job ActivatedJob) {
+		taskACalled = true
+		job.Complete()
+	})
+	defer bpmnEngine.RemoveHandler(handlerA)
+
+	taskBCalled := false
+	handlerB := bpmnEngine.NewTaskHandler().Type("task-b").Handler(func(job ActivatedJob) {
+		taskBCalled = true
+		job.Complete()
+	})
+	defer bpmnEngine.RemoveHandler(handlerB)
+
+	// when - create instance with price > 0 (should take price-gt-zero flow to task-a)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"price": 100,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
+	assert.True(t, taskACalled, "task-a should have been called")
+	assert.False(t, taskBCalled, "task-b should NOT have been called")
+
+	// then - check that the sequence flow from gateway to task-a is in history
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(
+		t.Context(),
+		instance.ProcessInstance().Key,
+		true, // order by time created
+	)
+	assert.NoError(t, err)
+
+	// Find all element IDs in history
+	elementIds := make([]string, len(flowElements))
+	for i, fe := range flowElements {
+		elementIds[i] = fe.ElementId
+	}
+
+	// The sequence flow "price-gt-zero" (from gateway to task-a) MUST be in history
+	assert.Contains(t, elementIds, "price-gt-zero",
+		"Sequence flow 'price-gt-zero' after exclusive gateway should be saved in history. Got: %v", elementIds)
+
+	// Also verify the flow from start to gateway is there
+	assert.Contains(t, elementIds, "Flow_1y8jegt",
+		"Sequence flow 'Flow_1y8jegt' (start to gateway) should be in history. Got: %v", elementIds)
+}

@@ -126,6 +126,9 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	if err != nil {
 		return err
 	}
+	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateTerminated {
+		return nil
+	}
 
 	// Cancel all message subscriptions
 	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)

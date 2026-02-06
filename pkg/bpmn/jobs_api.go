@@ -61,6 +61,7 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 
 	err = batch.Flush(ctx)
 	if err != nil {
+		batch.Clear(ctx)
 		return fmt.Errorf("failed to fail job %+v: %w", job, err)
 	}
 	engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
@@ -114,11 +115,10 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 }
 
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) (retErr error) {
-	j, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
 	}
-	job := &j
 
 	if job.State == runtime.ActivityStateCompleted {
 		engine.logger.Error("job %d is already completed", job.Key)
@@ -180,7 +180,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	job.State = runtime.ActivityStateCompleted
-	batch.SaveJob(ctx, *job)
+	batch.SaveJob(ctx, job)
 	for _, token := range tokens {
 		batch.SaveToken(ctx, token)
 	}
@@ -189,11 +189,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted && instance.Type() != runtime.ProcessTypeDefault {
 		err := engine.handleParentProcessContinuation(ctx, &batch, instance, task)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to handle parent process continuation for job %+v: %w", job, err)
 		}
 
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to complete job %+v: %w", job, err)
 		}
 
@@ -202,6 +204,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	} else {
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to complete job %+v: %w", job, err)
 		}
 

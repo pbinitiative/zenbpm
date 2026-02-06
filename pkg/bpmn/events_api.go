@@ -46,6 +46,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to flush publish message b %+v: %w", message, err)
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)
@@ -64,6 +65,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)
@@ -82,6 +84,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
+			batch.Clear(ctx)
 			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)

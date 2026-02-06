@@ -41,7 +41,6 @@ func (engine *Engine) createInternalTask(ctx context.Context, batch *EngineBatch
 		InputVariables:     jobVarHolder.LocalVariables(),
 		OutputVariables:    nil,
 	})
-	//TODO: check this from main
 	// Only evaluate assignee for UserTask elements
 	if userTask, ok := element.(bpmn20.UserTask); ok {
 		assigneeResult, err := engine.evaluateExpression(userTask.GetAssignmentAssignee(), jobVarHolder.LocalVariables())

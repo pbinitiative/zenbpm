@@ -93,6 +93,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (err error
 
 	err = batch.Flush(ctx)
 	if err != nil {
+		batch.Clear(ctx)
 		return errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
 	}
 

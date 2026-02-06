@@ -52,14 +52,13 @@ func (e *Engine) NewEngineBatchClean() (EngineBatch, error) {
 // AddParentLockedInstance only refreshes the input instances. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, currentInstance bpmnruntime.ProcessInstance, parentInstance bpmnruntime.ProcessInstance) error {
 	//This does the same thing as AddLockedInstance because I havent found better way yet
-	b.engine.runningInstances.lockInstance(parentInstance.ProcessInstance().Key)
-	parentInstance, err := b.engine.persistence.FindProcessInstanceByKey(ctx, parentInstance.ProcessInstance().Key)
+	err := b.engine.runningInstances.tryLockInstance(ctx, parentInstance.ProcessInstance().Key)
+	if err != nil {
+		return fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err)
+	}
+	parentInstance, err = b.engine.persistence.FindProcessInstanceByKey(ctx, parentInstance.ProcessInstance().Key)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err)
-	}
-	if parentInstance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted {
-		b.engine.runningInstances.unlockInstance(parentInstance.ProcessInstance().Key)
-		return fmt.Errorf("process instance %d is already completed", parentInstance.ProcessInstance().Key)
 	}
 	b.touchedInstances = append(b.touchedInstances, parentInstance.ProcessInstance().Key)
 	return nil
@@ -71,10 +70,6 @@ func (b *EngineBatch) AddLockedInstance(ctx context.Context, instance bpmnruntim
 	instance, err := b.engine.persistence.FindProcessInstanceByKey(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	if instance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted {
-		b.engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
-		return fmt.Errorf("process instance %d is already completed", instance.ProcessInstance().Key)
 	}
 	b.touchedInstances = append(b.touchedInstances, instance.ProcessInstance().Key)
 	return nil
@@ -91,6 +86,10 @@ func (b *EngineBatch) Flush(ctx context.Context) (err error) {
 				action()
 			}
 		}
+		b.b = b.engine.persistence.NewBatch()
+		b.touchedInstances = []int64{}
+		b.preFlushActions = []func() error{}
+		b.postFlushActions = []func(){}
 	}()
 	for _, action := range b.preFlushActions {
 		err := action()

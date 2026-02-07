@@ -9,7 +9,7 @@ import (
 
 func TestTerminateEndEvent(t *testing.T) {
 	var instance public.ProcessInstance
-	definition, err := deployGetDefinition(t, "parellel_flow_with_terminate_end_task.bpmn", "parellel_flow_with_terminate_end_task")
+	definition, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, definition.Key, map[string]any{})

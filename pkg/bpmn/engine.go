@@ -933,17 +933,17 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 
 func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) error {
 	if endEvent.IsTerminate() {
-		return handleTerminateEndEvent(ctx, batch, instance, engine, currentToken)
+		return engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
 	}
 	return engine.handleNonTerminateEndEvent(ctx, instance)
 }
 
-func handleTerminateEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, engine *Engine, currentToken runtime.ExecutionToken) error {
+func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, currentToken runtime.ExecutionToken) error {
 	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
 	if err != nil {
 		return fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	otherActiveElementInstances := make([]int64, 0)
+	otherActiveElementInstances := make([]int64, 0, len(activeTokens)-1)
 	for _, activeToken := range activeTokens {
 		if activeToken.Key != currentToken.Key {
 			otherActiveElementInstances = append(otherActiveElementInstances, activeToken.ElementInstanceKey)

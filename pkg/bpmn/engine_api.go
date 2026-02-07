@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
@@ -11,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 )
 
 // Start will start the process engine instance.ProcessInstance().
@@ -101,6 +102,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	}()
 
 	// *** MAIN LOOP ***
+mainLoop:
 	for len(runningExecutionTokens) > 0 {
 		batch, err := engine.NewEngineBatchClean()
 		if err != nil {
@@ -208,6 +210,13 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 			continue
 		}
 		tokenSpan.End()
+
+		switch element := activity.Element().(type) {
+		case *bpmn20.TEndEvent:
+			if element.IsTerminate() {
+				break mainLoop
+			}
+		}
 	}
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {

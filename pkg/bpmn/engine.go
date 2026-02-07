@@ -495,14 +495,14 @@ func (engine *Engine) processFlowNode(
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
 		//TODO: input output Variables
-		tokens, err := engine.handleElementTransition(ctx, batch, instance, activity.element, currentToken)
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
 	case *bpmn20.TEndEvent:
-		err := engine.handleEndEvent(ctx, instance)
+		err := engine.handleEndEvent(ctx, batch, instance, element, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent %d: %w", activity.GetKey(), err)
 		}
@@ -931,7 +931,35 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 	}
 }
 
-func (engine *Engine) handleEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
+func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) error {
+	if endEvent.IsTerminate() {
+		return handleTerminateEndEvent(ctx, batch, instance, engine, currentToken)
+	}
+	return engine.handleNonTerminateEndEvent(ctx, instance)
+}
+
+func handleTerminateEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, engine *Engine, currentToken runtime.ExecutionToken) error {
+	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	otherActiveElementInstances := make([]int64, 0)
+	for _, activeToken := range activeTokens {
+		if activeToken.Key != currentToken.Key {
+			otherActiveElementInstances = append(otherActiveElementInstances, activeToken.ElementInstanceKey)
+		}
+	}
+	if len(otherActiveElementInstances) > 0 {
+		_, err := engine.terminateExecutionTokens(ctx, batch, otherActiveElementInstances, instance.ProcessInstance().Key)
+		if err != nil {
+			return fmt.Errorf("failed to terminate execution tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
+	}
+	instance.ProcessInstance().State = runtime.ActivityStateCompleted
+	return nil
+}
+
+func (engine *Engine) handleNonTerminateEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
 	activeSubscriptions := false
 
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)

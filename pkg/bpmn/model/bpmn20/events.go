@@ -32,6 +32,11 @@ func (startEvent TStartEvent) GetType() ElementType {
 
 type TEndEvent struct {
 	TEvent
+	TerminateEventDefinition TBaseElement `xml:"terminateEventDefinition"`
+}
+
+func (endEvent TEndEvent) IsTerminate() bool {
+	return endEvent.TerminateEventDefinition.Id != ""
 }
 
 func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }

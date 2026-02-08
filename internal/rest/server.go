@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
@@ -793,18 +795,22 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
 	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		return public.GetProcessInstance502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.GetProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
 	}
 	vars := map[string]any{}
 	err = json.Unmarshal(instance.GetVariables(), &vars)
 	if err != nil {
-		return public.GetProcessInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))

@@ -2,7 +2,6 @@ package zenerr
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
@@ -48,7 +47,7 @@ func (zenErrorCode ZenErrorCode) ToString() string {
 	case NotFoundCode:
 		return "NOT_FOUND"
 	default:
-		panic(fmt.Sprintf("unknown zen error code: %v", zenErrorCode))
+		return "UNKNOWN_ERROR"
 	}
 }
 
@@ -90,9 +89,16 @@ func (zenError *ZenError) ToApiError() public.Error {
 func ToZenError(protoError *proto.ErrorResult, err ...error) *ZenError {
 	var resErr = errors.Join(err...)
 	if protoError.Message != nil {
-		resErr = fmt.Errorf("%w %v", resErr, protoError.GetMessage())
-	} else {
-		resErr = fmt.Errorf("%w", resErr)
+		protoErr := errors.New(protoError.GetMessage())
+		if resErr != nil {
+			resErr = errors.Join(resErr, protoErr)
+		} else {
+			resErr = protoErr
+		}
 	}
-	return &ZenError{ZenErrorCode(*protoError.Code), resErr}
+	code := TechnicalErrorCode
+	if protoError.Code != nil {
+		code = ZenErrorCode(*protoError.Code)
+	}
+	return &ZenError{code, resErr}
 }

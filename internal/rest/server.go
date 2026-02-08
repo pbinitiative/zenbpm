@@ -805,9 +805,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			default:
 				return public.GetProcessInstance500JSONResponse(zerr.ToApiError()), nil
 			}
-		} else {
 			return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
-		}
 	}
 	vars := map[string]any{}
 	err = json.Unmarshal(instance.GetVariables(), &vars)

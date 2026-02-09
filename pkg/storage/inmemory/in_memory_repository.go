@@ -341,6 +341,13 @@ func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpm
 
 var _ storage.TimerStorageReader = &Storage{}
 
+func (mem *Storage) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, error) {
+	if timer, ok := mem.Timers[timerKey]; ok {
+		return timer, nil
+	}
+	return bpmnruntime.Timer{}, storage.ErrNotFound
+}
+
 func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {

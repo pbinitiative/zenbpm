@@ -82,6 +82,14 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	if err != nil {
 		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
+	switch instance.ProcessInstance().State {
+	case runtime.ActivityStateTerminated:
+		return newEngineErrorf("process instance %d is terminated", instance.ProcessInstance().Key)
+	case runtime.ActivityStateCompleted:
+		return newEngineErrorf("process instance %d is completed", instance.ProcessInstance().Key)
+	default:
+		// do nothing
+	}
 
 	process := instance.ProcessInstance().Definition
 	runningExecutionTokens := executionTokens
@@ -377,6 +385,8 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 	return nil
 }
 
+// TODO: this method is not counting in that some tokens on elementInstanceIdsToTerminate could have already moved to next elementInstance
+// TODO: then elementIdsToStartInstance could create a duplicate token that user didn't mean to duplicate.
 func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (pi runtime.ProcessInstance, exTokens []runtime.ExecutionToken, retErr error) {
 	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {

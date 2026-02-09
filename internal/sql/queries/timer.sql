@@ -19,6 +19,14 @@ WHERE
     AND COALESCE(sqlc.narg('element_instance_key'), "element_instance_key") = "element_instance_key"
     AND state IN sqlc.slice('states');
 
+-- name: GetTimerByKey :one
+SELECT
+    *
+FROM
+    timer
+WHERE
+    key = @timer_key;
+
 -- name: FindElementTimers :many
 SELECT
     *

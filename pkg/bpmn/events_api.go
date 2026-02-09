@@ -44,6 +44,14 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
 	}
+	switch message.State {
+	case runtime.ActivityStateCompleted:
+		return errors.Join(newEngineErrorf("message subscription already completed: %d", message.Key), err)
+	case runtime.ActivityStateTerminated:
+		return errors.Join(newEngineErrorf("message subscription already terminated: %d", message.Key), err)
+	default:
+		// do nothing
+	}
 
 	// Token points either to message listener or event based gateway
 	pd := instance.ProcessInstance().Definition.Definitions.Process

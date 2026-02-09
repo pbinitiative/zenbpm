@@ -1052,6 +1052,18 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 
 var _ storage.TimerStorageReader = &DB{}
 
+func (rq *DB) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, error) {
+	sqlcTimer, err := rq.Queries.GetTimerByKey(ctx, timerKey)
+	if err != nil {
+		return bpmnruntime.Timer{}, err
+	}
+	timers, err := rq.inflateTimers(ctx, []sql.Timer{sqlcTimer})
+	if err != nil || len(timers) != 1 {
+		return bpmnruntime.Timer{}, err
+	}
+	return timers[0], nil
+}
+
 func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.Queries.FindTokenTimers(ctx, sql.FindTokenTimersParams{
 		ExecutionToken: tokenKey,

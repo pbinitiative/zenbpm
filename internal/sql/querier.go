@@ -83,6 +83,7 @@ type Querier interface {
 	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
+	GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error)
 	GetTokens(ctx context.Context, keys []int64) ([]ExecutionToken, error)
 	GetTokensForProcessInstance(ctx context.Context, arg GetTokensForProcessInstanceParams) ([]ExecutionToken, error)
 	GetTokensInState(ctx context.Context, state int64) ([]ExecutionToken, error)

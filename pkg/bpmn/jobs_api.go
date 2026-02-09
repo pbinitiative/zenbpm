@@ -16,7 +16,7 @@ import (
 func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (retErr error) {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
 
 	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
@@ -36,12 +36,12 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+		return newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
+		return newEngineErrorf("failed to create engine batch")
 	}
 	defer func() {
 		if retErr != nil {
@@ -52,7 +52,17 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 	//refresh
 	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
+	}
+	switch job.State {
+	case runtime.ActivityStateCompleted:
+		return newEngineErrorf("job already completed: %d", job.Key)
+	case runtime.ActivityStateTerminated:
+		return newEngineErrorf("job already terminated: %d", job.Key)
+	case runtime.ActivityStateFailed:
+		return newEngineErrorf("job already failed: %d", job.Key)
+	default:
+		// do nothing
 	}
 
 	failJobSpan.SetAttributes(
@@ -147,7 +157,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) (retErr error) {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
 
 	if job.State == runtime.ActivityStateCompleted {
@@ -173,12 +183,12 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, job.ProcessInstanceKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey), err)
+		return newEngineErrorf("failed to find process instance with key: %d", job.ProcessInstanceKey)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
+		return newEngineErrorf("failed to create engine batch")
 	}
 	defer func() {
 		if retErr != nil {
@@ -189,10 +199,17 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	//refresh token
 	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find job with key: %d", jobKey), err)
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
-	if job.State != runtime.ActivityStateActive {
-		return fmt.Errorf("job %d is already completed", job.Key)
+	switch job.State {
+	case runtime.ActivityStateCompleted:
+		return newEngineErrorf("job already completed: %d", job.Key)
+	case runtime.ActivityStateTerminated:
+		return newEngineErrorf("job already terminated: %d", job.Key)
+	case runtime.ActivityStateFailed:
+		return newEngineErrorf("job already failed: %d", job.Key)
+	default:
+		// do nothing
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
@@ -204,10 +221,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}
-	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             job.Token.ElementInstanceKey,
 		OutputVariables: outputVariables,
 	})
+	if err != nil {
+		return err
+	}
 
 	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance, &job.Token)
 	if err != nil {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -11,8 +14,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"reflect"
-	"time"
 )
 
 func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
@@ -662,4 +663,16 @@ func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
 			return []runtime.ExecutionToken{currentToken}, nil
 		}
 	}
+}
+
+func (engine *Engine) cancelSubProcessInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
+	err := batch.AddLockedInstance(ctx, instance)
+	if err != nil {
+		return err
+	}
+	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateTerminated {
+		return nil
+	}
+
+	return engine.cancelInstance(ctx, instance, batch)
 }

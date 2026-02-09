@@ -190,10 +190,10 @@ mainLoop:
 					runErr = errors.Join(runErr, incidentError)
 				}
 				endErrorSpan(tokenSpan, err)
-				break
+				break mainLoop
 			}
 			tokenSpan.End()
-			break
+			break mainLoop
 		}
 
 		err = batch.Flush(ctx)
@@ -210,13 +210,6 @@ mainLoop:
 			continue
 		}
 		tokenSpan.End()
-
-		switch element := activity.Element().(type) {
-		case *bpmn20.TEndEvent:
-			if element.IsTerminate() {
-				break mainLoop
-			}
-		}
 	}
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
@@ -346,7 +339,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key)
 	}
 
-	batch, err := engine.NewEngineBatchClean()
+	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to create engine batch: %w", err)
 	}
@@ -379,7 +372,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	var activeTokensLeft []runtime.ExecutionToken
 	if len(elementInstanceIdsToTerminate) > 0 {
-		activeTokensLeft, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
+		activeTokensLeft, _, err = engine.terminateExecutionTokens(ctx, &batch, elementInstanceIdsToTerminate, processInstanceKey)
 		if err != nil {
 			batch.Clear(ctx)
 			createSpan.RecordError(err)

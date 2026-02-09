@@ -52,6 +52,19 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err))
 	}
+	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
+	if err != nil {
+		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)
+	}
+	timer = timerRefreshed
+	switch timer.TimerState {
+	case runtime.TimerStateTriggered:
+		return nil, nil, newEngineErrorf("timer is already triggered: %d", timer.Key)
+	case runtime.TimerStateCancelled:
+		return nil, nil, newEngineErrorf("timer is already cancelled: %d", timer.Key)
+	default:
+		// do nothing
+	}
 
 	switch nodeT := tokenNode.(type) {
 	case *bpmn20.TEventBasedGateway:

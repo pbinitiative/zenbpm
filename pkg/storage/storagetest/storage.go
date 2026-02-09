@@ -304,6 +304,10 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		timers, err = s.FindTokenActiveTimerSubscriptions(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
+
+		timerTest, err := s.GetTimer(t.Context(), timer.Token.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, timer.Key, timerTest.Key)
 	}
 }
 

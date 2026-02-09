@@ -2,7 +2,6 @@ package bpmn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -38,7 +37,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 
 	incident, err := engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
+		return newEngineErrorf("failed to find incident with key: %d", key)
 	}
 
 	resoveIncidentSpan.SetAttributes(
@@ -48,17 +47,17 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	)
 
 	if incident.ResolvedAt != nil {
-		return errors.New("incident already resolved")
+		return newEngineErrorf("incident already resolved")
 	}
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey), err)
+		return newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to create engine batch"), err)
+		return newEngineErrorf("failed to create engine batch")
 	}
 	defer func() {
 		if retErr != nil {
@@ -69,12 +68,15 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	//refresh
 	incident, err = engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find incident with key: %d", key), err)
+		return newEngineErrorf("failed to find incident with key: %d", key)
+	}
+	if incident.ResolvedAt != nil {
+		return newEngineErrorf("incident with key %d was already resolved", key)
 	}
 
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key), err)
+		return newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key)
 	}
 
 	incident.ResolvedAt = ptr.To(time.Now())
@@ -116,7 +118,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to complete incident with key: %d", key), err)
+		return newEngineErrorf("failed to complete incident with key: %d", key)
 	}
 
 	err = engine.RunProcessInstance(ctx, instance, []runtime.ExecutionToken{incident.Token})

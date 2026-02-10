@@ -88,7 +88,7 @@ func (m *MultiInstanceInstance) Type() ProcessType {
 func (m *MultiInstanceInstance) Apply(processInstance ProcessInstance) error {
 	multiInstanceInstance, ok := processInstance.(*MultiInstanceInstance)
 	if !ok {
-		return fmt.Errorf("processInstance is not a SubProcessInstance")
+		return fmt.Errorf("processInstance is not a MultiInstanceInstance")
 	}
 	m.ProcessInstanceData = *processInstance.ProcessInstance()
 	m.ParentProcessExecutionToken = multiInstanceInstance.ParentProcessExecutionToken
@@ -115,7 +115,7 @@ func (c *CallActivityInstance) Type() ProcessType {
 func (c *CallActivityInstance) Apply(processInstance ProcessInstance) error {
 	callActivityInstance, ok := processInstance.(*CallActivityInstance)
 	if !ok {
-		return fmt.Errorf("processInstance is not a SubProcessInstance")
+		return fmt.Errorf("processInstance is not a CallActivityInstance")
 	}
 	c.ProcessInstanceData = *processInstance.ProcessInstance()
 	c.ParentProcessExecutionToken = callActivityInstance.ParentProcessExecutionToken

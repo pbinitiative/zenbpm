@@ -392,7 +392,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (pi runtime.ProcessInstance, exTokens []runtime.ExecutionToken, retErr error) {
 	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find process instance %d: %w", processInstance.ProcessInstance().Key, err)
+		return nil, nil, fmt.Errorf("failed to find process instance %d: %w", processInstanceKey, err)
 	}
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(

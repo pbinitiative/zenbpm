@@ -809,6 +809,58 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 
 var _ storage.ProcessInstanceStorageReader = &DB{}
 
+func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
+	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstance.ProcessInstance().Key)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance by key: %w", err)
+	}
+
+	variables := map[string]any{}
+	err = json.Unmarshal([]byte(dbInstance.Variables), &variables)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal variables: %w", err)
+	}
+
+	var parentToken bpmnruntime.ExecutionToken
+	if dbInstance.ParentProcessExecutionToken.Valid {
+		parentToken, err = rq.GetTokenByKey(ctx, dbInstance.ParentProcessExecutionToken.Int64)
+		if err != nil {
+			return fmt.Errorf("failed to find parent process execution token by key: %w", err)
+		}
+	}
+
+	switch bpmnruntime.ProcessType(dbInstance.ProcessType) {
+	case bpmnruntime.ProcessTypeDefault:
+		processInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		processInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+	case bpmnruntime.ProcessTypeMultiInstance:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.MultiInstanceInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a MultiInstanceInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeSubProcess:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.SubProcessInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a SubProcessInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeCallActivity:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.CallActivityInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a CallActivityInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	}
+	return nil
+}
+
 func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
@@ -832,23 +884,10 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 	}
 
 	var parentToken bpmnruntime.ExecutionToken
-
 	if dbInstance.ParentProcessExecutionToken.Valid {
-		tokens, err := rq.Queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
+		parentToken, err = rq.GetTokenByKey(ctx, dbInstance.ParentProcessExecutionToken.Int64)
 		if err != nil {
-			return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
-		}
-		if len(tokens) > 1 {
-			return res, fmt.Errorf("more than one token found for parent process instance key (%d): %w", dbInstance.Key, err)
-		}
-		if len(tokens) == 1 {
-			parentToken = bpmnruntime.ExecutionToken{
-				Key:                tokens[0].Key,
-				ElementInstanceKey: tokens[0].ElementInstanceKey,
-				ElementId:          tokens[0].ElementID,
-				ProcessInstanceKey: tokens[0].ProcessInstanceKey,
-				State:              bpmnruntime.TokenState(tokens[0].State),
-			}
+			return res, fmt.Errorf("failed to find parent process execution token by key: %w", err)
 		}
 	}
 

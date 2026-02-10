@@ -301,6 +301,50 @@ func (mem *Storage) SaveProcessDefinition(ctx context.Context, definition bpmnru
 
 var _ storage.ProcessInstanceStorageReader = &Storage{}
 
+func (mem *Storage) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
+	dbInstance, ok := mem.ProcessInstances[processInstance.ProcessInstance().Key]
+	if !ok {
+		return storage.ErrNotFound
+	}
+
+	switch dbInstance.Type() {
+	case bpmnruntime.ProcessTypeDefault:
+		processInstance.ProcessInstance().State = dbInstance.ProcessInstance().State
+		processInstance.ProcessInstance().VariableHolder = dbInstance.ProcessInstance().VariableHolder
+	case bpmnruntime.ProcessTypeMultiInstance:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.MultiInstanceInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a MultiInstanceInstance")
+		}
+		parentToken := mem.ExecutionTokens[multiInstanceInstance.ParentProcessExecutionToken.Key]
+
+		multiInstanceInstance.ProcessInstance().State = dbInstance.ProcessInstance().State
+		multiInstanceInstance.ProcessInstance().VariableHolder = dbInstance.ProcessInstance().VariableHolder
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeSubProcess:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.SubProcessInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a SubProcessInstance")
+		}
+		parentToken := mem.ExecutionTokens[multiInstanceInstance.ParentProcessExecutionToken.Key]
+
+		multiInstanceInstance.ProcessInstance().State = dbInstance.ProcessInstance().State
+		multiInstanceInstance.ProcessInstance().VariableHolder = dbInstance.ProcessInstance().VariableHolder
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeCallActivity:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.CallActivityInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a CallActivityInstance")
+		}
+		parentToken := mem.ExecutionTokens[multiInstanceInstance.ParentProcessExecutionToken.Key]
+
+		multiInstanceInstance.ProcessInstance().State = dbInstance.ProcessInstance().State
+		multiInstanceInstance.ProcessInstance().VariableHolder = dbInstance.ProcessInstance().VariableHolder
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	}
+	return nil
+}
+
 func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
 	res, ok := mem.ProcessInstances[processInstanceKey]
 	if !ok {

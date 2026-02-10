@@ -21,7 +21,7 @@ type EngineBatch struct {
 // NewEngineBatch - Use this method only in public engine methods in _api files
 func (e *Engine) NewEngineBatch(ctx context.Context, instance bpmnruntime.ProcessInstance) (EngineBatch, error) {
 	e.runningInstances.lockInstance(instance.ProcessInstance().Key)
-	err := e.RefreshProcessInstance(ctx, instance)
+	err := e.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
 		e.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 		return EngineBatch{}, fmt.Errorf("failed refresh process instance %d: %w", instance.ProcessInstance().Key, err)
@@ -57,7 +57,7 @@ func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstanc
 	if err != nil {
 		return fmt.Errorf("failed locking parent instance %d: %w", parentInstance.ProcessInstance().Key, err)
 	}
-	err = b.engine.RefreshProcessInstance(ctx, parentInstance)
+	err = b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(parentInstance.ProcessInstance().Key)
 		return fmt.Errorf("failed to find process instance %d: %w", parentInstance.ProcessInstance().Key, err)
@@ -69,7 +69,7 @@ func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstanc
 // AddLockedInstance only refreshes the input instance. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddLockedInstance(ctx context.Context, instance bpmnruntime.ProcessInstance) error {
 	b.engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
-	err := b.engine.RefreshProcessInstance(ctx, instance)
+	err := b.engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
 		b.engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)

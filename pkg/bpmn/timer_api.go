@@ -23,7 +23,6 @@ func (engine *Engine) ProcessTimer(ctx context.Context, timer runtime.Timer) {
 	}
 }
 
-// TODO: Fix this method needs to refresh after locking instance
 func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	instance runtime.ProcessInstance,
 	tokens []runtime.ExecutionToken,

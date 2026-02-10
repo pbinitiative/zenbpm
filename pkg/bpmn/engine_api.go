@@ -178,7 +178,7 @@ mainLoop:
 		err = batch.SaveProcessInstance(ctx, instance)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
-			engine.logger.Warn("failed to flush after processing the tokens parent", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			engine.logger.Warn("failed to save process instance after processing the token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {

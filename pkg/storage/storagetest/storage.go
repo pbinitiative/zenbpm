@@ -224,6 +224,14 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		assert.Equal(t, inst.ProcessInstance().CreatedAt.Truncate(time.Millisecond), instance.ProcessInstance().CreatedAt.Truncate(time.Millisecond))
 		assert.Equal(t, inst.ProcessInstance().VariableHolder, instance.ProcessInstance().VariableHolder)
 
+		//testRefresh
+		instance.ProcessInstance().State = bpmnruntime.ActivityStateTerminated
+		err = s.SaveProcessInstance(t.Context(), instance)
+		assert.NoError(t, err)
+		err = s.RefreshProcessInstance(t.Context(), inst)
+		assert.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateTerminated, inst.ProcessInstance().State)
+
 		// TODO: uncomment once its implemented
 		// assert.Equal(t, len(inst.Activities), len(instance.Activities))
 		// assert.Equal(t, inst.Activities[0], instance.Activities[0])

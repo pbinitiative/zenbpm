@@ -78,7 +78,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	defer engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 
 	//refresh
-	err := engine.RefreshProcessInstance(ctx, instance)
+	err := engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -497,18 +497,6 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 // and returns the corresponding processInstanceInfo, or otherwise nil
 func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
 	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
-}
-
-func (engine *Engine) RefreshProcessInstance(ctx context.Context, instance runtime.ProcessInstance) error {
-	refreshedInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return fmt.Errorf("failed to find process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	err = instance.Apply(refreshedInstance)
-	if err != nil {
-		return fmt.Errorf("failed to refresh process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	return nil
 }
 
 // FindProcessesById returns all registered processes with given ID

@@ -126,6 +126,7 @@ type ProcessDefinitionStorageWriter interface {
 type ProcessInstanceStorageReader interface {
 	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
 	FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
+	RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error)
 }
 
 type ProcessInstanceStorageWriter interface {

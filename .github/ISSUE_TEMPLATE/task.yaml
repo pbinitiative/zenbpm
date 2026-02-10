@@ -3,6 +3,8 @@ description: "Create a small, actionable work item"
 title: "<short name>"
 labels: ["type: task"]
 type: Task
+# Corresponds to the "ZenBPM Product Backlog" project
+projects: ["pbinitiative/5"]
 body:
   - type: markdown
     attributes:
@@ -12,6 +14,7 @@ body:
 
   - type: textarea
     id: description
+    required: true
     attributes:
       label: Description
       description: What needs to be done? Be concise and clear.
@@ -21,6 +24,7 @@ body:
 
   - type: textarea
     id: acceptance
+    required: true
     attributes:
       label: Acceptance Criteria
       description: Define what success looks like for this task.

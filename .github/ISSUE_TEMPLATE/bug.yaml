@@ -3,6 +3,8 @@ description: "Report a defect or unexpected behavior"
 title: "<short description>"
 labels: ["type: bug"]
 type: Bug
+# Corresponds to the "ZenBPM Product Backlog" project
+projects: ["pbinitiative/5"]
 body:
   - type: markdown
     attributes:
@@ -12,6 +14,7 @@ body:
 
   - type: textarea
     id: description
+    required: true
     attributes:
       label: Description
       description: What went wrong? Provide a clear, concise summary.
@@ -21,6 +24,7 @@ body:
 
   - type: textarea
     id: steps
+    required: true
     attributes:
       label: Steps to Reproduce
       description: Step-by-step instructions so others can reproduce the bug.
@@ -41,6 +45,7 @@ body:
 
   - type: textarea
     id: expected
+    required: true
     attributes:
       label: Expected Behavior
       description: What should have happened instead?

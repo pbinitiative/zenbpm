@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -122,87 +123,7 @@ func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 }
 
 func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch) error {
-	// Cancel all message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
-	if err != nil {
-		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	for _, sub := range subscriptions {
-		sub.State = runtime.ActivityStateTerminated
-		err = batch.SaveMessageSubscription(ctx, sub)
-		if err != nil {
-			return fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
-		}
-	}
-
-	// Cancel all timer subscriptions
-	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
-	if err != nil {
-		return fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	for _, timer := range timers {
-		timer.TimerState = runtime.TimerStateCancelled
-		err = batch.SaveTimer(ctx, timer)
-		if err != nil {
-			return fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
-		}
-	}
-
-	// Cancel all jobs
-	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return fmt.Errorf("failed to find jobs for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	for _, job := range jobs {
-		job.State = runtime.ActivityStateTerminated
-		err = batch.SaveJob(ctx, job)
-		if err != nil {
-			return fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
-		}
-	}
-
-	// Cancel all incidents
-
-	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return fmt.Errorf("failed to find incidents for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	for _, incident := range incidents {
-		incident.ResolvedAt = ptr.To(time.Now())
-		err = batch.SaveIncident(ctx, incident)
-		if err != nil {
-			return fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
-		}
-	}
-
-	// Cancel all called processes
-
-	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return fmt.Errorf("failed to find tokens for instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
-	for _, token := range tokens {
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
-		if err != nil {
-			return fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
-		}
-
-		for _, calledProcess := range calledProcesses {
-			err = engine.cancelSubProcessInstance(ctx, calledProcess, batch)
-			if err != nil {
-				return fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
-			}
-		}
-		token.State = runtime.TokenStateCanceled
-		err = batch.SaveToken(ctx, token)
-		if err != nil {
-			return fmt.Errorf("failed to save changes to token %d: %w", token.Key, err)
-		}
-	}
+	_, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch)
 
 	// Cancel process instance
 	instance.ProcessInstance().State = runtime.ActivityStateTerminated
@@ -210,8 +131,98 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 	if err != nil {
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-
 	return nil
+}
+
+func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch, omitTokenKeys ...int64,
+) (terminatedTokens []runtime.ExecutionToken, err error) {
+	// Cancel all message subscriptions
+	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
+	for _, sub := range subscriptions {
+		sub.State = runtime.ActivityStateTerminated
+		err = batch.SaveMessageSubscription(ctx, sub)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+		}
+	}
+
+	// Cancel all timer subscriptions
+	timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	for _, timer := range timers {
+		timer.TimerState = runtime.TimerStateCancelled
+		err = batch.SaveTimer(ctx, timer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
+		}
+	}
+
+	// Cancel all jobs
+	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find jobs for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
+	for _, job := range jobs {
+		job.State = runtime.ActivityStateTerminated
+		err = batch.SaveJob(ctx, job)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+		}
+	}
+
+	// Cancel all incidents
+
+	incidents, err := engine.persistence.FindIncidentsByProcessInstanceKey(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find incidents for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
+	for _, incident := range incidents {
+		incident.ResolvedAt = ptr.To(time.Now())
+		err = batch.SaveIncident(ctx, incident)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
+		}
+	}
+
+	// Cancel all called processes
+
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
+	for _, token := range tokens {
+		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
+		}
+
+		for _, calledProcess := range calledProcesses {
+			err = engine.cancelSubProcessInstance(ctx, calledProcess, batch)
+			if err != nil {
+				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
+			}
+		}
+		if slices.Contains(omitTokenKeys, token.Key) {
+			continue
+		}
+		token.State = runtime.TokenStateCanceled
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to token %d: %w", token.Key, err)
+		}
+		terminatedTokens = append(terminatedTokens, token)
+	}
+
+	return terminatedTokens, nil
 }
 
 func (engine *Engine) terminateExecutionTokens(
@@ -219,66 +230,65 @@ func (engine *Engine) terminateExecutionTokens(
 	batch *EngineBatch,
 	elementInstanceKeysToTerminate []int64,
 	processInstanceKey int64,
-) (activeTokensLeft []runtime.ExecutionToken, terminatedTokens []runtime.ExecutionToken, err error) {
+) ([]runtime.ExecutionToken, error) {
 	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, processInstanceKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
+		return nil, fmt.Errorf("failed to find tokens for instance %d: %w", processInstanceKey, err)
 	}
 
-	activeTokensLeft = make([]runtime.ExecutionToken, 0, len(activeTokens))
-	terminatedTokens = make([]runtime.ExecutionToken, 0, len(elementInstanceKeysToTerminate))
+	activeTokensLeft := make([]runtime.ExecutionToken, 0, len(activeTokens))
 	for _, activeToken := range activeTokens {
 		for _, elementInstanceKey := range elementInstanceKeysToTerminate {
 			if activeToken.ElementInstanceKey == elementInstanceKey {
 				// Cancel all message subscriptions
 				subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, activeToken.Key, runtime.ActivityStateActive)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, sub := range subscriptions {
 					sub.State = runtime.ActivityStateTerminated
 					err = batch.SaveMessageSubscription(ctx, sub)
 					if err != nil {
-						return nil, nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+						return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
 					}
 				}
 
 				// Cancel all timer subscriptions
 				timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, activeToken.Key)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to find timers for execution token %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to find timers for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, timer := range timers {
 					timer.TimerState = runtime.TimerStateCancelled
 					err = batch.SaveTimer(ctx, timer)
 					if err != nil {
-						return nil, nil, fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
+						return nil, fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
 					}
 				}
 
 				// Cancel all jobs
 				jobs, err := engine.persistence.FindTokenJobsInState(ctx, activeToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to find jobs for execution token %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to find jobs for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, job := range jobs {
 					job.State = runtime.ActivityStateTerminated
 					err = batch.SaveJob(ctx, job)
 					if err != nil {
-						return nil, nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+						return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
 					}
 				}
 
 				// Cancel all incidents
 				incidents, err := engine.persistence.FindIncidentsByExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to find incidents for execution token %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to find incidents for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, incident := range incidents {
 					incident.ResolvedAt = ptr.To(time.Now())
 					err = batch.SaveIncident(ctx, incident)
 					if err != nil {
-						return nil, nil, fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
+						return nil, fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
 					}
 				}
 
@@ -287,20 +297,19 @@ func (engine *Engine) terminateExecutionTokens(
 				// TODO: Fix THIS
 				calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}
 				for _, calledProcess := range calledProcesses {
 					err = engine.cancelInstance(ctx, calledProcess, batch)
 					if err != nil {
-						return nil, nil, fmt.Errorf("failed to cancel called process for token %d: %w", activeToken.Key, err)
+						return nil, fmt.Errorf("failed to cancel called process for token %d: %w", activeToken.Key, err)
 					}
 				}
 
 				activeToken.State = runtime.TokenStateCanceled
-				terminatedTokens = append(terminatedTokens, activeToken)
 				err = batch.SaveToken(ctx, activeToken)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to terminate execution activeToken %d: %w", activeToken.Key, err)
+					return nil, fmt.Errorf("failed to terminate execution activeToken %d: %w", activeToken.Key, err)
 				}
 			} else {
 				activeTokensLeft = append(activeTokensLeft, activeToken)
@@ -308,7 +317,7 @@ func (engine *Engine) terminateExecutionTokens(
 		}
 	}
 
-	return activeTokensLeft, terminatedTokens, nil
+	return activeTokensLeft, nil
 }
 
 func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBatch, startingElementIds []string, processInstance runtime.ProcessInstance) ([]runtime.ExecutionToken, error) {
@@ -924,41 +933,29 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 	}
 }
 
-func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) (tokens []runtime.ExecutionToken, err error) {
+func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	currentToken.State = runtime.TokenStateCompleted
-	switch endEvent.Implementation.(type) {
-	case *bpmn20.TTerminateEndEvent:
-		tokens, err = engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
-		tokens = append(tokens, currentToken)
-	case *bpmn20.TDefaultEndEvent:
-		err = engine.handleNonTerminateEndEvent(ctx, instance)
-		tokens = []runtime.ExecutionToken{currentToken}
+	if len(endEvent.EvenDefinitions) > 0 {
+		for _, endEventDefinition := range endEvent.EvenDefinitions {
+			switch endEventDefinition.(type) {
+			case bpmn20.TTerminateEndEvent:
+				return engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
+			default:
+				return nil, fmt.Errorf("unsupported end event definition %T", endEventDefinition)
+			}
+		}
 	}
-	return
+	return []runtime.ExecutionToken{currentToken}, engine.handlePlainEndEvent(ctx, instance)
 }
 
 func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, currentToken runtime.ExecutionToken) (tokens []runtime.ExecutionToken, err error) {
-	activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	otherActiveElementInstances := make([]int64, 0, len(activeTokens)-1)
-	for _, activeToken := range activeTokens {
-		if activeToken.Key != currentToken.Key {
-			otherActiveElementInstances = append(otherActiveElementInstances, activeToken.ElementInstanceKey)
-		}
-	}
-	if len(otherActiveElementInstances) > 0 {
-		_, tokens, err = engine.terminateExecutionTokens(ctx, batch, otherActiveElementInstances, instance.ProcessInstance().Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to terminate execution tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
-		}
-	}
+	tokens, err = engine.handleProcessInstanceInnerCancel(ctx, instance, batch, currentToken.Key)
 	instance.ProcessInstance().State = runtime.ActivityStateCompleted
+	tokens = append(tokens, currentToken)
 	return tokens, nil
 }
 
-func (engine *Engine) handleNonTerminateEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
+func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
 	activeSubscriptions := false
 
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)

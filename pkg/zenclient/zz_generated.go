@@ -479,6 +479,12 @@ type PartitionJobs struct {
 	Partition int   `json:"partition"`
 }
 
+// PartitionProcessDefinitionStatistics defines model for PartitionProcessDefinitionStatistics.
+type PartitionProcessDefinitionStatistics struct {
+	Items     []ProcessDefinitionStatistics `json:"items"`
+	Partition int                           `json:"partition"`
+}
+
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
 	Items     []ProcessInstance `json:"items"`
@@ -536,10 +542,10 @@ type ProcessDefinitionStatistics struct {
 // ProcessDefinitionStatisticsPage defines model for ProcessDefinitionStatisticsPage.
 type ProcessDefinitionStatisticsPage struct {
 	// Count Number of items in current page
-	Count int                           `json:"count"`
-	Items []ProcessDefinitionStatistics `json:"items"`
-	Page  int                           `json:"page"`
-	Size  int                           `json:"size"`
+	Count      int                                    `json:"count"`
+	Page       int                                    `json:"page"`
+	Partitions []PartitionProcessDefinitionStatistics `json:"partitions"`
+	Size       int                                    `json:"size"`
 
 	// TotalCount Total number of items across all pages
 	TotalCount int `json:"totalCount"`

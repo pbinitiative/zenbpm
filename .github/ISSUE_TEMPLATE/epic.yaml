@@ -14,7 +14,6 @@ body:
 
   - type: textarea
     id: goal
-    required: true
     attributes:
       label: Goal
       description: What’s the outcome this Epic should achieve?
@@ -24,7 +23,6 @@ body:
 
   - type: textarea
     id: acceptance
-    required: true
     attributes:
       label: Acceptance Criteria
       description: When is this Epic considered complete?

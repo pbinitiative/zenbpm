@@ -5469,6 +5469,438 @@ func (x *ReassignJobResponse) GetError() *ErrorResult {
 	return nil
 }
 
+type GetProcessDefinitionStatisticsRequest struct {
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	Page                       *int32                 `protobuf:"varint,1,opt,name=page" json:"page,omitempty"`
+	Size                       *int32                 `protobuf:"varint,2,opt,name=size" json:"size,omitempty"`
+	Partitions                 []uint32               `protobuf:"varint,3,rep,packed,name=partitions" json:"partitions,omitempty"`
+	OnlyLatest                 *bool                  `protobuf:"varint,4,opt,name=only_latest,json=onlyLatest" json:"only_latest,omitempty"`
+	BpmnProcessIdIn            []string               `protobuf:"bytes,5,rep,name=bpmn_process_id_in,json=bpmnProcessIdIn" json:"bpmn_process_id_in,omitempty"`
+	BpmnProcessDefinitionKeyIn []int64                `protobuf:"varint,6,rep,packed,name=bpmn_process_definition_key_in,json=bpmnProcessDefinitionKeyIn" json:"bpmn_process_definition_key_in,omitempty"`
+	Name                       *string                `protobuf:"bytes,7,opt,name=name" json:"name,omitempty"`
+	SortBy                     *string                `protobuf:"bytes,8,opt,name=sort_by,json=sortBy" json:"sort_by,omitempty"`
+	SortOrder                  *string                `protobuf:"bytes,9,opt,name=sort_order,json=sortOrder" json:"sort_order,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) Reset() {
+	*x = GetProcessDefinitionStatisticsRequest{}
+	mi := &file_zen_cluster_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProcessDefinitionStatisticsRequest) ProtoMessage() {}
+
+func (x *GetProcessDefinitionStatisticsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProcessDefinitionStatisticsRequest.ProtoReflect.Descriptor instead.
+func (*GetProcessDefinitionStatisticsRequest) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetPage() int32 {
+	if x != nil && x.Page != nil {
+		return *x.Page
+	}
+	return 0
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetSize() int32 {
+	if x != nil && x.Size != nil {
+		return *x.Size
+	}
+	return 0
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetPartitions() []uint32 {
+	if x != nil {
+		return x.Partitions
+	}
+	return nil
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetOnlyLatest() bool {
+	if x != nil && x.OnlyLatest != nil {
+		return *x.OnlyLatest
+	}
+	return false
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetBpmnProcessIdIn() []string {
+	if x != nil {
+		return x.BpmnProcessIdIn
+	}
+	return nil
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetBpmnProcessDefinitionKeyIn() []int64 {
+	if x != nil {
+		return x.BpmnProcessDefinitionKeyIn
+	}
+	return nil
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetSortBy() string {
+	if x != nil && x.SortBy != nil {
+		return *x.SortBy
+	}
+	return ""
+}
+
+func (x *GetProcessDefinitionStatisticsRequest) GetSortOrder() string {
+	if x != nil && x.SortOrder != nil {
+		return *x.SortOrder
+	}
+	return ""
+}
+
+type ProcessDefinitionStatistics struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Key             *int64                 `protobuf:"varint,1,opt,name=key" json:"key,omitempty"`
+	Version         *int32                 `protobuf:"varint,2,opt,name=version" json:"version,omitempty"`
+	BpmnProcessId   *string                `protobuf:"bytes,3,opt,name=bpmn_process_id,json=bpmnProcessId" json:"bpmn_process_id,omitempty"`
+	BpmnProcessName *string                `protobuf:"bytes,4,opt,name=bpmn_process_name,json=bpmnProcessName" json:"bpmn_process_name,omitempty"`
+	InstanceCounts  *InstanceCounts        `protobuf:"bytes,5,opt,name=instance_counts,json=instanceCounts" json:"instance_counts,omitempty"`
+	IncidentCounts  *IncidentCounts        `protobuf:"bytes,6,opt,name=incident_counts,json=incidentCounts" json:"incident_counts,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ProcessDefinitionStatistics) Reset() {
+	*x = ProcessDefinitionStatistics{}
+	mi := &file_zen_cluster_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProcessDefinitionStatistics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessDefinitionStatistics) ProtoMessage() {}
+
+func (x *ProcessDefinitionStatistics) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessDefinitionStatistics.ProtoReflect.Descriptor instead.
+func (*ProcessDefinitionStatistics) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *ProcessDefinitionStatistics) GetKey() int64 {
+	if x != nil && x.Key != nil {
+		return *x.Key
+	}
+	return 0
+}
+
+func (x *ProcessDefinitionStatistics) GetVersion() int32 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+func (x *ProcessDefinitionStatistics) GetBpmnProcessId() string {
+	if x != nil && x.BpmnProcessId != nil {
+		return *x.BpmnProcessId
+	}
+	return ""
+}
+
+func (x *ProcessDefinitionStatistics) GetBpmnProcessName() string {
+	if x != nil && x.BpmnProcessName != nil {
+		return *x.BpmnProcessName
+	}
+	return ""
+}
+
+func (x *ProcessDefinitionStatistics) GetInstanceCounts() *InstanceCounts {
+	if x != nil {
+		return x.InstanceCounts
+	}
+	return nil
+}
+
+func (x *ProcessDefinitionStatistics) GetIncidentCounts() *IncidentCounts {
+	if x != nil {
+		return x.IncidentCounts
+	}
+	return nil
+}
+
+type InstanceCounts struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Total         *int64                 `protobuf:"varint,1,opt,name=total" json:"total,omitempty"`
+	Active        *int64                 `protobuf:"varint,2,opt,name=active" json:"active,omitempty"`
+	Completed     *int64                 `protobuf:"varint,3,opt,name=completed" json:"completed,omitempty"`
+	Terminated    *int64                 `protobuf:"varint,4,opt,name=terminated" json:"terminated,omitempty"`
+	Failed        *int64                 `protobuf:"varint,5,opt,name=failed" json:"failed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstanceCounts) Reset() {
+	*x = InstanceCounts{}
+	mi := &file_zen_cluster_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstanceCounts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstanceCounts) ProtoMessage() {}
+
+func (x *InstanceCounts) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstanceCounts.ProtoReflect.Descriptor instead.
+func (*InstanceCounts) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *InstanceCounts) GetTotal() int64 {
+	if x != nil && x.Total != nil {
+		return *x.Total
+	}
+	return 0
+}
+
+func (x *InstanceCounts) GetActive() int64 {
+	if x != nil && x.Active != nil {
+		return *x.Active
+	}
+	return 0
+}
+
+func (x *InstanceCounts) GetCompleted() int64 {
+	if x != nil && x.Completed != nil {
+		return *x.Completed
+	}
+	return 0
+}
+
+func (x *InstanceCounts) GetTerminated() int64 {
+	if x != nil && x.Terminated != nil {
+		return *x.Terminated
+	}
+	return 0
+}
+
+func (x *InstanceCounts) GetFailed() int64 {
+	if x != nil && x.Failed != nil {
+		return *x.Failed
+	}
+	return 0
+}
+
+type IncidentCounts struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Total         *int64                 `protobuf:"varint,1,opt,name=total" json:"total,omitempty"`
+	Unresolved    *int64                 `protobuf:"varint,2,opt,name=unresolved" json:"unresolved,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IncidentCounts) Reset() {
+	*x = IncidentCounts{}
+	mi := &file_zen_cluster_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IncidentCounts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IncidentCounts) ProtoMessage() {}
+
+func (x *IncidentCounts) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IncidentCounts.ProtoReflect.Descriptor instead.
+func (*IncidentCounts) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *IncidentCounts) GetTotal() int64 {
+	if x != nil && x.Total != nil {
+		return *x.Total
+	}
+	return 0
+}
+
+func (x *IncidentCounts) GetUnresolved() int64 {
+	if x != nil && x.Unresolved != nil {
+		return *x.Unresolved
+	}
+	return 0
+}
+
+type PartitionedProcessDefinitionStatistics struct {
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	PartitionId   *uint32                        `protobuf:"varint,1,opt,name=partition_id,json=partitionId" json:"partition_id,omitempty"`
+	Statistics    []*ProcessDefinitionStatistics `protobuf:"bytes,2,rep,name=statistics" json:"statistics,omitempty"`
+	TotalCount    *int32                         `protobuf:"varint,3,opt,name=totalCount" json:"totalCount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PartitionedProcessDefinitionStatistics) Reset() {
+	*x = PartitionedProcessDefinitionStatistics{}
+	mi := &file_zen_cluster_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PartitionedProcessDefinitionStatistics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PartitionedProcessDefinitionStatistics) ProtoMessage() {}
+
+func (x *PartitionedProcessDefinitionStatistics) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PartitionedProcessDefinitionStatistics.ProtoReflect.Descriptor instead.
+func (*PartitionedProcessDefinitionStatistics) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *PartitionedProcessDefinitionStatistics) GetPartitionId() uint32 {
+	if x != nil && x.PartitionId != nil {
+		return *x.PartitionId
+	}
+	return 0
+}
+
+func (x *PartitionedProcessDefinitionStatistics) GetStatistics() []*ProcessDefinitionStatistics {
+	if x != nil {
+		return x.Statistics
+	}
+	return nil
+}
+
+func (x *PartitionedProcessDefinitionStatistics) GetTotalCount() int32 {
+	if x != nil && x.TotalCount != nil {
+		return *x.TotalCount
+	}
+	return 0
+}
+
+type GetProcessDefinitionStatisticsResponse struct {
+	state         protoimpl.MessageState                    `protogen:"open.v1"`
+	Error         *ErrorResult                              `protobuf:"bytes,1,opt,name=error" json:"error,omitempty"`
+	Partitions    []*PartitionedProcessDefinitionStatistics `protobuf:"bytes,2,rep,name=partitions" json:"partitions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProcessDefinitionStatisticsResponse) Reset() {
+	*x = GetProcessDefinitionStatisticsResponse{}
+	mi := &file_zen_cluster_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProcessDefinitionStatisticsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProcessDefinitionStatisticsResponse) ProtoMessage() {}
+
+func (x *GetProcessDefinitionStatisticsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_zen_cluster_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProcessDefinitionStatisticsResponse.ProtoReflect.Descriptor instead.
+func (*GetProcessDefinitionStatisticsResponse) Descriptor() ([]byte, []int) {
+	return file_zen_cluster_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *GetProcessDefinitionStatisticsResponse) GetError() *ErrorResult {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *GetProcessDefinitionStatisticsResponse) GetPartitions() []*PartitionedProcessDefinitionStatistics {
+	if x != nil {
+		return x.Partitions
+	}
+	return nil
+}
+
 type PprofServerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -7381,6 +7813,7 @@ func file_zen_cluster_proto_rawDescGZIP() []byte {
 
 var file_zen_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_zen_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 107)
+var file_zen_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 111)
 var file_zen_cluster_proto_goTypes = []any{
 	(SubscribeJobRequest_Type)(0),                 // 0: cluster.SubscribeJobRequest.Type
 	(*ErrorResult)(nil),                           // 1: cluster.ErrorResult

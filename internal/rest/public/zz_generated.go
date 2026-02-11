@@ -115,6 +115,21 @@ const (
 	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
 )
 
+// Defines values for GetProcessDefinitionStatisticsParamsSortBy.
+const (
+	GetProcessDefinitionStatisticsParamsSortByBpmnProcessId GetProcessDefinitionStatisticsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionStatisticsParamsSortByIncidentCount GetProcessDefinitionStatisticsParamsSortBy = "incidentCount"
+	GetProcessDefinitionStatisticsParamsSortByInstanceCount GetProcessDefinitionStatisticsParamsSortBy = "instanceCount"
+	GetProcessDefinitionStatisticsParamsSortByName          GetProcessDefinitionStatisticsParamsSortBy = "name"
+	GetProcessDefinitionStatisticsParamsSortByVersion       GetProcessDefinitionStatisticsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionStatisticsParamsSortOrder.
+const (
+	GetProcessDefinitionStatisticsParamsSortOrderAsc  GetProcessDefinitionStatisticsParamsSortOrder = "asc"
+	GetProcessDefinitionStatisticsParamsSortOrderDesc GetProcessDefinitionStatisticsParamsSortOrder = "desc"
+)
+
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
 	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
@@ -320,12 +335,39 @@ type Incident struct {
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
+// IncidentCounts defines model for IncidentCounts.
+type IncidentCounts struct {
+	// Total Total number of incidents
+	Total int `json:"total"`
+
+	// Unresolved Number of unresolved incidents
+	Unresolved int `json:"unresolved"`
+}
+
 // IncidentPage defines model for IncidentPage.
 type IncidentPage struct {
 	// Embedded fields due to inline allOf schema
 	Items []Incident `json:"items"`
 	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
 	PageMetadata `yaml:",inline"`
+}
+
+// InstanceCounts defines model for InstanceCounts.
+type InstanceCounts struct {
+	// Active Number of active instances
+	Active int `json:"active"`
+
+	// Completed Number of completed instances
+	Completed int `json:"completed"`
+
+	// Failed Number of failed instances
+	Failed int `json:"failed"`
+
+	// Terminated Number of terminated instances
+	Terminated int `json:"terminated"`
+
+	// Total Total number of process instances
+	Total int `json:"total"`
 }
 
 // Job defines model for Job.
@@ -432,6 +474,30 @@ type ProcessDefinitionSimple struct {
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
 	Version         int     `json:"version"`
+}
+
+// ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
+type ProcessDefinitionStatistics struct {
+	BpmnProcessId  string         `json:"bpmnProcessId"`
+	IncidentCounts IncidentCounts `json:"incidentCounts"`
+	InstanceCounts InstanceCounts `json:"instanceCounts"`
+	Key            int64          `json:"key"`
+
+	// Name Process name from BPMN
+	Name    *string `json:"name,omitempty"`
+	Version int     `json:"version"`
+}
+
+// ProcessDefinitionStatisticsPage defines model for ProcessDefinitionStatisticsPage.
+type ProcessDefinitionStatisticsPage struct {
+	// Count Number of items in current page
+	Count int                           `json:"count"`
+	Items []ProcessDefinitionStatistics `json:"items"`
+	Page  int                           `json:"page"`
+	Size  int                           `json:"size"`
+
+	// TotalCount Total number of items across all pages
+	TotalCount int `json:"totalCount"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.
@@ -654,6 +720,39 @@ type CreateProcessDefinitionMultipartBody struct {
 	Resource openapi_types.File `json:"resource"`
 }
 
+// GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each process definition
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// BpmnProcessIdIn Filter by BPMN process ID
+	BpmnProcessIdIn *[]string `form:"bpmnProcessIdIn,omitempty" json:"bpmnProcessIdIn,omitempty"`
+
+	// BpmnProcessDefinitionKeyIn Filter by process definition key
+	BpmnProcessDefinitionKeyIn *[]int64 `form:"bpmnProcessDefinitionKeyIn,omitempty" json:"bpmnProcessDefinitionKeyIn,omitempty"`
+
+	// Name Filter by name (partial match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetProcessDefinitionStatisticsParamsSortBy defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortBy string
+
+// GetProcessDefinitionStatisticsParamsSortOrder defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortOrder string
+
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
@@ -818,6 +917,9 @@ type ServerInterface interface {
 	// Deploy a new process definition
 	// (POST /process-definitions)
 	CreateProcessDefinition(w http.ResponseWriter, r *http.Request)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
@@ -947,6 +1049,12 @@ func (_ Unimplemented) GetProcessDefinitions(w http.ResponseWriter, r *http.Requ
 // Deploy a new process definition
 // (POST /process-definitions)
 func (_ Unimplemented) CreateProcessDefinition(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get process definition statistics
+// (GET /process-definitions/statistics)
+func (_ Unimplemented) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1567,6 +1675,89 @@ func (siw *ServerInterfaceWrapper) CreateProcessDefinition(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetProcessDefinitionStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessDefinitionStatisticsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "onlyLatest" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "onlyLatest", r.URL.Query(), &params.OnlyLatest)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "onlyLatest", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessIdIn" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessIdIn", r.URL.Query(), &params.BpmnProcessIdIn)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessIdIn", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessDefinitionKeyIn" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessDefinitionKeyIn", r.URL.Query(), &params.BpmnProcessDefinitionKeyIn)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessDefinitionKeyIn", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", r.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessDefinitionStatistics(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProcessDefinition operation middleware
 func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r *http.Request) {
 
@@ -2169,6 +2360,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/process-definitions", wrapper.CreateProcessDefinition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-definitions/statistics", wrapper.GetProcessDefinitionStatistics)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}", wrapper.GetProcessDefinition)
@@ -2776,6 +2970,32 @@ func (response CreateProcessDefinition502JSONResponse) VisitCreateProcessDefinit
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProcessDefinitionStatisticsRequestObject struct {
+	Params GetProcessDefinitionStatisticsParams
+}
+
+type GetProcessDefinitionStatisticsResponseObject interface {
+	VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessDefinitionStatistics200JSONResponse ProcessDefinitionStatisticsPage
+
+func (response GetProcessDefinitionStatistics200JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionStatistics500JSONResponse Error
+
+func (response GetProcessDefinitionStatistics500JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProcessDefinitionRequestObject struct {
 	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 }
@@ -3279,6 +3499,9 @@ type StrictServerInterface interface {
 	// Deploy a new process definition
 	// (POST /process-definitions)
 	CreateProcessDefinition(ctx context.Context, request CreateProcessDefinitionRequestObject) (CreateProcessDefinitionResponseObject, error)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(ctx context.Context, request GetProcessDefinitionStatisticsRequestObject) (GetProcessDefinitionStatisticsResponseObject, error)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(ctx context.Context, request GetProcessDefinitionRequestObject) (GetProcessDefinitionResponseObject, error)
@@ -3763,6 +3986,32 @@ func (sh *strictHandler) CreateProcessDefinition(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateProcessDefinitionResponseObject); ok {
 		if err := validResponse.VisitCreateProcessDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessDefinitionStatistics operation middleware
+func (sh *strictHandler) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
+	var request GetProcessDefinitionStatisticsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessDefinitionStatistics(ctx, request.(GetProcessDefinitionStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessDefinitionStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessDefinitionStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetProcessDefinitionStatisticsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -621,7 +621,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 		bpmnProcessDefinitionKeyIn = *request.Params.BpmnProcessDefinitionKeyIn
 	}
 
-	stats, err := s.node.GetProcessDefinitionStatistics(
+	partitionedStats, err := s.node.GetProcessDefinitionStatistics(
 		ctx,
 		*request.Params.Page,
 		*request.Params.Size,
@@ -639,58 +639,44 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 		}, nil
 	}
 
-	// Aggregate results from all partitions
-	aggregatedStats := make(map[int64]*public.ProcessDefinitionStatistics)
-	totalCount := int32(0)
-
-	for _, partition := range stats {
-		if partition.TotalCount != nil {
-			totalCount = *partition.TotalCount
-		}
-		for _, stat := range partition.Statistics {
-			key := stat.GetKey()
-			if existing, found := aggregatedStats[key]; found {
-				// Aggregate counts for the same definition across partitions
-				existing.InstanceCounts.Total += int(stat.InstanceCounts.GetTotal())
-				existing.InstanceCounts.Active += int(stat.InstanceCounts.GetActive())
-				existing.InstanceCounts.Completed += int(stat.InstanceCounts.GetCompleted())
-				existing.InstanceCounts.Terminated += int(stat.InstanceCounts.GetTerminated())
-				existing.InstanceCounts.Failed += int(stat.InstanceCounts.GetFailed())
-				existing.IncidentCounts.Total += int(stat.IncidentCounts.GetTotal())
-				existing.IncidentCounts.Unresolved += int(stat.IncidentCounts.GetUnresolved())
-			} else {
-				aggregatedStats[key] = &public.ProcessDefinitionStatistics{
-					Key:           stat.GetKey(),
-					Version:       int(stat.GetVersion()),
-					BpmnProcessId: stat.GetBpmnProcessId(),
-					Name:          ptr.To(stat.GetBpmnProcessName()),
-					InstanceCounts: public.InstanceCounts{
-						Total:      int(stat.InstanceCounts.GetTotal()),
-						Active:     int(stat.InstanceCounts.GetActive()),
-						Completed:  int(stat.InstanceCounts.GetCompleted()),
-						Terminated: int(stat.InstanceCounts.GetTerminated()),
-						Failed:     int(stat.InstanceCounts.GetFailed()),
-					},
-					IncidentCounts: public.IncidentCounts{
-						Total:      int(stat.IncidentCounts.GetTotal()),
-						Unresolved: int(stat.IncidentCounts.GetUnresolved()),
-					},
-				}
+	partitions := make([]public.PartitionProcessDefinitionStatistics, len(partitionedStats))
+	count := 0
+	totalCount := 0
+	for i, partition := range partitionedStats {
+		items := make([]public.ProcessDefinitionStatistics, len(partition.Statistics))
+		for k, stat := range partition.Statistics {
+			items[k] = public.ProcessDefinitionStatistics{
+				Key:           stat.GetKey(),
+				Version:       int(stat.GetVersion()),
+				BpmnProcessId: stat.GetBpmnProcessId(),
+				Name:          ptr.To(stat.GetBpmnProcessName()),
+				InstanceCounts: public.InstanceCounts{
+					Total:      int(stat.InstanceCounts.GetTotal()),
+					Active:     int(stat.InstanceCounts.GetActive()),
+					Completed:  int(stat.InstanceCounts.GetCompleted()),
+					Terminated: int(stat.InstanceCounts.GetTerminated()),
+					Failed:     int(stat.InstanceCounts.GetFailed()),
+				},
+				IncidentCounts: public.IncidentCounts{
+					Total:      int(stat.IncidentCounts.GetTotal()),
+					Unresolved: int(stat.IncidentCounts.GetUnresolved()),
+				},
 			}
 		}
-	}
-
-	items := make([]public.ProcessDefinitionStatistics, 0, len(aggregatedStats))
-	for _, stat := range aggregatedStats {
-		items = append(items, *stat)
+		partitions[i] = public.PartitionProcessDefinitionStatistics{
+			Items:     items,
+			Partition: int(partition.GetPartitionId()),
+		}
+		count += len(partition.Statistics)
+		totalCount += int(partition.GetTotalCount())
 	}
 
 	return public.GetProcessDefinitionStatistics200JSONResponse{
-		Items:      items,
+		Partitions: partitions,
 		Page:       int(*request.Params.Page),
 		Size:       int(*request.Params.Size),
-		Count:      len(items),
-		TotalCount: int(totalCount),
+		Count:      count,
+		TotalCount: totalCount,
 	}, nil
 }
 

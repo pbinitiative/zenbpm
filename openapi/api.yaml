@@ -2039,16 +2039,16 @@ components:
     ProcessDefinitionStatisticsPage:
       type: object
       required:
-        - items
+        - partitions
         - page
         - size
         - count
         - totalCount
       properties:
-        items:
+        partitions:
           type: array
           items:
-            $ref: "#/components/schemas/ProcessDefinitionStatistics"
+            $ref: "#/components/schemas/PartitionProcessDefinitionStatistics"
         page:
           type: integer
         size:
@@ -2059,6 +2059,18 @@ components:
         totalCount:
           type: integer
           description: "Total number of items across all pages"
+    PartitionProcessDefinitionStatistics:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessDefinitionStatistics"
     ProcessDefinitionStatistics:
       type: object
       required:

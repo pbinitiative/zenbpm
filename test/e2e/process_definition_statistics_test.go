@@ -9,6 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// allStatsItems collects all ProcessDefinitionStatistics items from all partitions.
+func allStatsItems(page *zenclient.ProcessDefinitionStatisticsPage) []zenclient.ProcessDefinitionStatistics {
+	var items []zenclient.ProcessDefinitionStatistics
+	for _, p := range page.Partitions {
+		items = append(items, p.Items...)
+	}
+	return items
+}
+
 func TestProcessDefinitionStatistics(t *testing.T) {
 	// Deploy a unique definition so we have a known bpmnProcessId
 	definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
@@ -24,7 +33,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 
 		// Find our definition in the results
 		var found *zenclient.ProcessDefinitionStatistics
-		for _, item := range resp.JSON200.Items {
+		for _, item := range allStatsItems(resp.JSON200) {
 			if item.Key == definition.Key {
 				found = &item
 				break
@@ -49,7 +58,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 
 		var found *zenclient.ProcessDefinitionStatistics
-		for _, item := range resp.JSON200.Items {
+		for _, item := range allStatsItems(resp.JSON200) {
 			if item.Key == definition.Key {
 				found = &item
 				break
@@ -78,7 +87,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 
 		var found *zenclient.ProcessDefinitionStatistics
-		for _, item := range resp.JSON200.Items {
+		for _, item := range allStatsItems(resp.JSON200) {
 			if item.Key == incidentDef.Key {
 				found = &item
 				break
@@ -98,7 +107,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 		assert.Equal(t, 1, resp.JSON200.TotalCount)
-		assert.Equal(t, definition.BpmnProcessId, resp.JSON200.Items[0].BpmnProcessId)
+		items := allStatsItems(resp.JSON200)
+		assert.Equal(t, definition.BpmnProcessId, items[0].BpmnProcessId)
 	})
 
 	t.Run("filter by bpmnProcessDefinitionKeyIn", func(t *testing.T) {
@@ -109,7 +119,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 		assert.Equal(t, 1, resp.JSON200.TotalCount)
-		assert.Equal(t, definition.Key, resp.JSON200.Items[0].Key)
+		items := allStatsItems(resp.JSON200)
+		assert.Equal(t, definition.Key, items[0].Key)
 	})
 
 	t.Run("filter by multiple bpmnProcessIdIn", func(t *testing.T) {
@@ -130,7 +141,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 		assert.Equal(t, 0, resp.JSON200.TotalCount)
-		assert.Empty(t, resp.JSON200.Items)
+		assert.Empty(t, allStatsItems(resp.JSON200))
 	})
 
 	t.Run("pagination", func(t *testing.T) {
@@ -141,7 +152,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		assert.Equal(t, 1, len(resp.JSON200.Items))
+		assert.Equal(t, 1, len(allStatsItems(resp.JSON200)))
 		assert.Greater(t, resp.JSON200.TotalCount, 1)
 	})
 
@@ -153,7 +164,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 		// All returned items should match the name filter
-		for _, item := range resp.JSON200.Items {
+		for _, item := range allStatsItems(resp.JSON200) {
 			assert.Contains(t, item.BpmnProcessId, "service-task")
 		}
 	})
@@ -185,8 +196,9 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		if len(resp.JSON200.Items) >= 2 {
-			assert.GreaterOrEqual(t, resp.JSON200.Items[0].Version, resp.JSON200.Items[1].Version)
+		items := allStatsItems(resp.JSON200)
+		if len(items) >= 2 {
+			assert.GreaterOrEqual(t, items[0].Version, items[1].Version)
 		}
 	})
 
@@ -198,8 +210,9 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		if len(resp.JSON200.Items) >= 2 {
-			assert.GreaterOrEqual(t, resp.JSON200.Items[0].InstanceCounts.Total, resp.JSON200.Items[1].InstanceCounts.Total)
+		items := allStatsItems(resp.JSON200)
+		if len(items) >= 2 {
+			assert.GreaterOrEqual(t, items[0].InstanceCounts.Total, items[1].InstanceCounts.Total)
 		}
 	})
 }

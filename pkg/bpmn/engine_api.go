@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
@@ -11,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 )
 
 // Start will start the process engine instance.ProcessInstance().
@@ -101,6 +102,7 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	}()
 
 	// *** MAIN LOOP ***
+mainLoop:
 	for len(runningExecutionTokens) > 0 {
 		batch, err := engine.NewEngineBatchClean()
 		if err != nil {
@@ -188,10 +190,10 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 					runErr = errors.Join(runErr, incidentError)
 				}
 				endErrorSpan(tokenSpan, err)
-				break
+				break mainLoop
 			}
 			tokenSpan.End()
-			break
+			break mainLoop
 		}
 
 		err = batch.Flush(ctx)
@@ -337,7 +339,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key)
 	}
 
-	batch, err := engine.NewEngineBatchClean()
+	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to create engine batch: %w", err)
 	}

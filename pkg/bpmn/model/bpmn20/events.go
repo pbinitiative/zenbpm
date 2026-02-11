@@ -32,6 +32,30 @@ func (startEvent TStartEvent) GetType() ElementType {
 
 type TEndEvent struct {
 	TEvent
+	EvenDefinitions []EventDefinition
+}
+
+type TTerminateEventDefinition struct {
+	Id *string `xml:"id,attr"`
+}
+
+func (TTerminateEventDefinition) eventDefinition() {}
+
+func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	tempStruct := struct {
+		TEvent
+		TerminateEndEvent TTerminateEventDefinition `xml:"terminateEventDefinition"`
+	}{}
+	err := d.DecodeElement(&tempStruct, &start)
+	if err != nil {
+		return err
+	}
+	endEvent.TEvent = tempStruct.TEvent
+	endEvent.EvenDefinitions = make([]EventDefinition, 0)
+	if tempStruct.TerminateEndEvent.Id != nil {
+		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEndEvent)
+	}
+	return nil
 }
 
 func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }

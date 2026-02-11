@@ -108,9 +108,15 @@ TODO: we should split these into separate pages with examples.
 
 Start event is fully supported.
 
-### End event
+### End events
 
-End event is fully supported.
+#### Plain end event
+
+Plain end event completes the process instance only if it is the only execution token left for that instance. 
+
+#### Terminate end event
+
+Terminate end event completes the process instance and cancels all subscriptions, jobs, incidents and all other execution tokens of that instance. 
 
 ### Service task
 

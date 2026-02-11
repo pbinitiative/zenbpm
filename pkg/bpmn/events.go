@@ -103,7 +103,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}
 		for _, calledProcess := range calledProcesses {
-			err := engine.cancelInstance(ctx, calledProcess, batch)
+			err := engine.cancelSubProcessInstance(ctx, calledProcess, batch)
 			if err != nil {
 				return nil, err
 			}

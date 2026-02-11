@@ -581,6 +581,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-definitions/statistics:
+    get:
+      operationId: getProcessDefinitionStatistics
+      summary: "Get process definition statistics"
+      tags:
+        - process-definition
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: "Page number (1-based indexing)"
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: "Number of items per page (max 100)"
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each process definition"
+        - name: bpmnProcessIdIn
+          in: query
+          schema:
+            type: array
+            items:
+              type: string  
+          description: "Filter by BPMN process ID"
+        - name: bpmnProcessDefinitionKeyIn
+          in: query
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+          description: "Filter by process definition key"
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: "Filter by name (partial match)"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, bpmnProcessId, version, instanceCount, incidentCount]
+          description: "Sort field"
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: "Sort direction"
+      responses:
+        200:
+          description: Process definition statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDefinitionStatisticsPage"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-instances:
     post:
       operationId: createProcessInstance
@@ -1960,6 +2036,88 @@ components:
           properties:
             bpmnData:
               type: string
+    ProcessDefinitionStatisticsPage:
+      type: object
+      required:
+        - items
+        - page
+        - size
+        - count
+        - totalCount
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessDefinitionStatistics"
+        page:
+          type: integer
+        size:
+          type: integer
+        count:
+          type: integer
+          description: "Number of items in current page"
+        totalCount:
+          type: integer
+          description: "Total number of items across all pages"
+    ProcessDefinitionStatistics:
+      type: object
+      required:
+        - key
+        - version
+        - bpmnProcessId
+        - instanceCounts
+        - incidentCounts
+      properties:
+        key:
+          type: integer
+          format: int64
+        version:
+          type: integer
+        bpmnProcessId:
+          type: string
+        name:
+          type: string
+          description: "Process name from BPMN"
+        instanceCounts:
+          $ref: "#/components/schemas/InstanceCounts"
+        incidentCounts:
+          $ref: "#/components/schemas/IncidentCounts"
+    InstanceCounts:
+      type: object
+      required:
+        - total
+        - active
+        - completed
+        - terminated
+        - failed
+      properties:
+        total:
+          type: integer
+          description: "Total number of process instances"
+        active:
+          type: integer
+          description: "Number of active instances"
+        completed:
+          type: integer
+          description: "Number of completed instances"
+        terminated:
+          type: integer
+          description: "Number of terminated instances"
+        failed:
+          type: integer
+          description: "Number of failed instances"
+    IncidentCounts:
+      type: object
+      required:
+        - total
+        - unresolved
+      properties:
+        total:
+          type: integer
+          description: "Total number of incidents"
+        unresolved:
+          type: integer
+          description: "Number of unresolved incidents"
     ProcessInstancePage:
       type: object
       allOf:

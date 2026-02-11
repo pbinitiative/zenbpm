@@ -108,6 +108,21 @@ const (
 	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
 )
 
+// Defines values for GetProcessDefinitionStatisticsParamsSortBy.
+const (
+	GetProcessDefinitionStatisticsParamsSortByBpmnProcessId GetProcessDefinitionStatisticsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionStatisticsParamsSortByIncidentCount GetProcessDefinitionStatisticsParamsSortBy = "incidentCount"
+	GetProcessDefinitionStatisticsParamsSortByInstanceCount GetProcessDefinitionStatisticsParamsSortBy = "instanceCount"
+	GetProcessDefinitionStatisticsParamsSortByName          GetProcessDefinitionStatisticsParamsSortBy = "name"
+	GetProcessDefinitionStatisticsParamsSortByVersion       GetProcessDefinitionStatisticsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionStatisticsParamsSortOrder.
+const (
+	GetProcessDefinitionStatisticsParamsSortOrderAsc  GetProcessDefinitionStatisticsParamsSortOrder = "asc"
+	GetProcessDefinitionStatisticsParamsSortOrderDesc GetProcessDefinitionStatisticsParamsSortOrder = "desc"
+)
+
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
 	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
@@ -338,6 +353,15 @@ type Incident struct {
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
+// IncidentCounts defines model for IncidentCounts.
+type IncidentCounts struct {
+	// Total Total number of incidents
+	Total int `json:"total"`
+
+	// Unresolved Number of unresolved incidents
+	Unresolved int `json:"unresolved"`
+}
+
 // IncidentPage defines model for IncidentPage.
 type IncidentPage struct {
 	// Count Number of items returned in the current page
@@ -352,6 +376,24 @@ type IncidentPage struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// InstanceCounts defines model for InstanceCounts.
+type InstanceCounts struct {
+	// Active Number of active instances
+	Active int `json:"active"`
+
+	// Completed Number of completed instances
+	Completed int `json:"completed"`
+
+	// Failed Number of failed instances
+	Failed int `json:"failed"`
+
+	// Terminated Number of terminated instances
+	Terminated int `json:"terminated"`
+
+	// Total Total number of process instances
+	Total int `json:"total"`
 }
 
 // Job defines model for Job.
@@ -477,6 +519,30 @@ type ProcessDefinitionSimple struct {
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
 	Version         int     `json:"version"`
+}
+
+// ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
+type ProcessDefinitionStatistics struct {
+	BpmnProcessId  string         `json:"bpmnProcessId"`
+	IncidentCounts IncidentCounts `json:"incidentCounts"`
+	InstanceCounts InstanceCounts `json:"instanceCounts"`
+	Key            int64          `json:"key"`
+
+	// Name Process name from BPMN
+	Name    *string `json:"name,omitempty"`
+	Version int     `json:"version"`
+}
+
+// ProcessDefinitionStatisticsPage defines model for ProcessDefinitionStatisticsPage.
+type ProcessDefinitionStatisticsPage struct {
+	// Count Number of items in current page
+	Count int                           `json:"count"`
+	Items []ProcessDefinitionStatistics `json:"items"`
+	Page  int                           `json:"page"`
+	Size  int                           `json:"size"`
+
+	// TotalCount Total number of items across all pages
+	TotalCount int `json:"totalCount"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.
@@ -714,6 +780,39 @@ type CreateProcessDefinitionMultipartBody struct {
 	// Resource BPMN process definition file (.bpmn format only, max 4MB)
 	Resource openapi_types.File `json:"resource"`
 }
+
+// GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each process definition
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// BpmnProcessIdIn Filter by BPMN process ID
+	BpmnProcessIdIn *[]string `form:"bpmnProcessIdIn,omitempty" json:"bpmnProcessIdIn,omitempty"`
+
+	// BpmnProcessDefinitionKeyIn Filter by process definition key
+	BpmnProcessDefinitionKeyIn *[]int64 `form:"bpmnProcessDefinitionKeyIn,omitempty" json:"bpmnProcessDefinitionKeyIn,omitempty"`
+
+	// Name Filter by name (partial match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetProcessDefinitionStatisticsParamsSortBy defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortBy string
+
+// GetProcessDefinitionStatisticsParamsSortOrder defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortOrder string
 
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
@@ -959,6 +1058,9 @@ type ClientInterface interface {
 
 	// CreateProcessDefinitionWithBody request with any body
 	CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProcessDefinitionStatistics request
+	GetProcessDefinitionStatistics(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessDefinition request
 	GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1228,6 +1330,18 @@ func (c *Client) GetProcessDefinitions(ctx context.Context, params *GetProcessDe
 
 func (c *Client) CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateProcessDefinitionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProcessDefinitionStatistics(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProcessDefinitionStatisticsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2414,6 +2528,167 @@ func NewCreateProcessDefinitionRequestWithBody(server string, contentType string
 	return req, nil
 }
 
+// NewGetProcessDefinitionStatisticsRequest generates requests for GetProcessDefinitionStatistics
+func NewGetProcessDefinitionStatisticsRequest(server string, params *GetProcessDefinitionStatisticsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-definitions/statistics")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.OnlyLatest != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessIdIn != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessIdIn", runtime.ParamLocationQuery, *params.BpmnProcessIdIn); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessDefinitionKeyIn != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessDefinitionKeyIn", runtime.ParamLocationQuery, *params.BpmnProcessDefinitionKeyIn); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Name != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "name", runtime.ParamLocationQuery, *params.Name); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetProcessDefinitionRequest generates requests for GetProcessDefinition
 func NewGetProcessDefinitionRequest(server string, processDefinitionKey int64) (*http.Request, error) {
 	var err error
@@ -3217,6 +3492,9 @@ type ClientWithResponsesInterface interface {
 	// CreateProcessDefinitionWithBodyWithResponse request with any body
 	CreateProcessDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProcessDefinitionResponse, error)
 
+	// GetProcessDefinitionStatisticsWithResponse request
+	GetProcessDefinitionStatisticsWithResponse(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*GetProcessDefinitionStatisticsResponse, error)
+
 	// GetProcessDefinitionWithResponse request
 	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
 
@@ -3616,6 +3894,29 @@ func (r CreateProcessDefinitionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateProcessDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProcessDefinitionStatisticsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessDefinitionStatisticsPage
+	JSON500      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProcessDefinitionStatisticsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProcessDefinitionStatisticsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4061,6 +4362,15 @@ func (c *ClientWithResponses) CreateProcessDefinitionWithBodyWithResponse(ctx co
 		return nil, err
 	}
 	return ParseCreateProcessDefinitionResponse(rsp)
+}
+
+// GetProcessDefinitionStatisticsWithResponse request returning *GetProcessDefinitionStatisticsResponse
+func (c *ClientWithResponses) GetProcessDefinitionStatisticsWithResponse(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*GetProcessDefinitionStatisticsResponse, error) {
+	rsp, err := c.GetProcessDefinitionStatistics(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProcessDefinitionStatisticsResponse(rsp)
 }
 
 // GetProcessDefinitionWithResponse request returning *GetProcessDefinitionResponse
@@ -4779,6 +5089,39 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 			return nil, err
 		}
 		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProcessDefinitionStatisticsResponse parses an HTTP response from a GetProcessDefinitionStatisticsWithResponse call
+func ParseGetProcessDefinitionStatisticsResponse(rsp *http.Response) (*GetProcessDefinitionStatisticsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProcessDefinitionStatisticsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessDefinitionStatisticsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

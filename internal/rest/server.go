@@ -592,6 +592,108 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	}, nil
 }
 
+func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	onlyLatest := false
+	if request.Params.OnlyLatest != nil {
+		onlyLatest = *request.Params.OnlyLatest
+	}
+
+	// Build sort string
+	var sortBy, sortOrder *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		sortBy = &s
+	}
+	if request.Params.SortOrder != nil {
+		s := string(*request.Params.SortOrder)
+		sortOrder = &s
+	}
+
+	// Dereference slice pointers
+	var bpmnProcessIdIn []string
+	if request.Params.BpmnProcessIdIn != nil {
+		bpmnProcessIdIn = *request.Params.BpmnProcessIdIn
+	}
+	var bpmnProcessDefinitionKeyIn []int64
+	if request.Params.BpmnProcessDefinitionKeyIn != nil {
+		bpmnProcessDefinitionKeyIn = *request.Params.BpmnProcessDefinitionKeyIn
+	}
+
+	stats, err := s.node.GetProcessDefinitionStatistics(
+		ctx,
+		*request.Params.Page,
+		*request.Params.Size,
+		onlyLatest,
+		bpmnProcessIdIn,
+		bpmnProcessDefinitionKeyIn,
+		request.Params.Name,
+		sortBy,
+		sortOrder,
+	)
+	if err != nil {
+		return public.GetProcessDefinitionStatistics500JSONResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: err.Error(),
+		}, nil
+	}
+
+	// Aggregate results from all partitions
+	aggregatedStats := make(map[int64]*public.ProcessDefinitionStatistics)
+	totalCount := int32(0)
+
+	for _, partition := range stats {
+		if partition.TotalCount != nil {
+			totalCount = *partition.TotalCount
+		}
+		for _, stat := range partition.Statistics {
+			key := stat.GetKey()
+			if existing, found := aggregatedStats[key]; found {
+				// Aggregate counts for the same definition across partitions
+				existing.InstanceCounts.Total += int(stat.InstanceCounts.GetTotal())
+				existing.InstanceCounts.Active += int(stat.InstanceCounts.GetActive())
+				existing.InstanceCounts.Completed += int(stat.InstanceCounts.GetCompleted())
+				existing.InstanceCounts.Terminated += int(stat.InstanceCounts.GetTerminated())
+				existing.InstanceCounts.Failed += int(stat.InstanceCounts.GetFailed())
+				existing.IncidentCounts.Total += int(stat.IncidentCounts.GetTotal())
+				existing.IncidentCounts.Unresolved += int(stat.IncidentCounts.GetUnresolved())
+			} else {
+				aggregatedStats[key] = &public.ProcessDefinitionStatistics{
+					Key:           stat.GetKey(),
+					Version:       int(stat.GetVersion()),
+					BpmnProcessId: stat.GetBpmnProcessId(),
+					Name:          ptr.To(stat.GetBpmnProcessName()),
+					InstanceCounts: public.InstanceCounts{
+						Total:      int(stat.InstanceCounts.GetTotal()),
+						Active:     int(stat.InstanceCounts.GetActive()),
+						Completed:  int(stat.InstanceCounts.GetCompleted()),
+						Terminated: int(stat.InstanceCounts.GetTerminated()),
+						Failed:     int(stat.InstanceCounts.GetFailed()),
+					},
+					IncidentCounts: public.IncidentCounts{
+						Total:      int(stat.IncidentCounts.GetTotal()),
+						Unresolved: int(stat.IncidentCounts.GetUnresolved()),
+					},
+				}
+			}
+		}
+	}
+
+	items := make([]public.ProcessDefinitionStatistics, 0, len(aggregatedStats))
+	for _, stat := range aggregatedStats {
+		items = append(items, *stat)
+	}
+
+	return public.GetProcessDefinitionStatistics200JSONResponse{
+		Items:      items,
+		Page:       int(*request.Params.Page),
+		Size:       int(*request.Params.Size),
+		Count:      len(items),
+		TotalCount: int(totalCount),
+	}, nil
+}
+
 func (s *Server) CreateProcessInstance(ctx context.Context, request public.CreateProcessInstanceRequestObject) (public.CreateProcessInstanceResponseObject, error) {
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {

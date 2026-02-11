@@ -935,17 +935,30 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 
 func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	currentToken.State = runtime.TokenStateCompleted
+	updatedTokens := make([]runtime.ExecutionToken, 0)
+	terminateEventProcessed := false
 	if len(endEvent.EvenDefinitions) > 0 {
 		for _, endEventDefinition := range endEvent.EvenDefinitions {
 			switch endEventDefinition.(type) {
-			case bpmn20.TTerminateEndEvent:
-				return engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
+			case bpmn20.TTerminateEventDefinition:
+				tokens, err := engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
+				if err != nil {
+					return nil, fmt.Errorf("failed to process terminateEndEvent: %w", err)
+				}
+				updatedTokens = append(updatedTokens, tokens...)
+				terminateEventProcessed = true
 			default:
 				return nil, fmt.Errorf("unsupported end event definition %T", endEventDefinition)
 			}
 		}
+	} else if !terminateEventProcessed { // additionally processing of plain end event might make sense only for future non terminate end events
+		err := engine.handlePlainEndEvent(ctx, instance)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
+		}
+		updatedTokens = append(updatedTokens, currentToken)
 	}
-	return []runtime.ExecutionToken{currentToken}, engine.handlePlainEndEvent(ctx, instance)
+	return updatedTokens, nil
 }
 
 func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, currentToken runtime.ExecutionToken) (tokens []runtime.ExecutionToken, err error) {

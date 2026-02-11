@@ -35,16 +35,16 @@ type TEndEvent struct {
 	EvenDefinitions []EventDefinition
 }
 
-type TTerminateEndEvent struct {
+type TTerminateEventDefinition struct {
 	Id *string `xml:"id,attr"`
 }
 
-func (TTerminateEndEvent) eventDefinition() {}
+func (TTerminateEventDefinition) eventDefinition() {}
 
 func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		TerminateEndEvent TTerminateEndEvent `xml:"terminateEventDefinition"`
+		TerminateEndEvent TTerminateEventDefinition `xml:"terminateEventDefinition"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {

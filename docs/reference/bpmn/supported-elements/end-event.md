@@ -18,13 +18,13 @@ An End Event is a BPMN flow element that terminates a process instance or a toke
 
 - Types of end events:
 	- **None:** (normal termination)
-		terminates the process or token without any special behavior. The simplest form of End Event used for regular process completion.
+		terminates the process or token without any special behavior. The simplest form of End Event used for regular process completion. Plain end event completes the process instance only if it is the only execution token left for that instance. 
 
 	- **Error:**
 		throws an error that can be caught by an Error Boundary Event on an enclosing scope (subprocess, process). Used to signal abnormal termination within error handling flows.
 
 	- **Terminate:** (stops the entire process)
-		immediately terminates the entire process instance, regardless of active tokens or subprocesses. All other tokens and activities are forcefully ended.
+		immediately terminates the entire process instance, regardless of active tokens or subprocesses. Terminate end event completes the process instance and cancels all subscriptions, jobs, incidents and all other execution tokens of that instance. 
 
 	- **Message:**
 		sends a message to another process or external system when the End Event is reached. Enables process-to-process communication and integration scenarios.
@@ -61,4 +61,4 @@ A bold single-line circle (solid thick outline).
 ```
 
 ## Current Implementation
-End event is fully supported.
+Currently there are only normal end events, error end events and terminate end events supported.

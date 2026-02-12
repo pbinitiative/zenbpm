@@ -1,7 +1,7 @@
 ---
 sidebar_position: 100
 ---
-
+# Message Catch Event
 A Message Catch Event is used to model the recipient of a message from an external participant or process.
 
 ## Key characteristics
@@ -96,9 +96,8 @@ A double-lined circle containing a message (envelope) icon.
 
 ## Usage
 
-Messages can be published through API or by triggering [Intermediate throw event](/reference/bpmn-engine/supported-elements/message-throw-event).
+Messages can be published through API or by triggering [Intermediate throw event](/reference/bpmn/supported-elements/message-throw-event).
 <!-- <ApiOperation id="api" pointer="#/paths/~1messages/post" example={true} />-->
 
 Future plans:
-We plan to implement message start event along with timer start events in the future
-:::
+We plan to implement message start event along with timer start events in the future.

@@ -46,4 +46,4 @@ A rounded rectangle with the business rule marker (grid icon) in the top-left co
 ```
 
 ## Current Implementation
-Future plans: Supported through internal [dmn engine](/reference/dmn-engine).
+Supported through internal [dmn engine](/reference/dmn-engine).

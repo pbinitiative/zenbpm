@@ -49,3 +49,4 @@ A rectangle with a thick border and a subprocess marker (small rectangle with a 
 ```
 
 ## Current Implementation
+The subprocess for call activity is started on the same partition as the process that invoked it.

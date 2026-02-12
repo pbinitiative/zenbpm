@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="Parallel gateway">
+  <title>Parallel gateway</title>
+  <defs>
+    <style>
+      .bpmn-gateway { fill: white; stroke: black; stroke-width: 2; }
+      .bpmn-icon { stroke: black; stroke-width: 2.5; fill: none; stroke-linecap: round; }
+    </style>
+  </defs>
+  
+  <!-- Diamond shape (gateway) -->
+  <polygon class="bpmn-gateway" points="100,30 170,100 100,170 30,100"/>
+  
+  <!-- Plus sign (parallel indicator) -->
+  <g class="bpmn-icon">
+    <!-- Vertical line -->
+    <line x1="100" y1="70" x2="100" y2="130"/>
+    <!-- Horizontal line -->
+    <line x1="70" y1="100" x2="130" y2="100"/>
+  </g>
+</svg>

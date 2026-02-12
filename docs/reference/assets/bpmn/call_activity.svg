@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="Call activity">
+  <title>Call activity</title>
+  
+  <!-- Call activity rectangle (thick border) -->
+  <rect x="20" y="20" width="200" height="100" fill="white" stroke="black" stroke-width="4"/>
+  
+  <!-- Subprocess marker (small rectangle with plus in bottom-center) -->
+  <g transform="translate(95, 95)">
+    <!-- Small rectangle -->
+    <rect x="0" y="0" width="15" height="10" fill="none" stroke="black" stroke-width="1"/>
+    
+    <!-- Plus sign inside -->
+    <line x1="3" y1="5" x2="12" y2="5" stroke="black" stroke-width="1"/>
+    <line x1="7.5" y1="2" x2="7.5" y2="8" stroke="black" stroke-width="1"/>
+  </g>
+</svg>

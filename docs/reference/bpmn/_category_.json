@@ -1,0 +1,8 @@
+{
+  "label": "BPMN",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "Detailed description of BPMN elements and how they are implemented within ZenBPM"
+  }
+}

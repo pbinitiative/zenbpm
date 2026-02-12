@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="Inclusive gateway">
+  <title>Inclusive gateway</title>
+  <defs>
+    <style>
+      .bpmn-gateway { fill: white; stroke: black; stroke-width: 2; }
+      .bpmn-icon { fill: none; stroke: black; stroke-width: 2; }
+    </style>
+  </defs>
+  
+  <!-- Diamond shape (gateway) -->
+  <polygon class="bpmn-gateway" points="100,30 170,100 100,170 30,100"/>
+  
+  <!-- Circle inside -->
+  <circle cx="100" cy="100" r="25" fill="white" stroke="black" stroke-width="2"/>
+</svg>

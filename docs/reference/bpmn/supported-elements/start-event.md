@@ -13,7 +13,7 @@ A Start Event is a BPMN flow element that marks the point where a process or sub
   By definition, it cannot have incoming connections, because nothing precedes the start.
 
 - Exactly one required in a top-level process:
-  A process must have at least one Start Event.2
+  A process must have at least one Start Event.
   Subprocesses may have multiple start events (for event subprocesses).
 
 - **Type of trigger determines activation:**

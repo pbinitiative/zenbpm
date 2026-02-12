@@ -487,6 +487,29 @@ func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteP
 	}, err
 }
 
+func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelProcessInstanceRequest) (*proto.CancelProcessInstanceResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	err := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, err)
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	return &proto.CancelProcessInstanceResponse{}, nil
+}
+
+func createCancelProcessInstanceErrorResponse(err error) (*proto.CancelProcessInstanceResponse, error) {
+	return &proto.CancelProcessInstanceResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
+}
+
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {

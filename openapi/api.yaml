@@ -1150,6 +1150,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/cancel:
+    post:
+      operationId: cancelProcessInstance
+      summary: "Cancels a process instance"
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+      responses:
+        204:
+          description: Process instance cancelled
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /jobs:
     get:

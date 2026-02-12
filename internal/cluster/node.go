@@ -714,6 +714,27 @@ func (node *ZenNode) DeleteProcessInstanceVariable(ctx context.Context, processI
 	return nil
 }
 
+func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceKey int64) error {
+	partition := zenflake.GetPartitionId(processInstanceKey)
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return fmt.Errorf("failed to get client to cancel process instance: %d. %w", processInstanceKey, err)
+	}
+
+	resp, err := client.CancelProcessInstance(ctx, &proto.CancelProcessInstanceRequest{
+		ProcessInstanceKey: &processInstanceKey,
+	})
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to cancel process instance")
+		if err != nil {
+			return fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	return nil
+}
+
 func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variables map[string]any) (*proto.ProcessInstance, []*proto.ExecutionToken, error) {
 	partition := zenflake.GetPartitionId(processInstanceKey)
 	client, err := node.client.PartitionLeader(partition)

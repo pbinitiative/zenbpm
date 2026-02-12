@@ -46,16 +46,6 @@ Boundary Events can be attached to the following activity types:
 - Boundary Events do not trigger if the activity has already completed.
 
 
-Currently supported activity types with boundary events:
-
-- ServiceTask,
-- SendTask,
-- UserTask,
-- BusinessRuleTask,
-- CallActivity
-
-
-
 ## Current Implementation
 Currently supported event types with boundary events:
 
@@ -64,4 +54,3 @@ Currently supported event types with boundary events:
 
 ![Boudary event usage example](./../../assets/bpmn/boundary_events.png)
 _Boundary event usage example_
-:::note[Future plans]

@@ -724,13 +724,11 @@ func (node *ZenNode) CancelProcessInstance(ctx context.Context, processInstanceK
 	resp, err := client.CancelProcessInstance(ctx, &proto.CancelProcessInstanceRequest{
 		ProcessInstanceKey: &processInstanceKey,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("failed to cancel process instance")
-		if err != nil {
-			return fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		return fmt.Errorf("failed to cancel process instance: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("failed to cancel process instance: %s", resp.Error.GetMessage())
 	}
 	return nil
 }

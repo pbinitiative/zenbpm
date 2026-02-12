@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'docs/**'
+      - 'openapi/api.yaml'
+      - 'pkg/zenclient/proto/zenbpm.proto'
 
 jobs:
 
@@ -30,7 +32,7 @@ jobs:
           mkdir -p docusaurus/openapi/redocusaurus/
           cp openapi/api.yaml docusaurus/openapi/redocusaurus/
           mkdir -p docusaurus/proto
-          cp pkg/client/proto/zenbpm.proto docusaurus/proto/
+          cp pkg/zenclient/proto/zenbpm.proto docusaurus/proto/
 
       - name: Set up Git
         run: |

@@ -15,6 +15,13 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+// Defines values for EvaluatedDecisionDecisionType.
+const (
+	EvaluatedDecisionDecisionTypeDECISIONTABLE     EvaluatedDecisionDecisionType = "DECISION_TABLE"
+	EvaluatedDecisionDecisionTypeLITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
 )
 
 // Defines values for JobState.
@@ -29,32 +36,168 @@ const (
 const (
 	ProcessInstanceStateActive     ProcessInstanceState = "active"
 	ProcessInstanceStateCompleted  ProcessInstanceState = "completed"
+	ProcessInstanceStateFailed     ProcessInstanceState = "failed"
 	ProcessInstanceStateTerminated ProcessInstanceState = "terminated"
+)
+
+// Defines values for SortOrder.
+const (
+	SortOrderAsc  SortOrder = "asc"
+	SortOrderDesc SortOrder = "desc"
 )
 
 // Defines values for EvaluateDecisionJSONBodyBindingType.
 const (
-	Deployment EvaluateDecisionJSONBodyBindingType = "deployment"
-	Latest     EvaluateDecisionJSONBodyBindingType = "latest"
-	VersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
+	EvaluateDecisionJSONBodyBindingTypeDeployment EvaluateDecisionJSONBodyBindingType = "deployment"
+	EvaluateDecisionJSONBodyBindingTypeLatest     EvaluateDecisionJSONBodyBindingType = "latest"
+	EvaluateDecisionJSONBodyBindingTypeVersionTag EvaluateDecisionJSONBodyBindingType = "versionTag"
 )
 
-// Activity defines model for Activity.
-type Activity struct {
-	BpmnElementType      string    `json:"bpmnElementType"`
-	CreatedAt            time.Time `json:"createdAt"`
-	ElementId            string    `json:"elementId"`
-	Key                  string    `json:"key"`
-	ProcessDefinitionKey string    `json:"processDefinitionKey"`
-	ProcessInstanceKey   string    `json:"processInstanceKey"`
-	State                string    `json:"state"`
+// Defines values for GetDecisionInstancesParamsSortBy.
+const (
+	GetDecisionInstancesParamsSortByEvaluatedAt GetDecisionInstancesParamsSortBy = "evaluatedAt"
+	GetDecisionInstancesParamsSortByKey         GetDecisionInstancesParamsSortBy = "key"
+)
+
+// Defines values for GetDecisionInstancesParamsSortOrder.
+const (
+	GetDecisionInstancesParamsSortOrderAsc  GetDecisionInstancesParamsSortOrder = "asc"
+	GetDecisionInstancesParamsSortOrderDesc GetDecisionInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetDmnResourceDefinitionsParamsSortBy.
+const (
+	GetDmnResourceDefinitionsParamsSortByDmnDefinitionName       GetDmnResourceDefinitionsParamsSortBy = "dmnDefinitionName"
+	GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId GetDmnResourceDefinitionsParamsSortBy = "dmnResourceDefinitionId"
+	GetDmnResourceDefinitionsParamsSortByKey                     GetDmnResourceDefinitionsParamsSortBy = "key"
+	GetDmnResourceDefinitionsParamsSortByVersion                 GetDmnResourceDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetDmnResourceDefinitionsParamsSortOrder.
+const (
+	GetDmnResourceDefinitionsParamsSortOrderAsc  GetDmnResourceDefinitionsParamsSortOrder = "asc"
+	GetDmnResourceDefinitionsParamsSortOrderDesc GetDmnResourceDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetJobsParamsSortBy.
+const (
+	GetJobsParamsSortByCreatedAt GetJobsParamsSortBy = "createdAt"
+	GetJobsParamsSortByKey       GetJobsParamsSortBy = "key"
+	GetJobsParamsSortByState     GetJobsParamsSortBy = "state"
+	GetJobsParamsSortByType      GetJobsParamsSortBy = "type"
+)
+
+// Defines values for GetJobsParamsSortOrder.
+const (
+	GetJobsParamsSortOrderAsc  GetJobsParamsSortOrder = "asc"
+	GetJobsParamsSortOrderDesc GetJobsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortBy.
+const (
+	GetProcessDefinitionsParamsSortByBpmnProcessId   GetProcessDefinitionsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionsParamsSortByBpmnProcessName GetProcessDefinitionsParamsSortBy = "bpmnProcessName"
+	GetProcessDefinitionsParamsSortByKey             GetProcessDefinitionsParamsSortBy = "key"
+	GetProcessDefinitionsParamsSortByName            GetProcessDefinitionsParamsSortBy = "name"
+	GetProcessDefinitionsParamsSortByVersion         GetProcessDefinitionsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionsParamsSortOrder.
+const (
+	GetProcessDefinitionsParamsSortOrderAsc  GetProcessDefinitionsParamsSortOrder = "asc"
+	GetProcessDefinitionsParamsSortOrderDesc GetProcessDefinitionsParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsSortBy.
+const (
+	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey       GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState     GetProcessInstancesParamsSortBy = "state"
+)
+
+// Defines values for GetProcessInstancesParamsSortOrder.
+const (
+	GetProcessInstancesParamsSortOrderAsc  GetProcessInstancesParamsSortOrder = "asc"
+	GetProcessInstancesParamsSortOrderDesc GetProcessInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetProcessInstancesParamsState.
+const (
+	GetProcessInstancesParamsStateActive     GetProcessInstancesParamsState = "active"
+	GetProcessInstancesParamsStateCompleted  GetProcessInstancesParamsState = "completed"
+	GetProcessInstancesParamsStateFailed     GetProcessInstancesParamsState = "failed"
+	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
+)
+
+// Defines values for GetIncidentsParamsState.
+const (
+	GetIncidentsParamsStateResolved   GetIncidentsParamsState = "resolved"
+	GetIncidentsParamsStateUnresolved GetIncidentsParamsState = "unresolved"
+)
+
+// DecisionInstanceDetail defines model for DecisionInstanceDetail.
+type DecisionInstanceDetail struct {
+	// DecisionOutput Final output of the requested decision
+	DecisionOutput           *json.RawMessage    `json:"decisionOutput,omitempty"`
+	DmnResourceDefinitionKey int64               `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time           `json:"evaluatedAt"`
+	EvaluatedDecisions       []EvaluatedDecision `json:"evaluatedDecisions"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
 }
 
-// ActivityPage defines model for ActivityPage.
-type ActivityPage struct {
+// DecisionInstancePartitionPage defines model for DecisionInstancePartitionPage.
+type DecisionInstancePartitionPage struct {
 	// Count Number of items returned in the current page
-	Count int         `json:"count"`
-	Items *[]Activity `json:"items,omitempty"`
+	Count int `json:"count"`
+
+	// Page Current page number (1-based indexing)
+	Page       int                          `json:"page"`
+	Partitions []PartitionDecisionInstances `json:"partitions"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
+}
+
+// DecisionInstanceSummary defines model for DecisionInstanceSummary.
+type DecisionInstanceSummary struct {
+	DmnResourceDefinitionKey int64     `json:"dmnResourceDefinitionKey"`
+	EvaluatedAt              time.Time `json:"evaluatedAt"`
+
+	// FlowElementInstanceKey Key of the flow element instance that triggered this decision
+	FlowElementInstanceKey *int64 `json:"flowElementInstanceKey,omitempty"`
+	Key                    int64  `json:"key"`
+	ProcessInstanceKey     *int64 `json:"processInstanceKey,omitempty"`
+}
+
+// DmnResourceDefinitionDetail defines model for DmnResourceDefinitionDetail.
+type DmnResourceDefinitionDetail struct {
+	DmnData                 *string `json:"dmnData,omitempty"`
+	DmnDefinitionName       string  `json:"dmnDefinitionName"`
+	DmnResourceDefinitionId string  `json:"dmnResourceDefinitionId"`
+	Key                     int64   `json:"key"`
+	Version                 int     `json:"version"`
+}
+
+// DmnResourceDefinitionSimple defines model for DmnResourceDefinitionSimple.
+type DmnResourceDefinitionSimple struct {
+	DmnDefinitionName       string `json:"dmnDefinitionName"`
+	DmnResourceDefinitionId string `json:"dmnResourceDefinitionId"`
+	Key                     int64  `json:"key"`
+	Version                 int    `json:"version"`
+}
+
+// DmnResourceDefinitionsPage defines model for DmnResourceDefinitionsPage.
+type DmnResourceDefinitionsPage struct {
+	// Count Number of items returned in the current page
+	Count int                           `json:"count"`
+	Items []DmnResourceDefinitionSimple `json:"items"`
 
 	// Page Current page number (1-based indexing)
 	Page int `json:"page"`
@@ -66,35 +209,12 @@ type ActivityPage struct {
 	TotalCount int `json:"totalCount"`
 }
 
-// DecisionDefinitionDetail defines model for DecisionDefinitionDetail.
-type DecisionDefinitionDetail struct {
-	DecisionDefinitionId string  `json:"decisionDefinitionId"`
-	DmnData              *string `json:"dmnData,omitempty"`
-	Key                  string  `json:"key"`
-	Version              int     `json:"version"`
-}
-
-// DecisionDefinitionSimple defines model for DecisionDefinitionSimple.
-type DecisionDefinitionSimple struct {
-	DecisionDefinitionId string `json:"decisionDefinitionId"`
-	Key                  string `json:"key"`
-	Version              int    `json:"version"`
-}
-
-// DecisionDefinitionsPage defines model for DecisionDefinitionsPage.
-type DecisionDefinitionsPage struct {
-	// Count Number of items returned in the current page
-	Count int                        `json:"count"`
-	Items []DecisionDefinitionSimple `json:"items"`
-
-	// Page Current page number (1-based indexing)
-	Page int `json:"page"`
-
-	// Size Number of items per page
-	Size int `json:"size"`
-
-	// TotalCount Total number of items available
-	TotalCount int `json:"totalCount"`
+// ElementInstance defines model for ElementInstance.
+type ElementInstance struct {
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	ElementInstanceKey int64     `json:"elementInstanceKey"`
+	State              string    `json:"state"`
 }
 
 // Error defines model for Error.
@@ -105,16 +225,35 @@ type Error struct {
 
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
-	DecisionOutput     map[string]interface{}    `json:"decisionOutput"`
-	EvaluatedDecisions []EvaluatedDecisionResult `json:"evaluatedDecisions"`
+	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
+	DecisionOutput      interface{}               `json:"decisionOutput"`
+	EvaluatedDecisions  []EvaluatedDecisionResult `json:"evaluatedDecisions"`
 }
+
+// EvaluatedDecision defines model for EvaluatedDecision.
+type EvaluatedDecision struct {
+	DecisionId   *string                        `json:"decisionId,omitempty"`
+	DecisionName *string                        `json:"decisionName,omitempty"`
+	DecisionType *EvaluatedDecisionDecisionType `json:"decisionType,omitempty"`
+
+	// EvaluationOrder Order in which this decision was evaluated
+	EvaluationOrder *int              `json:"evaluationOrder,omitempty"`
+	Inputs          *[]EvaluatedInput `json:"inputs,omitempty"`
+
+	// MatchedRules For DECISION_TABLE type only
+	MatchedRules *[]MatchedRule     `json:"matchedRules,omitempty"`
+	Outputs      *[]EvaluatedOutput `json:"outputs,omitempty"`
+}
+
+// EvaluatedDecisionDecisionType defines model for EvaluatedDecision.DecisionType.
+type EvaluatedDecisionDecisionType string
 
 // EvaluatedDecisionInput defines model for EvaluatedDecisionInput.
 type EvaluatedDecisionInput struct {
-	InputExpression string                 `json:"inputExpression"`
-	InputId         string                 `json:"inputId"`
-	InputName       string                 `json:"inputName"`
-	InputValue      map[string]interface{} `json:"inputValue"`
+	InputExpression string      `json:"inputExpression"`
+	InputId         string      `json:"inputId"`
+	InputName       string      `json:"inputName"`
+	InputValue      interface{} `json:"inputValue"`
 }
 
 // EvaluatedDecisionOutput defines model for EvaluatedDecisionOutput.
@@ -126,13 +265,13 @@ type EvaluatedDecisionOutput struct {
 
 // EvaluatedDecisionResult defines model for EvaluatedDecisionResult.
 type EvaluatedDecisionResult struct {
-	DecisionDefinitionId      string                   `json:"decisionDefinitionId"`
-	DecisionDefinitionKey     string                   `json:"decisionDefinitionKey"`
 	DecisionDefinitionVersion int                      `json:"decisionDefinitionVersion"`
 	DecisionId                string                   `json:"decisionId"`
 	DecisionName              string                   `json:"decisionName"`
 	DecisionOutput            map[string]interface{}   `json:"decisionOutput"`
 	DecisionType              string                   `json:"decisionType"`
+	DmnResourceDefinitionId   string                   `json:"dmnResourceDefinitionId"`
+	DmnResourceDefinitionKey  int64                    `json:"dmnResourceDefinitionKey"`
 	EvaluatedInputs           []EvaluatedDecisionInput `json:"evaluatedInputs"`
 	MatchedRules              []EvaluatedDecisionRule  `json:"matchedRules"`
 }
@@ -144,12 +283,31 @@ type EvaluatedDecisionRule struct {
 	RuleIndex        int                       `json:"ruleIndex"`
 }
 
+// EvaluatedInput defines model for EvaluatedInput.
+type EvaluatedInput struct {
+	InputExpression *string `json:"inputExpression,omitempty"`
+	InputId         *string `json:"inputId,omitempty"`
+	InputName       *string `json:"inputName,omitempty"`
+
+	// InputValue The evaluated input value (any type)
+	InputValue *interface{} `json:"inputValue,omitempty"`
+}
+
+// EvaluatedOutput defines model for EvaluatedOutput.
+type EvaluatedOutput struct {
+	OutputId   *string `json:"outputId,omitempty"`
+	OutputName *string `json:"outputName,omitempty"`
+
+	// OutputValue The output value (any type)
+	OutputValue *interface{} `json:"outputValue,omitempty"`
+}
+
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	ElementId          string    `json:"elementId"`
-	Key                string    `json:"key"`
-	ProcessInstanceKey string    `json:"processInstanceKey"`
+	Key                int64     `json:"key"`
+	ProcessInstanceKey int64     `json:"processInstanceKey"`
 }
 
 // FlowElementHistoryPage defines model for FlowElementHistoryPage.
@@ -172,11 +330,11 @@ type FlowElementHistoryPage struct {
 type Incident struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	ElementId          string     `json:"elementId"`
-	ElementInstanceKey string     `json:"elementInstanceKey"`
-	ExecutionToken     string     `json:"executionToken"`
-	Key                string     `json:"key"`
+	ElementInstanceKey int64      `json:"elementInstanceKey"`
+	ExecutionToken     int64      `json:"executionToken"`
+	Key                int64      `json:"key"`
 	Message            string     `json:"message"`
-	ProcessInstanceKey string     `json:"processInstanceKey"`
+	ProcessInstanceKey int64      `json:"processInstanceKey"`
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
@@ -198,10 +356,11 @@ type IncidentPage struct {
 
 // Job defines model for Job.
 type Job struct {
+	Assignee           *string                `json:"assignee,omitempty"`
 	CreatedAt          time.Time              `json:"createdAt"`
 	ElementId          string                 `json:"elementId"`
-	Key                string                 `json:"key"`
-	ProcessInstanceKey string                 `json:"processInstanceKey"`
+	Key                int64                  `json:"key"`
+	ProcessInstanceKey int64                  `json:"processInstanceKey"`
 	State              JobState               `json:"state"`
 	Type               string                 `json:"type"`
 	Variables          map[string]interface{} `json:"variables"`
@@ -242,6 +401,13 @@ type JobPartitionPage struct {
 // JobState defines model for JobState.
 type JobState string
 
+// MatchedRule defines model for MatchedRule.
+type MatchedRule struct {
+	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
+	RuleId           *string            `json:"ruleId,omitempty"`
+	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
 // PageMetadata defines model for PageMetadata.
 type PageMetadata struct {
 	// Count Number of items returned in the current page
@@ -255,6 +421,14 @@ type PageMetadata struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// PartitionDecisionInstances defines model for PartitionDecisionInstances.
+type PartitionDecisionInstances struct {
+	// Count Total decision instances in this partition
+	Count     *int                      `json:"count,omitempty"`
+	Items     []DecisionInstanceSummary `json:"items"`
+	Partition int                       `json:"partition"`
 }
 
 // PartitionJobs defines model for PartitionJobs.
@@ -288,15 +462,21 @@ type PartitionedPageMetadata struct {
 type ProcessDefinitionDetail struct {
 	BpmnData      *string `json:"bpmnData,omitempty"`
 	BpmnProcessId string  `json:"bpmnProcessId"`
-	Key           string  `json:"key"`
-	Version       int     `json:"version"`
+
+	// BpmnProcessName Process name from BPMN
+	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
+	Key             int64   `json:"key"`
+	Version         int     `json:"version"`
 }
 
 // ProcessDefinitionSimple defines model for ProcessDefinitionSimple.
 type ProcessDefinitionSimple struct {
 	BpmnProcessId string `json:"bpmnProcessId"`
-	Key           string `json:"key"`
-	Version       int    `json:"version"`
+
+	// BpmnProcessName Process name from BPMN
+	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
+	Key             int64   `json:"key"`
+	Version         int     `json:"version"`
 }
 
 // ProcessDefinitionsPage defines model for ProcessDefinitionsPage.
@@ -317,11 +497,15 @@ type ProcessDefinitionsPage struct {
 
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
-	CreatedAt            time.Time              `json:"createdAt"`
-	Key                  string                 `json:"key"`
-	ProcessDefinitionKey string                 `json:"processDefinitionKey"`
-	State                ProcessInstanceState   `json:"state"`
-	Variables            map[string]interface{} `json:"variables"`
+	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
+	BpmnProcessId            *string                `json:"bpmnProcessId,omitempty"`
+	BusinessKey              *string                `json:"businessKey,omitempty"`
+	CreatedAt                time.Time              `json:"createdAt"`
+	Key                      int64                  `json:"key"`
+	ParentProcessInstanceKey *int64                 `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                  `json:"processDefinitionKey"`
+	State                    ProcessInstanceState   `json:"state"`
+	Variables                map[string]interface{} `json:"variables"`
 }
 
 // ProcessInstanceState defines model for ProcessInstance.State.
@@ -343,22 +527,27 @@ type ProcessInstancePage struct {
 	TotalCount int `json:"totalCount"`
 }
 
-// GetDecisionDefinitionsParams defines parameters for GetDecisionDefinitions.
-type GetDecisionDefinitionsParams struct {
-	// Page Page number (1-based indexing)
-	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
-
-	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+// StartElementInstanceData defines model for StartElementInstanceData.
+type StartElementInstanceData struct {
+	// ElementId Element instance is created at this element.
+	ElementId string `json:"elementId"`
 }
+
+// TerminateElementInstanceData defines model for TerminateElementInstanceData.
+type TerminateElementInstanceData struct {
+	ElementInstanceKey int64 `json:"elementInstanceKey"`
+}
+
+// SortOrder defines model for sortOrder.
+type SortOrder string
 
 // EvaluateDecisionJSONBody defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBody struct {
 	BindingType EvaluateDecisionJSONBodyBindingType `json:"bindingType"`
 
-	// DecisionDefinitionId Can be used in combination with bindingType latest
-	DecisionDefinitionId *string                 `json:"decisionDefinitionId,omitempty"`
-	Variables            *map[string]interface{} `json:"variables,omitempty"`
+	// DmnResourceDefinitionId Can be used in combination with bindingType latest
+	DmnResourceDefinitionId *string                 `json:"dmnResourceDefinitionId,omitempty"`
+	Variables               *map[string]interface{} `json:"variables,omitempty"`
 
 	// VersionTag Is used in combination with bindingType versionTag
 	VersionTag *string `json:"versionTag,omitempty"`
@@ -367,17 +556,100 @@ type EvaluateDecisionJSONBody struct {
 // EvaluateDecisionJSONBodyBindingType defines parameters for EvaluateDecision.
 type EvaluateDecisionJSONBodyBindingType string
 
+// GetDecisionInstancesParams defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParams struct {
+	// DmnResourceDefinitionKey Filter by DMN resource definition key
+	DmnResourceDefinitionKey *int64 `form:"dmnResourceDefinitionKey,omitempty" json:"dmnResourceDefinitionKey,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// EvaluatedFrom Filter: evaluated after this date
+	EvaluatedFrom *time.Time `form:"evaluatedFrom,omitempty" json:"evaluatedFrom,omitempty"`
+
+	// EvaluatedTo Filter: evaluated before this date
+	EvaluatedTo *time.Time `form:"evaluatedTo,omitempty" json:"evaluatedTo,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDecisionInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDecisionInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetDecisionInstancesParamsSortBy defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortBy string
+
+// GetDecisionInstancesParamsSortOrder defines parameters for GetDecisionInstances.
+type GetDecisionInstancesParamsSortOrder string
+
+// GetDmnResourceDefinitionsParams defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetDmnResourceDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetDmnResourceDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// DmnResourceDefinitionId Filter by DMN resource definition ID to get all versions
+	DmnResourceDefinitionId *string `form:"dmnResourceDefinitionId,omitempty" json:"dmnResourceDefinitionId,omitempty"`
+
+	// DmnDefinitionName Filter by name (partial match)
+	DmnDefinitionName *string `form:"dmnDefinitionName,omitempty" json:"dmnDefinitionName,omitempty"`
+}
+
+// GetDmnResourceDefinitionsParamsSortBy defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortBy string
+
+// GetDmnResourceDefinitionsParamsSortOrder defines parameters for GetDmnResourceDefinitions.
+type GetDmnResourceDefinitionsParamsSortOrder string
+
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
 	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
 	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
-	Page    *int32    `form:"page,omitempty" json:"page,omitempty"`
-	Size    *int32    `form:"size,omitempty" json:"size,omitempty"`
+
+	// Assignee Filter by assignee
+	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+	Page               *int32 `form:"page,omitempty" json:"page,omitempty"`
+	Size               *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetJobsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetJobsParamsSortBy defines parameters for GetJobs.
+type GetJobsParamsSortBy string
+
+// GetJobsParamsSortOrder defines parameters for GetJobs.
+type GetJobsParamsSortOrder string
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
-	JobKey    string                  `json:"jobKey"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -388,9 +660,22 @@ type PublishMessageJSONBody struct {
 	Variables      *map[string]interface{} `json:"variables,omitempty"`
 }
 
+// ModifyProcessInstanceJSONBody defines parameters for ModifyProcessInstance.
+type ModifyProcessInstanceJSONBody struct {
+	// ElementInstancesToStart Starts execution token.
+	ElementInstancesToStart *[]StartElementInstanceData `json:"elementInstancesToStart,omitempty"`
+
+	// ElementInstancesToTerminate Terminates execution token.
+	ElementInstancesToTerminate *[]TerminateElementInstanceData `json:"elementInstancesToTerminate,omitempty"`
+	ProcessInstanceKey          int64                           `json:"processInstanceKey"`
+
+	// Variables Sets process instance variables.
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
 // StartProcessInstanceOnElementsJSONBody defines parameters for StartProcessInstanceOnElements.
 type StartProcessInstanceOnElementsJSONBody struct {
-	ProcessDefinitionKey string `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 
 	// StartingElementIds Allows for a start at chosen element id
 	StartingElementIds []string                `json:"startingElementIds"`
@@ -399,6 +684,18 @@ type StartProcessInstanceOnElementsJSONBody struct {
 
 // GetProcessDefinitionsParams defines parameters for GetProcessDefinitions.
 type GetProcessDefinitionsParams struct {
+	// OnlyLatest If true, returns only the latest version of each process definition grouped by bpmnProcessId
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
@@ -406,33 +703,72 @@ type GetProcessDefinitionsParams struct {
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// GetProcessDefinitionsParamsSortBy defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortBy string
+
+// GetProcessDefinitionsParamsSortOrder defines parameters for GetProcessDefinitions.
+type GetProcessDefinitionsParamsSortOrder string
+
+// CreateProcessDefinitionMultipartBody defines parameters for CreateProcessDefinition.
+type CreateProcessDefinitionMultipartBody struct {
+	// Resource BPMN process definition file (.bpmn format only, max 4MB)
+	Resource openapi_types.File `json:"resource"`
+}
+
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
-	ProcessDefinitionKey string `form:"processDefinitionKey" json:"processDefinitionKey"`
+	ProcessDefinitionKey *int64 `form:"processDefinitionKey,omitempty" json:"processDefinitionKey,omitempty"`
+
+	// ParentProcessInstanceKey Key of the parent process instance
+	ParentProcessInstanceKey *int64 `form:"parentProcessInstanceKey,omitempty" json:"parentProcessInstanceKey,omitempty"`
+
+	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
+	BusinessKey *string `form:"businessKey,omitempty" json:"businessKey,omitempty"`
 
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// BpmnProcessId Filter by BPMN process ID (returns instances across all versions)
+	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// SortBy Sort field (applies globally across partitions)
+	SortBy *GetProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// CreatedFrom Filter: created after this date
+	CreatedFrom *time.Time `form:"createdFrom,omitempty" json:"createdFrom,omitempty"`
+
+	// CreatedTo Filter: created before this date
+	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
+
+	// State Filter by state
+	State *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
 }
+
+// GetProcessInstancesParamsSortBy defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortBy string
+
+// GetProcessInstancesParamsSortOrder defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsSortOrder string
+
+// GetProcessInstancesParamsState defines parameters for GetProcessInstances.
+type GetProcessInstancesParamsState string
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
+	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
+	BusinessKey *string `json:"businessKey,omitempty"`
+
 	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
 	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
-	ProcessDefinitionKey string                  `json:"processDefinitionKey"`
+	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
-}
-
-// GetActivitiesParams defines parameters for GetActivities.
-type GetActivitiesParams struct {
-	// Page Page number (1-based indexing)
-	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
-
-	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
 // GetHistoryParams defines parameters for GetHistory.
@@ -446,12 +782,17 @@ type GetHistoryParams struct {
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
+	State *GetIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
 	// Page Page number (1-based indexing)
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetIncidentsParamsState defines parameters for GetIncidents.
+type GetIncidentsParamsState string
 
 // GetProcessInstanceJobsParams defines parameters for GetProcessInstanceJobs.
 type GetProcessInstanceJobsParams struct {
@@ -460,6 +801,11 @@ type GetProcessInstanceJobsParams struct {
 
 	// Size Number of items per page (max 100)
 	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// UpdateProcessInstanceVariablesJSONBody defines parameters for UpdateProcessInstanceVariables.
+type UpdateProcessInstanceVariablesJSONBody struct {
+	Variables map[string]interface{} `json:"variables"`
 }
 
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
@@ -471,11 +817,20 @@ type CompleteJobJSONRequestBody CompleteJobJSONBody
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
 
+// ModifyProcessInstanceJSONRequestBody defines body for ModifyProcessInstance for application/json ContentType.
+type ModifyProcessInstanceJSONRequestBody ModifyProcessInstanceJSONBody
+
 // StartProcessInstanceOnElementsJSONRequestBody defines body for StartProcessInstanceOnElements for application/json ContentType.
 type StartProcessInstanceOnElementsJSONRequestBody StartProcessInstanceOnElementsJSONBody
 
+// CreateProcessDefinitionMultipartRequestBody defines body for CreateProcessDefinition for multipart/form-data ContentType.
+type CreateProcessDefinitionMultipartRequestBody CreateProcessDefinitionMultipartBody
+
 // CreateProcessInstanceJSONRequestBody defines body for CreateProcessInstance for application/json ContentType.
 type CreateProcessInstanceJSONRequestBody CreateProcessInstanceJSONBody
+
+// UpdateProcessInstanceVariablesJSONRequestBody defines body for UpdateProcessInstanceVariables for application/json ContentType.
+type UpdateProcessInstanceVariablesJSONRequestBody UpdateProcessInstanceVariablesJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -550,35 +905,49 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// GetDecisionDefinitions request
-	GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateDecisionDefinitionWithBody request with any body
-	CreateDecisionDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetDecisionDefinition request
-	GetDecisionDefinition(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// EvaluateDecisionWithBody request with any body
 	EvaluateDecisionWithBody(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	EvaluateDecision(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDecisionInstances request
+	GetDecisionInstances(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDecisionInstance request
+	GetDecisionInstance(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDmnResourceDefinitions request
+	GetDmnResourceDefinitions(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDmnResourceDefinitionWithBody request with any body
+	CreateDmnResourceDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDmnResourceDefinition request
+	GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ResolveIncident request
-	ResolveIncident(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetJobs request
 	GetJobs(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CompleteJobWithBody request with any body
-	CompleteJobWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetJob request
+	GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// CompleteJobWithBody request with any body
+	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PublishMessage(ctx context.Context, body PublishMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ModifyProcessInstanceWithBody request with any body
+	ModifyProcessInstanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ModifyProcessInstance(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartProcessInstanceOnElementsWithBody request with any body
 	StartProcessInstanceOnElementsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -592,7 +961,7 @@ type ClientInterface interface {
 	CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessDefinition request
-	GetProcessDefinition(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstances request
 	GetProcessInstances(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -603,61 +972,30 @@ type ClientInterface interface {
 	CreateProcessInstance(ctx context.Context, body CreateProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstance request
-	GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetActivities request
-	GetActivities(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHistory request
-	GetHistory(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetIncidents request
-	GetIncidents(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetIncidents(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProcessInstanceJobs request
-	GetProcessInstanceJobs(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateProcessInstanceVariablesWithBody request with any body
+	UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteProcessInstanceVariable request
+	DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStartCpuProfile request
 	TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestStopCpuProfile request
 	TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
-}
-
-func (c *Client) GetDecisionDefinitions(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetDecisionDefinitionsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) CreateDecisionDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateDecisionDefinitionRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetDecisionDefinition(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetDecisionDefinitionRequest(c.Server, decisionDefinitionKey)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
 }
 
 func (c *Client) EvaluateDecisionWithBody(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -684,7 +1022,67 @@ func (c *Client) EvaluateDecision(ctx context.Context, decisionId string, body E
 	return c.Client.Do(req)
 }
 
-func (c *Client) ResolveIncident(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetDecisionInstances(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDecisionInstancesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDecisionInstanceRequest(c.Server, decisionInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDmnResourceDefinitions(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDmnResourceDefinitionsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateDmnResourceDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDmnResourceDefinitionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDmnResourceDefinition(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDmnResourceDefinitionRequest(c.Server, dmnResourceDefinitionKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResolveIncident(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolveIncidentRequest(c.Server, incidentKey)
 	if err != nil {
 		return nil, err
@@ -708,8 +1106,8 @@ func (c *Client) GetJobs(ctx context.Context, params *GetJobsParams, reqEditors 
 	return c.Client.Do(req)
 }
 
-func (c *Client) CompleteJobWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCompleteJobRequestWithBody(c.Server, contentType, body)
+func (c *Client) GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetJobRequest(c.Server, jobKey)
 	if err != nil {
 		return nil, err
 	}
@@ -720,8 +1118,20 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, contentType string, bo
 	return c.Client.Do(req)
 }
 
-func (c *Client) CompleteJob(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCompleteJobRequest(c.Server, body)
+func (c *Client) CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteJobRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteJobRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +1156,30 @@ func (c *Client) PublishMessageWithBody(ctx context.Context, contentType string,
 
 func (c *Client) PublishMessage(ctx context.Context, body PublishMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPublishMessageRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ModifyProcessInstanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewModifyProcessInstanceRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ModifyProcessInstance(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewModifyProcessInstanceRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -804,7 +1238,7 @@ func (c *Client) CreateProcessDefinitionWithBody(ctx context.Context, contentTyp
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessDefinition(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessDefinitionRequest(c.Server, processDefinitionKey)
 	if err != nil {
 		return nil, err
@@ -852,7 +1286,7 @@ func (c *Client) CreateProcessInstance(ctx context.Context, body CreateProcessIn
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceRequest(c.Server, processInstanceKey)
 	if err != nil {
 		return nil, err
@@ -864,19 +1298,7 @@ func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey stri
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetActivities(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetActivitiesRequest(c.Server, processInstanceKey, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetHistory(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHistoryRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
@@ -888,7 +1310,7 @@ func (c *Client) GetHistory(ctx context.Context, processInstanceKey string, para
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetIncidents(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetIncidents(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetIncidentsRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
@@ -900,8 +1322,44 @@ func (c *Client) GetIncidents(ctx context.Context, processInstanceKey string, pa
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetProcessInstanceJobs(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceJobsRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariablesWithBody(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequestWithBody(c.Server, processInstanceKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateProcessInstanceVariables(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateProcessInstanceVariablesRequest(c.Server, processInstanceKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProcessInstanceVariableRequest(c.Server, processInstanceKey, variableName)
 	if err != nil {
 		return nil, err
 	}
@@ -936,8 +1394,55 @@ func (c *Client) TestStopCpuProfile(ctx context.Context, nodeId string, reqEdito
 	return c.Client.Do(req)
 }
 
-// NewGetDecisionDefinitionsRequest generates requests for GetDecisionDefinitions
-func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefinitionsParams) (*http.Request, error) {
+// NewEvaluateDecisionRequest calls the generic EvaluateDecision builder with application/json body
+func NewEvaluateDecisionRequest(server string, decisionId string, body EvaluateDecisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEvaluateDecisionRequestWithBody(server, decisionId, "application/json", bodyReader)
+}
+
+// NewEvaluateDecisionRequestWithBody generates requests for EvaluateDecision with any type of body
+func NewEvaluateDecisionRequestWithBody(server string, decisionId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionId", runtime.ParamLocationPath, decisionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/decision-definitions/%s/evaluate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetDecisionInstancesRequest generates requests for GetDecisionInstances
+func NewGetDecisionInstancesRequest(server string, params *GetDecisionInstancesParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -945,7 +1450,218 @@ func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefiniti
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions")
+	operationPath := fmt.Sprintf("/decision-instances")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.DmnResourceDefinitionKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionKey", runtime.ParamLocationQuery, *params.DmnResourceDefinitionKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnResourceDefinitionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionId", runtime.ParamLocationQuery, *params.DmnResourceDefinitionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.EvaluatedFrom != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "evaluatedFrom", runtime.ParamLocationQuery, *params.EvaluatedFrom); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.EvaluatedTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "evaluatedTo", runtime.ParamLocationQuery, *params.EvaluatedTo); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDecisionInstanceRequest generates requests for GetDecisionInstance
+func NewGetDecisionInstanceRequest(server string, decisionInstanceKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionInstanceKey", runtime.ParamLocationPath, decisionInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/decision-instances/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDmnResourceDefinitionsRequest generates requests for GetDmnResourceDefinitions
+func NewGetDmnResourceDefinitionsRequest(server string, params *GetDmnResourceDefinitionsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/dmn-resource-definitions")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -990,6 +1706,86 @@ func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefiniti
 
 		}
 
+		if params.OnlyLatest != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnResourceDefinitionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnResourceDefinitionId", runtime.ParamLocationQuery, *params.DmnResourceDefinitionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DmnDefinitionName != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dmnDefinitionName", runtime.ParamLocationQuery, *params.DmnDefinitionName); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -1001,8 +1797,8 @@ func NewGetDecisionDefinitionsRequest(server string, params *GetDecisionDefiniti
 	return req, nil
 }
 
-// NewCreateDecisionDefinitionRequestWithBody generates requests for CreateDecisionDefinition with any type of body
-func NewCreateDecisionDefinitionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewCreateDmnResourceDefinitionRequestWithBody generates requests for CreateDmnResourceDefinition with any type of body
+func NewCreateDmnResourceDefinitionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1010,7 +1806,7 @@ func NewCreateDecisionDefinitionRequestWithBody(server string, contentType strin
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions")
+	operationPath := fmt.Sprintf("/dmn-resource-definitions")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1030,13 +1826,13 @@ func NewCreateDecisionDefinitionRequestWithBody(server string, contentType strin
 	return req, nil
 }
 
-// NewGetDecisionDefinitionRequest generates requests for GetDecisionDefinition
-func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string) (*http.Request, error) {
+// NewGetDmnResourceDefinitionRequest generates requests for GetDmnResourceDefinition
+func NewGetDmnResourceDefinitionRequest(server string, dmnResourceDefinitionKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionDefinitionKey", runtime.ParamLocationPath, decisionDefinitionKey)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "dmnResourceDefinitionKey", runtime.ParamLocationPath, dmnResourceDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,7 +1842,7 @@ func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/decision-definitions/%s", pathParam0)
+	operationPath := fmt.Sprintf("/dmn-resource-definitions/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1064,55 +1860,8 @@ func NewGetDecisionDefinitionRequest(server string, decisionDefinitionKey string
 	return req, nil
 }
 
-// NewEvaluateDecisionRequest calls the generic EvaluateDecision builder with application/json body
-func NewEvaluateDecisionRequest(server string, decisionId string, body EvaluateDecisionJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewEvaluateDecisionRequestWithBody(server, decisionId, "application/json", bodyReader)
-}
-
-// NewEvaluateDecisionRequestWithBody generates requests for EvaluateDecision with any type of body
-func NewEvaluateDecisionRequestWithBody(server string, decisionId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "decisionId", runtime.ParamLocationPath, decisionId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/decisions/%s/evaluate", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewResolveIncidentRequest generates requests for ResolveIncident
-func NewResolveIncidentRequest(server string, incidentKey string) (*http.Request, error) {
+func NewResolveIncidentRequest(server string, incidentKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1199,6 +1948,38 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
+		if params.Assignee != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "assignee", runtime.ParamLocationQuery, *params.Assignee); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if params.Page != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
@@ -1231,6 +2012,38 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -1242,27 +2055,68 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 	return req, nil
 }
 
-// NewCompleteJobRequest calls the generic CompleteJob builder with application/json body
-func NewCompleteJobRequest(server string, body CompleteJobJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+// NewGetJobRequest generates requests for GetJob
+func NewGetJobRequest(server string, jobKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
 	if err != nil {
 		return nil, err
 	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCompleteJobRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewCompleteJobRequestWithBody generates requests for CompleteJob with any type of body
-func NewCompleteJobRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/jobs")
+	operationPath := fmt.Sprintf("/jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteJobRequest calls the generic CompleteJob builder with application/json body
+func NewCompleteJobRequest(server string, jobKey int64, body CompleteJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCompleteJobRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewCompleteJobRequestWithBody generates requests for CompleteJob with any type of body
+func NewCompleteJobRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/complete", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1322,6 +2176,46 @@ func NewPublishMessageRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewModifyProcessInstanceRequest calls the generic ModifyProcessInstance builder with application/json body
+func NewModifyProcessInstanceRequest(server string, body ModifyProcessInstanceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewModifyProcessInstanceRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewModifyProcessInstanceRequestWithBody generates requests for ModifyProcessInstance with any type of body
+func NewModifyProcessInstanceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/modify/process-instance")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewStartProcessInstanceOnElementsRequest calls the generic StartProcessInstanceOnElements builder with application/json body
 func NewStartProcessInstanceOnElementsRequest(server string, body StartProcessInstanceOnElementsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1342,7 +2236,7 @@ func NewStartProcessInstanceOnElementsRequestWithBody(server string, contentType
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/migration/start-process-instance")
+	operationPath := fmt.Sprintf("/modify/start-process-instance")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1383,6 +2277,70 @@ func NewGetProcessDefinitionsRequest(server string, params *GetProcessDefinition
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.OnlyLatest != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, *params.BpmnProcessId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Page != nil {
 
@@ -1457,7 +2415,7 @@ func NewCreateProcessDefinitionRequestWithBody(server string, contentType string
 }
 
 // NewGetProcessDefinitionRequest generates requests for GetProcessDefinition
-func NewGetProcessDefinitionRequest(server string, processDefinitionKey string) (*http.Request, error) {
+func NewGetProcessDefinitionRequest(server string, processDefinitionKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1512,16 +2470,52 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processDefinitionKey", runtime.ParamLocationQuery, params.ProcessDefinitionKey); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
+		if params.ProcessDefinitionKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processDefinitionKey", runtime.ParamLocationQuery, *params.ProcessDefinitionKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
 				}
 			}
+
+		}
+
+		if params.ParentProcessInstanceKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "parentProcessInstanceKey", runtime.ParamLocationQuery, *params.ParentProcessInstanceKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BusinessKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "businessKey", runtime.ParamLocationQuery, *params.BusinessKey); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		if params.Page != nil {
@@ -1543,6 +2537,102 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BpmnProcessId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, *params.BpmnProcessId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedFrom != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdFrom", runtime.ParamLocationQuery, *params.CreatedFrom); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdTo", runtime.ParamLocationQuery, *params.CreatedTo); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -1608,7 +2698,7 @@ func NewCreateProcessInstanceRequestWithBody(server string, contentType string, 
 }
 
 // NewGetProcessInstanceRequest generates requests for GetProcessInstance
-func NewGetProcessInstanceRequest(server string, processInstanceKey string) (*http.Request, error) {
+func NewGetProcessInstanceRequest(server string, processInstanceKey int64) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1641,80 +2731,8 @@ func NewGetProcessInstanceRequest(server string, processInstanceKey string) (*ht
 	return req, nil
 }
 
-// NewGetActivitiesRequest generates requests for GetActivities
-func NewGetActivitiesRequest(server string, processInstanceKey string, params *GetActivitiesParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/process-instances/%s/activities", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Page != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Size != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewGetHistoryRequest generates requests for GetHistory
-func NewGetHistoryRequest(server string, processInstanceKey string, params *GetHistoryParams) (*http.Request, error) {
+func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHistoryParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1786,7 +2804,7 @@ func NewGetHistoryRequest(server string, processInstanceKey string, params *GetH
 }
 
 // NewGetIncidentsRequest generates requests for GetIncidents
-func NewGetIncidentsRequest(server string, processInstanceKey string, params *GetIncidentsParams) (*http.Request, error) {
+func NewGetIncidentsRequest(server string, processInstanceKey int64, params *GetIncidentsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1813,6 +2831,22 @@ func NewGetIncidentsRequest(server string, processInstanceKey string, params *Ge
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Page != nil {
 
@@ -1858,7 +2892,7 @@ func NewGetIncidentsRequest(server string, processInstanceKey string, params *Ge
 }
 
 // NewGetProcessInstanceJobsRequest generates requests for GetProcessInstanceJobs
-func NewGetProcessInstanceJobsRequest(server string, processInstanceKey string, params *GetProcessInstanceJobsParams) (*http.Request, error) {
+func NewGetProcessInstanceJobsRequest(server string, processInstanceKey int64, params *GetProcessInstanceJobsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1922,6 +2956,94 @@ func NewGetProcessInstanceJobsRequest(server string, processInstanceKey string, 
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateProcessInstanceVariablesRequest calls the generic UpdateProcessInstanceVariables builder with application/json body
+func NewUpdateProcessInstanceVariablesRequest(server string, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateProcessInstanceVariablesRequestWithBody(server, processInstanceKey, "application/json", bodyReader)
+}
+
+// NewUpdateProcessInstanceVariablesRequestWithBody generates requests for UpdateProcessInstanceVariables with any type of body
+func NewUpdateProcessInstanceVariablesRequestWithBody(server string, processInstanceKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteProcessInstanceVariableRequest generates requests for DeleteProcessInstanceVariable
+func NewDeleteProcessInstanceVariableRequest(server string, processInstanceKey int64, variableName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "variableName", runtime.ParamLocationPath, variableName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/variables/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2040,35 +3162,49 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// GetDecisionDefinitionsWithResponse request
-	GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error)
-
-	// CreateDecisionDefinitionWithBodyWithResponse request with any body
-	CreateDecisionDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionDefinitionResponse, error)
-
-	// GetDecisionDefinitionWithResponse request
-	GetDecisionDefinitionWithResponse(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionResponse, error)
-
 	// EvaluateDecisionWithBodyWithResponse request with any body
 	EvaluateDecisionWithBodyWithResponse(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error)
 
 	EvaluateDecisionWithResponse(ctx context.Context, decisionId string, body EvaluateDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error)
 
+	// GetDecisionInstancesWithResponse request
+	GetDecisionInstancesWithResponse(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*GetDecisionInstancesResponse, error)
+
+	// GetDecisionInstanceWithResponse request
+	GetDecisionInstanceWithResponse(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*GetDecisionInstanceResponse, error)
+
+	// GetDmnResourceDefinitionsWithResponse request
+	GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error)
+
+	// CreateDmnResourceDefinitionWithBodyWithResponse request with any body
+	CreateDmnResourceDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDmnResourceDefinitionResponse, error)
+
+	// GetDmnResourceDefinitionWithResponse request
+	GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error)
+
 	// ResolveIncidentWithResponse request
-	ResolveIncidentWithResponse(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
+	ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error)
 
 	// GetJobsWithResponse request
 	GetJobsWithResponse(ctx context.Context, params *GetJobsParams, reqEditors ...RequestEditorFn) (*GetJobsResponse, error)
 
-	// CompleteJobWithBodyWithResponse request with any body
-	CompleteJobWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+	// GetJobWithResponse request
+	GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error)
 
-	CompleteJobWithResponse(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+	// CompleteJobWithBodyWithResponse request with any body
+	CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
+
+	CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
 
 	PublishMessageWithResponse(ctx context.Context, body PublishMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
+
+	// ModifyProcessInstanceWithBodyWithResponse request with any body
+	ModifyProcessInstanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error)
+
+	ModifyProcessInstanceWithResponse(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error)
 
 	// StartProcessInstanceOnElementsWithBodyWithResponse request with any body
 	StartProcessInstanceOnElementsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartProcessInstanceOnElementsResponse, error)
@@ -2082,7 +3218,7 @@ type ClientWithResponsesInterface interface {
 	CreateProcessDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProcessDefinitionResponse, error)
 
 	// GetProcessDefinitionWithResponse request
-	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
+	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
 
 	// GetProcessInstancesWithResponse request
 	GetProcessInstancesWithResponse(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetProcessInstancesResponse, error)
@@ -2093,99 +3229,30 @@ type ClientWithResponsesInterface interface {
 	CreateProcessInstanceWithResponse(ctx context.Context, body CreateProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProcessInstanceResponse, error)
 
 	// GetProcessInstanceWithResponse request
-	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
-
-	// GetActivitiesWithResponse request
-	GetActivitiesWithResponse(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*GetActivitiesResponse, error)
+	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
 
 	// GetHistoryWithResponse request
-	GetHistoryWithResponse(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
+	GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
 
 	// GetIncidentsWithResponse request
-	GetIncidentsWithResponse(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error)
+	GetIncidentsWithResponse(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error)
 
 	// GetProcessInstanceJobsWithResponse request
-	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
+	GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error)
+
+	// UpdateProcessInstanceVariablesWithBodyWithResponse request with any body
+	UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error)
+
+	// DeleteProcessInstanceVariableWithResponse request
+	DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error)
 
 	// TestStartCpuProfileWithResponse request
 	TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error)
 
 	// TestStopCpuProfileWithResponse request
 	TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error)
-}
-
-type GetDecisionDefinitionsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *DecisionDefinitionsPage
-	JSON502      *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r GetDecisionDefinitionsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetDecisionDefinitionsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type CreateDecisionDefinitionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON201      *struct {
-		DecisionDefinitionKey string `json:"decisionDefinitionKey"`
-	}
-	JSON400 *Error
-	JSON409 *Error
-	JSON502 *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateDecisionDefinitionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateDecisionDefinitionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetDecisionDefinitionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *DecisionDefinitionDetail
-	JSON400      *Error
-	JSON502      *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r GetDecisionDefinitionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetDecisionDefinitionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
 }
 
 type EvaluateDecisionResponse struct {
@@ -2205,6 +3272,129 @@ func (r EvaluateDecisionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r EvaluateDecisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDecisionInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DecisionInstancePartitionPage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDecisionInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDecisionInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDecisionInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DecisionInstanceDetail
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDecisionInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDecisionInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDmnResourceDefinitionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DmnResourceDefinitionsPage
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDmnResourceDefinitionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDmnResourceDefinitionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateDmnResourceDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
+	}
+	JSON400 *Error
+	JSON409 *Error
+	JSON502 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDmnResourceDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDmnResourceDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDmnResourceDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DmnResourceDefinitionDetail
+	JSON400      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDmnResourceDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDmnResourceDefinitionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2258,6 +3448,31 @@ func (r GetJobsResponse) StatusCode() int {
 	return 0
 }
 
+type GetJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Job
+	JSON404      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type CompleteJobResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2298,6 +3513,34 @@ func (r PublishMessageResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PublishMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ModifyProcessInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		ActiveElementInstances *[]ElementInstance `json:"activeElementInstances,omitempty"`
+		ProcessInstance        *ProcessInstance   `json:"processInstance,omitempty"`
+	}
+	JSON400 *Error
+	JSON500 *Error
+	JSON502 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ModifyProcessInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ModifyProcessInstanceResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2356,7 +3599,7 @@ type CreateProcessDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *struct {
-		ProcessDefinitionKey string `json:"processDefinitionKey"`
+		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 	}
 	JSON400 *Error
 	JSON409 *Error
@@ -2478,28 +3721,6 @@ func (r GetProcessInstanceResponse) StatusCode() int {
 	return 0
 }
 
-type GetActivitiesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ActivityPage
-}
-
-// Status returns HTTPResponse.Status
-func (r GetActivitiesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetActivitiesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 type GetHistoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2573,6 +3794,53 @@ func (r GetProcessInstanceJobsResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateProcessInstanceVariablesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateProcessInstanceVariablesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateProcessInstanceVariablesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteProcessInstanceVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProcessInstanceVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProcessInstanceVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TestStartCpuProfileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2620,33 +3888,6 @@ func (r TestStopCpuProfileResponse) StatusCode() int {
 	return 0
 }
 
-// GetDecisionDefinitionsWithResponse request returning *GetDecisionDefinitionsResponse
-func (c *ClientWithResponses) GetDecisionDefinitionsWithResponse(ctx context.Context, params *GetDecisionDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionsResponse, error) {
-	rsp, err := c.GetDecisionDefinitions(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetDecisionDefinitionsResponse(rsp)
-}
-
-// CreateDecisionDefinitionWithBodyWithResponse request with arbitrary body returning *CreateDecisionDefinitionResponse
-func (c *ClientWithResponses) CreateDecisionDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDecisionDefinitionResponse, error) {
-	rsp, err := c.CreateDecisionDefinitionWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateDecisionDefinitionResponse(rsp)
-}
-
-// GetDecisionDefinitionWithResponse request returning *GetDecisionDefinitionResponse
-func (c *ClientWithResponses) GetDecisionDefinitionWithResponse(ctx context.Context, decisionDefinitionKey string, reqEditors ...RequestEditorFn) (*GetDecisionDefinitionResponse, error) {
-	rsp, err := c.GetDecisionDefinition(ctx, decisionDefinitionKey, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetDecisionDefinitionResponse(rsp)
-}
-
 // EvaluateDecisionWithBodyWithResponse request with arbitrary body returning *EvaluateDecisionResponse
 func (c *ClientWithResponses) EvaluateDecisionWithBodyWithResponse(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EvaluateDecisionResponse, error) {
 	rsp, err := c.EvaluateDecisionWithBody(ctx, decisionId, contentType, body, reqEditors...)
@@ -2664,8 +3905,53 @@ func (c *ClientWithResponses) EvaluateDecisionWithResponse(ctx context.Context, 
 	return ParseEvaluateDecisionResponse(rsp)
 }
 
+// GetDecisionInstancesWithResponse request returning *GetDecisionInstancesResponse
+func (c *ClientWithResponses) GetDecisionInstancesWithResponse(ctx context.Context, params *GetDecisionInstancesParams, reqEditors ...RequestEditorFn) (*GetDecisionInstancesResponse, error) {
+	rsp, err := c.GetDecisionInstances(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDecisionInstancesResponse(rsp)
+}
+
+// GetDecisionInstanceWithResponse request returning *GetDecisionInstanceResponse
+func (c *ClientWithResponses) GetDecisionInstanceWithResponse(ctx context.Context, decisionInstanceKey int64, reqEditors ...RequestEditorFn) (*GetDecisionInstanceResponse, error) {
+	rsp, err := c.GetDecisionInstance(ctx, decisionInstanceKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDecisionInstanceResponse(rsp)
+}
+
+// GetDmnResourceDefinitionsWithResponse request returning *GetDmnResourceDefinitionsResponse
+func (c *ClientWithResponses) GetDmnResourceDefinitionsWithResponse(ctx context.Context, params *GetDmnResourceDefinitionsParams, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionsResponse, error) {
+	rsp, err := c.GetDmnResourceDefinitions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDmnResourceDefinitionsResponse(rsp)
+}
+
+// CreateDmnResourceDefinitionWithBodyWithResponse request with arbitrary body returning *CreateDmnResourceDefinitionResponse
+func (c *ClientWithResponses) CreateDmnResourceDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDmnResourceDefinitionResponse, error) {
+	rsp, err := c.CreateDmnResourceDefinitionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDmnResourceDefinitionResponse(rsp)
+}
+
+// GetDmnResourceDefinitionWithResponse request returning *GetDmnResourceDefinitionResponse
+func (c *ClientWithResponses) GetDmnResourceDefinitionWithResponse(ctx context.Context, dmnResourceDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetDmnResourceDefinitionResponse, error) {
+	rsp, err := c.GetDmnResourceDefinition(ctx, dmnResourceDefinitionKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDmnResourceDefinitionResponse(rsp)
+}
+
 // ResolveIncidentWithResponse request returning *ResolveIncidentResponse
-func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey string, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
+func (c *ClientWithResponses) ResolveIncidentWithResponse(ctx context.Context, incidentKey int64, reqEditors ...RequestEditorFn) (*ResolveIncidentResponse, error) {
 	rsp, err := c.ResolveIncident(ctx, incidentKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2682,17 +3968,26 @@ func (c *ClientWithResponses) GetJobsWithResponse(ctx context.Context, params *G
 	return ParseGetJobsResponse(rsp)
 }
 
+// GetJobWithResponse request returning *GetJobResponse
+func (c *ClientWithResponses) GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error) {
+	rsp, err := c.GetJob(ctx, jobKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetJobResponse(rsp)
+}
+
 // CompleteJobWithBodyWithResponse request with arbitrary body returning *CompleteJobResponse
-func (c *ClientWithResponses) CompleteJobWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
-	rsp, err := c.CompleteJobWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
+	rsp, err := c.CompleteJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseCompleteJobResponse(rsp)
 }
 
-func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
-	rsp, err := c.CompleteJob(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
+	rsp, err := c.CompleteJob(ctx, jobKey, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -2714,6 +4009,23 @@ func (c *ClientWithResponses) PublishMessageWithResponse(ctx context.Context, bo
 		return nil, err
 	}
 	return ParsePublishMessageResponse(rsp)
+}
+
+// ModifyProcessInstanceWithBodyWithResponse request with arbitrary body returning *ModifyProcessInstanceResponse
+func (c *ClientWithResponses) ModifyProcessInstanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error) {
+	rsp, err := c.ModifyProcessInstanceWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseModifyProcessInstanceResponse(rsp)
+}
+
+func (c *ClientWithResponses) ModifyProcessInstanceWithResponse(ctx context.Context, body ModifyProcessInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ModifyProcessInstanceResponse, error) {
+	rsp, err := c.ModifyProcessInstance(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseModifyProcessInstanceResponse(rsp)
 }
 
 // StartProcessInstanceOnElementsWithBodyWithResponse request with arbitrary body returning *StartProcessInstanceOnElementsResponse
@@ -2752,7 +4064,7 @@ func (c *ClientWithResponses) CreateProcessDefinitionWithBodyWithResponse(ctx co
 }
 
 // GetProcessDefinitionWithResponse request returning *GetProcessDefinitionResponse
-func (c *ClientWithResponses) GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey string, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error) {
+func (c *ClientWithResponses) GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error) {
 	rsp, err := c.GetProcessDefinition(ctx, processDefinitionKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2787,7 +4099,7 @@ func (c *ClientWithResponses) CreateProcessInstanceWithResponse(ctx context.Cont
 }
 
 // GetProcessInstanceWithResponse request returning *GetProcessInstanceResponse
-func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey string, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error) {
+func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error) {
 	rsp, err := c.GetProcessInstance(ctx, processInstanceKey, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2795,17 +4107,8 @@ func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context
 	return ParseGetProcessInstanceResponse(rsp)
 }
 
-// GetActivitiesWithResponse request returning *GetActivitiesResponse
-func (c *ClientWithResponses) GetActivitiesWithResponse(ctx context.Context, processInstanceKey string, params *GetActivitiesParams, reqEditors ...RequestEditorFn) (*GetActivitiesResponse, error) {
-	rsp, err := c.GetActivities(ctx, processInstanceKey, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetActivitiesResponse(rsp)
-}
-
 // GetHistoryWithResponse request returning *GetHistoryResponse
-func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, processInstanceKey string, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error) {
+func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error) {
 	rsp, err := c.GetHistory(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2814,7 +4117,7 @@ func (c *ClientWithResponses) GetHistoryWithResponse(ctx context.Context, proces
 }
 
 // GetIncidentsWithResponse request returning *GetIncidentsResponse
-func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, processInstanceKey string, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error) {
+func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, processInstanceKey int64, params *GetIncidentsParams, reqEditors ...RequestEditorFn) (*GetIncidentsResponse, error) {
 	rsp, err := c.GetIncidents(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -2823,12 +4126,38 @@ func (c *ClientWithResponses) GetIncidentsWithResponse(ctx context.Context, proc
 }
 
 // GetProcessInstanceJobsWithResponse request returning *GetProcessInstanceJobsResponse
-func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey string, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error) {
+func (c *ClientWithResponses) GetProcessInstanceJobsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceJobsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceJobsResponse, error) {
 	rsp, err := c.GetProcessInstanceJobs(ctx, processInstanceKey, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseGetProcessInstanceJobsResponse(rsp)
+}
+
+// UpdateProcessInstanceVariablesWithBodyWithResponse request with arbitrary body returning *UpdateProcessInstanceVariablesResponse
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithBodyWithResponse(ctx context.Context, processInstanceKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariablesWithBody(ctx, processInstanceKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateProcessInstanceVariablesWithResponse(ctx context.Context, processInstanceKey int64, body UpdateProcessInstanceVariablesJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProcessInstanceVariablesResponse, error) {
+	rsp, err := c.UpdateProcessInstanceVariables(ctx, processInstanceKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateProcessInstanceVariablesResponse(rsp)
+}
+
+// DeleteProcessInstanceVariableWithResponse request returning *DeleteProcessInstanceVariableResponse
+func (c *ClientWithResponses) DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error) {
+	rsp, err := c.DeleteProcessInstanceVariable(ctx, processInstanceKey, variableName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProcessInstanceVariableResponse(rsp)
 }
 
 // TestStartCpuProfileWithResponse request returning *TestStartCpuProfileResponse
@@ -2849,22 +4178,142 @@ func (c *ClientWithResponses) TestStopCpuProfileWithResponse(ctx context.Context
 	return ParseTestStopCpuProfileResponse(rsp)
 }
 
-// ParseGetDecisionDefinitionsResponse parses an HTTP response from a GetDecisionDefinitionsWithResponse call
-func ParseGetDecisionDefinitionsResponse(rsp *http.Response) (*GetDecisionDefinitionsResponse, error) {
+// ParseEvaluateDecisionResponse parses an HTTP response from a EvaluateDecisionWithResponse call
+func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetDecisionDefinitionsResponse{
+	response := &EvaluateDecisionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest DecisionDefinitionsPage
+		var dest EvaluatedDRDResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDecisionInstancesResponse parses an HTTP response from a GetDecisionInstancesWithResponse call
+func ParseGetDecisionInstancesResponse(rsp *http.Response) (*GetDecisionInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDecisionInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DecisionInstancePartitionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDecisionInstanceResponse parses an HTTP response from a GetDecisionInstanceWithResponse call
+func ParseGetDecisionInstanceResponse(rsp *http.Response) (*GetDecisionInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDecisionInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DecisionInstanceDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDmnResourceDefinitionsResponse parses an HTTP response from a GetDmnResourceDefinitionsWithResponse call
+func ParseGetDmnResourceDefinitionsResponse(rsp *http.Response) (*GetDmnResourceDefinitionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDmnResourceDefinitionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DmnResourceDefinitionsPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2882,15 +4331,15 @@ func ParseGetDecisionDefinitionsResponse(rsp *http.Response) (*GetDecisionDefini
 	return response, nil
 }
 
-// ParseCreateDecisionDefinitionResponse parses an HTTP response from a CreateDecisionDefinitionWithResponse call
-func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionDefinitionResponse, error) {
+// ParseCreateDmnResourceDefinitionResponse parses an HTTP response from a CreateDmnResourceDefinitionWithResponse call
+func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnResourceDefinitionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &CreateDecisionDefinitionResponse{
+	response := &CreateDmnResourceDefinitionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -2898,7 +4347,7 @@ func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionD
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			DecisionDefinitionKey string `json:"decisionDefinitionKey"`
+			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -2931,22 +4380,22 @@ func ParseCreateDecisionDefinitionResponse(rsp *http.Response) (*CreateDecisionD
 	return response, nil
 }
 
-// ParseGetDecisionDefinitionResponse parses an HTTP response from a GetDecisionDefinitionWithResponse call
-func ParseGetDecisionDefinitionResponse(rsp *http.Response) (*GetDecisionDefinitionResponse, error) {
+// ParseGetDmnResourceDefinitionResponse parses an HTTP response from a GetDmnResourceDefinitionWithResponse call
+func ParseGetDmnResourceDefinitionResponse(rsp *http.Response) (*GetDmnResourceDefinitionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetDecisionDefinitionResponse{
+	response := &GetDmnResourceDefinitionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest DecisionDefinitionDetail
+		var dest DmnResourceDefinitionDetail
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2965,39 +4414,6 @@ func ParseGetDecisionDefinitionResponse(rsp *http.Response) (*GetDecisionDefinit
 			return nil, err
 		}
 		response.JSON502 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseEvaluateDecisionResponse parses an HTTP response from a EvaluateDecisionWithResponse call
-func ParseEvaluateDecisionResponse(rsp *http.Response) (*EvaluateDecisionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &EvaluateDecisionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest EvaluatedDRDResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
 
 	}
 
@@ -3077,6 +4493,53 @@ func ParseGetJobsResponse(rsp *http.Response) (*GetJobsResponse, error) {
 	return response, nil
 }
 
+// ParseGetJobResponse parses an HTTP response from a GetJobWithResponse call
+func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseCompleteJobResponse parses an HTTP response from a CompleteJobWithResponse call
 func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3130,6 +4593,56 @@ func ParsePublishMessageResponse(rsp *http.Response) (*PublishMessageResponse, e
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseModifyProcessInstanceResponse parses an HTTP response from a ModifyProcessInstanceWithResponse call
+func ParseModifyProcessInstanceResponse(rsp *http.Response) (*ModifyProcessInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ModifyProcessInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			ActiveElementInstances *[]ElementInstance `json:"activeElementInstances,omitempty"`
+			ProcessInstance        *ProcessInstance   `json:"processInstance,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error
@@ -3239,7 +4752,7 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			ProcessDefinitionKey string `json:"processDefinitionKey"`
+			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -3453,32 +4966,6 @@ func ParseGetProcessInstanceResponse(rsp *http.Response) (*GetProcessInstanceRes
 	return response, nil
 }
 
-// ParseGetActivitiesResponse parses an HTTP response from a GetActivitiesWithResponse call
-func ParseGetActivitiesResponse(rsp *http.Response) (*GetActivitiesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetActivitiesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ActivityPage
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetHistoryResponse parses an HTTP response from a GetHistoryWithResponse call
 func ParseGetHistoryResponse(rsp *http.Response) (*GetHistoryResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3593,6 +5080,79 @@ func ParseGetProcessInstanceJobsResponse(rsp *http.Response) (*GetProcessInstanc
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateProcessInstanceVariablesResponse parses an HTTP response from a UpdateProcessInstanceVariablesWithResponse call
+func ParseUpdateProcessInstanceVariablesResponse(rsp *http.Response) (*UpdateProcessInstanceVariablesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateProcessInstanceVariablesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteProcessInstanceVariableResponse parses an HTTP response from a DeleteProcessInstanceVariableWithResponse call
+func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProcessInstanceVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProcessInstanceVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error

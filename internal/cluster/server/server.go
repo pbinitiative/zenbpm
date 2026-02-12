@@ -3,14 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
-	ssql "database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"runtime/pprof"
-	"slices"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -282,14 +280,19 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	if req.HistoryTTL != nil {
 		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
 	}
-	var instance *runtime.ProcessInstance
+
+	if req.BusinessKey != nil {
+		ctx = appcontext.WithBusinessKey(ctx, ptr.Deref(req.BusinessKey, ""))
+	}
+	var instance runtime.ProcessInstance
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
 		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
 	case *proto.CreateInstanceRequest_LatestProcessId:
 		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
 	}
-	if err != nil {
+
+	if err != nil && instance == nil {
 		err := fmt.Errorf("failed to create process instance: %w", err)
 		return &proto.CreateInstanceResponse{
 			Error: &proto.ErrorResult{
@@ -298,7 +301,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.CreateInstanceResponse{
@@ -310,12 +313,13 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 	}
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			BusinessKey:   instance.ProcessInstance().BusinessKey,
 		},
 	}, nil
 }
@@ -343,7 +347,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		}, err
 	}
 
-	instance, err := engine.StartInstanceOnElementsByKey(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
+	instance, err := engine.CreateInstanceWithStartingElements(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
 	if err != nil {
 		err := fmt.Errorf("failed to start process instance: %w", err)
 		return &proto.StartInstanceOnElementIdsResponse{
@@ -354,7 +358,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		}, err
 	}
 
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.StartInstanceOnElementIdsResponse{
@@ -366,12 +370,12 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 	}
 	return &proto.StartInstanceOnElementIdsResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
 		},
 	}, nil
 }
@@ -398,7 +402,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			},
 		}, err
 	}
-	var instance *runtime.ProcessInstance
+	var instance runtime.ProcessInstance
 	instance, tokens, err := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.ElementInstanceIdsToTerminate, req.ElementIdsToStartInstance, vars)
 	if err != nil {
 		err := fmt.Errorf("failed to modify process instance: %w", err)
@@ -409,7 +413,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			},
 		}, err
 	}
-	variables, err := json.Marshal(instance.VariableHolder.Variables())
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal process instance result: %w", err)
 		return &proto.ModifyProcessInstanceResponse{
@@ -434,15 +438,53 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 
 	return &proto.ModifyProcessInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     variables,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
 		},
 		ExecutionTokens: respTokens,
 	}, nil
+}
+
+func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
+	if err != nil {
+		err := fmt.Errorf("failed to delete process instance variable: %w", err)
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
+	if err != nil {
+		err := fmt.Errorf("failed to marshal process instance result: %w", err)
+		return createDeleteProcessInstanceVariableErrorResponse(err)
+	}
+
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Process: &proto.ProcessInstance{
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:     variables,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+		},
+	}, nil
+}
+
+func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
+	return &proto.DeleteProcessInstanceVariableResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
@@ -522,57 +564,56 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 			matchedRules = append(matchedRules, &resultMatchedRule)
 		}
 
-		resultDecisionOutput, err := json.Marshal(result.DecisionOutput)
+		evaluatedDecisionOutput, err := json.Marshal(evaluatedDecision.DecisionOutput)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal decision output: %w", err)
 		}
 
 		evaluatedInputs := make([]*proto.EvaluatedInput, 0, len(evaluatedDecision.EvaluatedInputs))
 		for _, evaluatedInput := range evaluatedDecision.EvaluatedInputs {
+			marshaledInputValue, err := json.Marshal(evaluatedInput.InputValue)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal evaluated input %s : %w", evaluatedInput.InputValue, err)
+			}
+
 			resultEvaluatedInput := proto.EvaluatedInput{
 				InputId:         &evaluatedInput.InputId,
 				InputName:       &evaluatedInput.InputName,
 				InputExpression: &evaluatedInput.InputExpression,
-				InputValue:      nil,
-			}
-
-			inputValue := make(map[string]interface{})
-			inputValue[evaluatedInput.InputExpression] = evaluatedInput.InputValue
-			resultEvaluatedInput.InputValue, err = json.Marshal(inputValue)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal evaluatedInput.InputValue: %w", err)
+				InputValue:      marshaledInputValue,
 			}
 			evaluatedInputs = append(evaluatedInputs, &resultEvaluatedInput)
 		}
 
 		evaluatedDecisions = append(evaluatedDecisions, &proto.EvaluatedDecisionResult{
-			DecisionId:                &evaluatedDecision.DecisionId,
-			DecisionName:              &evaluatedDecision.DecisionName,
-			DecisionType:              &evaluatedDecision.DecisionType,
-			DecisionDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
-			DecisionDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
-			DecisionDefinitionId:      &evaluatedDecision.DecisionDefinitionId,
-			MatchedRules:              matchedRules,
-			DecisionOutput:            resultDecisionOutput,
-			EvaluatedInputs:           evaluatedInputs,
+			DecisionId:                   &evaluatedDecision.DecisionId,
+			DecisionName:                 &evaluatedDecision.DecisionName,
+			DecisionType:                 &evaluatedDecision.DecisionType,
+			DmnResourceDefinitionVersion: &evaluatedDecision.DecisionDefinitionVersion,
+			DmnResourceDefinitionKey:     &evaluatedDecision.DecisionDefinitionKey,
+			DmnResourceDefinitionId:      &evaluatedDecision.DmnResourceDefinitionId,
+			MatchedRules:                 matchedRules,
+			DecisionOutput:               evaluatedDecisionOutput,
+			EvaluatedInputs:              evaluatedInputs,
 		})
 	}
 
 	return &proto.EvaluatedDRDResult{
-		Error:              nil,
-		EvaluatedDecisions: evaluatedDecisions,
-		DecisionOutput:     decisionOutput,
+		Error:               nil,
+		EvaluatedDecisions:  evaluatedDecisions,
+		DecisionOutput:      decisionOutput,
+		DecisionInstanceKey: &result.DecisionInstanceKey,
 	}, nil
 }
 
-func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.DeployDecisionDefinitionRequest) (*proto.DeployDecisionDefinitionResponse, error) {
+func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.DeployDmnResourceDefinitionRequest) (*proto.DeployDmnResourceDefinitionResponse, error) {
 	var err error
 
 	bpmnEngines := s.controller.Engines(ctx)
 
 	if len(bpmnEngines) == 0 {
 		err = fmt.Errorf("no engines available: %w", err)
-		return &proto.DeployDecisionDefinitionResponse{
+		return &proto.DeployDmnResourceDefinitionResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
 				Message: ptr.To(err.Error()),
@@ -588,10 +629,10 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 				return nil, err
 			}
 		}
-		_, _, err = bpmnEngine.GetDmnEngine().SaveDecisionDefinition(ctx, "", *definition, req.GetData(), req.GetKey())
+		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, definition, req.GetData(), req.GetKey())
 		if err != nil {
-			err = fmt.Errorf("failed to deploy decision definition: %w", err)
-			return &proto.DeployDecisionDefinitionResponse{
+			err = fmt.Errorf("failed to deploy dmn resource definition: %w", err)
+			return &proto.DeployDmnResourceDefinitionResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
 					Message: ptr.To(err.Error()),
@@ -599,7 +640,7 @@ func (s *Server) DeployDecisionDefinition(ctx context.Context, req *proto.Deploy
 			}, err
 		}
 	}
-	return &proto.DeployDecisionDefinitionResponse{}, nil
+	return &proto.DeployDmnResourceDefinitionResponse{}, nil
 }
 
 func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployProcessDefinitionRequest) (*proto.DeployProcessDefinitionResponse, error) {
@@ -680,7 +721,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		})
 	}
 
-	vars, err := json.Marshal(instance.VariableHolder.Variables())
+	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceResponse{
@@ -692,14 +733,125 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	}
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
-			Key:           &instance.Key,
-			ProcessId:     &instance.Definition.BpmnProcessId,
+			Key:           &instance.ProcessInstance().Key,
+			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:     vars,
-			State:         ptr.To(int64(instance.State)),
-			CreatedAt:     ptr.To(instance.CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.Definition.Key,
+			State:         ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			BusinessKey:   instance.ProcessInstance().BusinessKey,
 		},
 		ExecutionTokens: respTokens,
+	}, nil
+}
+
+func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecisionInstanceRequest) (*proto.GetDecisionInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetDecisionInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d was not found", partitionId)
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	decisionInstance, err := queries.FindDecisionInstanceByKey(ctx, req.GetDecisionInstanceKey())
+	if err != nil {
+		err := fmt.Errorf("failed to find decision decisionInstance %d", req.GetDecisionInstanceKey())
+		return &proto.GetDecisionInstanceResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	var processInstanceKey *int64
+	if decisionInstance.ProcessInstanceKey.Valid {
+		processInstanceKey = &decisionInstance.ProcessInstanceKey.Int64
+	}
+	var flowElementInstanceKey *int64
+	if decisionInstance.FlowElementInstanceKey.Valid {
+		flowElementInstanceKey = &decisionInstance.FlowElementInstanceKey.Int64
+	}
+	return &proto.GetDecisionInstanceResponse{
+		DecisionInstance: &proto.DecisionInstance{
+			Key:                      &decisionInstance.Key,
+			DmnResourceDefinitionKey: &decisionInstance.DmnResourceDefinitionKey,
+			ProcessInstanceKey:       processInstanceKey,
+			FlowElementInstanceKey:   flowElementInstanceKey,
+			EvaluatedAt:              &decisionInstance.CreatedAt,
+			EvaluatedDecisions:       &decisionInstance.EvaluatedDecisions,
+			DecisionOutput:           &decisionInstance.OutputVariables,
+		},
+	}, nil
+}
+
+func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisionInstancesRequest) (*proto.GetDecisionInstancesResponse, error) {
+	resp := make([]*proto.PartitionedDecisionInstances, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetDecisionInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+		instances, err := queries.FindDecisionInstancesPage(ctx, sql.FindDecisionInstancesPageParams{
+			DmnResourceDefinitionKey: sql.ToNullInt64(req.DmnResourceDefinitionKey),
+			DmnResourceDefinitionID:  sql.ToNullString(req.DmnResourceDefinitionId),
+			ProcessInstanceKey:       sql.ToNullInt64(req.ProcessInstanceKey),
+			EvaluatedFrom:            sql.ToNullInt64(req.EvaluatedFrom),
+			EvaluatedTo:              sql.ToNullInt64(req.EvaluatedTo),
+			SortByOrder:              sql.ToNullString(req.SortByOrder),
+			Offset:                   int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:                     int64(req.GetSize()),
+		})
+		if err != nil {
+			err := fmt.Errorf("failed to find decision instances for request %v", req)
+			return &proto.GetDecisionInstancesResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+		totalCount := int32(0)
+		if len(instances) > 0 {
+			totalCount = int32(instances[0].TotalCount)
+		}
+		decisionInstances := make([]*proto.DecisionInstance, len(instances))
+		for i, di := range instances {
+			var processInstanceKey *int64
+			if di.ProcessInstanceKey.Valid {
+				processInstanceKey = &di.ProcessInstanceKey.Int64
+			}
+			var flowElementInstanceKey *int64
+			if di.FlowElementInstanceKey.Valid {
+				flowElementInstanceKey = &di.FlowElementInstanceKey.Int64
+			}
+			decisionInstances[i] = &proto.DecisionInstance{
+				Key:                      &di.Key,
+				DmnResourceDefinitionKey: &di.DmnResourceDefinitionKey,
+				ProcessInstanceKey:       processInstanceKey,
+				EvaluatedAt:              &di.CreatedAt,
+				FlowElementInstanceKey:   flowElementInstanceKey,
+			}
+		}
+		resp = append(resp, &proto.PartitionedDecisionInstances{
+			PartitionId:       &partitionId,
+			DecisionInstances: decisionInstances,
+			TotalCount:        ptr.To(totalCount),
+		})
+	}
+	return &proto.GetDecisionInstancesResponse{
+		Partitions: resp,
 	}, nil
 }
 
@@ -715,7 +867,11 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			},
 		}, err
 	}
-	jobs, err := queries.FindProcessInstanceJobs(ctx, req.GetProcessInstanceKey())
+	result, err := queries.FindProcessInstanceJobs(ctx, sql.FindProcessInstanceJobsParams{
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:               int64(req.GetSize()),
+		ProcessInstanceKey: req.GetProcessInstanceKey(),
+	})
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetProcessInstanceJobsResponse{
@@ -725,21 +881,26 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			},
 		}, err
 	}
-	result := make([]*proto.Job, len(jobs))
-	for i, job := range jobs {
-		result[i] = &proto.Job{
+	jobs := make([]*proto.Job, len(result))
+	totalCount := int32(0)
+	if len(result) > 0 {
+		totalCount = int32(result[0].TotalCount)
+	}
+	for i, job := range result {
+		jobs[i] = &proto.Job{
 			Key:                &job.Key,
 			ElementInstanceKey: &job.ElementInstanceKey,
 			ElementId:          &job.ElementID,
 			ProcessInstanceKey: &job.ProcessInstanceKey,
 			Type:               &job.Type,
-			State:              ptr.To(int64(job.State)),
+			State:              ptr.To(job.State),
 			CreatedAt:          &job.CreatedAt,
 			Variables:          []byte(job.Variables),
 		}
 	}
 	return &proto.GetProcessInstanceJobsResponse{
-		Jobs: result,
+		Jobs:       jobs,
+		TotalCount: &totalCount,
 	}, nil
 }
 
@@ -755,7 +916,11 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			},
 		}, err
 	}
-	flowElements, err := queries.GetFlowElementHistory(ctx, req.GetProcessInstanceKey())
+	flowElements, err := queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
+		ProcessInstanceKey: *req.ProcessInstanceKey,
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Limit:              int64(req.GetSize()),
+	})
 	if err != nil {
 		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetFlowElementHistoryResponse{
@@ -766,6 +931,10 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		}, err
 	}
 	result := make([]*proto.FlowElement, len(flowElements))
+	totalCount := int32(0)
+	if len(flowElements) > 0 {
+		totalCount = int32(flowElements[0].TotalCount)
+	}
 	for i, flowElement := range flowElements {
 		result[i] = &proto.FlowElement{
 			Key:                &flowElement.Key,
@@ -775,7 +944,8 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		}
 	}
 	return &proto.GetFlowElementHistoryResponse{
-		Flow: result,
+		Flow:       result,
+		TotalCount: ptr.To(totalCount),
 	}, nil
 }
 
@@ -792,48 +962,108 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				},
 			}, err
 		}
-		jobs, err := queries.FindJobsFilter(ctx, sql.FindJobsFilterParams{
-			Offset: int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:   int64(req.GetSize()),
-			State: ssql.NullInt64{
-				Int64: ptr.Deref(req.State, 0),
-				Valid: req.State != nil,
-			},
-			Type: ssql.NullString{
-				String: ptr.Deref(req.JobType, ""),
-				Valid:  req.JobType != nil,
-			},
+
+		dbJobs, err := queries.FindJobs(ctx, sql.FindJobsParams{
+			State:              sql.ToNullInt64(req.State),
+			Type:               sql.ToNullString(req.JobType),
+			Assignee:           sql.ToNullString(req.Assignee),
+			ProcessInstanceKey: sql.ToNullInt64(req.ProcessInstanceKey),
+			Sort:               sql.ToNullString(req.Sort),
+			Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+			Limit:              int64(req.GetSize()),
 		})
 		if err != nil {
-			err := fmt.Errorf("failed to find jobs with filter %+v", req)
-			return &proto.GetJobsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			return nil, fmt.Errorf("failed to find jobs list%w", err)
 		}
-		partitionJobs := make([]*proto.Job, len(jobs))
-		for i, job := range jobs {
+
+		partitionJobs := make([]*proto.Job, len(dbJobs))
+
+		totalCount := int32(0)
+		for i, job := range dbJobs {
+			if i == 0 {
+				totalCount = int32(job.TotalCount)
+			}
+
+			var a *string
+			if job.Assignee.Valid {
+				a = &job.Assignee.String
+			}
 			partitionJobs[i] = &proto.Job{
-				Key:                &job.Key,
-				Variables:          []byte(job.Variables),
-				State:              ptr.To(int64(job.State)),
-				CreatedAt:          &job.CreatedAt,
-				ElementInstanceKey: &job.ElementInstanceKey,
-				ElementId:          &job.ElementID,
-				ProcessInstanceKey: &job.ProcessInstanceKey,
-				Type:               &job.Type,
+				Key:                ptr.To(job.Key),
+				ProcessInstanceKey: ptr.To(job.ProcessInstanceKey),
+				ElementId:          ptr.To(job.ElementID),
+				ElementInstanceKey: ptr.To(job.ElementInstanceKey),
+				Type:               ptr.To(job.Type),
+				CreatedAt:          ptr.To(job.CreatedAt),
+				State:              ptr.To(job.State),
+				Assignee:           a,
 			}
 		}
+
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
+			TotalCount:  ptr.To(totalCount),
 		})
 	}
 	return &proto.GetJobsResponse{
 		Partitions: resp,
 	}, nil
+}
+
+func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetJobKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	job, err := queries.FindJobByJobKey(ctx, *req.JobKey)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("failed to find job %d", req.GetJobKey())
+			return &proto.GetJobResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, nil
+		}
+		err := fmt.Errorf("failed to find job %d", req.GetJobKey())
+		return &proto.GetJobResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, nil
+	}
+
+	var assignee *string
+	if job.Assignee.Valid {
+		assignee = &job.Assignee.String
+	}
+
+	return &proto.GetJobResponse{
+		Job: &proto.Job{
+			Key:                &job.Key,
+			ElementInstanceKey: &job.ElementInstanceKey,
+			ElementId:          &job.ElementID,
+			ProcessInstanceKey: &job.ProcessInstanceKey,
+			Type:               &job.Type,
+			State:              &job.State,
+			CreatedAt:          &job.CreatedAt,
+			Assignee:           assignee,
+			Variables:          []byte(job.Variables),
+		},
+	}, nil
+
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessInstancesRequest) (*proto.GetProcessInstancesResponse, error) {
@@ -851,7 +1081,14 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		}
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),
-			Offst:                int64(req.GetSize()) * int64(req.GetPage()-1),
+			ParentInstanceKey:    req.GetParentKey(),
+			BusinessKey:          sql.ToNullString(req.BusinessKey),
+			BpmnProcessID:        sql.ToNullString(req.ProcessId),
+			CreatedFrom:          sql.ToNullInt64(req.CreatedFrom),
+			CreatedTo:            sql.ToNullInt64(req.CreatedTo),
+			State:                sql.ToNullInt64(req.State),
+			SortByOrder:          sql.ToNullString(req.SortByOrder),
+			Offset:               int64(req.GetSize()) * int64(req.GetPage()-1),
 			Size:                 int64(req.GetSize()),
 		})
 		if err != nil {
@@ -863,40 +1100,45 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 				},
 			}, err
 		}
-		definitionsToLoad := make([]int64, 0)
-		for _, inst := range instances {
-			if !slices.Contains(definitionsToLoad, inst.ProcessDefinitionKey) {
-				definitionsToLoad = append(definitionsToLoad, inst.ProcessDefinitionKey)
-			}
-		}
-		definitions, err := queries.FindProcessDefinitionsByKeys(ctx, definitionsToLoad)
-		if err != nil {
-			err := fmt.Errorf("failed to find process definitions with definition keys %v", definitionsToLoad)
-			return &proto.GetProcessInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
-		}
-		definitionMap := make(map[int64]sql.ProcessDefinition, len(definitions))
-		for _, definition := range definitions {
-			definitionMap[definition.Key] = definition
+		totalCount := int32(0)
+		if len(instances) > 0 {
+			totalCount = int32(instances[0].TotalCount)
 		}
 		procInstances := make([]*proto.ProcessInstance, len(instances))
 		for i, inst := range instances {
+			var businessKey *string
+			if inst.BusinessKey.Valid {
+				businessKey = &inst.BusinessKey.String
+			}
+
 			procInstances[i] = &proto.ProcessInstance{
 				Key:           &inst.Key,
-				ProcessId:     ptr.To(definitionMap[inst.ProcessDefinitionKey].BpmnProcessID),
+				ProcessId:     &inst.BpmnProcessID,
 				Variables:     []byte(inst.Variables),
-				State:         ptr.To(int64(inst.State)),
+				State:         ptr.To(inst.State),
 				CreatedAt:     &inst.CreatedAt,
 				DefinitionKey: &inst.ProcessDefinitionKey,
+				BusinessKey:   businessKey,
+			}
+			if inst.ParentProcessExecutionToken.Valid {
+				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})
+				if err != nil {
+					return &proto.GetProcessInstancesResponse{
+						Error: &proto.ErrorResult{
+							Code:    nil,
+							Message: ptr.To(err.Error()),
+						},
+					}, err
+				}
+				if len(tokens) == 1 {
+					procInstances[i].ParentKey = &tokens[0].ProcessInstanceKey
+				}
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{
 			PartitionId: &partitionId,
 			Instances:   procInstances,
+			TotalCount:  ptr.To(totalCount),
 		})
 	}
 	return &proto.GetProcessInstancesResponse{
@@ -1051,7 +1293,14 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
-	incidents, err := queries.FindIncidentsByProcessInstanceKey(ctx, req.GetProcessInstanceKey())
+
+	incidents, err := queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
+		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		State:              sql.ToNullString(req.State),
+		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:               int64(req.GetSize()),
+	})
+
 	if err != nil {
 		err := fmt.Errorf("failed to find incidents for instance %d", req.GetProcessInstanceKey())
 		return &proto.GetIncidentsResponse{
@@ -1061,6 +1310,12 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 			},
 		}, err
 	}
+	var totalCount int32
+
+	if len(incidents) > 0 {
+		totalCount = int32(incidents[0].TotalCount)
+	}
+
 	results := make([]*proto.Incident, len(incidents))
 	for i, incident := range incidents {
 		results[i] = &proto.Incident{
@@ -1080,7 +1335,8 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 		}
 	}
 	return &proto.GetIncidentsResponse{
-		Incidents: results,
+		Incidents:  results,
+		TotalCount: &totalCount,
 	}, nil
 }
 

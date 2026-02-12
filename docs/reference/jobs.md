@@ -32,7 +32,7 @@ You can load the waiting jobs with `getJobs` endpoint with `state=active` and op
 This endpoint will return a list of partitions and jobs of type `mycooljobtype` that are waiting to be completed. Pagination on this endpoint is applied per partition. This means that page 1 and size 10 will return 20 jobs on fully saturated 2 partition setup.
 To complete the job and move the token to the next element you have to call `completeJob` endpoint.
 
-<ApiOperation id="api" pointer="#/paths/~1jobs/post" example={true} />
+<ApiOperation id="api" pointer="#/paths/~1jobs~1{jobKey}~1complete/post" example={true} />
 
 ### GRPC API
 

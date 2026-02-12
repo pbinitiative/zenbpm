@@ -11,14 +11,13 @@ func (engine *Engine) AddEventExporter(exporter exporter.EventExporter) {
 	engine.exporters = append(engine.exporters, exporter)
 }
 
-func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, resourceName string, checksum string) {
+func (engine *Engine) exportNewProcessEvent(processInfo runtime.ProcessDefinition, xmlData []byte, checksum string) {
 	event := exporter.ProcessEvent{
-		ProcessId:    processInfo.BpmnProcessId,
-		ProcessKey:   processInfo.Key,
-		Version:      processInfo.Version,
-		XmlData:      xmlData,
-		ResourceName: resourceName,
-		Checksum:     checksum,
+		ProcessId:  processInfo.BpmnProcessId,
+		ProcessKey: processInfo.Key,
+		Version:    processInfo.Version,
+		XmlData:    xmlData,
+		Checksum:   checksum,
 	}
 	for _, exp := range engine.exporters {
 		exp.NewProcessEvent(&event)
@@ -30,7 +29,7 @@ func (engine *Engine) exportEndProcessEvent(process runtime.ProcessDefinition, p
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	for _, exp := range engine.exporters {
 		exp.EndProcessEvent(&event)
@@ -42,7 +41,7 @@ func (engine *Engine) exportProcessInstanceEvent(process runtime.ProcessDefiniti
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	for _, exp := range engine.exporters {
 		exp.NewProcessInstanceEvent(&event)
@@ -54,7 +53,7 @@ func (engine *Engine) exportElementEvent(process runtime.ProcessDefinition, proc
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	info := exporter.ElementInfo{
 		BpmnElementType: string(element.GetType()),
@@ -71,7 +70,7 @@ func (engine *Engine) exportSequenceFlowEvent(process runtime.ProcessDefinition,
 		ProcessId:          process.BpmnProcessId,
 		ProcessKey:         process.Key,
 		Version:            process.Version,
-		ProcessInstanceKey: processInstance.Key,
+		ProcessInstanceKey: processInstance.ProcessInstance().Key,
 	}
 	info := exporter.ElementInfo{
 		BpmnElementType: string(bpmn20.ElementTypeSequenceFlow),

@@ -136,15 +136,15 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	assert.Equal(t, "", cp.CallPath)
 }
 
-func TestBooleanExpressionEvaluates(t *testing.T) {
+func TestBooleanExpressionWithoutEqualShouldBeTreatedAsConstant(t *testing.T) {
 	variables := map[string]interface{}{
 		"aValue": 3,
 	}
 
-	result, err := evaluateExpression("aValue > 1", variables)
+	result, err := bpmnEngine.evaluateExpression("aValue > 1", variables)
 	assert.NoError(t, err)
 
-	assert.True(t, result.(bool))
+	assert.Equal(t, "aValue > 1", result)
 }
 
 func TestBooleanExpressionWithEqualSignEvaluates(t *testing.T) {
@@ -152,7 +152,7 @@ func TestBooleanExpressionWithEqualSignEvaluates(t *testing.T) {
 		"aValue": 3,
 	}
 
-	result, err := evaluateExpression("= aValue > 1", variables)
+	result, err := bpmnEngine.evaluateExpression("= aValue > 1", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))
@@ -165,7 +165,7 @@ func TestMathematicalExpressionEvaluates(t *testing.T) {
 		"sum": 10,
 	}
 
-	result, err := evaluateExpression("sum >= foo + bar", variables)
+	result, err := bpmnEngine.evaluateExpression("=sum >= foo + bar", variables)
 	assert.NoError(t, err)
 
 	assert.True(t, result.(bool))
@@ -184,9 +184,9 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	// then
-	assert.Equal(t, runtime.ActivityStateFailed, instance.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.NotNil(t, err)
-	assert.ErrorContains(t, err, "Error evaluating expression")
+	assert.ErrorContains(t, err, "No default flow, nor matching expressions found, for flow elements")
 }
 
 func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {

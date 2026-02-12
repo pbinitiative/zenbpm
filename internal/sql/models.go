@@ -8,21 +8,34 @@ import (
 	"database/sql"
 )
 
-type Decision struct {
-	Version               int64  `json:"version"`
-	DecisionID            string `json:"decision_id"`
-	VersionTag            string `json:"version_tag"`
-	DecisionDefinitionID  string `json:"decision_definition_id"`
-	DecisionDefinitionKey int64  `json:"decision_definition_key"`
+type DecisionDefinition struct {
+	Key                      int64  `json:"key"`
+	Version                  int64  `json:"version"`
+	DecisionID               string `json:"decision_id"`
+	VersionTag               string `json:"version_tag"`
+	DmnResourceDefinitionID  string `json:"dmn_resource_definition_id"`
+	DmnResourceDefinitionKey int64  `json:"dmn_resource_definition_key"`
 }
 
-type DecisionDefinition struct {
-	Key             int64  `json:"key"`
-	Version         int64  `json:"version"`
-	DmnID           string `json:"dmn_id"`
-	DmnData         string `json:"dmn_data"`
-	DmnChecksum     []byte `json:"dmn_checksum"`
-	DmnResourceName string `json:"dmn_resource_name"`
+type DecisionInstance struct {
+	Key                      int64         `json:"key"`
+	DecisionID               string        `json:"decision_id"`
+	CreatedAt                int64         `json:"created_at"`
+	OutputVariables          string        `json:"output_variables"`
+	EvaluatedDecisions       string        `json:"evaluated_decisions"`
+	DmnResourceDefinitionKey int64         `json:"dmn_resource_definition_key"`
+	DecisionDefinitionKey    int64         `json:"decision_definition_key"`
+	ProcessInstanceKey       sql.NullInt64 `json:"process_instance_key"`
+	FlowElementInstanceKey   sql.NullInt64 `json:"flow_element_instance_key"`
+}
+
+type DmnResourceDefinition struct {
+	Key                     int64  `json:"key"`
+	Version                 int64  `json:"version"`
+	DmnResourceDefinitionID string `json:"dmn_resource_definition_id"`
+	DmnData                 string `json:"dmn_data"`
+	DmnChecksum             []byte `json:"dmn_checksum"`
+	DmnDefinitionName       string `json:"dmn_definition_name"`
 }
 
 type ExecutionToken struct {
@@ -34,11 +47,14 @@ type ExecutionToken struct {
 	CreatedAt          int64  `json:"created_at"`
 }
 
-type FlowElementHistory struct {
+type FlowElementInstance struct {
 	Key                int64  `json:"key"`
 	ElementID          string `json:"element_id"`
 	ProcessInstanceKey int64  `json:"process_instance_key"`
+	ExecutionTokenKey  int64  `json:"execution_token_key"`
 	CreatedAt          int64  `json:"created_at"`
+	InputVariables     string `json:"input_variables"`
+	OutputVariables    string `json:"output_variables"`
 }
 
 type Incident struct {
@@ -53,15 +69,16 @@ type Incident struct {
 }
 
 type Job struct {
-	Key                int64  `json:"key"`
-	ElementInstanceKey int64  `json:"element_instance_key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	Type               string `json:"type"`
-	State              int64  `json:"state"`
-	CreatedAt          int64  `json:"created_at"`
-	Variables          string `json:"variables"`
-	ExecutionToken     int64  `json:"execution_token"`
+	Key                int64          `json:"key"`
+	ElementInstanceKey int64          `json:"element_instance_key"`
+	ElementID          string         `json:"element_id"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	Type               string         `json:"type"`
+	State              int64          `json:"state"`
+	CreatedAt          int64          `json:"created_at"`
+	Variables          string         `json:"variables"`
+	ExecutionToken     int64          `json:"execution_token"`
+	Assignee           sql.NullString `json:"assignee"`
 }
 
 type MessageSubscription struct {
@@ -91,23 +108,27 @@ type Migration struct {
 }
 
 type ProcessDefinition struct {
-	Key              int64  `json:"key"`
-	Version          int64  `json:"version"`
-	BpmnProcessID    string `json:"bpmn_process_id"`
-	BpmnData         string `json:"bpmn_data"`
-	BpmnChecksum     []byte `json:"bpmn_checksum"`
-	BpmnResourceName string `json:"bpmn_resource_name"`
+	Key             int64  `json:"key"`
+	Version         int64  `json:"version"`
+	BpmnProcessID   string `json:"bpmn_process_id"`
+	BpmnData        string `json:"bpmn_data"`
+	BpmnChecksum    []byte `json:"bpmn_checksum"`
+	BpmnProcessName string `json:"bpmn_process_name"`
 }
 
 type ProcessInstance struct {
-	Key                         int64         `json:"key"`
-	ProcessDefinitionKey        int64         `json:"process_definition_key"`
-	CreatedAt                   int64         `json:"created_at"`
-	State                       int64         `json:"state"`
-	Variables                   string        `json:"variables"`
-	ParentProcessExecutionToken sql.NullInt64 `json:"parent_process_execution_token"`
-	HistoryTtlSec               sql.NullInt64 `json:"history_ttl_sec"`
-	HistoryDeleteSec            sql.NullInt64 `json:"history_delete_sec"`
+	Key                                   int64          `json:"key"`
+	ProcessDefinitionKey                  int64          `json:"process_definition_key"`
+	BusinessKey                           sql.NullString `json:"business_key"`
+	CreatedAt                             int64          `json:"created_at"`
+	State                                 int64          `json:"state"`
+	Variables                             string         `json:"variables"`
+	ParentProcessExecutionToken           sql.NullInt64  `json:"parent_process_execution_token"`
+	ParentProcessTargetElementID          sql.NullString `json:"parent_process_target_element_id"`
+	ParentProcessTargetElementInstanceKey sql.NullInt64  `json:"parent_process_target_element_instance_key"`
+	ProcessType                           int64          `json:"process_type"`
+	HistoryTtlSec                         sql.NullInt64  `json:"history_ttl_sec"`
+	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
 }
 
 type Timer struct {

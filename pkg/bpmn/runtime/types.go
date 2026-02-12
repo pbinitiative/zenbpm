@@ -8,13 +8,13 @@ import (
 )
 
 type ProcessDefinition struct {
-	BpmnProcessId    string              // The ID as defined in the BPMN file
-	Version          int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
-	Key              int64               // The engines key for this given process with version
-	Definitions      bpmn20.TDefinitions // parsed file content
-	BpmnData         string              // the raw source data, compressed and encoded via ascii85
-	BpmnResourceName string              // some name for the resource
-	BpmnChecksum     [16]byte            // internal checksum to identify different versions
+	BpmnProcessId   string              // The ID as defined in the BPMN file
+	Version         int32               // A version of the process, default=1, incremented, when another process with the same ID is loaded
+	Key             int64               // The engines key for this given process with version
+	Definitions     bpmn20.TDefinitions // parsed file content
+	BpmnData        string              // the raw source data, compressed and encoded via ascii85
+	BpmnProcessName string              // the name of the process
+	BpmnChecksum    [16]byte            // internal checksum to identify different versions
 }
 
 type CatchEvent struct {
@@ -24,37 +24,110 @@ type CatchEvent struct {
 	Variables  map[string]interface{}
 }
 
-type ProcessInstance struct {
-	Definition                  *ProcessDefinition
-	Key                         int64
-	VariableHolder              VariableHolder
-	CreatedAt                   time.Time
-	State                       ActivityState
-	ParentProcessExecutionToken *ExecutionToken
+type ProcessType int
+
+//go:generate go tool stringer -type=ProcessType
+
+const (
+	_ ProcessType = iota
+	ProcessTypeDefault
+	ProcessTypeSubProcess
+	ProcessTypeCallActivity
+	ProcessTypeMultiInstance
+)
+
+type ProcessInstance interface {
+	Type() ProcessType
+	ProcessInstance() *ProcessInstanceData
 }
 
-func (pi *ProcessInstance) GetProcessInfo() *ProcessDefinition {
+type SubProcessInstance struct {
+	ParentProcessExecutionToken           ExecutionToken
+	ParentProcessTargetElementInstanceKey int64
+	ParentProcessTargetElementId          string
+	ProcessInstanceData
+}
+
+func (s *SubProcessInstance) ProcessInstance() *ProcessInstanceData {
+	return &s.ProcessInstanceData
+}
+
+func (s *SubProcessInstance) Type() ProcessType {
+	return ProcessTypeSubProcess
+}
+
+type MultiInstanceInstance struct {
+	ParentProcessExecutionToken           ExecutionToken
+	ParentProcessTargetElementInstanceKey int64
+	ParentProcessTargetElementId          string
+	ProcessInstanceData
+}
+
+func (m *MultiInstanceInstance) ProcessInstance() *ProcessInstanceData {
+	return &m.ProcessInstanceData
+}
+
+func (m *MultiInstanceInstance) Type() ProcessType {
+	return ProcessTypeMultiInstance
+}
+
+type CallActivityInstance struct {
+	ParentProcessExecutionToken           ExecutionToken
+	ParentProcessTargetElementInstanceKey int64
+	ProcessInstanceData
+}
+
+func (c *CallActivityInstance) ProcessInstance() *ProcessInstanceData {
+	return &c.ProcessInstanceData
+}
+
+func (c *CallActivityInstance) Type() ProcessType {
+	return ProcessTypeCallActivity
+}
+
+type DefaultProcessInstance struct {
+	ProcessInstanceData
+}
+
+func (d *DefaultProcessInstance) ProcessInstance() *ProcessInstanceData {
+	return &d.ProcessInstanceData
+}
+
+func (d *DefaultProcessInstance) Type() ProcessType {
+	return ProcessTypeDefault
+}
+
+type ProcessInstanceData struct {
+	Definition     *ProcessDefinition
+	Key            int64
+	BusinessKey    *string // TODO: introduce cluster data layer and remove this from the engine
+	VariableHolder VariableHolder
+	CreatedAt      time.Time
+	State          ActivityState
+}
+
+func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {
 	return pi.Definition
 }
 
-func (pi *ProcessInstance) GetInstanceKey() int64 {
+func (pi *ProcessInstanceData) GetInstanceKey() int64 {
 	return pi.Key
 }
 
-func (pi *ProcessInstance) GetVariable(key string) interface{} {
-	return pi.VariableHolder.GetVariable(key)
+func (pi *ProcessInstanceData) GetVariable(key string) interface{} {
+	return pi.VariableHolder.GetLocalVariable(key)
 }
 
-func (pi *ProcessInstance) SetVariable(key string, value interface{}) {
-	pi.VariableHolder.SetVariable(key, value)
+func (pi *ProcessInstanceData) SetVariable(key string, value interface{}) {
+	pi.VariableHolder.SetLocalVariable(key, value)
 }
 
-func (pi *ProcessInstance) GetCreatedAt() time.Time {
+func (pi *ProcessInstanceData) GetCreatedAt() time.Time {
 	return pi.CreatedAt
 }
 
 // GetState returns one of [ Ready, Active, Completed, Failed ]
-func (pi *ProcessInstance) GetState() ActivityState {
+func (pi *ProcessInstanceData) GetState() ActivityState {
 	return pi.State
 }
 
@@ -232,6 +305,7 @@ type Job struct {
 	Variables          map[string]any
 	CreatedAt          time.Time
 	Token              ExecutionToken
+	Assignee           *string
 }
 
 func (j Job) GetKey() int64 {
@@ -268,11 +342,14 @@ type ExecutionToken struct {
 	CreatedAt          time.Time
 }
 
-type FlowElementHistoryItem struct {
+type FlowElementInstance struct {
 	Key                int64
 	ProcessInstanceKey int64
 	ElementId          string
 	CreatedAt          time.Time
+	ExecutionTokenKey  int64
+	InputVariables     map[string]any
+	OutputVariables    map[string]any
 }
 
 // Incident represent an incident that happened in process execution

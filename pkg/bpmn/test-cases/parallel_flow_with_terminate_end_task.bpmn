@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_12fuprs" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.10.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
+  <bpmn:process id="parallel_flow_with_terminate_end_task" name="parallel_flow_with_terminate_end_task" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1lsmdf0</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="task-id" name="Task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="task-id" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_07rud7x</bpmn:incoming>
+      <bpmn:outgoing>Flow_1dekydz</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="Event_196zxhe">
+      <bpmn:incoming>Flow_1dekydz</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1dekydz" sourceRef="task-id" targetRef="Event_196zxhe" />
+    <bpmn:endEvent id="TerminateEndEvent_id">
+      <bpmn:incoming>Flow_1t8zgmr</bpmn:incoming>
+      <bpmn:terminateEventDefinition id="TerminateEventDefinition_0hpndja" />
+    </bpmn:endEvent>
+    <bpmn:parallelGateway id="Gateway_id">
+      <bpmn:incoming>Flow_1lsmdf0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1t8zgmr</bpmn:outgoing>
+      <bpmn:outgoing>Flow_07rud7x</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_1lsmdf0" sourceRef="StartEvent_1" targetRef="Gateway_id" />
+    <bpmn:sequenceFlow id="Flow_1t8zgmr" sourceRef="Gateway_id" targetRef="TerminateEndEvent_id" />
+    <bpmn:sequenceFlow id="Flow_07rud7x" sourceRef="Gateway_id" targetRef="task-id" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_flow_with_terminate_end_task">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_096i2xl_di" bpmnElement="Gateway_id">
+        <dc:Bounds x="275" y="135" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1wgex28_di" bpmnElement="task-id">
+        <dc:Bounds x="350" y="180" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_196zxhe_di" bpmnElement="Event_196zxhe">
+        <dc:Bounds x="552" y="202" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0vy3nnm_di" bpmnElement="TerminateEndEvent_id">
+        <dc:Bounds x="552" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1dekydz_di" bpmnElement="Flow_1dekydz">
+        <di:waypoint x="450" y="220" />
+        <di:waypoint x="552" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1lsmdf0_di" bpmnElement="Flow_1lsmdf0">
+        <di:waypoint x="215" y="160" />
+        <di:waypoint x="275" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1t8zgmr_di" bpmnElement="Flow_1t8zgmr">
+        <di:waypoint x="300" y="135" />
+        <di:waypoint x="300" y="100" />
+        <di:waypoint x="552" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_07rud7x_di" bpmnElement="Flow_07rud7x">
+        <di:waypoint x="300" y="185" />
+        <di:waypoint x="300" y="220" />
+        <di:waypoint x="350" y="220" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

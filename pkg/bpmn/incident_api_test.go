@@ -29,15 +29,15 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 	assert.Error(t, err)
 
 	// then
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 	assert.Empty(t, incidents[0].ResolvedAt)
 	assert.Equal(t, runtime.TokenStateFailed, incidents[0].Token.State)
 
-	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateFailed, instanceRes.State)
+	assert.Equal(t, runtime.ActivityStateFailed, instanceRes.ProcessInstance().State)
 
 }
 
@@ -61,21 +61,21 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.Error(t, err)
 
-	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.Key)
+	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
 
 	// now fix the variable
-	pi := store.ProcessInstances[instance.Key]
-	pi.VariableHolder.SetVariable("price", 50)
+	pi := store.ProcessInstances[instance.ProcessInstance().Key]
+	pi.ProcessInstance().VariableHolder.SetLocalVariable("price", 50)
 
 	// then
 	err = bpmnEngine.ResolveIncident(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 
-	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.Key)
+	instanceRes, err := store.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateCompleted, instanceRes.State)
+	assert.Equal(t, runtime.ActivityStateCompleted, instanceRes.ProcessInstance().State)
 
 	incident, err := bpmnEngine.persistence.FindIncidentByKey(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)

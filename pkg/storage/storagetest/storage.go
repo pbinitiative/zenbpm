@@ -30,7 +30,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 	// all test functions need to be registered here
 	functions := []StorageTestFunc{
 		st.TestProcessDefinitionStorageWriter,
-		st.TestProcessDefinitionStorageReader,
+		st.TestProcessDefinitionStorageReaderBasic,
+		// st.TestProcessDefinitionStorageReaderFind,
 		st.TestProcessInstanceStorageWriter,
 		st.TestProcessInstanceStorageReader,
 		st.TestTimerStorageWriter,
@@ -47,7 +48,7 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageWriter,
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
-		st.TestSaveFlowElementHistoryWriter,
+		st.TestSaveFlowElementInstanceWriter,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
 	}
@@ -67,34 +68,34 @@ func getFunctionName(i any) string {
 func getProcessDefinition(r int64) bpmnruntime.ProcessDefinition {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	return bpmnruntime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 }
 
-func getDecisionDefinition(r int64) dmnruntime.DecisionDefinition {
+func getDmnResourceDefinition(r int64) dmnruntime.DmnResourceDefinition {
 	data := `<?xml version="1.0" encoding="UTF-8"?><definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Definitions_1e04521" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" xmlns:modeler="http://camunda.org/schema/modeler/1.0" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0"><decision id="Decision_0xcqx00" name="Decision 1"><decisionTable id="DecisionTable_0q2yhyz"><input id="Input_1"><inputExpression id="InputExpression_1" typeRef="string"><text></text></inputExpression></input><output id="Output_1" typeRef="string" /></decisionTable></decision><dmndi:DMNDI><dmndi:DMNDiagram><dmndi:DMNShape dmnElementRef="Decision_0xcqx00"><dc:Bounds height="80" width="180" x="160" y="100" /></dmndi:DMNShape></dmndi:DMNDiagram></dmndi:DMNDI></definitions>`
-	return dmnruntime.DecisionDefinition{
-		Id:              fmt.Sprintf("id-%d", r),
-		Version:         1,
-		Key:             r,
-		DmnData:         []byte(fmt.Sprintf(data, r)),
-		DmnChecksum:     [16]byte{1},
-		DmnResourceName: fmt.Sprintf("resource-%d", r),
+	return dmnruntime.DmnResourceDefinition{
+		Id:                fmt.Sprintf("id-%d", r),
+		Version:           1,
+		Key:               r,
+		DmnData:           []byte(fmt.Sprintf(data, r)),
+		DmnChecksum:       [16]byte{1},
+		DmnDefinitionName: fmt.Sprintf("resource-%d", r),
 	}
 }
 
-func getDecision(r int64, decisionDefinitionKey int64) dmnruntime.Decision {
-	return dmnruntime.Decision{
-		Version:               1,
-		Id:                    fmt.Sprintf("id-%d", r),
-		VersionTag:            "123",
-		DecisionDefinitionId:  fmt.Sprintf("id-%d", decisionDefinitionKey),
-		DecisionDefinitionKey: decisionDefinitionKey,
+func getDecisionDefinition(r int64, dmnResourceDefinitionKey int64) dmnruntime.DecisionDefinition {
+	return dmnruntime.DecisionDefinition{
+		Version:                  1,
+		Id:                       fmt.Sprintf("id-%d", r),
+		Key:                      r,
+		VersionTag:               "123",
+		DmnResourceDefinitionId:  fmt.Sprintf("id-%d", dmnResourceDefinitionKey),
+		DmnResourceDefinitionKey: dmnResourceDefinitionKey,
 	}
 }
 
@@ -126,7 +127,7 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 	}
 }
 
-func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -148,19 +149,22 @@ func (st *StorageTester) TestProcessDefinitionStorageReader(s storage.Storage, t
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, definition.Key)
+
 	}
 }
 
 func getProcessInstance(r int64, d bpmnruntime.ProcessDefinition, jobs ...bpmnruntime.Job) bpmnruntime.ProcessInstance {
-	return bpmnruntime.ProcessInstance{
-		Definition: &d,
-		Key:        r,
-		VariableHolder: bpmnruntime.NewVariableHolder(nil, map[string]interface{}{
-			"v1":   float64(123),
-			"var2": "val2",
-		}),
-		CreatedAt: time.Now().Truncate(time.Millisecond),
-		State:     bpmnruntime.ActivityStateActive,
+	return &bpmnruntime.DefaultProcessInstance{
+		ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+			Definition: &d,
+			Key:        r,
+			VariableHolder: bpmnruntime.NewVariableHolder(nil, map[string]interface{}{
+				"v1":   float64(123),
+				"var2": "val2",
+			}),
+			CreatedAt: time.Now().Truncate(time.Millisecond),
+			State:     bpmnruntime.ActivityStateActive,
+		},
 	}
 }
 
@@ -185,12 +189,12 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key, token))
+		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
 		err := s.SaveProcessInstance(t.Context(), inst)
 		assert.NoError(t, err)
@@ -204,21 +208,29 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.Key, token))
+		inst := getProcessInstance(r, st.processDefinition, getJob(r, st.processInstance.ProcessInstance().Key, token))
 
 		err := s.SaveProcessInstance(t.Context(), inst)
 		assert.NoError(t, err)
 
-		instance, err := s.FindProcessInstanceByKey(t.Context(), inst.Key)
+		instance, err := s.FindProcessInstanceByKey(t.Context(), inst.ProcessInstance().Key)
 		assert.NoError(t, err)
-		assert.Equal(t, inst.Key, instance.Key)
-		assert.Equal(t, inst.CreatedAt.Truncate(time.Millisecond), instance.CreatedAt.Truncate(time.Millisecond))
-		assert.Equal(t, inst.VariableHolder, instance.VariableHolder)
+		assert.Equal(t, inst.ProcessInstance().Key, instance.ProcessInstance().Key)
+		assert.Equal(t, inst.ProcessInstance().CreatedAt.Truncate(time.Millisecond), instance.ProcessInstance().CreatedAt.Truncate(time.Millisecond))
+		assert.Equal(t, inst.ProcessInstance().VariableHolder, instance.ProcessInstance().VariableHolder)
+
+		//testRefresh
+		instance.ProcessInstance().State = bpmnruntime.ActivityStateTerminated
+		err = s.SaveProcessInstance(t.Context(), instance)
+		assert.NoError(t, err)
+		err = s.RefreshProcessInstance(t.Context(), inst)
+		assert.NoError(t, err)
+		assert.Equal(t, bpmnruntime.ActivityStateTerminated, inst.ProcessInstance().State)
 
 		// TODO: uncomment once its implemented
 		// assert.Equal(t, len(inst.Activities), len(instance.Activities))
@@ -253,16 +265,16 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		job := getJob(r, st.processInstance.Key, token)
+		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		timer := getTimer(r, st.processDefinition.Key, st.processInstance.Key, job)
+		timer := getTimer(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, job)
 
 		err = s.SaveTimer(t.Context(), timer)
 		assert.NoError(t, err)
@@ -276,16 +288,16 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		job := getJob(r, st.processInstance.Key, token)
+		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		timer := getTimer(r, st.processDefinition.Key, st.processInstance.Key, job)
+		timer := getTimer(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, job)
 
 		err = s.SaveToken(t.Context(), timer.Token)
 		assert.NoError(t, err)
@@ -300,6 +312,10 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		timers, err = s.FindTokenActiveTimerSubscriptions(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
+
+		timerTest, err := s.GetTimer(t.Context(), timer.Token.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, timer.Key, timerTest.Key)
 	}
 }
 
@@ -310,12 +326,12 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, t *testing.T) f
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		job := getJob(r, st.processInstance.Key, token)
+		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 
 		err := s.SaveJob(t.Context(), job)
 		assert.Nil(t, err)
@@ -329,16 +345,16 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		job := getJob(r, st.processInstance.Key, token)
+		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		jobs, err := s.FindPendingProcessInstanceJobs(t.Context(), st.processInstance.Key)
+		jobs, err := s.FindPendingProcessInstanceJobs(t.Context(), st.processInstance.ProcessInstance().Key)
 		assert.NoError(t, err)
 		assert.Contains(t, jobs, job)
 
@@ -376,20 +392,20 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 		token := bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		job := getJob(r, st.processInstance.Key, token)
+		job := getJob(r, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		message := getMessage(r, st.processDefinition.Key, st.processInstance.Key, bpmnruntime.ExecutionToken{
+		message := getMessage(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "messageElementId",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		})
 
@@ -407,16 +423,16 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "47b623dd-54ab-407e-86dc-847b62d22318",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		s.SaveToken(t.Context(), token)
 
-		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.Key, token)
+		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, token)
 		err := s.SaveMessageSubscription(t.Context(), messageSub)
 		assert.NoError(t, err)
 
-		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(t.Context(), st.processInstance.Key, bpmnruntime.ActivityStateActive)
+		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(t.Context(), st.processInstance.ProcessInstance().Key, bpmnruntime.ActivityStateActive)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 
@@ -435,7 +451,7 @@ func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T)
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 
@@ -452,7 +468,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateRunning,
 		}
 		err := s.SaveToken(t.Context(), token1)
@@ -463,7 +479,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateCompleted,
 		}
 		err = s.SaveToken(t.Context(), token2)
@@ -474,7 +490,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 		err = s.SaveToken(t.Context(), token3)
@@ -491,7 +507,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 		}
 		assert.True(t, matched, "expected to find created token among active tokens for partition")
 
-		tokens, err = s.GetAllTokensForProcessInstance(t.Context(), st.processInstance.Key)
+		tokens, err = s.GetAllTokensForProcessInstance(t.Context(), st.processInstance.ProcessInstance().Key)
 		assert.NoError(t, err)
 		matchedTwice := 0
 		for _, tok := range tokens {
@@ -501,7 +517,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 		}
 		assert.Equal(t, 2, matchedTwice, "expected to find created tokens among tokens for partition")
 
-		tokens, err = s.GetActiveTokensForProcessInstance(t.Context(), st.processInstance.Key)
+		tokens, err = s.GetActiveTokensForProcessInstance(t.Context(), st.processInstance.ProcessInstance().Key)
 		assert.NoError(t, err)
 		matchedTwice = 0
 		for _, tok := range tokens {
@@ -513,17 +529,20 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestSaveFlowElementHistoryWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		r := s.GenerateId()
 
-		historyItem := bpmnruntime.FlowElementHistoryItem{
+		historyItem := bpmnruntime.FlowElementInstance{
 			Key:                r,
-			ProcessInstanceKey: r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			ElementId:          "test-elem",
 			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"test": "test"},
+			OutputVariables:    map[string]any{"test": "test"},
 		}
-		err := s.SaveFlowElementHistory(t.Context(), historyItem)
+		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)
 	}
 }
@@ -537,13 +556,13 @@ func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			Message:            "test-message",
 			Token: bpmnruntime.ExecutionToken{
 				Key:                tok,
 				ElementInstanceKey: tok,
 				ElementId:          "test-elem",
-				ProcessInstanceKey: st.processInstance.Key,
+				ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 				State:              bpmnruntime.TokenStateWaiting,
 			},
 		}
@@ -564,7 +583,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 			Key:                tok,
 			ElementInstanceKey: tok,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			State:              bpmnruntime.TokenStateWaiting,
 		}
 
@@ -572,7 +591,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "test-elem",
-			ProcessInstanceKey: st.processInstance.Key,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
 			Message:            "test-message",
 			CreatedAt:          time.Time{}.Local(),
 			ResolvedAt:         nil,
@@ -589,7 +608,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		assert.Nil(t, err)
 		assert.Equal(t, incident, testIncident)
 
-		testIncidents, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.Key)
+		testIncidents, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.ProcessInstance().Key)
 		assert.Nil(t, err)
 		assert.NotEmpty(t, testIncidents)
 		for _, testIncident := range testIncidents {
@@ -609,12 +628,12 @@ func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, 
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
-		def := getDecisionDefinition(r)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		def := getDmnResourceDefinition(r)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		//run
-		definition, err := s.FindDecisionDefinitionByKey(t.Context(), def.Key)
+		definition, err := s.FindDmnResourceDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, def.Key, definition.Key)
 	}
@@ -624,21 +643,21 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
-		def := getDecisionDefinition(r)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		def := getDmnResourceDefinition(r)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		def2 := getDecisionDefinition(r2)
-		err = s.SaveDecisionDefinition(t.Context(), def2)
+		def2 := getDmnResourceDefinition(r2)
+		err = s.SaveDmnResourceDefinition(t.Context(), def2)
 		assert.NoError(t, err)
 
 		//run
-		definition, err := s.FindLatestDecisionDefinitionById(t.Context(), def.Id)
+		definition, err := s.FindLatestDmnResourceDefinitionById(t.Context(), def.Id)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 
-		definition, err = s.FindDecisionDefinitionByKey(t.Context(), def.Key)
+		definition, err = s.FindDmnResourceDefinitionByKey(t.Context(), def.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, r, definition.Key)
 	}
@@ -648,17 +667,17 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storag
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
-		def := getDecisionDefinition(r)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		def := getDmnResourceDefinition(r)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		def2 := getDecisionDefinition(r2)
-		err = s.SaveDecisionDefinition(t.Context(), def2)
+		def2 := getDmnResourceDefinition(r2)
+		err = s.SaveDmnResourceDefinition(t.Context(), def2)
 		assert.NoError(t, err)
 
 		//run
-		definitions, err := s.FindDecisionDefinitionsById(t.Context(), def.Id)
+		definitions, err := s.FindDmnResourceDefinitionsById(t.Context(), def.Id)
 		assert.NoError(t, err)
 		assert.Len(t, definitions, 1)
 		assert.Equal(t, definitions[0].Key, def.Key)
@@ -669,26 +688,26 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storag
 func (st *StorageTester) TestDecisionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
-		decisionDefinitionKey := s.GenerateId()
-		def := getDecisionDefinition(decisionDefinitionKey)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		dmnResourceDefinitionKey := s.GenerateId()
+		def := getDmnResourceDefinition(dmnResourceDefinitionKey)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r := s.GenerateId()
-		dec := getDecision(r, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec)
+		dec := getDecisionDefinition(r, dmnResourceDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		dec2 := getDecision(r2, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec2)
+		dec2 := getDecisionDefinition(r2, dmnResourceDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec2)
 		assert.NoError(t, err)
 
 		//run
-		decision, err := s.GetDecisionByIdAndDecisionDefinitionKey(t.Context(), dec.Id, decisionDefinitionKey)
+		decisionDefinition, err := s.GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(t.Context(), dec.Id, dmnResourceDefinitionKey)
 		assert.NoError(t, err)
-		assert.Equal(t, decisionDefinitionKey, dec.DecisionDefinitionKey)
-		assert.Equal(t, dec.Id, decision.Id)
+		assert.Equal(t, dmnResourceDefinitionKey, dec.DmnResourceDefinitionKey)
+		assert.Equal(t, dec.Id, decisionDefinition.Id)
 	}
 }
 
@@ -696,64 +715,64 @@ func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t
 	return func(t *testing.T) {
 		//setup
 		decisionDefinitionKey := s.GenerateId()
-		def := getDecisionDefinition(decisionDefinitionKey)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		def := getDmnResourceDefinition(decisionDefinitionKey)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r := s.GenerateId()
-		dec := getDecision(r, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec)
+		dec := getDecisionDefinition(r, decisionDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		dec2 := getDecision(r2, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec2)
+		dec2 := getDecisionDefinition(r2, decisionDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec2)
 		assert.NoError(t, err)
 
 		//run
-		decision, err := s.GetLatestDecisionById(t.Context(), dec.Id)
+		decisionDefinition, err := s.GetLatestDecisionDefinitionById(t.Context(), dec.Id)
 		assert.NoError(t, err)
-		assert.Equal(t, decisionDefinitionKey, decision.DecisionDefinitionKey)
-		assert.Equal(t, dec.Id, decision.Id)
-		assert.Equal(t, dec.DecisionDefinitionId, decision.DecisionDefinitionId)
+		assert.Equal(t, decisionDefinitionKey, decisionDefinition.DmnResourceDefinitionKey)
+		assert.Equal(t, dec.Id, decisionDefinition.Id)
+		assert.Equal(t, dec.DmnResourceDefinitionId, decisionDefinition.DmnResourceDefinitionId)
 
-		decision, err = s.GetLatestDecisionByIdAndDecisionDefinitionId(t.Context(), dec.Id, dec.DecisionDefinitionId)
+		decisionDefinition, err = s.GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(t.Context(), dec.Id, dec.DmnResourceDefinitionId)
 		assert.NoError(t, err)
-		assert.Equal(t, decisionDefinitionKey, decision.DecisionDefinitionKey)
-		assert.Equal(t, dec.Id, decision.Id)
-		assert.Equal(t, dec.DecisionDefinitionId, decision.DecisionDefinitionId)
+		assert.Equal(t, decisionDefinitionKey, decisionDefinition.DmnResourceDefinitionKey)
+		assert.Equal(t, dec.Id, decisionDefinition.Id)
+		assert.Equal(t, dec.DmnResourceDefinitionId, decisionDefinition.DmnResourceDefinitionId)
 
-		decision, err = s.GetLatestDecisionByIdAndVersionTag(t.Context(), dec.Id, dec.VersionTag)
+		decisionDefinition, err = s.GetLatestDecisionDefinitionByIdAndVersionTag(t.Context(), dec.Id, dec.VersionTag)
 		assert.NoError(t, err)
-		assert.Equal(t, decisionDefinitionKey, decision.DecisionDefinitionKey)
-		assert.Equal(t, dec.Id, decision.Id)
-		assert.Equal(t, dec.VersionTag, decision.VersionTag)
+		assert.Equal(t, decisionDefinitionKey, decisionDefinition.DmnResourceDefinitionKey)
+		assert.Equal(t, dec.Id, decisionDefinition.Id)
+		assert.Equal(t, dec.VersionTag, decisionDefinition.VersionTag)
 	}
 }
 
 func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
-		decisionDefinitionKey := s.GenerateId()
-		def := getDecisionDefinition(decisionDefinitionKey)
-		err := s.SaveDecisionDefinition(t.Context(), def)
+		dmnResourceDefinitionKey := s.GenerateId()
+		def := getDmnResourceDefinition(dmnResourceDefinitionKey)
+		err := s.SaveDmnResourceDefinition(t.Context(), def)
 		assert.NoError(t, err)
 
 		r := s.GenerateId()
-		dec := getDecision(r, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec)
+		dec := getDecisionDefinition(r, dmnResourceDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec)
 		assert.NoError(t, err)
 
 		r2 := s.GenerateId()
-		dec2 := getDecision(r2, decisionDefinitionKey)
-		err = s.SaveDecision(t.Context(), dec2)
+		dec2 := getDecisionDefinition(r2, dmnResourceDefinitionKey)
+		err = s.SaveDecisionDefinition(t.Context(), dec2)
 		assert.NoError(t, err)
 
 		//run
-		decisions, err := s.GetDecisionsById(t.Context(), dec.Id)
+		decisionDefinitions, err := s.GetDecisionDefinitionsById(t.Context(), dec.Id)
 		assert.NoError(t, err)
-		assert.Len(t, decisions, 1)
-		assert.Equal(t, decisionDefinitionKey, decisions[0].DecisionDefinitionKey)
-		assert.Equal(t, dec.Id, decisions[0].Id)
+		assert.Len(t, decisionDefinitions, 1)
+		assert.Equal(t, dmnResourceDefinitionKey, decisionDefinitions[0].DmnResourceDefinitionKey)
+		assert.Equal(t, dec.Id, decisionDefinitions[0].Id)
 	}
 }

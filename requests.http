@@ -1,22 +1,29 @@
 @node=node-1
 @host=http://localhost:8080
-@definition_key=1955877026946613248
+@definition_key=1991421078827696128
+@instance_key=1991466343932629000
 ### GetProcessDefinitions
 GET {{host}}/v1/process-definitions
 Accept: application/json
 
 ### DeployProcessDefinition
 POST {{host}}/v1/process-definitions
+Content-Type: multipart/form-data; boundary="boundary"
+
+--boundary--
+Content-Disposition: form-data; name="resource"; filename="service-task-input-output.bpmn"
 Content-Type: application/xml
 
 < pkg/bpmn/test-cases/service-task-input-output.bpmn
+--boundary--
 
 ### StartProcessInstance
 POST {{host}}/v1/process-instances
 Content-Type: application/json
 
 {
-  "processDefinitionKey": "{{definition_key}}",
+  "historyTimeToLive": "1d8h",
+  "processDefinitionKey": {{definition_key}},
 	"variables":{
 	  "name": "Test name"
 	}
@@ -24,6 +31,26 @@ Content-Type: application/json
 
 ### GetProcessInstances
 GET {{host}}/v1/process-instances?processDefinitionKey={{definition_key}}&page=1
+
+### GetProcessInstance
+GET {{host}}/v1/process-instances/{{instance_key}}
+
+### UpdateProcessInstanceVariables
+PATCH {{host}}/v1/process-instances/{{instance_key}}/variables
+Content-Type: application/json
+
+{
+  "variables":{
+    "name": "Test name changed",
+    "totalSum": 10.5
+  }
+}
+
+### DeleteProcessInstanceVariable
+DELETE {{host}}/v1/process-instances/{{instance_key}}/variables/name
+
+### GetProcessInstanceJobs
+GET {{host}}/v1/process-instances/{{instance_key}}/jobs
 
 ### ActivateJob
 @job_type=input-task-1
@@ -34,9 +61,18 @@ POST {{host}}/v1/jobs
 Content-Type: application/json
 
 {
-  "jobKey": "{{ActivateJob.response.body.$[0].key}}",
+  "jobKey": {{ActivateJob.response.body.$[0].key}},
 	"variables": {}
 }
+
+### DeployDmnResourceDefinition
+POST {{host}}/v1/dmn-resource-definitions
+Content-Type: application/xml
+
+< pkg/dmn/test-data/bulk-evaluation-test/can-autoliquidate-rule.dmn
+
+### GetDmnResourceDefinitions
+GET {{host}}/v1/dmn-resource-definitions?page=1&sortBy=dmnDefinitionName&sortOrder=desc&onlyLatest=true&dmnDefinitionName=DRD
 
 ### Metrics
 GET {{host}}/system/metrics

@@ -154,6 +154,13 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export LOG_LEVEL=INFO; \
 	go test -count=1 -v ./test/e2e/...
 
+.PHONY: test-dmntest
+test-dmntest:
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	go test -tags=dmntest ./pkg/dmn/dmntest/... -v
+
 ##@ Build
 
 .PHONY: build
@@ -179,8 +186,12 @@ release:
 	docker run \
 		--rm \
 		--env-file .release-env \
+		-e BUILDX_BUILDER \
+		-e DOCKER_BUILDKIT=1 \
 		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(HOME)/.docker:/root/.docker \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		release --clean
+		--verbose \
+		release --clean 

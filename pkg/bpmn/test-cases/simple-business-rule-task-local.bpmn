@@ -26,7 +26,7 @@
         <zeebe:ioMapping>
           <zeebe:input source="=1000" target="claim.amountOfDamage" />
           <zeebe:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
-          <zeebe:output source="=canAutoLiquidate" target="OutputTestResultVariable" />
+          <zeebe:output source="=testResultVariable2.canAutoLiquidate" target="OutputTestResultVariable" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1w5n6k0</bpmn:incoming>

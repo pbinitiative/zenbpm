@@ -3,6 +3,7 @@ package partition
 import (
 	"context"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/script"
 	"net"
 	"strings"
 	"sync"
@@ -48,6 +49,9 @@ type ZenPartitionNode struct {
 	statuses        map[string]httpd.StatusReporter
 	metrics         partitionMetrics
 	logger          hclog.Logger
+
+	FeelRuntime script.FeelRuntime
+	JsRuntime   script.JsRuntime
 
 	Engine *bpmn.Engine
 

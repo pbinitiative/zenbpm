@@ -53,7 +53,7 @@ service ZenService {
   // engine endpoints
   // Deploys definition into partitions that receiving node is leader of
   rpc EvaluateDecision(EvaluateDecisionRequest) returns (EvaluatedDRDResult);
-  rpc DeployDecisionDefinition(DeployDecisionDefinitionRequest) returns (DeployDecisionDefinitionResponse);
+  rpc DeployDmnResourceDefinition(DeployDmnResourceDefinitionRequest) returns (DeployDmnResourceDefinitionResponse);
   rpc DeployProcessDefinition(DeployProcessDefinitionRequest) returns (DeployProcessDefinitionResponse);
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   // PublishMessage requests a message publish on the engine running on a leader node of partition
@@ -63,8 +63,12 @@ service ZenService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc StartProcessInstanceOnElements(StartInstanceOnElementIdsRequest) returns (StartInstanceOnElementIdsResponse);
   rpc ModifyProcessInstance(ModifyProcessInstanceRequest) returns (ModifyProcessInstanceResponse);
+  rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetDecisionInstance(GetDecisionInstanceRequest) returns (GetDecisionInstanceResponse);
+  rpc GetDecisionInstances(GetDecisionInstancesRequest) returns (GetDecisionInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
   rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
@@ -162,17 +166,18 @@ message EvaluateDecisionRequest {
 
 message EvaluatedDRDResult {
   ErrorResult error = 1;
-  repeated EvaluatedDecisionResult evaluatedDecisions = 2;
-  bytes DecisionOutput = 3;
+  repeated EvaluatedDecisionResult evaluated_decisions = 2;
+  bytes decision_output = 3;
+  int64 decision_instance_key = 4;
 }
 
 message EvaluatedDecisionResult {
   string decisionId = 1;
   string decisionName = 2;
   string decisionType = 3;
-  int64 decisionDefinitionVersion = 4;
-  int64 decisionDefinitionKey = 5;
-  string decisionDefinitionId = 6;
+  int64 dmnResourceDefinitionVersion = 4;
+  int64 dmnResourceDefinitionKey = 5;
+  string dmnResourceDefinitionId = 6;
   repeated EvaluatedRule matchedRules = 7 ;
   bytes decisionOutput = 8 ;
   repeated EvaluatedInput evaluatedInputs = 9;
@@ -197,20 +202,21 @@ message EvaluatedInput {
   bytes inputValue = 4;
 }
 
-message DecisionDefinition {
+message DmnResourceDefinition {
   int64 key = 1;
   int32 version = 2;
-  string decision_definition_id = 3;
+  string dmn_resource_definition_id = 3;
   bytes definition = 4;
+  string dmn_definition_name = 5;
 }
 
-message Decision {
+message DecisionDefinition {
   int64 key = 1;
   int32 version = 2;
   string decision_id = 3;
   string version_tag = 4;
-  string decision_definition_id = 5;
-  string decision_definition_key = 6;
+  string dmn_resource_definition_id = 5;
+  string dmn_resource_definition_key = 6;
 }
 
 message ProcessDefinition {
@@ -218,6 +224,7 @@ message ProcessDefinition {
   int32 version = 2;
   string process_id = 3;
   bytes definition = 4;
+  string process_name = 5;
 }
 
 message ProcessDefinitionsPage {
@@ -232,6 +239,18 @@ message ProcessInstance {
   int64 state = 4;
   int64 created_at = 5;
   int64 definition_key = 6;
+  int64 parent_key = 7;
+  string business_key = 8;
+}
+
+message DecisionInstance {
+  int64 key = 1;
+  int64 dmn_resource_definition_key = 2;
+  int64 process_instance_key = 3;
+  int64 evaluated_at = 4;
+  int64 flow_element_instance_key = 5;
+  string evaluated_decisions = 6;
+  string decision_output = 7;
 }
 
 message ExecutionToken {
@@ -252,6 +271,7 @@ message Job {
   int64 state = 6;
   int64 created_at = 7;
   bytes variables = 8;
+  string assignee = 9;
 }
 
 message FlowElement {
@@ -272,18 +292,19 @@ message Incident {
   int64 execution_token = 8;
 }
 
-message DeployDecisionDefinitionRequest {
+message DeployDmnResourceDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
 }
 
-message DeployDecisionDefinitionResponse {
+message DeployDmnResourceDefinitionResponse {
   ErrorResult error = 1;
 }
 
 message DeployProcessDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
+  string resource_name = 3;
 }
 
 message DeployProcessDefinitionResponse {
@@ -379,6 +400,7 @@ message CreateInstanceRequest {
   }
   bytes variables = 3;
   int64 historyTTL = 4;
+  string business_key = 5;
 }
 
 message CreateInstanceResponse {
@@ -404,10 +426,20 @@ message ModifyProcessInstanceRequest {
   bytes variables = 4;
 }
 
+message DeleteProcessInstanceVariableRequest {
+  int64 process_instance_key = 1;
+  string variable = 2;
+}
+
 message ModifyProcessInstanceResponse {
   ErrorResult error = 1;
   ProcessInstance process = 2;
   repeated ExecutionToken execution_tokens = 3;
+}
+
+message DeleteProcessInstanceVariableResponse {
+  ErrorResult error = 1;
+  ProcessInstance process = 2;
 }
 
 message GetProcessInstancesRequest {
@@ -415,16 +447,65 @@ message GetProcessInstancesRequest {
   int32 size = 2;
   repeated uint32 partitions = 3;
   int64 definition_key = 4;
+  int64 parent_key = 5;
+  string business_key = 6;
+  string process_id = 7;
+  int64 created_from = 8;
+  int64 created_to = 9;
+  int64 state = 10;
+  string sort_by_order = 11;
+}
+
+message GetDecisionInstanceRequest {
+  int64 decision_instance_key = 1;
+}
+
+message GetDecisionInstancesRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  int64 dmn_resource_definition_key = 4;
+  string dmn_resource_definition_id = 5;
+  int64 process_instance_key = 6;
+  int64 evaluated_from = 7;
+  int64 evaluated_to = 8;
+  string sort_by_order = 9;
+}
+
+message GetDmnResourceDefinitionsRequest {
+  int32 page = 1;
+  int32 size = 2;
+  string dmn_definition_name = 3;
+  bool only_latest = 4;
+  string dmn_resource_definition_id = 5;
+  string sort_by_order = 6;
+}
+
+message DmnResourceDefinitionsPage {
+  repeated DmnResourceDefinition items = 1;
+  int32 totalCount = 2;
 }
 
 message PartitionedProcessInstances {
   uint32 partition_id = 1;
   repeated ProcessInstance instances = 2;
+  int32 totalCount = 3;
+}
+
+message PartitionedDecisionInstances {
+  uint32 partition_id = 1;
+  repeated DecisionInstance decisionInstances = 2;
+  int32 totalCount = 3;
 }
 
 message GetProcessInstancesResponse {
   ErrorResult error = 1;
   repeated PartitionedProcessInstances partitions = 2;
+}
+
+message GetDecisionInstancesResponse {
+  ErrorResult error = 1;
+  repeated PartitionedDecisionInstances partitions = 2;
 }
 
 message GetProcessInstanceRequest {
@@ -437,31 +518,46 @@ message GetProcessInstanceResponse {
   repeated ExecutionToken execution_tokens = 3;
 }
 
+message GetDecisionInstanceResponse {
+  ErrorResult error = 1;
+  DecisionInstance decision_instance = 2;
+}
+
 message GetProcessInstanceJobsRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
 }
 
 message GetProcessInstanceJobsResponse {
   ErrorResult error = 1;
   repeated Job jobs = 2;
+  int32 totalCount = 3;
 }
 
 message GetFlowElementHistoryRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
 }
 
 message GetFlowElementHistoryResponse {
   ErrorResult error = 1;
   repeated FlowElement flow = 2;
+  int32 totalCount = 3;
 }
 
 message GetIncidentsRequest {
   int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
+  string state = 4;
 }
 
 message GetIncidentsResponse {
   ErrorResult error = 1;
   repeated Incident incidents = 2;
+  int32 totalCount = 3;
 }
 
 message GetJobsRequest {
@@ -470,11 +566,24 @@ message GetJobsRequest {
   repeated uint32 partitions = 3;
   string jobType = 4;
   int64 state = 5;
+  string assignee = 6;
+  int64 processInstanceKey = 7;
+  string sort = 8;
+}
+
+message GetJobRequest{
+  int64 job_key = 1;
+}
+
+message GetJobResponse {
+  ErrorResult error = 1;
+  Job job = 2;
 }
 
 message PartitionedJobs {
   uint32 partition_id = 1;
   repeated Job jobs = 2;
+  int32 totalCount = 3;
 }
 
 message GetJobsResponse {

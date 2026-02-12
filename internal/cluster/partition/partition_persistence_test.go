@@ -157,12 +157,11 @@ func TestDataCleanup(t *testing.T) {
 
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err = db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
@@ -170,25 +169,26 @@ func TestDataCleanup(t *testing.T) {
 	createTestData := func(ctx context.Context, idArr *[]int64) {
 		r := db.GenerateId()
 		*idArr = append(*idArr, r)
-		inst1 := runtime.ProcessInstance{
-			Definition:                  &pd,
-			Key:                         r,
-			VariableHolder:              runtime.VariableHolder{},
-			CreatedAt:                   time.Now(),
-			State:                       runtime.ActivityStateReady,
-			ParentProcessExecutionToken: nil,
+		inst1 := runtime.DefaultProcessInstance{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &pd,
+				Key:            r,
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      time.Now(),
+				State:          runtime.ActivityStateReady,
+			},
 		}
-		err = db.SaveProcessInstance(ctx, inst1)
+		err = db.SaveProcessInstance(ctx, &inst1)
 		assert.NoError(t, err)
-		inst1.State = runtime.ActivityStateActive
-		err = db.SaveProcessInstance(ctx, inst1)
+		inst1.ProcessInstance().State = runtime.ActivityStateActive
+		err = db.SaveProcessInstance(ctx, &inst1)
 		assert.NoError(t, err)
 
 		token := runtime.ExecutionToken{
 			Key:                r + 50,
 			ElementInstanceKey: r + 60,
 			ElementId:          "test-64654",
-			ProcessInstanceKey: inst1.Key,
+			ProcessInstanceKey: inst1.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
 		err = db.SaveToken(t.Context(), token)
@@ -198,7 +198,7 @@ func TestDataCleanup(t *testing.T) {
 			Key:                  r + 70,
 			ElementId:            "message-sub",
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.Key,
+			ProcessInstanceKey:   inst1.ProcessInstance().Key,
 			Name:                 "name",
 			CorrelationKey:       "cor-1",
 			State:                runtime.ActivityStateActive,
@@ -212,7 +212,7 @@ func TestDataCleanup(t *testing.T) {
 			Key:                r + 100,
 			ElementInstanceKey: r + 101,
 			ElementId:          "something-465",
-			ProcessInstanceKey: inst1.Key,
+			ProcessInstanceKey: inst1.ProcessInstance().Key,
 			Message:            "something went wrong",
 			CreatedAt:          time.Now(),
 			Token:              token,
@@ -222,21 +222,25 @@ func TestDataCleanup(t *testing.T) {
 
 		r2 := db.GenerateId()
 		*idArr = append(*idArr, r2)
-		inst2 := runtime.ProcessInstance{
-			Definition:                  &pd,
-			Key:                         r2,
-			VariableHolder:              runtime.VariableHolder{},
-			CreatedAt:                   time.Now(),
-			State:                       runtime.ActivityStateReady,
-			ParentProcessExecutionToken: &token,
+		inst2 := runtime.SubProcessInstance{
+			ParentProcessExecutionToken:           token,
+			ParentProcessTargetElementInstanceKey: token.ElementInstanceKey,
+			ParentProcessTargetElementId:          token.ElementId,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &pd,
+				Key:            r2,
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      time.Now(),
+				State:          runtime.ActivityStateReady,
+			},
 		}
-		err = db.SaveProcessInstance(ctx, inst2)
+		err = db.SaveProcessInstance(ctx, &inst2)
 		assert.NoError(t, err)
-		inst2.State = runtime.ActivityStateActive
-		err = db.SaveProcessInstance(ctx, inst2)
+		inst2.ProcessInstance().State = runtime.ActivityStateActive
+		err = db.SaveProcessInstance(ctx, &inst2)
 		assert.NoError(t, err)
-		inst2.State = runtime.ActivityStateCompleted
-		err = db.SaveProcessInstance(ctx, inst2)
+		inst2.ProcessInstance().State = runtime.ActivityStateCompleted
+		err = db.SaveProcessInstance(ctx, &inst2)
 		assert.NoError(t, err)
 
 		timer := runtime.Timer{
@@ -244,7 +248,7 @@ func TestDataCleanup(t *testing.T) {
 			Key:                  r2 + 80,
 			ElementInstanceKey:   r2 + 81,
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst2.Key,
+			ProcessInstanceKey:   inst2.ProcessInstance().Key,
 			TimerState:           runtime.TimerStateCreated,
 			CreatedAt:            time.Now(),
 			DueAt:                time.Now().Add(1 * time.Hour),
@@ -257,7 +261,7 @@ func TestDataCleanup(t *testing.T) {
 		job := runtime.Job{
 			ElementId:          "job-123",
 			ElementInstanceKey: r2 + 91,
-			ProcessInstanceKey: inst2.Key,
+			ProcessInstanceKey: inst2.ProcessInstance().Key,
 			Key:                r2 + 90,
 			State:              runtime.ActivityStateActive,
 			Type:               "test-job",
@@ -268,13 +272,13 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveJob(ctx, job)
 		assert.NoError(t, err)
 
-		flowHist := runtime.FlowElementHistoryItem{
+		flowHist := runtime.FlowElementInstance{
 			Key:                job.Key,
-			ProcessInstanceKey: inst2.Key,
+			ProcessInstanceKey: inst2.ProcessInstance().Key,
 			ElementId:          "job-123",
 			CreatedAt:          job.CreatedAt,
 		}
-		err = db.SaveFlowElementHistory(ctx, flowHist)
+		err = db.SaveFlowElementInstance(ctx, flowHist)
 		assert.NoError(t, err)
 	}
 
@@ -313,7 +317,7 @@ func TestDataCleanup(t *testing.T) {
 	for _, id := range idsToComplete {
 		pi, err := db.FindProcessInstanceByKey(t.Context(), id)
 		assert.NoError(t, err)
-		pi.State = runtime.ActivityStateCompleted
+		pi.ProcessInstance().State = runtime.ActivityStateCompleted
 		err = db.SaveProcessInstance(t.Context(), pi)
 		assert.NoError(t, err)
 	}
@@ -337,7 +341,7 @@ func TestDataCleanup(t *testing.T) {
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
 	count = queryCount(t, db, "select count(*) from execution_token")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
-	count = queryCount(t, db, "select count(*) from flow_element_history")
+	count = queryCount(t, db, "select count(*) from flow_element_instance")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
 	count = queryCount(t, db, "select count(*) from incident")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
@@ -359,7 +363,7 @@ func TestDataCleanup(t *testing.T) {
 	assert.Empty(t, count)
 	count = queryCount(t, db, "select count(*) from execution_token")
 	assert.Empty(t, count)
-	count = queryCount(t, db, "select count(*) from flow_element_history")
+	count = queryCount(t, db, "select count(*) from flow_element_instance")
 	assert.Empty(t, count)
 	count = queryCount(t, db, "select count(*) from incident")
 	assert.Empty(t, count)
@@ -377,31 +381,32 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err := db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
 
-	inst1 := runtime.ProcessInstance{
-		Definition:                  &pd,
-		Key:                         r,
-		VariableHolder:              runtime.VariableHolder{},
-		CreatedAt:                   time.Now(),
-		State:                       runtime.ActivityStateActive,
-		ParentProcessExecutionToken: nil,
+	inst1 := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            r,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
 	}
-	err = db.SaveProcessInstance(t.Context(), inst1)
+
+	err = db.SaveProcessInstance(t.Context(), &inst1)
 	assert.NoError(t, err)
 	token := runtime.ExecutionToken{
 		Key:                r + 50,
 		ElementInstanceKey: r + 60,
 		ElementId:          "test-64654",
-		ProcessInstanceKey: inst1.Key,
+		ProcessInstanceKey: inst1.ProcessInstance().Key,
 		State:              runtime.TokenStateRunning,
 	}
 	err = db.SaveToken(t.Context(), token)
@@ -412,7 +417,7 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 			Key:                  db.GenerateId(),
 			ElementId:            "123",
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.Key,
+			ProcessInstanceKey:   inst1.ProcessInstance().Key,
 			Name:                 "test-message",
 			CorrelationKey:       "duplicate_correlation_key",
 			State:                runtime.ActivityStateActive,
@@ -443,7 +448,7 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 			Key:                  db.GenerateId(),
 			ElementId:            "124",
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.Key,
+			ProcessInstanceKey:   inst1.ProcessInstance().Key,
 			Name:                 "test-message",
 			CorrelationKey:       "duplicate_correlation_key_batch",
 			State:                runtime.ActivityStateActive,
@@ -491,54 +496,121 @@ func testInstanceParent(t *testing.T, db *DB) {
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 	r := db.GenerateId()
 	pd := runtime.ProcessDefinition{
-		BpmnProcessId:    fmt.Sprintf("id-%d", r),
-		Version:          1,
-		Key:              r,
-		BpmnData:         fmt.Sprintf(data, r),
-		BpmnChecksum:     [16]byte{1},
-		BpmnResourceName: fmt.Sprintf("resource-%d", r),
+		BpmnProcessId: fmt.Sprintf("id-%d", r),
+		Version:       1,
+		Key:           r,
+		BpmnData:      fmt.Sprintf(data, r),
+		BpmnChecksum:  [16]byte{1},
 	}
 	err := db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
 
-	inst1 := runtime.ProcessInstance{
-		Definition:                  &pd,
-		Key:                         r,
-		VariableHolder:              runtime.VariableHolder{},
-		CreatedAt:                   time.Now(),
-		State:                       runtime.ActivityStateActive,
-		ParentProcessExecutionToken: nil,
+	inst1 := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            r,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
 	}
-	err = db.SaveProcessInstance(t.Context(), inst1)
+
+	err = db.SaveProcessInstance(t.Context(), &inst1)
 	assert.NoError(t, err)
 
 	tok1 := runtime.ExecutionToken{
 		Key:                r,
 		ElementInstanceKey: 12345,
 		ElementId:          "some-id",
-		ProcessInstanceKey: inst1.Key,
+		ProcessInstanceKey: inst1.ProcessInstance().Key,
 		State:              runtime.TokenStateWaiting,
 	}
 	err = db.SaveToken(t.Context(), tok1)
 	assert.NoError(t, err)
 
-	inst2 := runtime.ProcessInstance{
-		Definition:                  &pd,
-		Key:                         r + 1,
-		VariableHolder:              runtime.VariableHolder{},
-		CreatedAt:                   time.Now(),
-		State:                       runtime.ActivityStateActive,
-		ParentProcessExecutionToken: &tok1,
+	inst2 := runtime.CallActivityInstance{
+		ParentProcessExecutionToken:           tok1,
+		ParentProcessTargetElementInstanceKey: tok1.ElementInstanceKey,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            r + 1,
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+		},
 	}
-	err = db.SaveProcessInstance(t.Context(), inst2)
-	assert.NoError(t, err)
-	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.Key)
-	assert.NoError(t, err)
-	assert.Nil(t, dbInst1.ParentProcessExecutionToken)
 
-	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.Key)
+	err = db.SaveProcessInstance(t.Context(), &inst2)
 	assert.NoError(t, err)
-	assert.NotNil(t, dbInst2.ParentProcessExecutionToken)
+	dbInst1, err := db.FindProcessInstanceByKey(t.Context(), inst1.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ProcessTypeDefault, dbInst1.Type())
+
+	dbInst2, err := db.FindProcessInstanceByKey(t.Context(), inst2.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ProcessTypeCallActivity, dbInst2.Type())
+	assert.NotNil(t, dbInst2.(*runtime.CallActivityInstance).ParentProcessExecutionToken)
+
+	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: 0,
+		ParentInstanceKey:    0,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
+		Size:                 20,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 5)
+
+	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: dbInst2.ProcessInstance().Definition.Key,
+		ParentInstanceKey:    0,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
+		Size:                 20,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 2)
+
+	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: dbInst2.ProcessInstance().Definition.Key,
+		ParentInstanceKey:    tok1.Key,
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
+		Size:                 20,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, instncs, 1)
+
+	subProcesses, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		ProcessDefinitionKey: inst2.ProcessInstance().Definition.Key,
+		ParentInstanceKey:    inst1.ProcessInstance().GetInstanceKey(),
+		BusinessKey:          ssql.NullString{String: "", Valid: false},
+		BpmnProcessID:        ssql.NullString{String: "", Valid: false},
+		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
+		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
+		State:                ssql.NullInt64{Int64: 0, Valid: false},
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		Offset:               0,
+		Size:                 20,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, subProcesses)
+	assert.Equal(t, tok1.Key, subProcesses[0].ParentProcessExecutionToken.Int64)
 }
 
 type testStore struct {

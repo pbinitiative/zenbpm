@@ -40,6 +40,7 @@ type Cluster struct {
 	Adv         string      `yaml:"adv" json:"adv" env:"CLUSTER_RAFT_ADV" env-default:"localhost:8090"`
 	Raft        ClusterRaft `yaml:"raft" json:"raft"`
 	Persistence Persistence `yaml:"persistence" json:"persistence"`
+	Script      Script      `yaml:"script" json:"script"`
 }
 
 type ClusterRaft struct {
@@ -83,6 +84,16 @@ type Persistence struct {
 	DecDefCacheTTL     types.TTL `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
 	DecDefCacheSize    int       `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
 	RqLite             *RqLite   `yaml:"rqlite" json:"rqlite"`
+}
+
+type Script struct {
+	Feel ScriptVmPoolConf `yaml:"feel" json:"feel"`
+	Js   ScriptVmPoolConf `yaml:"js" json:"js"`
+}
+
+type ScriptVmPoolConf struct {
+	MaxVmPoolSize int `yaml:"maxVmPoolSize" json:"maxVmPoolSize"`
+	MinVmPoolSize int `yaml:"minVmPoolSize" json:"minVmPoolSize"`
 }
 
 // validate checks the configuration for internal consistency, and activates

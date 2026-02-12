@@ -6,17 +6,18 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "fork-uncontrolled-join.bpmn")
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "fork-uncontrolled-join" {
 			definition = def
 			break
@@ -55,12 +56,12 @@ func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 
 func TestRestApiModifyProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "service-task-input-output" {
 			definition = def
 			break
@@ -123,7 +124,7 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 	})
 }
 
-func startProcessInstanceOnElements(t testing.TB, processDefinitionKey string, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
+func startProcessInstanceOnElements(t testing.TB, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
 	req := public.StartProcessInstanceOnElementsJSONBody{
 		ProcessDefinitionKey: processDefinitionKey,
 		StartingElementIds:   startingElementIds,
@@ -146,7 +147,7 @@ func startProcessInstanceOnElements(t testing.TB, processDefinitionKey string, s
 	return instance, nil
 }
 
-func modifyProcessInstanceTokens(t testing.TB, processInstanceKey string, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
+func modifyProcessInstanceTokens(t testing.TB, processInstanceKey int64, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
 	req := public.ModifyProcessInstanceJSONBody{
 		ElementInstancesToStart:     &ElementInstancesToStart,
 		ElementInstancesToTerminate: &ElementInstancesToTerminate,

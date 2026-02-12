@@ -285,6 +285,32 @@ func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams
 	return items, nil
 }
 
+const getTimerByKey = `-- name: GetTimerByKey :one
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+FROM
+    timer
+WHERE
+    key = ?1
+`
+
+func (q *Queries) GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error) {
+	row := q.db.QueryRowContext(ctx, getTimerByKey, timerKey)
+	var i Timer
+	err := row.Scan(
+		&i.Key,
+		&i.ElementInstanceKey,
+		&i.ElementID,
+		&i.ProcessDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.State,
+		&i.CreatedAt,
+		&i.DueAt,
+		&i.ExecutionToken,
+	)
+	return i, err
+}
+
 const saveTimer = `-- name: SaveTimer :exec
 INSERT INTO timer(key, element_id, element_instance_key, process_definition_key, process_instance_key, state, created_at, due_at, execution_token)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

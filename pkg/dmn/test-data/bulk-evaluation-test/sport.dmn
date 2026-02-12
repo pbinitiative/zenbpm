@@ -12,7 +12,7 @@
       </input>
       <input id="InputClause_1e9jmc5" label="location">
         <inputExpression id="LiteralExpression_05o09sy" typeRef="string">
-          <text>location</text>
+          <text>Location.location</text>
         </inputExpression>
       </input>
       <output id="Output_1" label="sport" name="sport" typeRef="string" />
@@ -95,7 +95,7 @@
     <decisionTable id="DecisionTable_0y8isxr">
       <input id="InputClause_04bybxl" label="location">
         <inputExpression id="LiteralExpression_16ga6vd" typeRef="string">
-          <text>location</text>
+          <text>Location.location</text>
         </inputExpression>
       </input>
       <input id="InputClause_0u2bd4a" label="Temperature">

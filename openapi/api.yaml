@@ -17,26 +17,20 @@ servers:
 tags:
   - name: process-definition
   - name: process-instance
+  - name: dmn-resource-definition
   - name: decision-definition
-  - name: decision
   - name: job
   - name: message
   - name: incident
   - name: test
 
 paths:
-  /decision-definitions:
+  /dmn-resource-definitions:
     post:
-      operationId: createDecisionDefinition
-      summary: Deploy a new decision definition
+      operationId: createDmnResourceDefinition
+      summary: Deploy a new dmn resource definition
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decision-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @decision.dmn
+        - dmn-resource-definition
       requestBody:
         required: true
         content:
@@ -53,19 +47,19 @@ paths:
               </definitions>
       responses:
         201:
-          description: Decision definition deployed
+          description: Dmn resource definition deployed
           content:
             application/json:
               schema:
                 type: object
                 required:
-                  - decisionDefinitionKey
+                  - dmnResourceDefinitionKey
                 properties:
-                  decisionDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                  dmnResourceDefinitionKey:
+                    type: integer
+                    format: int64
               example:
-                decisionDefinitionKey: "4503599627370495"
+                dmnResourceDefinitionKey: 4503599627370495
         400:
           description: Bad request
           content:
@@ -73,7 +67,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         409:
-          description: Conflict - decision definition already exists
+          description: Conflict - dmn resource definition already exists
           content:
             application/json:
               schema:
@@ -86,14 +80,10 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     get:
-      operationId: getDecisionDefinitions
-      summary: Get list of decision definitions
+      operationId: getDmnResourceDefinitions
+      summary: Get list of dmn resource definitions
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/decision-definitions?page=1&size=10"
+        - dmn-resource-definition
       parameters:
         - name: page
           in: query
@@ -114,24 +104,46 @@ paths:
             default: 10
           description: Number of items per page (max 100)
           example: 10
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each DMN resource definition grouped by dmnResourceDefinitionId"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
+          description: "Sort field"
+        - $ref: "#/components/parameters/sortOrder"
+        - name: dmnResourceDefinitionId
+          in: query
+          schema:
+            type: string
+          description: "Filter by DMN resource definition ID to get all versions"
+        - name: dmnDefinitionName
+          in: query
+          schema:
+            type: string
+          description: "Filter by name (partial match)"
       responses:
         200:
-          description: List of decision definitions
+          description: List of dmn resource definitions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionsPage"
+                $ref: "#/components/schemas/DmnResourceDefinitionsPage"
               example:
                 items:
-                  - key: "4503599627370495"
-                    version: 1
-                    decisionDefinitionId: "loan-approval"
                   - key: "4503599627370496"
                     version: 2
-                    decisionDefinitionId: "loan-approval"
+                    dmnResourceDefinitionId: "loan-approval"
+                    dmnDefinitionName: "Loan Approval Decision"
                   - key: "4503599627370497"
                     version: 1
-                    decisionDefinitionId: "credit-score-check"
+                    dmnResourceDefinitionId: "credit-score-check"
+                    dmnDefinitionName: "Credit Score Check"
                 page: 1
                 size: 10
                 count: 3
@@ -143,35 +155,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decision-definitions/{decisionDefinitionKey}:
+  /dmn-resource-definitions/{dmnResourceDefinitionKey}:
     get:
-      operationId: getDecisionDefinition
-      summary: Get decision definition
+      operationId: getDmnResourceDefinition
+      summary: Get dmn resource definition
       tags:
-        - decision-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/decision-definitions/123456789
+        - dmn-resource-definition
       parameters:
-        - name: decisionDefinitionKey
+        - name: dmnResourceDefinitionKey
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370495"
+            type: integer
+            format: int64
+          example: 4503599627370495
       responses:
         200:
-          description: Decision definition
+          description: Dmn resource definition
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DecisionDefinitionDetail"
+                $ref: "#/components/schemas/DmnResourceDefinitionDetail"
               example:
                 key: "4503599627370495"
                 version: 1
-                decisionDefinitionId: "loan-approval"
+                dmnResourceDefinitionId: "loan-approval"
+                dmnDefinitionName: "Loan Approval Decision"
                 dmnData: |
                   <?xml version="1.0" encoding="UTF-8"?>
                   <definitions>
@@ -192,24 +201,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /decisions/{decisionId}/evaluate:
+  /decision-definitions/{decisionId}/evaluate:
     post:
       operationId: evaluateDecision
-      summary: Evaluate latest version of decision directly in engine
+      summary: Evaluate latest version of decision definition directly in engine
       tags:
-        - decision
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/decisions/sample-decision-id/evaluate \
-              -H "Content-Type: application/json" \
-              -d '{
-                "bindingType": "latest",
-                "variables": {
-                  "age": 25,
-                  "income": 50000
-                }
-              }'
+        - decision-definition
       parameters:
         - name: decisionId
           required: true
@@ -232,7 +229,7 @@ paths:
                     - latest
                     - deployment #TODO: unsupported
                     - versionTag
-                decisionDefinitionId:
+                dmnResourceDefinitionId:
                   description: Can be used in combination with bindingType latest
                   type: string
                 versionTag:
@@ -258,8 +255,8 @@ paths:
                     decisionName: "Loan Approval"
                     decisionType: "DECISION_TABLE"
                     decisionDefinitionVersion: 1
-                    decisionDefinitionKey: "4503599627370495"
-                    decisionDefinitionId: "loan-approval"
+                    dmnResourceDefinitionKey: 4503599627370495
+                    dmnResourceDefinitionId: "loan-approval"
                     matchedRules:
                       - ruleId: "rule1"
                         ruleIndex: 0
@@ -285,32 +282,150 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /decision-instances:
+    get:
+      operationId: getDecisionInstances
+      summary: "Get list of decision instances"
+      tags:
+        - decision-instance
+      parameters:
+        - name: dmnResourceDefinitionKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: "Filter by DMN resource definition key"
+        - name: dmnResourceDefinitionId
+          in: query
+          schema:
+            type: string
+          description: "Filter by DMN resource definition ID"
+        - name: processInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: "Filter by process instance"
+        - name: evaluatedFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: evaluated after this date"
+        - name: evaluatedTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: evaluated before this date"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: "Page number (1-based indexing)"
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: "Number of items per page (max 100)"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [evaluatedAt, key]
+          description: "Sort field"
+        - $ref: "#/components/parameters/sortOrder"
+      responses:
+        200:
+          description: List of decision instances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionInstancePartitionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /decision-instances/{decisionInstanceKey}:
+    get:
+      operationId: getDecisionInstance
+      summary: "Get decision instance details"
+      tags:
+        - decision-instance
+      parameters:
+        - name: decisionInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Decision instance details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionInstanceDetail"
+        404:
+          description: Decision instance not found
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-definitions:
     post:
       operationId: createProcessDefinition
       summary: Deploy a new process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-definitions \
-              -H "Content-Type: application/xml" \
-              --data-binary @process.bpmn
       requestBody:
         required: true
         content:
-          application/xml:
+          multipart/form-data:
             schema:
-              type: string
-              format: xml
-            example: |
-              <?xml version="1.0" encoding="UTF-8"?>
-              <bpmn:definitions>
-                <bpmn:process id="loan-application" name="Loan Application Process" isExecutable="true">
-                  ...
-                </bpmn:process>
-              </bpmn:definitions>
+              type: object
+              required:
+                - resource
+              properties:
+                resource:
+                  type: string
+                  format: binary
+                  description: BPMN process definition file (.bpmn format only, max 4MB)
+            encoding:
+              resource:
+                contentType: application/octet-stream
+
       responses:
         201:
           description: Process definition deployed
@@ -322,10 +437,10 @@ paths:
                   - processDefinitionKey
                 properties:
                   processDefinitionKey:
-                    type: string
-                    pattern: '^\d{15,20}$'
+                    type: integer
+                    format: int64
               example:
-                processDefinitionKey: "4503599627370498"
+                processDefinitionKey: 4503599627370498
         400:
           description: Bad request
           content:
@@ -349,11 +464,29 @@ paths:
       summary: Get list of process definitions
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-definitions?page=1&size=10"
       parameters:
+        - name: onlyLatest
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: "If true, returns only the latest version of each process definition grouped by bpmnProcessId"
+
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
+          description: "Sort field"
+
+        - $ref: "#/components/parameters/sortOrder"
+
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: "Filter by BPMN process ID to get all versions of a specific process"
+
         - name: page
           in: query
           schema:
@@ -363,6 +496,7 @@ paths:
             default: 1
           description: Page number (1-based indexing)
           example: 1
+
         - name: size
           in: query
           schema:
@@ -408,18 +542,14 @@ paths:
       summary: Get process definition
       tags:
         - process-definition
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-definitions/123456789
       parameters:
         - name: processDefinitionKey
           required: true
           in: path
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370498"
+            type: integer
+            format: int64
+          example: 4503599627370498
       responses:
         200:
           description: Process definition
@@ -457,18 +587,6 @@ paths:
       summary: Create a new process instance
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/process-instances \
-              -H "Content-Type: application/json" \
-              -d '{
-                "processDefinitionKey": "123456789",
-                "variables": {
-                  "customerId": "customer-456",
-                  "amount": 1000
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -479,16 +597,19 @@ paths:
                 - processDefinitionKey
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 historyTimeToLive:
                   type: string
                   description: Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
                   example: 30d
+                businessKey:
+                  type: string
+                  description: Business key of the process instance used mainly for correlating process instance to the business entity.
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
@@ -532,19 +653,26 @@ paths:
       operationId: getProcessInstances
       tags:
         - process-instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances?processDefinitionKey=123456789&page=1&size=10"
       parameters:
         - name: processDefinitionKey
           in: query
-          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Key of the process definition
+          example: 4503599627370498
+        - name: parentProcessInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Key of the parent process instance
+          example: 1603294627315478
+        - name: businessKey
+          in: query
           schema:
             type: string
-            pattern: '^\d{15,20}$'
-          description: Key of the process definition
-          example: "4503599627370498"
+          description: Business key of the process instance used mainly for correlating process instance to the business entity.
         - name: page
           in: query
           schema:
@@ -563,6 +691,36 @@ paths:
             default: 10
           description: Number of items per page
           example: 10
+        - name: bpmnProcessId
+          in: query
+          schema:
+            type: string
+          description: Filter by BPMN process ID (returns instances across all versions)
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, key, state]
+          description: Sort field (applies globally across partitions)
+        - $ref: "#/components/parameters/sortOrder"
+        - name: createdFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: created after this date"
+        - name: createdTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Filter: created before this date"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, terminated, failed]
+          description: Filter by state
       responses:
         200:
           description: List of running process instances
@@ -629,18 +787,14 @@ paths:
       tags:
         - process-instance
       summary: Get state of a process instance selected by processInstanceKey
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET http://localhost:8080/v1/process-instances/123456789
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
       responses:
         200:
           description: State of a process instance
@@ -685,18 +839,14 @@ paths:
       tags:
         - process-instance
       summary: Get list of jobs for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/jobs?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -772,18 +922,14 @@ paths:
       tags:
         - process-instance
       summary: Get list of visited flow elements for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/history?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            type: integer
+            format: int64
+          example: 4503599627370501
         - name: page
           in: query
           schema:
@@ -847,18 +993,19 @@ paths:
       tags:
         - process-instance
       summary: Get list of incidents for a process instance
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/process-instances/123456789/incidents?page=1&size=10"
       parameters:
         - name: processInstanceKey
           in: path
           required: true
           schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+        - name: state
+          in: query
+          schema:
             type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370501"
+            enum: [resolved, unresolved]
         - name: page
           in: query
           schema:
@@ -919,16 +1066,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-instances/{processInstanceKey}/variables:
+    patch:
+      operationId: updateProcessInstanceVariables
+      summary: "Update process instance variables"
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - variables
+              properties:
+                variables:
+                  type: object
+            example:
+              variables:
+                orderAmount: 150.00
+                approved: true
+      responses:
+        204:
+          description: Variables updated
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /process-instances/{processInstanceKey}/variables/{variableName}:
+    delete:
+      operationId: deleteProcessInstanceVariable
+      summary: "Delete a process instance variable"
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+        - name: variableName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        204:
+          description: Variable deleted
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Variable not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /jobs:
     get:
       operationId: getJobs
       tags:
         - job
       summary: Get list of jobs on partitions
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X GET "http://localhost:8080/v1/jobs?jobType=service-task&state=active&page=1&size=10"
       parameters:
         - name: jobType
           in: query
@@ -942,6 +1170,17 @@ paths:
           schema:
             $ref: "#/components/schemas/JobState"
           example: "active"
+        - name: assignee
+          in: query
+          schema:
+            type: string
+          description: Filter by assignee
+        - name: processInstanceKey
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by process instance
         - name: page
           in: query
           schema:
@@ -956,6 +1195,18 @@ paths:
             format: int32
             default: 10
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, key, type, state]
+          description: Sort field
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of jobs on partitions
@@ -1005,39 +1256,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /jobs/{jobKey}:
+    get:
+      operationId: getJob
+      summary: "Get job details"
+      tags:
+        - job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        200:
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}/complete:
     post:
       operationId: completeJob
       tags:
         - job
       summary: Complete a job
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/jobs \
-              -H "Content-Type: application/json" \
-              -d '{
-                "jobKey": "123456789",
-                "variables": {
-                  "result": "success",
-                  "processedItems": 42
-                }
-              }'
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - jobKey
               properties:
-                jobKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
                 variables:
                   type: object
             example:
-              jobKey: "4503599627370540"
               variables:
                 result: "success"
                 transactionId: "tx-789-xyz"
@@ -1064,19 +1344,6 @@ paths:
       tags:
         - message
       summary: Publish a message
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/messages \
-              -H "Content-Type: application/json" \
-              -d '{
-                "correlationKey": "instance-key-789",
-                "messageName": "payment-received",
-                "variables": {
-                  "paymentId": "123456789",
-                  "amount": 500
-                }
-              }'
       requestBody:
         required: true
         content:
@@ -1089,13 +1356,12 @@ paths:
               properties:
                 correlationKey:
                   type: string
-                  pattern: '^\d{15,20}$'
                 messageName:
                   type: string
                 variables:
                   type: object
             example:
-              correlationKey: "4503599627370501"
+              correlationKey: "011-235-813"
               messageName: "payment-received"
               variables:
                 paymentId: "pay-123-abc"
@@ -1124,18 +1390,14 @@ paths:
       tags:
         - incident
       summary: Resolve an incident
-      x-code-samples:
-        - lang: curl
-          source: |
-            curl -X POST http://localhost:8080/v1/incidents/123456789/resolve
       parameters:
         - name: incidentKey
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\d{15,20}$'
-          example: "4503599627370530"
+            type: integer
+            format: int64
+          example: 4503599627370530
       responses:
         201:
           description: Incident resolved
@@ -1170,8 +1432,8 @@ paths:
                 - startingElementIds
               properties:
                 processDefinitionKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                 startingElementIds:
@@ -1180,12 +1442,12 @@ paths:
                   items:
                     type: string
             example:
-              processDefinitionKey: "4503599627370498"
+              processDefinitionKey: 4503599627370498
               variables:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: [ "flowNode-1","flowNode-2" ]
+              startingElementIds: ["flowNode-1", "flowNode-2"]
       responses:
         201:
           description: Process instance created
@@ -1229,8 +1491,8 @@ paths:
                 - processInstanceKey
               properties:
                 processInstanceKey:
-                  type: string
-                  pattern: '^\d{15,20}$'
+                  type: integer
+                  format: int64
                 variables:
                   type: object
                   description: "Sets process instance variables."
@@ -1289,7 +1551,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to profile
       responses:
         200:
@@ -1312,7 +1574,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-zA-Z0-9-_]+$'
+            pattern: "^[a-zA-Z0-9-_]+$"
           description: ID of the node to stop profiling
       responses:
         200:
@@ -1334,6 +1596,146 @@ paths:
 
 components:
   schemas:
+    DecisionInstancePartitionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - partitions
+          properties:
+            partitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartitionDecisionInstances"
+        - $ref: "#/components/schemas/PartitionedPageMetadata"
+    PartitionDecisionInstances:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        count:
+          type: integer
+          description: "Total decision instances in this partition"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DecisionInstanceSummary"
+    DecisionInstanceSummary:
+      type: object
+      required:
+        - key
+        - dmnResourceDefinitionKey
+        - evaluatedAt
+      properties:
+        key:
+          type: integer
+          format: int64
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        flowElementInstanceKey:
+          type: integer
+          format: int64
+          description: "Key of the flow element instance that triggered this decision"
+        evaluatedAt:
+          type: string
+          format: date-time
+    DecisionInstanceDetail:
+      type: object
+      required:
+        - key
+        - dmnResourceDefinitionKey
+        - evaluatedAt
+        - evaluatedDecisions
+      properties:
+        key:
+          type: integer
+          format: int64
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        flowElementInstanceKey:
+          type: integer
+          format: int64
+          description: "Key of the flow element instance that triggered this decision"
+        evaluatedAt:
+          type: string
+          format: date-time
+        evaluatedDecisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedDecision"
+        decisionOutput:
+          type: string
+          format: json
+          x-go-type: json.RawMessage
+          description: "Final output of the requested decision"
+    EvaluatedDecision:
+      type: object
+      properties:
+        decisionId:
+          type: string
+        decisionName:
+          type: string
+        decisionType:
+          type: string
+          enum: [ DECISION_TABLE, LITERAL_EXPRESSION ]
+        evaluationOrder:
+          type: integer
+          description: "Order in which this decision was evaluated"
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedInput"
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedOutput"
+        matchedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchedRule"
+          description: "For DECISION_TABLE type only"
+    EvaluatedInput:
+      type: object
+      properties:
+        inputId:
+          type: string
+        inputName:
+          type: string
+        inputExpression:
+          type: string
+        inputValue:
+          description: "The evaluated input value (any type)"
+    EvaluatedOutput:
+      type: object
+      properties:
+        outputId:
+          type: string
+        outputName:
+          type: string
+        outputValue:
+          description: "The output value (any type)"
+    MatchedRule:
+      type: object
+      properties:
+        ruleId:
+          type: string
+        ruleIndex:
+          type: integer
+        evaluatedOutputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluatedOutput"
     PartitionedPageMetadata:
       type: object
       required:
@@ -1386,7 +1788,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProcessInstance"
-    DecisionDefinitionsPage:
+    DmnResourceDefinitionsPage:
       type: object
       allOf:
         - type: object
@@ -1396,28 +1798,31 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/DecisionDefinitionSimple"
+                $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - $ref: "#/components/schemas/PageMetadata"
-    DecisionDefinitionSimple:
+    DmnResourceDefinitionSimple:
       type: object
       required:
         - key
         - version
-        - decisionDefinitionId
+        - dmnResourceDefinitionId
+        - dmnDefinitionName
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
-        decisionDefinitionId:
+        dmnResourceDefinitionId:
           type: string
-    DecisionDefinitionDetail:
+        dmnDefinitionName:
+          type: string
+    DmnResourceDefinitionDetail:
       type: object
       required:
         - dmnData
       allOf:
-        - $ref: "#/components/schemas/DecisionDefinitionSimple"
+        - $ref: "#/components/schemas/DmnResourceDefinitionSimple"
         - type: object
           properties:
             dmnData:
@@ -1425,15 +1830,18 @@ components:
     EvaluatedDRDResult:
       type: object
       required:
+        - decisionInstanceKey
         - evaluatedDecisions
         - decisionOutput
       properties:
+        decisionInstanceKey:
+          type: integer
+          format: int64
         evaluatedDecisions:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput:
-          type: object
+        decisionOutput: {}
     EvaluatedDecisionResult:
       type: object
       required:
@@ -1441,8 +1849,8 @@ components:
         - decisionName
         - decisionType
         - decisionDefinitionVersion
-        - decisionDefinitionKey
-        - decisionDefinitionId
+        - dmnResourceDefinitionKey
+        - dmnResourceDefinitionId
         - matchedRules
         - decisionOutput
         - evaluatedInputs
@@ -1455,10 +1863,10 @@ components:
           type: string
         decisionDefinitionVersion:
           type: integer
-        decisionDefinitionKey:
-          type: string
-          pattern: '^\d{15,20}$'
-        decisionDefinitionId:
+        dmnResourceDefinitionKey:
+          type: integer
+          format: int64
+        dmnResourceDefinitionId:
           type: string
         matchedRules:
           type: array
@@ -1499,8 +1907,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue:
-          type: object
+        inputValue: {}
     EvaluatedDecisionOutput:
       type: object
       required:
@@ -1534,12 +1941,15 @@ components:
         - bpmnProcessId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         version:
           type: integer
         bpmnProcessId:
           type: string
+        bpmnProcessName:
+          type: string
+          description: "Process name from BPMN"
     ProcessDefinitionDetail:
       type: object
       required:
@@ -1573,11 +1983,15 @@ components:
         - activeElementInstances
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processDefinitionKey:
+          type: integer
+          format: int64
+        bpmnProcessId:
           type: string
-          pattern: '^\d{15,20}$'
+        businessKey:
+          type: string
         createdAt:
           type: string
           format: date-time
@@ -1587,6 +2001,10 @@ components:
             - active
             - completed
             - terminated
+            - failed
+        parentProcessInstanceKey:
+          type: integer
+          format: int64
         variables:
           type: object
         activeElementInstances:
@@ -1641,15 +2059,15 @@ components:
         - variables
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         type:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         state:
           $ref: "#/components/schemas/JobState"
         createdAt:
@@ -1657,6 +2075,8 @@ components:
           format: date-time
         variables:
           type: object
+        assignee:
+          type: string
     JobState:
       type: string
       enum:
@@ -1673,8 +2093,8 @@ components:
         - elementId
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1698,8 +2118,8 @@ components:
         - elementInstanceKey
       properties:
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
       example:
         elementId: "flow-node-1"
     StartElementInstanceData:
@@ -1721,11 +2141,11 @@ components:
         - elementId
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1755,16 +2175,16 @@ components:
         - executionToken
       properties:
         key:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         elementId:
           type: string
         processInstanceKey:
-          type: string
-          pattern: '^\d{15,20}$'
+          type: integer
+          format: int64
         message:
           type: string
         createdAt:
@@ -1774,7 +2194,8 @@ components:
           type: string
           format: date-time
         executionToken:
-          type: string
+          type: integer
+          format: int64
     Error:
       type: object
       required:
@@ -1788,3 +2209,11 @@ components:
       example:
         code: "NOT_FOUND"
         message: "Process instance with key 4503599627370501 not found"
+  parameters:
+    sortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+      description: "Sort direction"

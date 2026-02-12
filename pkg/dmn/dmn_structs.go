@@ -1,8 +1,9 @@
 package dmn
 
 type EvaluatedDRDResult struct {
-	EvaluatedDecisions []EvaluatedDecisionResult
-	DecisionOutput     map[string]interface{}
+	EvaluatedDecisions  []EvaluatedDecisionResult
+	DecisionOutput      interface{}
+	DecisionInstanceKey int64
 }
 
 type EvaluatedDecisionResult struct {
@@ -11,7 +12,7 @@ type EvaluatedDecisionResult struct {
 	DecisionType              string
 	DecisionDefinitionVersion int64
 	DecisionDefinitionKey     int64
-	DecisionDefinitionId      string
+	DmnResourceDefinitionId   string
 	MatchedRules              []EvaluatedRule
 	DecisionOutput            map[string]interface{}
 	EvaluatedInputs           []EvaluatedInput

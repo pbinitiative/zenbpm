@@ -8,7 +8,7 @@ import (
 
 // ActivatedJob is a struct to provide information for registered task handler
 type activatedJob struct {
-	processInstanceInfo      *runtime.ProcessInstance
+	processInstanceInfo      runtime.ProcessInstance
 	completeHandler          func()
 	failHandler              func(reason string)
 	key                      int64
@@ -18,7 +18,8 @@ type activatedJob struct {
 	processDefinitionKey     int64
 	elementId                string
 	createdAt                time.Time
-	variableHolder           runtime.VariableHolder
+	localVariables           map[string]interface{}
+	outputVariables          map[string]interface{}
 }
 
 // ActivatedJob represents an abstraction for the activated job
@@ -45,11 +46,12 @@ type ActivatedJob interface {
 	// Variable from the process instance's variable context
 	Variable(key string) interface{}
 
-	// Variables from the jobs instance's variable context
-	Variables() runtime.VariableHolder
-
 	// SetVariable in the variables context of the given process instance
-	SetVariable(key string, value interface{})
+	SetOutputVariable(key string, value interface{})
+
+	GetLocalVariables() map[string]interface{}
+
+	GetOutputVariables() map[string]interface{}
 
 	// InstanceKey get instance key from ProcessInfo
 	InstanceKey() int64
@@ -73,7 +75,7 @@ func (aj *activatedJob) CreatedAt() time.Time {
 
 // InstanceKey implements ActivatedJob
 func (aj *activatedJob) InstanceKey() int64 {
-	return aj.processInstanceInfo.GetInstanceKey()
+	return aj.processInstanceInfo.ProcessInstance().GetInstanceKey()
 }
 
 // ElementId implements ActivatedJob
@@ -108,16 +110,20 @@ func (aj *activatedJob) ProcessInstanceKey() int64 {
 
 // Variable implements ActivatedJob
 func (aj *activatedJob) Variable(key string) interface{} {
-	return aj.variableHolder.GetVariable(key)
+	return aj.localVariables[key]
 }
 
-func (aj *activatedJob) Variables() runtime.VariableHolder {
-	return aj.variableHolder
+// SetOutputVariable implements ActivatedJob
+func (aj *activatedJob) SetOutputVariable(key string, value interface{}) {
+	aj.outputVariables[key] = value
 }
 
-// SetVariable implements ActivatedJob
-func (aj *activatedJob) SetVariable(key string, value interface{}) {
-	aj.variableHolder.SetVariable(key, value)
+func (aj *activatedJob) GetLocalVariables() map[string]interface{} {
+	return aj.localVariables
+}
+
+func (aj *activatedJob) GetOutputVariables() map[string]interface{} {
+	return aj.outputVariables
 }
 
 // Fail implements ActivatedJob

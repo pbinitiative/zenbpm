@@ -1,33 +1,32 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiEvaluateDecision(t *testing.T) {
-	var result public.EvaluatedDRDResult
-	var definition public.DecisionDefinitionSimple
-	err := deployDecisionDefinition(t, "can-autoliquidate-rule.dmn")
+	var result *zenclient.EvaluatedDRDResult
+	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
+	err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)
 	for _, def := range definitions {
-		if def.DecisionDefinitionId == "example_canAutoLiquidate" {
-			definition = def
+		if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
+			dmnResourceDefinition = def
 			break
 		}
 	}
 
-	t.Run("evaluate decision BindingType Latest with DecisionDefinitionId", func(t *testing.T) {
+	t.Run("evaluate decision BindingType Latest with DmnResourceDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Latest,
-			&definition.DecisionDefinitionId,
+			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{
@@ -43,7 +42,7 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	t.Run("evaluate decision BindingType Latest without DecisionDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Latest,
+			zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
 			nil,
 			"example_canAutoLiquidateRule",
 			nil,
@@ -61,8 +60,8 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		versionTag := "versionTagTest"
 		result, err = evaluateDecision(
 			t,
-			public.VersionTag,
-			&definition.DecisionDefinitionId,
+			zenclient.EvaluateDecisionJSONBodyBindingTypeVersionTag,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			&versionTag,
 			map[string]any{
@@ -78,8 +77,8 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	t.Run("evaluate decision BindingType Deployment with DecisionDefinitionId", func(t *testing.T) {
 		result, err = evaluateDecision(
 			t,
-			public.Deployment,
-			&definition.DecisionDefinitionId,
+			zenclient.EvaluateDecisionJSONBodyBindingTypeDeployment,
+			&dmnResourceDefinition.DmnResourceDefinitionId,
 			"example_canAutoLiquidateRule",
 			nil,
 			map[string]any{
@@ -91,26 +90,19 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	})
 }
 
-func evaluateDecision(t testing.TB, bindingType public.EvaluateDecisionJSONBodyBindingType, decisionDefinitionId *string, decisionId string, versionTag *string, variables map[string]any) (public.EvaluatedDRDResult, error) {
-	req := public.EvaluateDecisionJSONRequestBody{
-		BindingType:          bindingType,
-		DecisionDefinitionId: decisionDefinitionId,
-		Variables:            &variables,
-		VersionTag:           versionTag,
+func evaluateDecision(t testing.TB, bindingType zenclient.EvaluateDecisionJSONBodyBindingType, dmnResourceDefinitionId *string, decisionId string, versionTag *string, variables map[string]any) (*zenclient.EvaluatedDRDResult, error) {
+	req := zenclient.EvaluateDecisionJSONRequestBody{
+		BindingType:             bindingType,
+		DmnResourceDefinitionId: dmnResourceDefinitionId,
+		Variables:               &variables,
+		VersionTag:              versionTag,
 	}
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/decisions/%s/evaluate", decisionId)).
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
+	resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), decisionId, req)
 	if err != nil {
-		return public.EvaluatedDRDResult{}, fmt.Errorf("failed to evaluate decision: %w", err)
+		return nil, fmt.Errorf("failed to evaluate decision: %w", err)
 	}
-	instance := public.EvaluatedDRDResult{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return public.EvaluatedDRDResult{}, fmt.Errorf("failed to unmarshal response: %w", err)
+	if resp.JSON500 != nil {
+		return nil, fmt.Errorf("failed to evaluate decision: %v", resp.JSON500)
 	}
-	return instance, nil
+	return resp.JSON200, nil
 }

@@ -35,6 +35,22 @@ FROM
 WHERE
     process_instance_key = @process_instance_key;
 
+-- name: FindIncidentsPageByProcessInstanceKey :many
+SELECT
+    *,
+    COUNT(*) OVER () AS total_count
+FROM
+    incident
+WHERE
+    process_instance_key = @process_instance_key
+    AND CASE 
+        WHEN CAST(sqlc.narg('state') AS TEXT) IS NULL THEN 1 = 1
+        WHEN CAST(sqlc.narg('state') AS TEXT)  = 'resolved' THEN resolved_at IS NOT NULL
+        WHEN CAST(sqlc.narg('state') AS TEXT)  = 'unresolved' THEN resolved_at IS NULL
+        ELSE 1 = 1  -- return all if state is not 'resolved' or 'unresolved'
+    END
+LIMIT @size OFFSET @offset;
+
 -- name: FindIncidentsByExecutionTokenKey :many
 SELECT
     *

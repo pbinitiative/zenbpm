@@ -26,7 +26,8 @@ type Storage interface {
 	TokenStorageReader
 	TokenStorageWriter
 	DecisionStorage
-	FlowElementHistoryWriter
+	FlowElementInstanceReader
+	FlowElementInstanceWriter
 	IncidentStorageReader
 	IncidentStorageWriter
 
@@ -35,10 +36,12 @@ type Storage interface {
 }
 
 type DecisionStorage interface {
+	DmnResourceDefinitionStorageReader
+	DmnResourceDefinitionStorageWriter
 	DecisionDefinitionStorageReader
 	DecisionDefinitionStorageWriter
-	DecisionStorageReader
-	DecisionStorageWriter
+	DecisionInstanceStorageReader
+	DecisionInstanceStorageWriter
 
 	GenerateId() int64
 }
@@ -51,47 +54,57 @@ type Batch interface {
 	JobStorageWriter
 	MessageStorageWriter
 	TokenStorageWriter
-	FlowElementHistoryWriter
+	FlowElementInstanceWriter
 	IncidentStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
+
 	// AddPreFlushAction registers a function f that will be called after a before flush. If error is returned flush is not performed
 	AddPreFlushAction(ctx context.Context, f func() error)
+
 	// AddPostFlushAction registers a function f that will be called after a successful flush has been performed
 	AddPostFlushAction(ctx context.Context, f func())
 }
 
-type DecisionStorageReader interface {
-	GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error)
-
-	GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error)
-
-	GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error)
-
-	GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error)
-
-	GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error)
-}
-
-type DecisionStorageWriter interface {
-	SaveDecision(ctx context.Context, decision dmnruntime.Decision) error
-}
-
 type DecisionDefinitionStorageReader interface {
-	FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error)
+	GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error)
 
-	FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
+	GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error)
 
-	// FindDecisionDefinitionsById return zero or many registered DecisionDefinitions with given ID
-	// result array is ordered by version number desc
-	FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error)
+	GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error)
+
+	GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error)
+
+	GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error)
 }
 
 type DecisionDefinitionStorageWriter interface {
-	// SaveDecisionDefinition persists a DecisionDefinition
+	SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error
+}
+
+type DmnResourceDefinitionStorageReader interface {
+	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error)
+
+	FindDmnResourceDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error)
+
+	// FindDmnResourceDefinitionsById return zero or many registered DmnResourceDefinitions with given ID
+	// result array is ordered by version number desc
+	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error)
+}
+
+type DmnResourceDefinitionStorageWriter interface {
+	// SaveDmnResourceDefinition persists a DmnResourceDefinition
 	// and potentially overwrites prior data stored with the given DecisionKey
-	SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error
+	SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error
+}
+
+type DecisionInstanceStorageWriter interface {
+	SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error
+}
+
+type DecisionInstanceStorageReader interface {
+	FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error)
 }
 
 type ProcessDefinitionStorageReader interface {
@@ -113,6 +126,7 @@ type ProcessDefinitionStorageWriter interface {
 type ProcessInstanceStorageReader interface {
 	FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error)
 	FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error)
+	RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error)
 }
 
 type ProcessInstanceStorageWriter interface {
@@ -122,6 +136,8 @@ type ProcessInstanceStorageWriter interface {
 }
 
 type TimerStorageReader interface {
+	GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, error)
+
 	// FindTimersTo returns a list of timers that have dueDate before end and are in CREATED state
 	FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error)
 
@@ -175,15 +191,24 @@ type MessageStorageWriter interface {
 type TokenStorageReader interface {
 	GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error)
 	GetActiveTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error)
+	GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error)
 }
 
 type TokenStorageWriter interface {
 	SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error
 }
 
-type FlowElementHistoryWriter interface {
-	SaveFlowElementHistory(ctx context.Context, item bpmnruntime.FlowElementHistoryItem) error
+type FlowElementInstanceReader interface {
+	GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int64, error)
+	GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error)
+	GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error)
+}
+
+type FlowElementInstanceWriter interface {
+	SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
+	UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error
 }
 
 type IncidentStorageReader interface {

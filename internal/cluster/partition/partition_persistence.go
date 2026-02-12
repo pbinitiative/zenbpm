@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ type DB struct {
 	Partition              uint32
 	tracer                 trace.Tracer
 	pdCache                *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
-	ddCache                *expirable.LRU[int64, dmnruntime.DecisionDefinition]
+	drdCache               *expirable.LRU[int64, dmnruntime.DmnResourceDefinition]
 	client                 *client.ClientManager
 	zenState               func() state.Cluster
 	historyDeleteThreshold int
@@ -92,7 +93,7 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		tracer:                 otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		Partition:              partition,
 		pdCache:                expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Duration(cfg.ProcDefCacheTTL)),
-		ddCache:                expirable.NewLRU[int64, dmnruntime.DecisionDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
+		drdCache:               expirable.NewLRU[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
 		client:                 client,
 		zenState:               zenState,
 		historyDeleteThreshold: 1000,
@@ -120,9 +121,17 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		Int64: currTime.Unix(),
 		Valid: true,
 	})
+	processesNullInt64 := make([]ssql.NullInt64, 0)
+	for _, processId := range processes {
+		processesNullInt64 = append(processesNullInt64, ssql.NullInt64{
+			Int64: processId,
+			Valid: true,
+		})
+	}
 	var err error
 	if len(processes) > rq.historyDeleteThreshold {
-		err = errors.Join(err, rq.Queries.DeleteFlowElementHistory(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
+		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
@@ -378,49 +387,51 @@ func (rq *DB) NewBatch() storage.Batch {
 	return batch
 }
 
-var _ storage.DecisionStorageReader = &DB{}
+var _ storage.DecisionDefinitionStorageReader = &DB{}
 
-func (rq *DB) GetLatestDecisionById(ctx context.Context, decisionId string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionById(ctx, decisionId)
+func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	decisionDefinition, err := rq.Queries.FindLatestDecisionDefinitionById(ctx, decisionId)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision by id: %w", err)
+		return res, fmt.Errorf("failed to find latest decision definition by id: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Key:                      decisionDefinition.Key,
+		Version:                  decisionDefinition.Version,
+		Id:                       decisionDefinition.DecisionID,
+		VersionTag:               decisionDefinition.VersionTag,
+		DmnResourceDefinitionId:  decisionDefinition.DmnResourceDefinitionID,
+		DmnResourceDefinitionKey: decisionDefinition.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetDecisionsById(ctx context.Context, decisionId string) ([]dmnruntime.Decision, error) {
-	dbDecisions, err := rq.Queries.FindDecisionsById(ctx, decisionId)
+func (rq *DB) GetDecisionDefinitionsById(ctx context.Context, decisionId string) ([]dmnruntime.DecisionDefinition, error) {
+	decisionDefinitions, err := rq.Queries.FindDecisionDefinitionsById(ctx, decisionId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find decisions by id: %w", err)
 	}
 
-	res := make([]dmnruntime.Decision, len(dbDecisions))
-	for i, dec := range dbDecisions {
-		res[i] = dmnruntime.Decision{
-			Version:               dec.Version,
-			Id:                    dec.DecisionID,
-			VersionTag:            dec.VersionTag,
-			DecisionDefinitionId:  dec.DecisionDefinitionID,
-			DecisionDefinitionKey: dec.DecisionDefinitionKey,
+	res := make([]dmnruntime.DecisionDefinition, len(decisionDefinitions))
+	for i, dec := range decisionDefinitions {
+		res[i] = dmnruntime.DecisionDefinition{
+			Key:                      dec.Key,
+			Version:                  dec.Version,
+			Id:                       dec.DecisionID,
+			VersionTag:               dec.VersionTag,
+			DmnResourceDefinitionId:  dec.DmnResourceDefinitionID,
+			DmnResourceDefinitionKey: dec.DmnResourceDefinitionKey,
 		}
 	}
 	return res, nil
 }
 
-func (rq *DB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionByIdAndVersionTag(ctx,
-		sql.FindLatestDecisionByIdAndVersionTagParams{
+func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, decisionId string, versionTag string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndVersionTag(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndVersionTagParams{
 			DecisionID: decisionId,
 			VersionTag: versionTag,
 		},
@@ -429,76 +440,80 @@ func (rq *DB) GetLatestDecisionByIdAndVersionTag(ctx context.Context, decisionId
 		return res, fmt.Errorf("failed to find latest decision by id and version tag: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetLatestDecisionByIdAndDecisionDefinitionId(ctx context.Context, decisionId string, decisionDefinitionId string) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindLatestDecisionByIdAndDecisionDefinitionId(ctx,
-		sql.FindLatestDecisionByIdAndDecisionDefinitionIdParams{
-			DecisionID:           decisionId,
-			DecisionDefinitionID: decisionDefinitionId,
+func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx context.Context, decisionId string, dmnResourceDefinitionId string) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx,
+		sql.FindLatestDecisionDefinitionByIdAndDmnResourceDefinitionIdParams{
+			DecisionID:              decisionId,
+			DmnResourceDefinitionID: dmnResourceDefinitionId,
 		},
 	)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision by id and decisionDefinitionId: %w", err)
+		return res, fmt.Errorf("failed to find latest decision by id and dmnResourceDefinitionId: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-func (rq *DB) GetDecisionByIdAndDecisionDefinitionKey(ctx context.Context, decisionId string, decisionDefinitionKey int64) (dmnruntime.Decision, error) {
-	var res dmnruntime.Decision
-	dbDecision, err := rq.Queries.FindDecisionByIdAndDecisionDefinitionKey(
+func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.Context, decisionId string, dmnResourceDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
+	var res dmnruntime.DecisionDefinition
+	dbDecision, err := rq.Queries.FindDecisionDefinitionByIdAndDmnResourceDefinitionKey(
 		ctx,
-		sql.FindDecisionByIdAndDecisionDefinitionKeyParams{
-			DecisionDefinitionKey: decisionDefinitionKey,
-			DecisionID:            decisionId,
+		sql.FindDecisionDefinitionByIdAndDmnResourceDefinitionKeyParams{
+			DmnResourceDefinitionKey: dmnResourceDefinitionKey,
+			DecisionID:               decisionId,
 		})
 	if err != nil {
 		return res, fmt.Errorf("failed to find decision by key: %w", err)
 	}
 
-	res = dmnruntime.Decision{
-		Version:               dbDecision.Version,
-		Id:                    dbDecision.DecisionID,
-		VersionTag:            dbDecision.VersionTag,
-		DecisionDefinitionId:  dbDecision.DecisionDefinitionID,
-		DecisionDefinitionKey: dbDecision.DecisionDefinitionKey,
+	res = dmnruntime.DecisionDefinition{
+		Key:                      dbDecision.Key,
+		Version:                  dbDecision.Version,
+		Id:                       dbDecision.DecisionID,
+		VersionTag:               dbDecision.VersionTag,
+		DmnResourceDefinitionId:  dbDecision.DmnResourceDefinitionID,
+		DmnResourceDefinitionKey: dbDecision.DmnResourceDefinitionKey,
 	}
 
 	return res, nil
 }
 
-var _ storage.DecisionStorageWriter = &DB{}
+var _ storage.DecisionDefinitionStorageWriter = &DB{}
 
-func (rq *DB) SaveDecision(ctx context.Context, decision dmnruntime.Decision) error {
-	return SaveDecisionWith(ctx, rq.Queries, decision)
+func (rq *DB) SaveDecisionDefinition(ctx context.Context, decision dmnruntime.DecisionDefinition) error {
+	return SaveDecisionDefinitionWith(ctx, rq.Queries, decision)
 }
 
-func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.Decision) error {
-	err := db.SaveDecision(ctx, sql.SaveDecisionParams{
-		Version:               decision.Version,
-		DecisionID:            decision.Id,
-		VersionTag:            decision.VersionTag,
-		DecisionDefinitionID:  decision.DecisionDefinitionId,
-		DecisionDefinitionKey: decision.DecisionDefinitionKey,
+func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.DecisionDefinition) error {
+	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
+		Key:                      decision.Key,
+		Version:                  decision.Version,
+		DecisionID:               decision.Id,
+		VersionTag:               decision.VersionTag,
+		DmnResourceDefinitionID:  decision.DmnResourceDefinitionId,
+		DmnResourceDefinitionKey: decision.DmnResourceDefinitionKey,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save decision: %w", err)
@@ -506,37 +521,37 @@ func SaveDecisionWith(ctx context.Context, db *sql.Queries, decision dmnruntime.
 	return nil
 }
 
-var _ storage.DecisionDefinitionStorageWriter = &DB{}
+var _ storage.DmnResourceDefinitionStorageWriter = &DB{}
 
-func (rq *DB) SaveDecisionDefinition(ctx context.Context, definition dmnruntime.DecisionDefinition) error {
-	return SaveDecisionDefinitionWith(ctx, rq.Queries, definition)
+func (rq *DB) SaveDmnResourceDefinition(ctx context.Context, definition dmnruntime.DmnResourceDefinition) error {
+	return SaveDmnResourceDefinitionWith(ctx, rq.Queries, definition)
 }
 
-func SaveDecisionDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DecisionDefinition) error {
-	err := db.SaveDecisionDefinition(ctx, sql.SaveDecisionDefinitionParams{
-		DmnID:           definition.Id,
-		Key:             definition.Key,
-		Version:         definition.Version,
-		DmnData:         string(definition.DmnData),
-		DmnChecksum:     definition.DmnChecksum[:],
-		DmnResourceName: definition.DmnResourceName,
+func SaveDmnResourceDefinitionWith(ctx context.Context, db *sql.Queries, definition dmnruntime.DmnResourceDefinition) error {
+	err := db.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
+		DmnResourceDefinitionID: definition.Id,
+		Key:                     definition.Key,
+		Version:                 definition.Version,
+		DmnData:                 string(definition.DmnData),
+		DmnChecksum:             definition.DmnChecksum[:],
+		DmnDefinitionName:       definition.DmnDefinitionName,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save decision definition: %w", err)
+		return fmt.Errorf("failed to save dmn resource definition: %w", err)
 	}
 	return nil
 }
 
-var _ storage.DecisionDefinitionStorageReader = &DB{}
+var _ storage.DmnResourceDefinitionStorageReader = &DB{}
 
-func (rq *DB) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefinitionId string) (dmnruntime.DecisionDefinition, error) {
-	var res dmnruntime.DecisionDefinition
-	dbDefinition, err := rq.Queries.FindLatestDecisionDefinitionById(ctx, decisionDefinitionId)
+func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionId string) (dmnruntime.DmnResourceDefinition, error) {
+	var res dmnruntime.DmnResourceDefinition
+	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, dmnResourceDefinitionId)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision definition: %w", err)
+		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
 
-	dd, ok := rq.ddCache.Get(dbDefinition.Key)
+	dd, ok := rq.drdCache.Get(dbDefinition.Key)
 	if ok {
 		return dd, nil
 	}
@@ -547,65 +562,65 @@ func (rq *DB) FindLatestDecisionDefinitionById(ctx context.Context, decisionDefi
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
-	res = dmnruntime.DecisionDefinition{
-		Id:              dbDefinition.DmnID,
-		Version:         dbDefinition.Version,
-		Key:             dbDefinition.Key,
-		Definitions:     definitions,
-		DmnData:         []byte(dbDefinition.DmnData),
-		DmnResourceName: dbDefinition.DmnResourceName,
-		DmnChecksum:     [16]byte(dbDefinition.DmnChecksum),
+	res = dmnruntime.DmnResourceDefinition{
+		Id:                dbDefinition.DmnResourceDefinitionID,
+		Version:           dbDefinition.Version,
+		Key:               dbDefinition.Key,
+		Definitions:       definitions,
+		DmnData:           []byte(dbDefinition.DmnData),
+		DmnDefinitionName: dbDefinition.DmnDefinitionName,
+		DmnChecksum:       [16]byte(dbDefinition.DmnChecksum),
 	}
 
-	rq.ddCache.Add(dbDefinition.Key, res)
+	rq.drdCache.Add(dbDefinition.Key, res)
 
 	return res, nil
 }
 
-func (rq *DB) FindDecisionDefinitionByKey(ctx context.Context, decisionDefinitionKey int64) (dmnruntime.DecisionDefinition, error) {
-	dd, ok := rq.ddCache.Get(decisionDefinitionKey)
+func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDefinitionKey int64) (dmnruntime.DmnResourceDefinition, error) {
+	dd, ok := rq.drdCache.Get(dmnResourceDefinitionKey)
 	if ok {
 		return dd, nil
 	}
 
-	var res dmnruntime.DecisionDefinition
-	dbDefinition, err := rq.Queries.FindDecisionDefinitionByKey(ctx, decisionDefinitionKey)
+	var res dmnruntime.DmnResourceDefinition
+	drd, err := rq.Queries.FindDmnResourceDefinitionByKey(ctx, dmnResourceDefinitionKey)
 	if err != nil {
-		return res, fmt.Errorf("failed to find latest decision definition: %w", err)
+		return res, fmt.Errorf("failed to find latest dmn resource definition: %w", err)
 	}
 
 	var definitions dmn.TDefinitions
-	err = xml.Unmarshal([]byte(dbDefinition.DmnData), &definitions)
+	err = xml.Unmarshal([]byte(drd.DmnData), &definitions)
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 
-	res = dmnruntime.DecisionDefinition{
-		Id:              dbDefinition.DmnID,
-		Version:         dbDefinition.Version,
-		Key:             dbDefinition.Key,
-		Definitions:     definitions,
-		DmnData:         []byte(dbDefinition.DmnData),
-		DmnResourceName: dbDefinition.DmnResourceName,
-		DmnChecksum:     [16]byte(dbDefinition.DmnChecksum),
+	res = dmnruntime.DmnResourceDefinition{
+		Id:                drd.DmnResourceDefinitionID,
+		Version:           drd.Version,
+		Key:               drd.Key,
+		Definitions:       definitions,
+		DmnData:           []byte(drd.DmnData),
+		DmnDefinitionName: drd.DmnDefinitionName,
+		DmnChecksum:       [16]byte(drd.DmnChecksum),
 	}
 
-	rq.ddCache.Add(decisionDefinitionKey, res)
+	rq.drdCache.Add(dmnResourceDefinitionKey, res)
 
 	return res, nil
 }
 
-func (rq *DB) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitionId string) ([]dmnruntime.DecisionDefinition, error) {
-	dbDefinitions, err := rq.Queries.FindDecisionDefinitionsById(ctx, decisionDefinitionId)
+func (rq *DB) FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionId string) ([]dmnruntime.DmnResourceDefinition, error) {
+	drds, err := rq.Queries.FindDmnResourceDefinitionsById(ctx, dmnResourceDefinitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find decision definitions by id: %w", err)
+		return nil, fmt.Errorf("failed to find dmn resource definitions by id: %w", err)
 	}
 
-	res := make([]dmnruntime.DecisionDefinition, len(dbDefinitions))
-	for i, def := range dbDefinitions {
-		dd, ok := rq.ddCache.Get(def.Key)
+	res := make([]dmnruntime.DmnResourceDefinition, len(drds))
+	for i, def := range drds {
+		drd, ok := rq.drdCache.Get(def.Key)
 		if ok {
-			res[i] = dd
+			res[i] = drd
 			continue
 		}
 
@@ -614,19 +629,61 @@ func (rq *DB) FindDecisionDefinitionsById(ctx context.Context, decisionDefinitio
 		if err != nil {
 			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
 		}
-		res[i] = dmnruntime.DecisionDefinition{
-			Id:              def.DmnID,
-			Version:         def.Version,
-			Key:             def.Key,
-			Definitions:     definitions,
-			DmnData:         []byte(def.DmnData),
-			DmnResourceName: def.DmnResourceName,
-			DmnChecksum:     [16]byte(def.DmnChecksum),
+		res[i] = dmnruntime.DmnResourceDefinition{
+			Id:                def.DmnResourceDefinitionID,
+			Version:           def.Version,
+			Key:               def.Key,
+			Definitions:       definitions,
+			DmnData:           []byte(def.DmnData),
+			DmnDefinitionName: def.DmnDefinitionName,
+			DmnChecksum:       [16]byte(def.DmnChecksum),
 		}
 
-		rq.ddCache.Add(def.Key, res[i])
+		rq.drdCache.Add(def.Key, res[i])
 	}
 	return res, nil
+}
+
+var _ storage.DecisionInstanceStorageWriter = &DB{}
+
+func (rq *DB) SaveDecisionInstance(ctx context.Context, result dmnruntime.DecisionInstance) error {
+	partitionInstanceKey, pikFound := appcontext.ProcessInstanceKeyFromContext(ctx)
+	flowElementInstanceKey, feikFound := appcontext.ElementInstanceKeyFromContext(ctx)
+
+	return rq.Queries.SaveDecisionInstance(ctx, sql.SaveDecisionInstanceParams{
+		Key:                      result.Key,
+		DecisionID:               result.DecisionId,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                result.CreatedAt.UnixMilli(),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       ssql.NullInt64{Int64: partitionInstanceKey, Valid: pikFound},
+		FlowElementInstanceKey:   ssql.NullInt64{Int64: flowElementInstanceKey, Valid: feikFound},
+	})
+}
+
+var _ storage.DecisionInstanceStorageReader = &DB{}
+
+func (rq *DB) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnruntime.DecisionInstance, error) {
+	result, err := rq.Queries.FindDecisionInstanceByKey(ctx, key)
+	if err != nil {
+		return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision results by execution token ids: %w", err)
+	}
+	var processInstanceKey int64
+	if result.ProcessInstanceKey.Valid {
+		processInstanceKey = result.ProcessInstanceKey.Int64
+	}
+	return dmnruntime.DecisionInstance{
+		Key:                      result.Key,
+		DecisionId:               result.DecisionID,
+		OutputVariables:          result.OutputVariables,
+		EvaluatedDecisions:       result.EvaluatedDecisions,
+		CreatedAt:                time.UnixMilli(result.CreatedAt),
+		DmnResourceDefinitionKey: result.DmnResourceDefinitionKey,
+		DecisionDefinitionKey:    result.DecisionDefinitionKey,
+		ProcessInstanceKey:       processInstanceKey,
+	}, nil
 }
 
 var _ storage.ProcessDefinitionStorageReader = &DB{}
@@ -650,13 +707,12 @@ func (rq *DB) FindLatestProcessDefinitionById(ctx context.Context, processDefini
 	}
 
 	res = bpmnruntime.ProcessDefinition{
-		BpmnProcessId:    dbDefinition.BpmnProcessID,
-		Version:          int32(dbDefinition.Version),
-		Key:              dbDefinition.Key,
-		Definitions:      definitions,
-		BpmnData:         dbDefinition.BpmnData,
-		BpmnResourceName: dbDefinition.BpmnResourceName,
-		BpmnChecksum:     [16]byte(dbDefinition.BpmnChecksum),
+		BpmnProcessId: dbDefinition.BpmnProcessID,
+		Version:       int32(dbDefinition.Version),
+		Key:           dbDefinition.Key,
+		Definitions:   definitions,
+		BpmnData:      dbDefinition.BpmnData,
+		BpmnChecksum:  [16]byte(dbDefinition.BpmnChecksum),
 	}
 
 	rq.pdCache.Add(dbDefinition.Key, res)
@@ -683,13 +739,12 @@ func (rq *DB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionK
 	}
 
 	res = bpmnruntime.ProcessDefinition{
-		BpmnProcessId:    dbDefinition.BpmnProcessID,
-		Version:          int32(dbDefinition.Version),
-		Key:              dbDefinition.Key,
-		Definitions:      definitions,
-		BpmnData:         dbDefinition.BpmnData,
-		BpmnResourceName: dbDefinition.BpmnResourceName,
-		BpmnChecksum:     [16]byte(dbDefinition.BpmnChecksum),
+		BpmnProcessId: dbDefinition.BpmnProcessID,
+		Version:       int32(dbDefinition.Version),
+		Key:           dbDefinition.Key,
+		Definitions:   definitions,
+		BpmnData:      dbDefinition.BpmnData,
+		BpmnChecksum:  [16]byte(dbDefinition.BpmnChecksum),
 	}
 
 	rq.pdCache.Add(processDefinitionKey, res)
@@ -718,13 +773,12 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 		}
 
 		res[i] = bpmnruntime.ProcessDefinition{
-			BpmnProcessId:    def.BpmnProcessID,
-			Version:          int32(def.Version),
-			Key:              def.Key,
-			Definitions:      definitions,
-			BpmnData:         def.BpmnData,
-			BpmnResourceName: def.BpmnResourceName,
-			BpmnChecksum:     [16]byte(def.BpmnChecksum),
+			BpmnProcessId: def.BpmnProcessID,
+			Version:       int32(def.Version),
+			Key:           def.Key,
+			Definitions:   definitions,
+			BpmnData:      def.BpmnData,
+			BpmnChecksum:  [16]byte(def.BpmnChecksum),
 		}
 
 		rq.pdCache.Add(def.Key, res[i])
@@ -740,12 +794,12 @@ func (rq *DB) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.
 
 func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition bpmnruntime.ProcessDefinition) error {
 	err := db.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
-		Key:              definition.Key,
-		Version:          int64(definition.Version),
-		BpmnProcessID:    definition.BpmnProcessId,
-		BpmnData:         definition.BpmnData,
-		BpmnChecksum:     definition.BpmnChecksum[:],
-		BpmnResourceName: definition.BpmnResourceName,
+		Key:             definition.Key,
+		Version:         int64(definition.Version),
+		BpmnProcessID:   definition.BpmnProcessId,
+		BpmnData:        definition.BpmnData,
+		BpmnChecksum:    definition.BpmnChecksum[:],
+		BpmnProcessName: definition.BpmnProcessName,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process definition: %w", err)
@@ -755,10 +809,62 @@ func SaveProcessDefinitionWith(ctx context.Context, db *sql.Queries, definition 
 
 var _ storage.ProcessInstanceStorageReader = &DB{}
 
+func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) (err error) {
+	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstance.ProcessInstance().Key)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance by key: %w", err)
+	}
+
+	variables := map[string]any{}
+	err = json.Unmarshal([]byte(dbInstance.Variables), &variables)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal variables: %w", err)
+	}
+
+	var parentToken bpmnruntime.ExecutionToken
+	if dbInstance.ParentProcessExecutionToken.Valid {
+		parentToken, err = rq.GetTokenByKey(ctx, dbInstance.ParentProcessExecutionToken.Int64)
+		if err != nil {
+			return fmt.Errorf("failed to find parent process execution token by key: %w", err)
+		}
+	}
+
+	switch bpmnruntime.ProcessType(dbInstance.ProcessType) {
+	case bpmnruntime.ProcessTypeDefault:
+		processInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		processInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+	case bpmnruntime.ProcessTypeMultiInstance:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.MultiInstanceInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a MultiInstanceInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeSubProcess:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.SubProcessInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a SubProcessInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	case bpmnruntime.ProcessTypeCallActivity:
+		multiInstanceInstance, ok := processInstance.(*bpmnruntime.CallActivityInstance)
+		if !ok {
+			return fmt.Errorf("processInstance is not a CallActivityInstance")
+		}
+		multiInstanceInstance.ProcessInstance().State = bpmnruntime.ActivityState(dbInstance.State)
+		multiInstanceInstance.ProcessInstance().VariableHolder = bpmnruntime.NewVariableHolder(nil, variables)
+		multiInstanceInstance.ParentProcessExecutionToken = parentToken
+	}
+	return nil
+}
+
 func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey int64) (bpmnruntime.ProcessInstance, error) {
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
-		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to find process instance by key: %w", err)
+		return nil, fmt.Errorf("failed to find process instance by key: %w", err)
 	}
 
 	return rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
@@ -769,7 +875,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 	variables := map[string]any{}
 	err := json.Unmarshal([]byte(dbInstance.Variables), &variables)
 	if err != nil {
-		return bpmnruntime.ProcessInstance{}, fmt.Errorf("failed to unmarshal variables: %w", err)
+		return res, fmt.Errorf("failed to unmarshal variables: %w", err)
 	}
 
 	definition, err := rq.FindProcessDefinitionByKey(ctx, dbInstance.ProcessDefinitionKey)
@@ -777,36 +883,75 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 		return res, fmt.Errorf("failed to find process definition for process instance: %w", err)
 	}
 
-	var parentToken *bpmnruntime.ExecutionToken
+	var parentToken bpmnruntime.ExecutionToken
 	if dbInstance.ParentProcessExecutionToken.Valid {
-		tokens, err := rq.Queries.GetTokens(ctx, []int64{dbInstance.ParentProcessExecutionToken.Int64})
+		parentToken, err = rq.GetTokenByKey(ctx, dbInstance.ParentProcessExecutionToken.Int64)
 		if err != nil {
-			return res, fmt.Errorf("failed to find job token %d: %w", dbInstance.ParentProcessExecutionToken.Int64, err)
-		}
-		if len(tokens) > 1 {
-			return res, fmt.Errorf("more than one token found for parent process instance key (%d): %w", dbInstance.Key, err)
-		}
-		if len(tokens) == 1 {
-			parentToken = &bpmnruntime.ExecutionToken{
-				Key:                tokens[0].Key,
-				ElementInstanceKey: tokens[0].ElementInstanceKey,
-				ElementId:          tokens[0].ElementID,
-				ProcessInstanceKey: tokens[0].ProcessInstanceKey,
-				State:              bpmnruntime.TokenState(tokens[0].State),
-			}
+			return res, fmt.Errorf("failed to find parent process execution token by key: %w", err)
 		}
 	}
 
-	res = bpmnruntime.ProcessInstance{
-		Definition:                  &definition,
-		Key:                         dbInstance.Key,
-		VariableHolder:              bpmnruntime.NewVariableHolder(nil, variables),
-		CreatedAt:                   time.UnixMilli(dbInstance.CreatedAt),
-		State:                       bpmnruntime.ActivityState(dbInstance.State),
-		ParentProcessExecutionToken: parentToken,
+	var businessKey *string
+	if dbInstance.BusinessKey.Valid {
+		businessKey = ptr.To(dbInstance.BusinessKey.String)
 	}
 
-	return res, nil
+	switch bpmnruntime.ProcessType(dbInstance.ProcessType) {
+	case bpmnruntime.ProcessTypeDefault:
+		return &bpmnruntime.DefaultProcessInstance{
+			ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            dbInstance.Key,
+				BusinessKey:    businessKey,
+				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
+				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
+				State:          bpmnruntime.ActivityState(dbInstance.State),
+			},
+		}, nil
+	case bpmnruntime.ProcessTypeMultiInstance:
+		return &bpmnruntime.MultiInstanceInstance{
+			ParentProcessExecutionToken:           parentToken,
+			ParentProcessTargetElementInstanceKey: dbInstance.ParentProcessTargetElementInstanceKey.Int64,
+			ParentProcessTargetElementId:          dbInstance.ParentProcessTargetElementID.String,
+			ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            dbInstance.Key,
+				BusinessKey:    businessKey,
+				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
+				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
+				State:          bpmnruntime.ActivityState(dbInstance.State),
+			},
+		}, nil
+	case bpmnruntime.ProcessTypeSubProcess:
+		return &bpmnruntime.SubProcessInstance{
+			ParentProcessExecutionToken:           parentToken,
+			ParentProcessTargetElementInstanceKey: dbInstance.ParentProcessTargetElementInstanceKey.Int64,
+			ParentProcessTargetElementId:          dbInstance.ParentProcessTargetElementID.String,
+			ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            dbInstance.Key,
+				BusinessKey:    businessKey,
+				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
+				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
+				State:          bpmnruntime.ActivityState(dbInstance.State),
+			},
+		}, nil
+	case bpmnruntime.ProcessTypeCallActivity:
+		return &bpmnruntime.CallActivityInstance{
+			ParentProcessExecutionToken:           parentToken,
+			ParentProcessTargetElementInstanceKey: dbInstance.ParentProcessTargetElementInstanceKey.Int64,
+			ProcessInstanceData: bpmnruntime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            dbInstance.Key,
+				BusinessKey:    businessKey,
+				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
+				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
+				State:          bpmnruntime.ActivityState(dbInstance.State),
+			},
+		}, nil
+	default:
+		return res, fmt.Errorf("not Supported Process Instance type %d", dbInstance.Key)
+	}
 }
 
 func (rq *DB) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
@@ -836,40 +981,96 @@ func (rq *DB) SaveProcessInstance(ctx context.Context, processInstance bpmnrunti
 }
 
 func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bpmnruntime.ProcessInstance) error {
-	varStr, err := json.Marshal(processInstance.VariableHolder.Variables())
+	varStr, err := json.Marshal(processInstance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.Key, err)
+		return fmt.Errorf("failed to marshal variables for instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
+
+	businessKey, bkFound := appcontext.BusinessKeyFromContext(ctx)
+
+	var parentProcessExecutionToken ssql.NullInt64
+	var parentProcessTargetElementID ssql.NullString
+	var parentProcessTargetElementInstanceKey ssql.NullInt64
+	switch typedInstance := processInstance.(type) {
+	case *bpmnruntime.DefaultProcessInstance:
+		parentProcessExecutionToken = ssql.NullInt64{
+			Int64: 0,
+			Valid: false,
+		}
+	case *bpmnruntime.MultiInstanceInstance:
+		parentProcessExecutionToken = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessExecutionToken.Key,
+			Valid: true,
+		}
+		parentProcessTargetElementID = ssql.NullString{
+			String: typedInstance.ParentProcessTargetElementId,
+			Valid:  true,
+		}
+		parentProcessTargetElementInstanceKey = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessTargetElementInstanceKey,
+			Valid: true,
+		}
+	case *bpmnruntime.SubProcessInstance:
+		parentProcessExecutionToken = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessExecutionToken.Key,
+			Valid: true,
+		}
+		parentProcessTargetElementID = ssql.NullString{
+			String: typedInstance.ParentProcessTargetElementId,
+			Valid:  true,
+		}
+		parentProcessTargetElementInstanceKey = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessTargetElementInstanceKey,
+			Valid: true,
+		}
+	case *bpmnruntime.CallActivityInstance:
+		parentProcessExecutionToken = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessExecutionToken.Key,
+			Valid: true,
+		}
+		parentProcessTargetElementID = ssql.NullString{
+			String: "",
+			Valid:  false,
+		}
+		parentProcessTargetElementInstanceKey = ssql.NullInt64{
+			Int64: typedInstance.ParentProcessTargetElementInstanceKey,
+			Valid: true,
+		}
+	default:
+		return fmt.Errorf("not Supported Process Instance type %d", processInstance.ProcessInstance().Key)
+	}
+
 	err = db.getQueries().SaveProcessInstance(ctx, sql.SaveProcessInstanceParams{
-		Key:                  processInstance.Key,
-		ProcessDefinitionKey: processInstance.Definition.Key,
-		CreatedAt:            processInstance.CreatedAt.UnixMilli(),
-		State:                int64(processInstance.State),
-		Variables:            string(varStr),
-		ParentProcessExecutionToken: ssql.NullInt64{
-			Int64: ptr.Deref(processInstance.ParentProcessExecutionToken, bpmnruntime.ExecutionToken{}).Key,
-			Valid: processInstance.ParentProcessExecutionToken != nil,
-		},
+		Key:                                   processInstance.ProcessInstance().Key,
+		ProcessDefinitionKey:                  processInstance.ProcessInstance().Definition.Key,
+		CreatedAt:                             processInstance.ProcessInstance().CreatedAt.UnixMilli(),
+		State:                                 int64(processInstance.ProcessInstance().State),
+		BusinessKey:                           ssql.NullString{String: businessKey, Valid: bkFound},
+		Variables:                             string(varStr),
+		ParentProcessExecutionToken:           parentProcessExecutionToken,
+		ParentProcessTargetElementID:          parentProcessTargetElementID,
+		ParentProcessTargetElementInstanceKey: parentProcessTargetElementInstanceKey,
+		ProcessType:                           int64(processInstance.Type()),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to save process instance %d: %w", processInstance.Key, err)
+		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
-	if processInstance.State == bpmnruntime.ActivityStateReady {
+	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateReady {
 		historyTTL, found := appcontext.HistoryTTLFromContext(ctx)
 		if !found {
 			return nil
 		}
 		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
 			HistoryTTLSec: ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())},
-			Key:           processInstance.Key,
+			Key:           processInstance.ProcessInstance().Key,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.Key, err)
+			return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.ProcessInstance().Key, err)
 		}
 	}
-	if processInstance.State == bpmnruntime.ActivityStateCompleted ||
-		processInstance.State == bpmnruntime.ActivityStateTerminated {
-		pi, err := db.getReadDB().Queries.GetProcessInstance(ctx, processInstance.Key)
+	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted ||
+		processInstance.ProcessInstance().State == bpmnruntime.ActivityStateTerminated {
+		pi, err := db.getReadDB().Queries.GetProcessInstance(ctx, processInstance.ProcessInstance().Key)
 		if err != nil {
 			return fmt.Errorf("failed to read process instance for history processing: %w", err)
 		}
@@ -879,7 +1080,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		toDeleteTime := time.Now().Add(time.Duration(pi.HistoryTtlSec.Int64) * time.Second)
 		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
 			HistoryDeleteSec: ssql.NullInt64{Valid: true, Int64: toDeleteTime.Unix()},
-			Key:              processInstance.Key,
+			Key:              processInstance.ProcessInstance().Key,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to set process instance deletion mark: %w", err)
@@ -889,6 +1090,18 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 }
 
 var _ storage.TimerStorageReader = &DB{}
+
+func (rq *DB) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, error) {
+	sqlcTimer, err := rq.Queries.GetTimerByKey(ctx, timerKey)
+	if err != nil {
+		return bpmnruntime.Timer{}, err
+	}
+	timers, err := rq.inflateTimers(ctx, []sql.Timer{sqlcTimer})
+	if err != nil || len(timers) != 1 {
+		return bpmnruntime.Timer{}, err
+	}
+	return timers[0], nil
+}
 
 func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.Queries.FindTokenTimers(ctx, sql.FindTokenTimersParams{
@@ -1241,6 +1454,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		CreatedAt:          job.CreatedAt.UnixMilli(),
 		Variables:          string(variableBytes),
 		ExecutionToken:     job.Token.Key,
+		Assignee:           sql.ToNullString(job.Assignee),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save job %d: %w", job.GetKey(), err)
@@ -1274,6 +1488,9 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 		})
 		// if pointer does not exist create it
 		if errors.Is(err, sql.ErrNoRows) {
+			return upsertPointer()
+		}
+		if pointer.State != int64(bpmnruntime.ActivityStateActive) {
 			return upsertPointer()
 		}
 
@@ -1379,11 +1596,12 @@ func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64,
 
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token:                token,
@@ -1403,11 +1621,12 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 		return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, err)
 	}
 	res = bpmnruntime.MessageSubscription{
-		ElementId:            dbMessage.ElementID,
 		Key:                  dbMessage.Key,
+		ElementId:            dbMessage.ElementID,
 		ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
 		ProcessInstanceKey:   dbMessage.ProcessInstanceKey,
 		Name:                 dbMessage.Name,
+		CorrelationKey:       dbMessage.CorrelationKey,
 		State:                bpmnruntime.ActivityState(dbMessage.State),
 		CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 		Token: bpmnruntime.ExecutionToken{
@@ -1443,11 +1662,12 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 	tokensToLoad := make([]int64, len(dbMessages))
 	for i, mes := range dbMessages {
 		res[i] = bpmnruntime.MessageSubscription{
-			ElementId:            mes.ElementID,
 			Key:                  mes.Key,
+			ElementId:            mes.ElementID,
 			ProcessDefinitionKey: mes.ProcessDefinitionKey,
 			ProcessInstanceKey:   mes.ProcessInstanceKey,
 			Name:                 mes.Name,
+			CorrelationKey:       mes.CorrelationKey,
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
 			Token: bpmnruntime.ExecutionToken{
@@ -1514,6 +1734,29 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 }
 
 var _ storage.TokenStorageReader = &DB{}
+
+func (rq *DB) GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
+	return GetTokensForProcessInstance(ctx, rq.Queries, rq.Partition, processInstanceKey, []int64{int64(bpmnruntime.TokenStateCompleted)})
+}
+
+func (rq *DB) GetTokenByKey(ctx context.Context, key int64) (bpmnruntime.ExecutionToken, error) {
+	token, err := rq.Queries.GetTokens(ctx, []int64{key})
+	if err != nil {
+		return bpmnruntime.ExecutionToken{}, err
+	}
+	if len(token) != 1 {
+		return bpmnruntime.ExecutionToken{}, fmt.Errorf("invalid key %d", key)
+	}
+
+	return bpmnruntime.ExecutionToken{
+		Key:                token[0].Key,
+		ElementInstanceKey: token[0].ElementInstanceKey,
+		ElementId:          token[0].ElementID,
+		ProcessInstanceKey: token[0].ProcessInstanceKey,
+		State:              bpmnruntime.TokenState(token[0].State),
+		CreatedAt:          time.UnixMilli(token[0].CreatedAt),
+	}, nil
+}
 
 func (rq *DB) GetRunningTokens(ctx context.Context) ([]bpmnruntime.ExecutionToken, error) {
 	return GetActiveTokens(ctx, rq.Queries, rq.Partition)
@@ -1591,18 +1834,139 @@ func SaveToken(ctx context.Context, db *sql.Queries, token bpmnruntime.Execution
 	})
 }
 
-func (rq *DB) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	return SaveFlowElementHistoryWith(ctx, rq.Queries, historyItem)
+var _ storage.FlowElementInstanceReader = &DB{}
+
+func (rq *DB) GetFlowElementInstanceCountByProcessInstanceKey(ctx context.Context, processInstanceKey int64) (int64, error) {
+	count, err := rq.Queries.CountFlowElementInstances(ctx, processInstanceKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count element instances for process instance %d: %w", processInstanceKey, err)
+	}
+	return count, nil
 }
 
-func SaveFlowElementHistoryWith(ctx context.Context, db *sql.Queries, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	return db.SaveFlowElementHistory(
+func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, processInstanceKey int64, orderByTimeCreated bool) ([]bpmnruntime.FlowElementInstance, error) {
+	flowElementInstances, err := rq.Queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
+		ProcessInstanceKey: processInstanceKey,
+		Offset:             0,
+		Limit:              1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]bpmnruntime.FlowElementInstance, 0, len(flowElementInstances))
+	for _, flowElementInstance := range flowElementInstances {
+		var inputVariables map[string]any
+		err = json.Unmarshal([]byte(flowElementInstance.InputVariables), &inputVariables)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+		}
+		var outputVariables map[string]any
+		err = json.Unmarshal([]byte(flowElementInstance.OutputVariables), &outputVariables)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+		}
+		result = append(result, bpmnruntime.FlowElementInstance{
+			Key:                flowElementInstance.Key,
+			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
+			ElementId:          flowElementInstance.ElementID,
+			CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
+			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
+			InputVariables:     inputVariables,
+			OutputVariables:    outputVariables,
+		})
+	}
+	if orderByTimeCreated {
+		sort.Slice(result, func(i, j int) bool {
+			if result[i].CreatedAt.Compare(result[j].CreatedAt) > 0 {
+				return true
+			}
+			return false
+		})
+	}
+	return result, nil
+}
+
+func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnruntime.FlowElementInstance, error) {
+	var res bpmnruntime.FlowElementInstance
+	flowElementInstance, err := rq.Queries.GetFlowElementInstanceByKey(ctx, key)
+	if err != nil {
+		return res, err
+	}
+
+	var inputVariables map[string]any
+	err = json.Unmarshal([]byte(flowElementInstance.InputVariables), &inputVariables)
+	if err != nil {
+		return res, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	var outputVariables map[string]any
+	err = json.Unmarshal([]byte(flowElementInstance.OutputVariables), &outputVariables)
+	if err != nil {
+		return res, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+
+	return bpmnruntime.FlowElementInstance{
+		Key:                flowElementInstance.Key,
+		ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
+		ElementId:          flowElementInstance.ElementID,
+		CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
+		ExecutionTokenKey:  flowElementInstance.Key,
+		InputVariables:     inputVariables,
+		OutputVariables:    outputVariables,
+	}, nil
+}
+
+var _ storage.FlowElementInstanceWriter = &DB{}
+
+func (rq *DB) SaveFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	return SaveFlowElementInstanceWith(ctx, rq.Queries, flowElementInstance)
+}
+
+func (rq *DB) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	err := UpdateOutputFlowElementInstanceWith(ctx, rq.Queries, flowElementInstance)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	outputVariablesString, err := json.Marshal(flowElementInstance.OutputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
+	return db.UpdateOutputFlowElementInstance(
 		ctx,
-		sql.SaveFlowElementHistoryParams{
-			Key:                historyItem.Key,
-			ElementID:          historyItem.ElementId,
-			ProcessInstanceKey: historyItem.ProcessInstanceKey,
-			CreatedAt:          historyItem.CreatedAt.UnixMilli(),
+		sql.UpdateOutputFlowElementInstanceParams{
+			Key:                flowElementInstance.Key,
+			ElementID:          flowElementInstance.ElementId,
+			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
+			CreatedAt:          flowElementInstance.CreatedAt.UnixMilli(),
+			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
+			OutputVariables:    string(outputVariablesString),
+		},
+	)
+}
+
+func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element bpmnruntime.FlowElementInstance) error {
+	inputVariablesString, err := json.Marshal(element.InputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", element.Key, err)
+	}
+	outputVariablesString, err := json.Marshal(element.OutputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", element.Key, err)
+	}
+	return db.SaveFlowElementInstance(
+		ctx,
+		sql.SaveFlowElementInstanceParams{
+			Key:                element.Key,
+			ElementID:          element.ElementId,
+			ProcessInstanceKey: element.ProcessInstanceKey,
+			CreatedAt:          element.CreatedAt.UnixMilli(),
+			ExecutionTokenKey:  element.ExecutionTokenKey,
+			InputVariables:     string(inputVariablesString),
+			OutputVariables:    string(outputVariablesString),
 		},
 	)
 }
@@ -1887,8 +2251,12 @@ func (b *DBBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToke
 	return SaveToken(ctx, b.queries, token)
 }
 
-func (b *DBBatch) SaveFlowElementHistory(ctx context.Context, historyItem bpmnruntime.FlowElementHistoryItem) error {
-	return SaveFlowElementHistoryWith(ctx, b.queries, historyItem)
+func (b *DBBatch) SaveFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
+	return SaveFlowElementInstanceWith(ctx, b.queries, historyItem)
+}
+
+func (b *DBBatch) UpdateOutputFlowElementInstance(ctx context.Context, historyItem bpmnruntime.FlowElementInstance) error {
+	return UpdateOutputFlowElementInstanceWith(ctx, b.queries, historyItem)
 }
 
 var _ storage.IncidentStorageWriter = &DBBatch{}

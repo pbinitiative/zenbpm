@@ -10,8 +10,6 @@ definitions.
 It provides a lightweight, cloud-ready platform for defining, deploying, and executing business processes with minimal
 overhead and maximum flexibility.
 
-> ⚠️ **Warning**: This project is in early stages and is not suitable for production use yet.
-
 ## What is BPMN?
 
 Business Process Model and Notation (BPMN) is a graphical representation for specifying business processes in a business process model. It provides businesses with a standard notation that is readily understandable by all business stakeholders.
@@ -57,8 +55,7 @@ make test
 You can run ZenBPM in a Docker container:
 
 ```bash
-docker build -t zenbpm .
-docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm ghcr.io/pbinitiative/zenbpm
 ```
 
 ## Architecture

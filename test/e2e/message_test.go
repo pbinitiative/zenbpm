@@ -5,18 +5,19 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 // TODO: Test with multiple partitions/nodes
 func TestRestApiMessage(t *testing.T) {
 	var instance public.ProcessInstance
-	var definition public.ProcessDefinitionSimple
+	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
 	assert.NoError(t, err)
-	defintitions, err := listProcessDefinitions(t)
+	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
-	for _, def := range defintitions {
+	for _, def := range definitions {
 		if def.BpmnProcessId == "message-intermediate-catch-event" {
 			definition = def
 			break
@@ -28,10 +29,11 @@ func TestRestApiMessage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, instance.Key)
 
-	_, err = createProcessInstance(t, definition.Key, map[string]any{
+	failedInstance, err := createProcessInstance(t, definition.Key, map[string]any{
 		"testVar": 123,
 	})
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	assert.Equal(t, public.ProcessInstanceStateFailed, failedInstance.State)
 
 	t.Run("publish message", func(t *testing.T) {
 		err := publishMessage(t, "globalMsgRef", "correlation-key-one", &map[string]any{

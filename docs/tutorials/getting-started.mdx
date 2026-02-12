@@ -23,31 +23,22 @@ The easiest way to get started with ZenBPM is to use Docker.
 
 1. Pull the ZenBPM Docker image:
 
-:::note docker image is not published yet
 ```bash
-docker pull zenbpm/zenbpm:latest
+docker pull ghcr.io/pbinitiative/zenbpm:latest
 ```
-Instead, create a docker image from a Dockerfile
-```bash
-git clone git@github.com:pbinitiative/zenbpm.git
-cd zenbpm
-docker build -t zenbpm .
-```
+
 :::
 
 2. Run the ZenBPM container:
 
-:::note docker image is not published yet
 ```bash
-docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm/zenbpm:latest
+docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm ghcr.io/pbinitiative/zenbpm:latest
 ```
-Instead, run the newly built image
-```bash
-docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm zenbpm
-```
+
 :::
 
 This will start ZenBPM with:
+
 - REST API available at localhost:8080
 - gRPC API available at localhost:9090
 
@@ -110,6 +101,7 @@ For this tutorial, we'll create a simple "Hello World" process with a start even
 ```
 
 This BPMN file defines a simple process with:
+
 - A start event
 - A Message intermediate throw event
 - An end event
@@ -140,20 +132,21 @@ Replace `{processInstanceKey}` with the actual key from the previous step.
 
 You should see details about the process instance, including its current state. Since our process is very simple, it might have already completed by the time you check.
 
-## Step 6: View Process Activities
+## Step 6: View Process history
 
 :::warning
 this feature is not implemented yet
 :::
 To see what activities were executed in our process:
 
-<ApiOperation id="api" pointer="#/paths/~1process-instances~1{processInstanceKey}~1activities/get" example={true} />
+<ApiOperation id="api" pointer="#/paths/~1process-instances~1{processInstanceKey}~1history/get" example={true} />
 
 This will show you all the activities that were executed as part of the process instance, including the message throw event.
 
 ## Conclusion
 
 Congratulations! You've successfully:
+
 - Set up ZenBPM
 - Created a simple BPMN process
 - Deployed the process to ZenBPM
@@ -162,9 +155,11 @@ Congratulations! You've successfully:
 
 ## Next Steps
 
-[//]: # (TODO: Link documents after creation)
+[//]: # "TODO: Link documents after creation"
+
 Now that you've completed this basic tutorial, you might want to:
-- Learn how to [create more complex BPMN processes](/future-feature) <sub>*`TODO`*</sub>
-- Explore [user tasks and forms](/future-feature) <sub>*`TODO`*</sub>
-- Understand [message events and correlation](/future-feature) <sub>*`TODO`*</sub>
-- Set up [process monitoring and observability](/future-feature) <sub>*`TODO`*</sub>
+
+- Learn how to [create more complex BPMN processes](/future-feature) <sub>_`TODO`_</sub>
+- Explore [user tasks and forms](/future-feature) <sub>_`TODO`_</sub>
+- Understand [message events and correlation](/future-feature) <sub>_`TODO`_</sub>
+- Set up [process monitoring and observability](/future-feature) <sub>_`TODO`_</sub>

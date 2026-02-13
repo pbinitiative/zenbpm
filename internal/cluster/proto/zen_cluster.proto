@@ -80,6 +80,7 @@ service ZenService {
   rpc FailJob(FailJobRequest) returns (FailJobResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
+  rpc GetProcessDefinitionStatistics(GetProcessDefinitionStatisticsRequest) returns (GetProcessDefinitionStatisticsResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -623,6 +624,51 @@ message ReassignJobRequest {
 
 message ReassignJobResponse {
   ErrorResult error = 1;
+}
+
+message GetProcessDefinitionStatisticsRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  bool only_latest = 4;
+  repeated string bpmn_process_id_in = 5;
+  repeated int64 bpmn_process_definition_key_in = 6;
+  string name = 7;
+  string sort_by = 8;
+  string sort_order = 9;
+}
+
+message ProcessDefinitionStatistics {
+  int64 key = 1;
+  int32 version = 2;
+  string bpmn_process_id = 3;
+  string bpmn_process_name = 4;
+  InstanceCounts instance_counts = 5;
+  IncidentCounts incident_counts = 6;
+}
+
+message InstanceCounts {
+  int64 total = 1;
+  int64 active = 2;
+  int64 completed = 3;
+  int64 terminated = 4;
+  int64 failed = 5;
+}
+
+message IncidentCounts {
+  int64 total = 1;
+  int64 unresolved = 2;
+}
+
+message PartitionedProcessDefinitionStatistics {
+  uint32 partition_id = 1;
+  repeated ProcessDefinitionStatistics statistics = 2;
+  int32 totalCount = 3;
+}
+
+message GetProcessDefinitionStatisticsResponse {
+  ErrorResult error = 1;
+  repeated PartitionedProcessDefinitionStatistics partitions = 2;
 }
 
 message CpuProfilerRequest {}

@@ -99,6 +99,179 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 	return i, err
 }
 
+const findProcessDefinitionStatistics = `-- name: FindProcessDefinitionStatistics :many
+WITH filtered_definitions AS (
+  SELECT
+    pd."key",
+    pd.version,
+    pd.bpmn_process_id,
+    pd.bpmn_process_name
+  FROM process_definition AS pd
+  WHERE
+    -- force sqlc to keep sort param
+    CAST(?3 AS TEXT) IS CAST(?3 AS TEXT)
+    -- name filter (partial match)
+    AND (CAST(?4 AS TEXT) IS NULL OR pd.bpmn_process_name LIKE '%' || CAST(?4 AS TEXT) || '%')
+    -- onlyLatest filter
+    AND (
+      CAST(?5 AS INTEGER) = 0
+      OR pd.version = (
+        SELECT MAX(pd2.version)
+        FROM process_definition AS pd2
+        WHERE pd2.bpmn_process_id = pd.bpmn_process_id
+      )
+    )
+    -- force sqlc to register both boolean flags before slices to maintain positional parameter order
+    AND CAST(?6 AS INTEGER) IS CAST(?6 AS INTEGER)
+    AND CAST(?7 AS INTEGER) IS CAST(?7 AS INTEGER)
+    -- bpmnProcessId IN filter (boolean flag + slice, each slice appears only once)
+    AND (CAST(?6 AS INTEGER) = 0 OR pd.bpmn_process_id IN (/*SLICE:bpmn_process_id_in*/?))
+    -- definitionKey IN filter (boolean flag + slice, each slice appears only once)
+    AND (CAST(?7 AS INTEGER) = 0 OR pd."key" IN (/*SLICE:definition_key_in*/?))
+),
+instance_counts AS (
+  SELECT
+    pi.process_definition_key,
+    COUNT(*) AS total_instances,
+    SUM(CASE WHEN pi.state = 1 THEN 1 ELSE 0 END) AS active_count,
+    SUM(CASE WHEN pi.state = 4 THEN 1 ELSE 0 END) AS completed_count,
+    SUM(CASE WHEN pi.state = 9 THEN 1 ELSE 0 END) AS terminated_count,
+    SUM(CASE WHEN pi.state = 6 THEN 1 ELSE 0 END) AS failed_count
+  FROM process_instance AS pi
+  WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
+  GROUP BY pi.process_definition_key
+),
+incident_counts AS (
+  SELECT
+    pi.process_definition_key,
+    COUNT(*) AS total_incidents,
+    SUM(CASE WHEN inc.resolved_at IS NULL THEN 1 ELSE 0 END) AS unresolved_count
+  FROM incident AS inc
+  INNER JOIN process_instance AS pi ON inc.process_instance_key = pi.key
+  WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
+  GROUP BY pi.process_definition_key
+)
+SELECT
+  fd."key",
+  fd.version,
+  fd.bpmn_process_id,
+  fd.bpmn_process_name,
+  COALESCE(ic.total_instances, 0) AS total_instances,
+  COALESCE(ic.active_count, 0) AS active_count,
+  COALESCE(ic.completed_count, 0) AS completed_count,
+  COALESCE(ic.terminated_count, 0) AS terminated_count,
+  COALESCE(ic.failed_count, 0) AS failed_count,
+  COALESCE(incc.total_incidents, 0) AS total_incidents,
+  COALESCE(incc.unresolved_count, 0) AS unresolved_count,
+  COUNT(*) OVER() AS total_count
+FROM filtered_definitions AS fd
+LEFT JOIN instance_counts AS ic ON fd."key" = ic.process_definition_key
+LEFT JOIN incident_counts AS incc ON fd."key" = incc.process_definition_key
+ORDER BY
+  -- workaround for sqlc - sort parameter handling
+  CASE CAST(?3 AS TEXT) WHEN 'name_asc' THEN fd.bpmn_process_name END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'name_desc' THEN fd.bpmn_process_name END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'bpmnProcessId_asc' THEN fd.bpmn_process_id END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'bpmnProcessId_desc' THEN fd.bpmn_process_id END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'version_asc' THEN fd.version END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'version_desc' THEN fd.version END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'instanceCount_asc' THEN COALESCE(ic.total_instances, 0) END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'instanceCount_desc' THEN COALESCE(ic.total_instances, 0) END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_asc' THEN COALESCE(incc.total_incidents, 0) END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_desc' THEN COALESCE(incc.total_incidents, 0) END DESC,
+  fd."key" DESC
+LIMIT ?2
+OFFSET ?1
+`
+
+type FindProcessDefinitionStatisticsParams struct {
+	Offset             int64          `json:"offset"`
+	Limit              int64          `json:"limit"`
+	Sort               sql.NullString `json:"sort"`
+	NameFilter         sql.NullString `json:"name_filter"`
+	OnlyLatest         int64          `json:"only_latest"`
+	UseBpmnProcessIDIn int64          `json:"use_bpmn_process_id_in"`
+	UseDefinitionKeyIn int64          `json:"use_definition_key_in"`
+	BpmnProcessIDIn    []string       `json:"bpmn_process_id_in"`
+	DefinitionKeyIn    []int64        `json:"definition_key_in"`
+}
+
+type FindProcessDefinitionStatisticsRow struct {
+	Key             int64   `json:"key"`
+	Version         int64   `json:"version"`
+	BpmnProcessID   string  `json:"bpmn_process_id"`
+	BpmnProcessName string  `json:"bpmn_process_name"`
+	TotalInstances  int64   `json:"total_instances"`
+	ActiveCount     float64 `json:"active_count"`
+	CompletedCount  float64 `json:"completed_count"`
+	TerminatedCount float64 `json:"terminated_count"`
+	FailedCount     float64 `json:"failed_count"`
+	TotalIncidents  int64   `json:"total_incidents"`
+	UnresolvedCount float64 `json:"unresolved_count"`
+	TotalCount      int64   `json:"total_count"`
+}
+
+func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error) {
+	query := findProcessDefinitionStatistics
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Offset)
+	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Sort)
+	queryParams = append(queryParams, arg.NameFilter)
+	queryParams = append(queryParams, arg.OnlyLatest)
+	queryParams = append(queryParams, arg.UseBpmnProcessIDIn)
+	queryParams = append(queryParams, arg.UseDefinitionKeyIn)
+	if len(arg.BpmnProcessIDIn) > 0 {
+		for _, v := range arg.BpmnProcessIDIn {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:bpmn_process_id_in*/?", strings.Repeat(",?", len(arg.BpmnProcessIDIn))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:bpmn_process_id_in*/?", "NULL", 1)
+	}
+	if len(arg.DefinitionKeyIn) > 0 {
+		for _, v := range arg.DefinitionKeyIn {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:definition_key_in*/?", strings.Repeat(",?", len(arg.DefinitionKeyIn))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:definition_key_in*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindProcessDefinitionStatisticsRow{}
+	for rows.Next() {
+		var i FindProcessDefinitionStatisticsRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnProcessName,
+			&i.TotalInstances,
+			&i.ActiveCount,
+			&i.CompletedCount,
+			&i.TerminatedCount,
+			&i.FailedCount,
+			&i.TotalIncidents,
+			&i.UnresolvedCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessDefinitions = `-- name: FindProcessDefinitions :many
 SELECT
   pd."key",

@@ -595,6 +595,55 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}, nil
 }
 
+// GetProcessDefinitionStatistics will contact follower nodes and return process definition statistics from all partitions
+func (node *ZenNode) GetProcessDefinitionStatistics(
+	ctx context.Context,
+	page int32,
+	size int32,
+	onlyLatest bool,
+	bpmnProcessIdIn []string,
+	bpmnProcessDefinitionKeyIn []int64,
+	name *string,
+	sortBy *string,
+	sortOrder *string,
+) ([]*proto.PartitionedProcessDefinitionStatistics, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedProcessDefinitionStatistics, 0, len(state.Partitions))
+
+	for partitionID := range state.Partitions {
+		follower, err := state.GetPartitionFollower(partitionID)
+		if err != nil {
+			return result, fmt.Errorf("failed to read follower node to get process definition statistics: %w", err)
+		}
+		client, err := node.client.For(follower.Addr)
+		if err != nil {
+			return result, fmt.Errorf("failed to get client to get process definition statistics: %w", err)
+		}
+
+		resp, err := client.GetProcessDefinitionStatistics(ctx, &proto.GetProcessDefinitionStatisticsRequest{
+			Page:                         &page,
+			Size:                         &size,
+			Partitions:                   []uint32{partitionID},
+			OnlyLatest:                   &onlyLatest,
+			BpmnProcessIdIn:              bpmnProcessIdIn,
+			BpmnProcessDefinitionKeyIn:   bpmnProcessDefinitionKeyIn,
+			Name:                         name,
+			SortBy:                       sortBy,
+			SortOrder:                    sortOrder,
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to get process definition statistics from partition %d", partitionID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		result = append(result, resp.Partitions...)
+	}
+	return result, nil
+}
+
 func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
 	state := node.store.ClusterState()
 	targetNode, err2 := state.GetNode(nodeId)

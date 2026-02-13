@@ -592,6 +592,94 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	}, nil
 }
 
+func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	onlyLatest := false
+	if request.Params.OnlyLatest != nil {
+		onlyLatest = *request.Params.OnlyLatest
+	}
+
+	// Build sort string
+	var sortBy, sortOrder *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		sortBy = &s
+	}
+	if request.Params.SortOrder != nil {
+		s := string(*request.Params.SortOrder)
+		sortOrder = &s
+	}
+
+	// Dereference slice pointers
+	var bpmnProcessIdIn []string
+	if request.Params.BpmnProcessIdIn != nil {
+		bpmnProcessIdIn = *request.Params.BpmnProcessIdIn
+	}
+	var bpmnProcessDefinitionKeyIn []int64
+	if request.Params.BpmnProcessDefinitionKeyIn != nil {
+		bpmnProcessDefinitionKeyIn = *request.Params.BpmnProcessDefinitionKeyIn
+	}
+
+	partitionedStats, err := s.node.GetProcessDefinitionStatistics(
+		ctx,
+		*request.Params.Page,
+		*request.Params.Size,
+		onlyLatest,
+		bpmnProcessIdIn,
+		bpmnProcessDefinitionKeyIn,
+		request.Params.Name,
+		sortBy,
+		sortOrder,
+	)
+	if err != nil {
+		return public.GetProcessDefinitionStatistics500JSONResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: err.Error(),
+		}, nil
+	}
+
+	partitions := make([]public.PartitionProcessDefinitionStatistics, len(partitionedStats))
+	count := 0
+	totalCount := 0
+	for i, partition := range partitionedStats {
+		items := make([]public.ProcessDefinitionStatistics, len(partition.Statistics))
+		for k, stat := range partition.Statistics {
+			items[k] = public.ProcessDefinitionStatistics{
+				Key:           stat.GetKey(),
+				Version:       int(stat.GetVersion()),
+				BpmnProcessId: stat.GetBpmnProcessId(),
+				Name:          ptr.To(stat.GetBpmnProcessName()),
+				InstanceCounts: public.InstanceCounts{
+					Total:      int(stat.InstanceCounts.GetTotal()),
+					Active:     int(stat.InstanceCounts.GetActive()),
+					Completed:  int(stat.InstanceCounts.GetCompleted()),
+					Terminated: int(stat.InstanceCounts.GetTerminated()),
+					Failed:     int(stat.InstanceCounts.GetFailed()),
+				},
+				IncidentCounts: public.IncidentCounts{
+					Total:      int(stat.IncidentCounts.GetTotal()),
+					Unresolved: int(stat.IncidentCounts.GetUnresolved()),
+				},
+			}
+		}
+		partitions[i] = public.PartitionProcessDefinitionStatistics{
+			Items:     items,
+			Partition: int(partition.GetPartitionId()),
+		}
+		count += len(partition.Statistics)
+		totalCount += int(partition.GetTotalCount())
+	}
+
+	return public.GetProcessDefinitionStatistics200JSONResponse{
+		Partitions: partitions,
+		Page:       int(*request.Params.Page),
+		Size:       int(*request.Params.Size),
+		Count:      count,
+		TotalCount: totalCount,
+	}, nil
+}
+
 func (s *Server) CreateProcessInstance(ctx context.Context, request public.CreateProcessInstanceRequestObject) (public.CreateProcessInstanceResponseObject, error) {
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {

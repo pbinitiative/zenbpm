@@ -1167,6 +1167,12 @@ paths:
       responses:
         204:
           description: Process instance cancelled
+        400:
+          description: Bad request (e.g. process instance is not in a cancellable state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:

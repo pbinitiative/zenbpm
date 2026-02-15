@@ -3776,6 +3776,7 @@ func (r GetProcessInstanceResponse) StatusCode() int {
 type CancelProcessInstanceResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON400      *Error
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5064,6 +5065,13 @@ func ParseCancelProcessInstanceResponse(rsp *http.Response) (*CancelProcessInsta
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

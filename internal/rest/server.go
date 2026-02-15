@@ -897,7 +897,7 @@ func (s *Server) CancelProcessInstance(ctx context.Context, request public.Cance
 	err := s.node.CancelProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
 		return public.CancelProcessInstance500JSONResponse{
-			Code:    "TODO",
+			Code:    "INTERNAL_SERVER_ERROR",
 			Message: err.Error(),
 		}, nil
 	}

@@ -381,7 +381,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 }
 
 func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyProcessInstanceRequest) (*proto.ModifyProcessInstanceResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return &proto.ModifyProcessInstanceResponse{
@@ -450,7 +451,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 }
 
 func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return createDeleteProcessInstanceVariableErrorResponse(err)
@@ -488,7 +490,8 @@ func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteP
 }
 
 func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelProcessInstanceRequest) (*proto.CancelProcessInstanceResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return createCancelProcessInstanceErrorResponse(err)

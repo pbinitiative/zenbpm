@@ -1,14 +1,15 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net"
-	"runtime/pprof"
+	"net/http"
+	_ "net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -51,7 +52,7 @@ type Server struct {
 
 type CpuProfile struct {
 	Running bool
-	Output  *bytes.Buffer
+	Server  *http.Server
 }
 
 type StoreService interface {
@@ -1397,33 +1398,37 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 	return nil
 }
 
-func (s *Server) StartCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStartResult, error) {
+func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerRequest) (*proto.PprofServerStartResult, error) {
 	if s.cpuProfile.Running == true {
-		return &proto.CpuProfilerStartResult{}, nil
-	}
-
-	s.cpuProfile.Output = &bytes.Buffer{}
-
-	err := pprof.StartCPUProfile(s.cpuProfile.Output)
-	if err != nil {
-		err := fmt.Errorf("failed to start cpu profiler: %w", err)
-		return &proto.CpuProfilerStartResult{
+		err := fmt.Errorf("pprof server already running")
+		return &proto.PprofServerStartResult{
 			Error: &proto.ErrorResult{
 				Code:    nil,
 				Message: ptr.To(err.Error()),
 			},
 		}, err
 	}
+
+	addr, _, _ := strings.Cut(s.addr.String(), ":")
+
+	s.cpuProfile.Server = &http.Server{
+		Addr:    addr + ":6060",
+		Handler: nil,
+	}
+
+	go func() {
+		log.Info(s.cpuProfile.Server.ListenAndServe().Error())
+	}()
 
 	s.cpuProfile.Running = true
 
-	return nil, nil
+	return &proto.PprofServerStartResult{}, nil
 }
 
-func (s *Server) StopCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStopResult, error) {
+func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*proto.PprofServerStopResult, error) {
 	if s.cpuProfile.Running == false {
-		err := fmt.Errorf("start cpu profiler not started")
-		return &proto.CpuProfilerStopResult{
+		err := fmt.Errorf("pprof server not started")
+		return &proto.PprofServerStopResult{
 			Error: &proto.ErrorResult{
 				Code:    nil,
 				Message: ptr.To(err.Error()),
@@ -1431,11 +1436,13 @@ func (s *Server) StopCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*p
 		}, err
 	}
 
-	pprof.StopCPUProfile()
+	if err := s.cpuProfile.Server.Shutdown(context.Background()); err != nil {
+		log.Info("shutdown failed:", err)
+	}
+
 	s.cpuProfile.Running = false
 
-	return &proto.CpuProfilerStopResult{
+	return &proto.PprofServerStopResult{
 		Error: nil,
-		Pprof: s.cpuProfile.Output.Bytes(),
 	}, nil
 }

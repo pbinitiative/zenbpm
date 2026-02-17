@@ -45,8 +45,8 @@ service ZenService {
   rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
   rpc PartitionRestore(PartitionRestoreRequest)
       returns (PartitionRestoreResponse);
-  rpc StartCpuProfiler(CpuProfilerRequest) returns (CpuProfilerStartResult);
-  rpc StopCpuProfiler(CpuProfilerRequest) returns (CpuProfilerStopResult);
+  rpc StartPprofServer(PprofServerRequest) returns (PprofServerStartResult);
+  rpc StopPprofServer(PprofServerRequest) returns (PprofServerStopResult);
 
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 
@@ -634,15 +634,14 @@ message ReassignJobResponse {
   ErrorResult error = 1;
 }
 
-message CpuProfilerRequest {}
+message PprofServerRequest {}
 
-message CpuProfilerStartResult {
+message PprofServerStartResult {
   ErrorResult error = 1;
 }
 
-message CpuProfilerStopResult {
+message PprofServerStopResult {
   ErrorResult error = 1;
-  bytes pprof = 2;
 }
 
 // INTERNAL ENGINE API END

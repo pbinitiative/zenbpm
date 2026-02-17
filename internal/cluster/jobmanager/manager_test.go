@@ -509,7 +509,7 @@ func TestManagerTroughput(t *testing.T) {
 		panic(err)
 	}
 	defer f.Close()
-	pprof.StartCPUProfile(f)
+	pprof.StartPprofServer(f)
 	mux, nodeLn, err := network.NewNodeMux("")
 	defer nodeLn.Close()
 	assert.NoError(t, err)
@@ -595,5 +595,5 @@ func TestManagerTroughput(t *testing.T) {
 		clientID := ClientID(fmt.Sprintf("client-%d", i))
 		jm2.RemoveClient(t.Context(), clientID)
 	}
-	pprof.StopCPUProfile()
+	pprof.StopPprofServer()
 }

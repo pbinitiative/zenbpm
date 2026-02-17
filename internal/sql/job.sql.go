@@ -509,37 +509,29 @@ func (q *Queries) FindTokenJobsInState(ctx context.Context, arg FindTokenJobsInS
 	return items, nil
 }
 
-const findWaitingJobs = `-- name: FindWaitingJobs :many
+const getWaitingJobs = `-- name: GetWaitingJobs :many
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
 FROM
     job
 WHERE
     state = 1
-    AND key NOT IN (/*SLICE:key_skip*/?)
     AND type IN (/*SLICE:type*/?)
+    AND key NOT IN (/*SLICE:key_skip*/?)
 ORDER BY
     created_at ASC
 LIMIT ?
 `
 
-type FindWaitingJobsParams struct {
-	KeySkip []int64  `json:"key_skip"`
+type GetWaitingJobsParams struct {
 	Type    []string `json:"type"`
+	KeySkip []int64  `json:"key_skip"`
 	Limit   int64    `json:"limit"`
 }
 
-func (q *Queries) FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams) ([]Job, error) {
-	query := findWaitingJobs
+func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) ([]Job, error) {
+	query := getWaitingJobs
 	var queryParams []interface{}
-	if len(arg.KeySkip) > 0 {
-		for _, v := range arg.KeySkip {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:key_skip*/?", strings.Repeat(",?", len(arg.KeySkip))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:key_skip*/?", "NULL", 1)
-	}
 	if len(arg.Type) > 0 {
 		for _, v := range arg.Type {
 			queryParams = append(queryParams, v)
@@ -547,6 +539,14 @@ func (q *Queries) FindWaitingJobs(ctx context.Context, arg FindWaitingJobsParams
 		query = strings.Replace(query, "/*SLICE:type*/?", strings.Repeat(",?", len(arg.Type))[1:], 1)
 	} else {
 		query = strings.Replace(query, "/*SLICE:type*/?", "NULL", 1)
+	}
+	if len(arg.KeySkip) > 0 {
+		for _, v := range arg.KeySkip {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:key_skip*/?", strings.Repeat(",?", len(arg.KeySkip))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:key_skip*/?", "NULL", 1)
 	}
 	queryParams = append(queryParams, arg.Limit)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)

@@ -10,12 +10,12 @@ import (
 )
 
 func TestCpuProfiling(t *testing.T) {
-	_, err := startCpuProfiler(t, "test-node-1")
+	_, err := StartPprofServer(t, "test-node-1")
 	assert.NoError(t, err)
 
 	//time.Sleep(5 * time.Second)
 
-	cpuProfiler, err := stopCpuProfiler(t, "test-node-1")
+	cpuProfiler, err := StopPprofServer(t, "test-node-1")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, cpuProfiler.Pprof)
 
@@ -27,8 +27,8 @@ func TestCpuProfiling(t *testing.T) {
 	//assert.NoError(t, err)
 }
 
-func startCpuProfiler(t testing.TB, nodeId string) (public.TestStartCpuProfile200Response, error) {
-	result := public.TestStartCpuProfile200Response{}
+func StartPprofServer(t testing.TB, nodeId string) (public.TestStartPprofServer200Response, error) {
+	result := public.TestStartPprofServer200Response{}
 
 	_, _, resp, err := app.NewRequest(t).
 		WithPath("/v1/tests/" + nodeId + "/start-cpu-profile").
@@ -41,8 +41,8 @@ func startCpuProfiler(t testing.TB, nodeId string) (public.TestStartCpuProfile20
 	return result, nil
 }
 
-func stopCpuProfiler(t testing.TB, nodeId string) (public.TestStopCpuProfile200JSONResponse, error) {
-	result := public.TestStopCpuProfile200JSONResponse{}
+func StopPprofServer(t testing.TB, nodeId string) (public.TestStopPprofServer200JSONResponse, error) {
+	result := public.TestStopPprofServer200JSONResponse{}
 
 	resp, err := app.NewRequest(t).
 		WithPath("/v1/tests/"+nodeId+"/stop-cpu-profile").

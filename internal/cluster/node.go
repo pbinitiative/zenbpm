@@ -596,7 +596,7 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}, nil
 }
 
-func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
+func (node *ZenNode) StartPprofServer(ctx context.Context, nodeId string) error {
 	state := node.store.ClusterState()
 	targetNode, err2 := state.GetNode(nodeId)
 	if err2 != nil {
@@ -607,7 +607,7 @@ func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
 		return err
 	}
 
-	resp, err := client.StartCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	resp, err := client.StartPprofServer(ctx, &proto.PprofServerRequest{})
 	if err != nil || resp.Error != nil {
 		e := fmt.Errorf("failed to start cpu profiler")
 		if err != nil {
@@ -620,28 +620,28 @@ func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
 	return nil
 }
 
-func (node *ZenNode) StopCpuProfile(ctx context.Context, nodeId string) ([]byte, error) {
+func (node *ZenNode) StopPprofServer(ctx context.Context, nodeId string) error {
 	state := node.store.ClusterState()
 	targetNode, err2 := state.GetNode(nodeId)
 	if err2 != nil {
-		return nil, err2
+		return err2
 	}
 	client, err := node.client.For(targetNode.Addr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	resp, err := client.StopCpuProfiler(ctx, &proto.CpuProfilerRequest{})
+	resp, err := client.StopPprofServer(ctx, &proto.PprofServerRequest{})
 	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("failed to stop cpu profiler")
+		e := fmt.Errorf("failed to stop pprof")
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", e, err)
+			return fmt.Errorf("%w: %w", e, err)
 		} else if resp.Error != nil {
-			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
 		}
 	}
 
-	return resp.Pprof, nil
+	return nil
 }
 
 func (node *ZenNode) CreateInstance(
@@ -1091,7 +1091,7 @@ func (node *ZenNode) LoadJobsToDistribute(jobTypes []string, idsToSkip []int64, 
 		idsToSkip = []int64{0}
 	}
 	for _, db := range databases {
-		jobs, err := db.Queries.FindWaitingJobs(node.ctx, sql.FindWaitingJobsParams{
+		jobs, err := db.Queries.GetWaitingJobs(node.ctx, sql.GetWaitingJobsParams{
 			KeySkip: idsToSkip,
 			Type:    jobTypes,
 			Limit:   count,

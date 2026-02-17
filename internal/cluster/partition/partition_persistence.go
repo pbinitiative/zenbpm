@@ -108,18 +108,31 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 func (rq *DB) scheduleDataCleanup() {
 	t := time.NewTicker(30 * time.Second)
 	for range t.C {
-		err := rq.dataCleanup(time.Now())
+		t.Stop()
+		cleaningTriggered, err := rq.dataCleanup(time.Now())
 		if err != nil {
 			rq.logger.Error(fmt.Sprintf("Error while performing data cleanup: %s", err))
+			t.Reset(30 * time.Second)
+		}
+		if cleaningTriggered {
+			//speed up cleaning if there is a lot to clean
+			t.Reset(5 * time.Second)
+		} else {
+			t.Reset(30 * time.Second)
 		}
 	}
 }
 
-func (rq *DB) dataCleanup(currTime time.Time) error {
+// dataCleanup returns true if cleanup was triggered
+// cleanup is being done in batches of size historyDeleteThreshold
+func (rq *DB) dataCleanup(currTime time.Time) (bool, error) {
 	ctx := context.Background()
-	processes, _ := rq.Queries.FindInactiveInstancesToDelete(ctx, ssql.NullInt64{
-		Int64: currTime.Unix(),
-		Valid: true,
+	processes, _ := rq.Queries.FindInactiveInstancesToDelete(ctx, sql.FindInactiveInstancesToDeleteParams{
+		CurrUnix: ssql.NullInt64{
+			Int64: currTime.Unix(),
+			Valid: true,
+		},
+		Limit: int64(rq.historyDeleteThreshold),
 	})
 	processesNullInt64 := make([]ssql.NullInt64, 0)
 	for _, processId := range processes {
@@ -129,7 +142,7 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		})
 	}
 	var err error
-	if len(processes) > rq.historyDeleteThreshold {
+	if len(processes) == rq.historyDeleteThreshold {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
@@ -138,8 +151,9 @@ func (rq *DB) dataCleanup(currTime time.Time) error {
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
+		return true, nil
 	}
-	return err
+	return false, err
 }
 
 func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {

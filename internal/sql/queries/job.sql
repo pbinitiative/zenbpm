@@ -71,15 +71,15 @@ FROM
     job
 LIMIT @size offset @offset;
 
--- name: FindWaitingJobs :many
+-- name: GetWaitingJobs :many
 SELECT
     *
 FROM
     job
 WHERE
     state = 1
-    AND key NOT IN (sqlc.slice('key_skip'))
     AND type IN (sqlc.slice('type'))
+    AND key NOT IN (sqlc.slice('key_skip'))
 ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452

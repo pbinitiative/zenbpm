@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="Exclusive gateway">
+  <title>Exclusive gateway</title>
+  <defs>
+    <style>
+      .bpmn-gateway { fill: white; stroke: black; stroke-width: 2; }
+      .bpmn-icon { stroke: black; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <polygon class="bpmn-gateway" points="100,30 170,100 100,170 30,100"/>
+  <g class="bpmn-icon" transform="translate(100,100) scale(0.8)">
+    <line x1="-20" y1="-20" x2="20" y2="20"/>
+    <line x1="20" y1="-20" x2="-20" y2="20"/>
+  </g>
+</svg>

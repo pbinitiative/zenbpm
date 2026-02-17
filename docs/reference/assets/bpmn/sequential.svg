@@ -1,0 +1,9 @@
+<svg width="180" height="100" viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Activity shape -->
+  <rect x="10" y="10" width="160" height="70" rx="10" ry="10" fill="white" stroke="black" stroke-width="2"></rect>
+
+  <!-- Sequential multi-instance marker (inside, spaced) -->
+  <line x1="80" y1="66" x2="100" y2="66" stroke="black" stroke-width="2"></line>
+  <line x1="80" y1="70" x2="100" y2="70" stroke="black" stroke-width="2"></line>
+  <line x1="80" y1="74" x2="100" y2="74" stroke="black" stroke-width="2"></line>
+</svg>

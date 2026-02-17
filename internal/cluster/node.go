@@ -21,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/store"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -873,22 +874,22 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get follower node to get process instance: %w", err)
+		return nil, nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get process instance: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get client to get process instance: %w", err)
+		return nil, nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get process instance: %w", err))
 	}
 	resp, err := client.GetProcessInstance(ctx, &proto.GetProcessInstanceRequest{
 		ProcessInstanceKey: &processInstanceKey,
 	})
-	if err != nil || resp.Error != nil {
+	if resp != nil && resp.Error != nil {
 		e := fmt.Errorf("failed to get process instance from partition %d", partitionId)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return nil, nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+		return nil, nil, zenerr.ToZenError(resp.Error, e)
+	}
+	if err != nil {
+		e := fmt.Errorf("failed to get process instance from partition %d %w", partitionId, err)
+		return nil, nil, zenerr.TechnicalError(e)
 	}
 
 	return resp.Processes, resp.ExecutionTokens, nil

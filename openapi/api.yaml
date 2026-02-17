@@ -814,8 +814,8 @@ paths:
                   taskAssignee: "john.doe"
                   currentStatus: "Application review"
 
-        400:
-          description: Bad request
+        404:
+          description: Not Found
           content:
             application/json:
               schema:

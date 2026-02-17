@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="Service task">
+  <title>Service task</title>
+  <defs>
+    <style>
+      .bpmn-task { fill: white; stroke: black; stroke-width: 2; }
+      .bpmn-icon { fill: none; stroke: black; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+  
+  <!-- Task rectangle -->
+  <rect class="bpmn-task" x="20" y="20" width="200" height="100" rx="3"/>
+  
+  <!-- Gear icon (improved design) -->
+  <g transform="translate(42, 45)">
+    <!-- Outer gear teeth -->
+    <path class="bpmn-icon" d="M 0,-9 L 2.5,-6 L 2.5,-9 L 5,-6 L 3.5,-3 L 6.5,-3 L 4.5,0 L 7,1 L 4.5,2 L 6.5,3 L 3.5,3 L 5,6 L 2.5,9 L 2.5,6 L 0,9 L -2.5,6 L -2.5,9 L -5,6 L -3.5,3 L -6.5,3 L -4.5,2 L -7,1 L -4.5,0 L -6.5,-3 L -3.5,-3 L -5,-6 L -2.5,-9 L -2.5,-6 Z"/>
+    
+    <!-- Center circle -->
+    <circle cx="0" cy="0" r="2" class="bpmn-icon" fill="black"/>
+  </g>
+</svg>

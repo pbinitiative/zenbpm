@@ -3752,7 +3752,7 @@ type GetProcessInstanceResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ProcessInstance
-	JSON400      *Error
+	JSON404      *Error
 	JSON500      *Error
 	JSON502      *Error
 }
@@ -5025,12 +5025,12 @@ func ParseGetProcessInstanceResponse(rsp *http.Response) (*GetProcessInstanceRes
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON400 = &dest
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="Business rule task">
+  <title>Business rule task</title>
+  
+  <!-- Task rectangle (rounded) -->
+  <rect x="20" y="20" width="200" height="100" fill="white" stroke="black" stroke-width="2" rx="8"/>
+  
+  <!-- Business rule marker (detailed grid icon) -->
+  <g transform="translate(35, 35)">
+    <!-- Table outline -->
+    <rect x="0" y="0" width="25" height="20" fill="none" stroke="black" stroke-width="1.5"/>
+    
+    <!-- First row grey background -->
+    <rect x="0" y="0" width="25" height="6.67" fill="#cccccc" stroke="none"/>
+    
+    <!-- Horizontal lines (2 rows) -->
+    <line x1="0" y1="6.67" x2="25" y2="6.67" stroke="black" stroke-width="1"/>
+    <line x1="0" y1="13.33" x2="25" y2="13.33" stroke="black" stroke-width="1"/>
+    
+    <!-- Vertical lines (1 column, not in first row) -->
+    <line x1="8.33" y1="6.67" x2="8.33" y2="20" stroke="black" stroke-width="1"/>
+  </g>
+</svg>

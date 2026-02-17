@@ -53,7 +53,7 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		ClusterConnectTimeout:       30 * time.Second,
 		WriteQueueCap:               1024,
 		WriteQueueBatchSz:           128,
-		WriteQueueTimeout:           50 * time.Millisecond,
+		WriteQueueTimeout:           200 * time.Millisecond,
 		WriteQueueTx:                false,
 		CPUProfile:                  "",
 		MemProfile:                  "",

@@ -112,30 +112,27 @@ func (s *Server) Stop(ctx context.Context) {
 	}
 }
 
-// TODO: implement turn off switch in regular usage
-func (s *Server) TestStartCpuProfile(ctx context.Context, request public.TestStartCpuProfileRequestObject) (public.TestStartCpuProfileResponseObject, error) {
+func (s *Server) TestStartPprofServer(ctx context.Context, request public.TestStartPprofServerRequestObject) (public.TestStartPprofServerResponseObject, error) {
 
-	err := s.node.StartCpuProfile(ctx, request.NodeId)
+	err := s.node.StartPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStartCpuProfile500JSONResponse{
+		return public.TestStartPprofServer500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.TestStartCpuProfile200Response{}, nil
+	return public.TestStartPprofServer200Response{}, nil
 }
 
-func (s *Server) TestStopCpuProfile(ctx context.Context, request public.TestStopCpuProfileRequestObject) (public.TestStopCpuProfileResponseObject, error) {
-	pprof, err := s.node.StopCpuProfile(ctx, request.NodeId)
+func (s *Server) TestStopPprofServer(ctx context.Context, request public.TestStopPprofServerRequestObject) (public.TestStopPprofServerResponseObject, error) {
+	err := s.node.StopPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStopCpuProfile500JSONResponse{
+		return public.TestStopPprofServer500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.TestStopCpuProfile200JSONResponse{
-		Pprof: &pprof,
-	}, nil
+	return public.TestStopPprofServer200JSONResponse{}, nil
 }
 
 func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {

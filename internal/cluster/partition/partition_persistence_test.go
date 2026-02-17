@@ -298,20 +298,22 @@ func TestDataCleanup(t *testing.T) {
 		Int64: time.Now().Unix(),
 		Valid: true,
 	}
-	inactiveIds, err := db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	inactiveIds, err := db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+		CurrUnix: nowSeconds,
+		Limit:    100000,
+	})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(inactiveIds))
 	activeBeforeCleanup, err := db.Queries.FindActiveInstances(t.Context())
 	assert.NoError(t, err)
 
-	err = db.dataCleanup(time.Now())
+	cleanupTriggered, err := db.dataCleanup(time.Now())
 	assert.NoError(t, err)
+	assert.False(t, cleanupTriggered)
 
 	activeAfterCleanup, err := db.Queries.FindActiveInstances(t.Context())
 	assert.NoError(t, err)
 	assert.Equal(t, activeBeforeCleanup, activeAfterCleanup)
-
-	createTestData(t.Context(), &idsToBeDeleted)
 
 	idsToComplete := append(idsToBeDeleted, idsToKeep...)
 	for _, id := range idsToComplete {
@@ -321,14 +323,21 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveProcessInstance(t.Context(), pi)
 		assert.NoError(t, err)
 	}
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+		CurrUnix: nowSeconds,
+		Limit:    100000,
+	})
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, inactiveIds, idsToBeDeleted)
 
-	err = db.dataCleanup(time.Now())
+	cleanupTriggered, err = db.dataCleanup(time.Now())
 	assert.NoError(t, err)
+	assert.True(t, cleanupTriggered)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+		CurrUnix: nowSeconds,
+		Limit:    100000,
+	})
 	assert.NoError(t, err)
 	assert.Empty(t, inactiveIds)
 	count := queryCount(t, db, "select count(*) from process_instance")
@@ -346,27 +355,32 @@ func TestDataCleanup(t *testing.T) {
 	count = queryCount(t, db, "select count(*) from incident")
 	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
 
+	//should delete only one instance
 	db.historyDeleteThreshold = 1
-	err = db.dataCleanup(time.Now().Add(2 * time.Hour))
+	cleanupTriggered, err = db.dataCleanup(time.Now().Add(2 * time.Hour))
 	assert.NoError(t, err)
+	assert.True(t, cleanupTriggered)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), nowSeconds)
+	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+		CurrUnix: nowSeconds,
+		Limit:    100000,
+	})
 	assert.NoError(t, err)
 	assert.Empty(t, inactiveIds)
 	count = queryCount(t, db, "select count(*) from process_instance")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(999), count)
 	count = queryCount(t, db, "select count(*) from message_subscription")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(499), count)
 	count = queryCount(t, db, "select count(*) from timer")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(500), count)
 	count = queryCount(t, db, "select count(*) from job")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(500), count)
 	count = queryCount(t, db, "select count(*) from execution_token")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(499), count)
 	count = queryCount(t, db, "select count(*) from flow_element_instance")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(500), count)
 	count = queryCount(t, db, "select count(*) from incident")
-	assert.Empty(t, count)
+	assert.Equal(t, int64(499), count)
 }
 
 func queryCount(t *testing.T, db *DB, query string) int64 {

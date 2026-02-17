@@ -34,8 +34,8 @@ const (
 	ZenService_UnassignPartition_FullMethodName              = "/cluster.ZenService/UnassignPartition"
 	ZenService_PartitionBackup_FullMethodName                = "/cluster.ZenService/PartitionBackup"
 	ZenService_PartitionRestore_FullMethodName               = "/cluster.ZenService/PartitionRestore"
-	ZenService_StartCpuProfiler_FullMethodName               = "/cluster.ZenService/StartCpuProfiler"
-	ZenService_StopCpuProfiler_FullMethodName                = "/cluster.ZenService/StopCpuProfiler"
+	ZenService_StartPprofServer_FullMethodName               = "/cluster.ZenService/StartPprofServer"
+	ZenService_StopPprofServer_FullMethodName                = "/cluster.ZenService/StopPprofServer"
 	ZenService_NodeCommand_FullMethodName                    = "/cluster.ZenService/NodeCommand"
 	ZenService_EvaluateDecision_FullMethodName               = "/cluster.ZenService/EvaluateDecision"
 	ZenService_DeployDmnResourceDefinition_FullMethodName    = "/cluster.ZenService/DeployDmnResourceDefinition"
@@ -95,8 +95,8 @@ type ZenServiceClient interface {
 	UnassignPartition(ctx context.Context, in *UnassignPartitionRequest, opts ...grpc.CallOption) (*UnassignPartitionResponse, error)
 	PartitionBackup(ctx context.Context, in *PartitionBackupRequest, opts ...grpc.CallOption) (*PartitionBackupResponse, error)
 	PartitionRestore(ctx context.Context, in *PartitionRestoreRequest, opts ...grpc.CallOption) (*PartitionRestoreResponse, error)
-	StartCpuProfiler(ctx context.Context, in *CpuProfilerRequest, opts ...grpc.CallOption) (*CpuProfilerStartResult, error)
-	StopCpuProfiler(ctx context.Context, in *CpuProfilerRequest, opts ...grpc.CallOption) (*CpuProfilerStopResult, error)
+	StartPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStartResult, error)
+	StopPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStopResult, error)
 	NodeCommand(ctx context.Context, in *proto.Command, opts ...grpc.CallOption) (*NodeCommandResponse, error)
 	// engine endpoints
 	// Deploys definition into partitions that receiving node is leader of
@@ -279,20 +279,20 @@ func (c *zenServiceClient) PartitionRestore(ctx context.Context, in *PartitionRe
 	return out, nil
 }
 
-func (c *zenServiceClient) StartCpuProfiler(ctx context.Context, in *CpuProfilerRequest, opts ...grpc.CallOption) (*CpuProfilerStartResult, error) {
+func (c *zenServiceClient) StartPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStartResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CpuProfilerStartResult)
-	err := c.cc.Invoke(ctx, ZenService_StartCpuProfiler_FullMethodName, in, out, cOpts...)
+	out := new(PprofServerStartResult)
+	err := c.cc.Invoke(ctx, ZenService_StartPprofServer_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *zenServiceClient) StopCpuProfiler(ctx context.Context, in *CpuProfilerRequest, opts ...grpc.CallOption) (*CpuProfilerStopResult, error) {
+func (c *zenServiceClient) StopPprofServer(ctx context.Context, in *PprofServerRequest, opts ...grpc.CallOption) (*PprofServerStopResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CpuProfilerStopResult)
-	err := c.cc.Invoke(ctx, ZenService_StopCpuProfiler_FullMethodName, in, out, cOpts...)
+	out := new(PprofServerStopResult)
+	err := c.cc.Invoke(ctx, ZenService_StopPprofServer_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -611,8 +611,8 @@ type ZenServiceServer interface {
 	UnassignPartition(context.Context, *UnassignPartitionRequest) (*UnassignPartitionResponse, error)
 	PartitionBackup(context.Context, *PartitionBackupRequest) (*PartitionBackupResponse, error)
 	PartitionRestore(context.Context, *PartitionRestoreRequest) (*PartitionRestoreResponse, error)
-	StartCpuProfiler(context.Context, *CpuProfilerRequest) (*CpuProfilerStartResult, error)
-	StopCpuProfiler(context.Context, *CpuProfilerRequest) (*CpuProfilerStopResult, error)
+	StartPprofServer(context.Context, *PprofServerRequest) (*PprofServerStartResult, error)
+	StopPprofServer(context.Context, *PprofServerRequest) (*PprofServerStopResult, error)
 	NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error)
 	// engine endpoints
 	// Deploys definition into partitions that receiving node is leader of
@@ -697,11 +697,11 @@ func (UnimplementedZenServiceServer) PartitionBackup(context.Context, *Partition
 func (UnimplementedZenServiceServer) PartitionRestore(context.Context, *PartitionRestoreRequest) (*PartitionRestoreResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PartitionRestore not implemented")
 }
-func (UnimplementedZenServiceServer) StartCpuProfiler(context.Context, *CpuProfilerRequest) (*CpuProfilerStartResult, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method StartCpuProfiler not implemented")
+func (UnimplementedZenServiceServer) StartPprofServer(context.Context, *PprofServerRequest) (*PprofServerStartResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartPprofServer not implemented")
 }
-func (UnimplementedZenServiceServer) StopCpuProfiler(context.Context, *CpuProfilerRequest) (*CpuProfilerStopResult, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method StopCpuProfiler not implemented")
+func (UnimplementedZenServiceServer) StopPprofServer(context.Context, *PprofServerRequest) (*PprofServerStopResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopPprofServer not implemented")
 }
 func (UnimplementedZenServiceServer) NodeCommand(context.Context, *proto.Command) (*NodeCommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NodeCommand not implemented")
@@ -1057,38 +1057,38 @@ func _ZenService_PartitionRestore_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_StartCpuProfiler_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CpuProfilerRequest)
+func _ZenService_StartPprofServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PprofServerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZenServiceServer).StartCpuProfiler(ctx, in)
+		return srv.(ZenServiceServer).StartPprofServer(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZenService_StartCpuProfiler_FullMethodName,
+		FullMethod: ZenService_StartPprofServer_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).StartCpuProfiler(ctx, req.(*CpuProfilerRequest))
+		return srv.(ZenServiceServer).StartPprofServer(ctx, req.(*PprofServerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ZenService_StopCpuProfiler_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CpuProfilerRequest)
+func _ZenService_StopPprofServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PprofServerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ZenServiceServer).StopCpuProfiler(ctx, in)
+		return srv.(ZenServiceServer).StopPprofServer(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ZenService_StopCpuProfiler_FullMethodName,
+		FullMethod: ZenService_StopPprofServer_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ZenServiceServer).StopCpuProfiler(ctx, req.(*CpuProfilerRequest))
+		return srv.(ZenServiceServer).StopPprofServer(ctx, req.(*PprofServerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1625,12 +1625,12 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ZenService_PartitionRestore_Handler,
 		},
 		{
-			MethodName: "StartCpuProfiler",
-			Handler:    _ZenService_StartCpuProfiler_Handler,
+			MethodName: "StartPprofServer",
+			Handler:    _ZenService_StartPprofServer_Handler,
 		},
 		{
-			MethodName: "StopCpuProfiler",
-			Handler:    _ZenService_StopCpuProfiler_Handler,
+			MethodName: "StopPprofServer",
+			Handler:    _ZenService_StopPprofServer_Handler,
 		},
 		{
 			MethodName: "NodeCommand",

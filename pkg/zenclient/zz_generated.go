@@ -1252,6 +1252,9 @@ type ClientInterface interface {
 	// GetProcessInstance request
 	GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelProcessInstance request
+	CancelProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHistory request
 	GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1650,6 +1653,18 @@ func (c *Client) CreateProcessInstance(ctx context.Context, body CreateProcessIn
 
 func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessInstanceRequest(c.Server, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelProcessInstanceRequest(c.Server, processInstanceKey)
 	if err != nil {
 		return nil, err
 	}
@@ -3568,6 +3583,40 @@ func NewGetProcessInstanceRequest(server string, processInstanceKey int64) (*htt
 	return req, nil
 }
 
+// NewCancelProcessInstanceRequest generates requests for CancelProcessInstance
+func NewCancelProcessInstanceRequest(server string, processInstanceKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHistoryRequest generates requests for GetHistory
 func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHistoryParams) (*http.Request, error) {
 	var err error
@@ -4086,6 +4135,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetProcessInstanceWithResponse request
 	GetProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*GetProcessInstanceResponse, error)
+
+	// CancelProcessInstanceWithResponse request
+	CancelProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*CancelProcessInstanceResponse, error)
 
 	// GetHistoryWithResponse request
 	GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
@@ -4695,6 +4747,30 @@ func (r GetProcessInstanceResponse) StatusCode() int {
 	return 0
 }
 
+type CancelProcessInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelProcessInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelProcessInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetHistoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5140,6 +5216,15 @@ func (c *ClientWithResponses) GetProcessInstanceWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetProcessInstanceResponse(rsp)
+}
+
+// CancelProcessInstanceWithResponse request returning *CancelProcessInstanceResponse
+func (c *ClientWithResponses) CancelProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*CancelProcessInstanceResponse, error) {
+	rsp, err := c.CancelProcessInstance(ctx, processInstanceKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelProcessInstanceResponse(rsp)
 }
 
 // GetHistoryWithResponse request returning *GetHistoryResponse
@@ -6161,6 +6246,46 @@ func ParseGetProcessInstanceResponse(rsp *http.Response) (*GetProcessInstanceRes
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelProcessInstanceResponse parses an HTTP response from a CancelProcessInstanceWithResponse call
+func ParseCancelProcessInstanceResponse(rsp *http.Response) (*CancelProcessInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelProcessInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

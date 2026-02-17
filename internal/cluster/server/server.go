@@ -382,7 +382,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 }
 
 func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyProcessInstanceRequest) (*proto.ModifyProcessInstanceResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return &proto.ModifyProcessInstanceResponse{
@@ -451,7 +452,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 }
 
 func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return createDeleteProcessInstanceVariableErrorResponse(err)
@@ -481,6 +483,30 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 
 func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
 	return &proto.DeleteProcessInstanceVariableResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
+}
+
+func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelProcessInstanceRequest) (*proto.CancelProcessInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	err := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, err)
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	return &proto.CancelProcessInstanceResponse{}, nil
+}
+
+func createCancelProcessInstanceErrorResponse(err error) (*proto.CancelProcessInstanceResponse, error) {
+	return &proto.CancelProcessInstanceResponse{
 		Error: &proto.ErrorResult{
 			Code:    nil,
 			Message: ptr.To(err.Error()),

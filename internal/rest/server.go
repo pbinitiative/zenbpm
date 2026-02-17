@@ -900,6 +900,17 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 	return public.DeleteProcessInstanceVariable204Response{}, nil
 }
 
+func (s *Server) CancelProcessInstance(ctx context.Context, request public.CancelProcessInstanceRequestObject) (public.CancelProcessInstanceResponseObject, error) {
+	err := s.node.CancelProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.CancelProcessInstance500JSONResponse{
+			Code:    "INTERNAL_SERVER_ERROR",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.CancelProcessInstance204Response{}, nil
+}
+
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)

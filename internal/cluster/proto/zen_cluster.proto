@@ -230,7 +230,7 @@ message ProcessDefinition {
 
 message ProcessDefinitionsPage {
   repeated ProcessDefinition  items = 1;
-  int32 totalCount = 2;
+  int32 total_count = 2;
 }
 
 message ProcessInstance {
@@ -484,19 +484,19 @@ message GetDmnResourceDefinitionsRequest {
 
 message DmnResourceDefinitionsPage {
   repeated DmnResourceDefinition items = 1;
-  int32 totalCount = 2;
+  int32 total_count = 2;
 }
 
 message PartitionedProcessInstances {
   uint32 partition_id = 1;
   repeated ProcessInstance instances = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message PartitionedDecisionInstances {
   uint32 partition_id = 1;
   repeated DecisionInstance decisionInstances = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetProcessInstancesResponse {
@@ -533,7 +533,7 @@ message GetProcessInstanceJobsRequest {
 message GetProcessInstanceJobsResponse {
   ErrorResult error = 1;
   repeated Job jobs = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetFlowElementHistoryRequest {
@@ -545,7 +545,7 @@ message GetFlowElementHistoryRequest {
 message GetFlowElementHistoryResponse {
   ErrorResult error = 1;
   repeated FlowElement flow = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetIncidentsRequest {
@@ -558,7 +558,7 @@ message GetIncidentsRequest {
 message GetIncidentsResponse {
   ErrorResult error = 1;
   repeated Incident incidents = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetJobsRequest {
@@ -584,7 +584,7 @@ message GetJobResponse {
 message PartitionedJobs {
   uint32 partition_id = 1;
   repeated Job jobs = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetJobsResponse {
@@ -663,7 +663,7 @@ message IncidentCounts {
 message PartitionedProcessDefinitionStatistics {
   uint32 partition_id = 1;
   repeated ProcessDefinitionStatistics statistics = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetProcessDefinitionStatisticsResponse {

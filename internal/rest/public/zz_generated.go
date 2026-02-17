@@ -830,6 +830,9 @@ type ServerInterface interface {
 	// Get state of a process instance selected by processInstanceKey
 	// (GET /process-instances/{processInstanceKey})
 	GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
+	// Cancels a process instance
+	// (POST /process-instances/{processInstanceKey}/cancel)
+	CancelProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64)
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams)
@@ -968,6 +971,12 @@ func (_ Unimplemented) CreateProcessInstance(w http.ResponseWriter, r *http.Requ
 // Get state of a process instance selected by processInstanceKey
 // (GET /process-instances/{processInstanceKey})
 func (_ Unimplemented) GetProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Cancels a process instance
+// (POST /process-instances/{processInstanceKey}/cancel)
+func (_ Unimplemented) CancelProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1729,6 +1738,31 @@ func (siw *ServerInterfaceWrapper) GetProcessInstance(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// CancelProcessInstance operation middleware
+func (siw *ServerInterfaceWrapper) CancelProcessInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelProcessInstance(w, r, processInstanceKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHistory operation middleware
 func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -2147,6 +2181,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}", wrapper.GetProcessInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/process-instances/{processInstanceKey}/cancel", wrapper.CancelProcessInstance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/history", wrapper.GetHistory)
@@ -2906,6 +2943,49 @@ func (response GetProcessInstance502JSONResponse) VisitGetProcessInstanceRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CancelProcessInstanceRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+}
+
+type CancelProcessInstanceResponseObject interface {
+	VisitCancelProcessInstanceResponse(w http.ResponseWriter) error
+}
+
+type CancelProcessInstance204Response struct {
+}
+
+func (response CancelProcessInstance204Response) VisitCancelProcessInstanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CancelProcessInstance400JSONResponse Error
+
+func (response CancelProcessInstance400JSONResponse) VisitCancelProcessInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CancelProcessInstance500JSONResponse Error
+
+func (response CancelProcessInstance500JSONResponse) VisitCancelProcessInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CancelProcessInstance502JSONResponse Error
+
+func (response CancelProcessInstance502JSONResponse) VisitCancelProcessInstanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetHistoryRequestObject struct {
 	ProcessInstanceKey int64 `json:"processInstanceKey"`
 	Params             GetHistoryParams
@@ -3214,6 +3294,9 @@ type StrictServerInterface interface {
 	// Get state of a process instance selected by processInstanceKey
 	// (GET /process-instances/{processInstanceKey})
 	GetProcessInstance(ctx context.Context, request GetProcessInstanceRequestObject) (GetProcessInstanceResponseObject, error)
+	// Cancels a process instance
+	// (POST /process-instances/{processInstanceKey}/cancel)
+	CancelProcessInstance(ctx context.Context, request CancelProcessInstanceRequestObject) (CancelProcessInstanceResponseObject, error)
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
@@ -3799,6 +3882,32 @@ func (sh *strictHandler) GetProcessInstance(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// CancelProcessInstance operation middleware
+func (sh *strictHandler) CancelProcessInstance(w http.ResponseWriter, r *http.Request, processInstanceKey int64) {
+	var request CancelProcessInstanceRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelProcessInstance(ctx, request.(CancelProcessInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelProcessInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelProcessInstanceResponseObject); ok {
+		if err := validResponse.VisitCancelProcessInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHistory operation middleware
 func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams) {
 	var request GetHistoryRequestObject
@@ -4078,20 +4187,21 @@ var swaggerSpec = []string{
 	"cZwcmVg3+eh5ZUVBTjBC4BaFDOAA8Fm50p2qNZotocCjO+B0DMgMM65+8FFSfwX32PfBCIEQu7fIA3GY",
 	"EGvSwxW4JBjjiYRrB7xxvINpBzhnA+9gWlDnrV3b0217jcSIdRMUnsST/NfSNl6zLP6uWRaJhDCkWdQL",
 	"Ha1zKfM/t20/WRVO7crsbafO9/zcfSl/bk4hPkt2ySCLqTW0VBd1hO4wuq9lJ5xm6O1R9v1Y6weZBjse",
-	"QZtlNKJMPcnXqJDtU9anfXytT2tbn0bNRwYo4vMlOU7aO7wRRtSb5t9xNzGk9APjL40RvSYRvfgkonpW",
-	"X2kWkBSO3KGAfXcMUqA/aN0loM5nZADgo0/uzUu/2+DS+9pGAKIP5VFTxHHQ328PySYTnjh6ZI6zZApN",
-	"rhchfbEwSv8e9WRrleDfYYo5yx/75D5L35XJ7ttSRfN+UHUy4DQb9AKlwHL++6z/U8eKg+yfm85rkupP",
-	"IV/6LeVLUsHbjsfqPvVXZrmOQJ8sOrwit4hjz+nvJhq+jkvv2nmdboFHJO2gALcKhuB3iiKlQ/6GJMy7",
-	"Yb+v371ImU37HbfZeN+48X3Txp3Cxk8eFBUduwjEgfrh5LYtf9Krqtnu3mDoHHxtI+vat55JOV6ThMvZ",
-	"56uAaxRwGbK2LdSautKV7OmGJnWv9s2r/FlW/hibobXU8Z1NtEOLKYq0nb6gxhuV4DdZo5z62OWP6sPw",
-	"e8Pd/tAZtJA62u06K2y3kIHR3N4s622jfA5RNPS3hgeDxUalh2hc1tyv7DUI8FN0RduysCp1KWTutCqz",
-	"fg+9auD6D+VD6C8wSLCJplXF75N2LBJ5KDpKvfcDe40OVGrcNB+6WrBU8x2s7HBALM7utT2V8cIlxF3T",
-	"EmXzV633mP55DmdokRxf2v2tePWOxe+Gq/di/SHFZdTNLv8d87akDhIUPmPh1RPEuLLNlj5r9/LLq2QH",
-	"OOM1a75lDFFGe4989lNvIfunuGHcDSMyxn5N65QrRJlw738I4ws5uKlRwHGam8TX4zsMsxc1JJ4AVUvc",
-	"IWRcJbGG1v99g90/j7pf7e5h9/vNf//Dap2rW6rCC+MUqijpwYCiF1UmI3ukAFcBVDln0RPBcLYkXOZo",
-	"SbjOyfLVJHwc+895wCu2w+J6yrjAokdzpk1Ib65pLVEVCcMX9k10cVyNRMVfEXMkNBBHvjW0poyFw17P",
-	"Jy70p4Sy4YF9YPfukkiVnOGxJB27hbq3ylMlzeFR+UCN9hsY6hDNx9iVxz/ISP039WcqP2VfQlB+E3tf",
-	"3Cz+PwAA//8VlZGv/LIAAA==",
+	"QZtlNKJMPcnXqJDtU9anfXytT2tbn0bNRwYo4vMlOU7aO7wRRtRz+V9+TcmbeP7z8aQ989fhckks9uY/",
+	"jywGb9DOZKd67piKfrk4ADAFkHOthFbevkrwFhJcYI3q+OCmbo20YerEePpZ/pd2VV5T71586l29glRp",
+	"sZGUW92hgH13DLpTf9C6t0adp9UAwEef3JuXfrfBpfe17TNE99ajpjj9oL/fHpJNpgly9MjKAMkUmhyW",
+	"QmfFwpXz96jCXKtxxR2mmCtKY5/cZ0nvskRkaxIg66JWJwNOs0EvUAosF/XKuqZ1rDjI/rnpvKZ2/xTy",
+	"pd9SviR17+14rO4DmWWW6wj0yVLdK3KLOPac/m5iF+u49K6dV7cXeETSRA1wW3oIfqcoUr4rsSEJ827Y",
+	"7+t3LxLN0y7hbTbeN25837Rxp7DxkwdFAccuAnGgfm68baOs9Kpqtrs3GDoHX9vIuvYNm1KO1yThcvb5",
+	"KuAaBVyGrG0LtaZejiU3QENrx1f75lX+LCt/jC0EW+r4ziaaCMYURdr+eFDjw03wm6xRThju8kf1ySt7",
+	"w93+0Bm0kDra7TorbLeQt9TcFDDrCKV8RFR8BsMaHgwWG5Ueot1fc5e/19DZT9FLcMvCqtTbk7nTqsz6",
+	"PfSq6R5/ZC++SDf2Jlq9Fb/q27FI5KHoKI15Dew1+rap2Qb50NVSDDRO+uxwQCzO7rWpm/HCJcRd00ho",
+	"81et95j+eQ5naJEcX9ozsXj1jsXvhqv3Yv0hxWXUzS7/9f+2pA4SFD5jueITRIazzZY+BvnyixJl30Tj",
+	"NWu+ZQxRRnuPfPZTbyG7Drlh3A0jMsZ+TcOhK0SZcO9/COMLObipvcZxmtHH1+M7DLMXNSSeAFVL3CFk",
+	"XCWxhtb/fYPdP4+6X+3uYff7zX//w2qd4V6qXQ3jFKoo6VyCohdVXCY7CwFXAVQ5Z9FJxHC2JFzmaEm4",
+	"zsny1SR8HPvPecArNpHjesq4wKJHc6Yt42iuBC9RFQlD5L0wqiJhM1HxV8QcCQ3EkW8NrSlj4bDX84kL",
+	"/SmhbHhgH9i9uyRSJWd4LEnHbqFatPJUSQ56VD7rpP1yjDok/fKs/vEPMlL/Tf2Zyk/Z90OU38TeFzeL",
+	"/w8AAP//mU8tlDK2AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

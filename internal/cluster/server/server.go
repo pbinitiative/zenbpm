@@ -19,6 +19,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -665,33 +666,24 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		err := zenerr.ClusterError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	instance, err := engine.FindProcessInstance(req.GetProcessInstanceKey())
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey())
+		err := zenerr.NotFound(fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 
@@ -701,12 +693,9 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		States:             activeStates,
 	})
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey())
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
@@ -723,12 +712,9 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 
 	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey())
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	return &proto.GetProcessInstanceResponse{

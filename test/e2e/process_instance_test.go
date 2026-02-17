@@ -351,6 +351,19 @@ func TestDeleteProcessInstanceVariable(t *testing.T) {
 	})
 }
 
+func TestGetProcessInstanceErrorResponse(t *testing.T) {
+	t.Run("read non existing process instance", func(t *testing.T) {
+		var nonExistingProcessInstanceKey int64 = -1
+		var resp *zenclient.GetProcessInstanceResponse
+		resp, _ = app.restClient.GetProcessInstanceWithResponse(t.Context(), nonExistingProcessInstanceKey)
+
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON502)
+		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
+		assert.Equal(t, "failed to get follower node to get process instance: partition not found", resp.JSON502.Message)
+	})
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
 	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
 }

@@ -1614,14 +1614,6 @@ paths:
       responses:
         200:
           description: Pprof server stopped
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  pprof:
-                    type: string
-                    format: byte
         500:
           description: Internal server error
           content:

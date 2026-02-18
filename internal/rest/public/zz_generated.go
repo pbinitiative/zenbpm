@@ -3215,15 +3215,12 @@ type TestStopPprofServerResponseObject interface {
 	VisitTestStopPprofServerResponse(w http.ResponseWriter) error
 }
 
-type TestStopPprofServer200JSONResponse struct {
-	Pprof *[]byte `json:"pprof,omitempty"`
+type TestStopPprofServer200Response struct {
 }
 
-func (response TestStopPprofServer200JSONResponse) VisitTestStopPprofServerResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
+func (response TestStopPprofServer200Response) VisitTestStopPprofServerResponse(w http.ResponseWriter) error {
 	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
+	return nil
 }
 
 type TestStopPprofServer500JSONResponse Error
@@ -4199,9 +4196,8 @@ var swaggerSpec = []string{
 	"/qp1n5I/L9AUL6LjS3om5q/eifzdcPVerT8kv4y62eW//t+U1EGEwhcsV3yGyHC62cLHIF9/UWLcN9F4",
 	"zepvGceMs+6TmP3MXSRdh4KQjtqRkDeHX68x41HXITH8Khpd12DjJMnpEyuKPUaNcuSKiVqRNSLPk3wE",
 	"ZCWxB4gLFQUO4P99Q+0/j9tfrfZR+/vtf/8DNs54L5hoKmQS2Ff2DfgyApVTl31FDCdNg6UOmgZrnjMN",
-	"XtUxr9haTm4hx7iHc64t7mhQH56nLRoEr462CoemIS3xgnwW0cEs9OAATjgPBt2uRx3kTSjjg0Pr0Ore",
-	"R9GreIangsRs5ypIS0+VhKEn5VNP2q/JqEOSr9HqH/+gQ/XfxMep/JR+U0T5Te59cbv4/wAAAP//IChm",
-	"dka2AAA=",
+	"fp5jpkHw6o65gD/NKYsX5LPoSGahBwdwwnkw6HY96iBvQhkfHFqHVvc+CiTFMzwVhFc7V8xZeqrk7jwp",
+	"X13SfthFHZJ8GFb/+Acdqv8m7kblp/TzHspvcu+L28X/BwAA//8+p9MM0bUAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

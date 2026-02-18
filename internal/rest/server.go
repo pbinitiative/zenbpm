@@ -132,7 +132,7 @@ func (s *Server) TestStopPprofServer(ctx context.Context, request public.TestSto
 			Message: err.Error(),
 		}, nil
 	}
-	return public.TestStopPprofServer200JSONResponse{}, nil
+	return public.TestStopPprofServer200Response{}, nil
 }
 
 func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {

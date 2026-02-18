@@ -1,0 +1,11 @@
+services:
+  zenbpm:
+    image: ghcr.io/pbinitiative/zenbpm:latest
+    environment:
+      - CONFIG_FILE=/var/zenbpm/conf-dev.yaml
+    volumes:
+      - ./conf/zenbpm/conf-dev.yaml:/var/zenbpm/conf-dev.yaml
+    ports:
+      - "9090:9090"
+      - "8080:8080"
+      - "6060:6060" #pprof server for performance testing

@@ -1417,7 +1417,7 @@ func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerReque
 	}
 
 	go func() {
-		log.Info(s.cpuProfile.Server.ListenAndServe().Error())
+		log.Info("%s", s.cpuProfile.Server.ListenAndServe())
 	}()
 
 	s.cpuProfile.Running = true
@@ -1437,7 +1437,7 @@ func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*p
 	}
 
 	if err := s.cpuProfile.Server.Shutdown(context.Background()); err != nil {
-		log.Info("shutdown failed:", err)
+		log.Info("shutdown failed: %s", err)
 	}
 
 	s.cpuProfile.Running = false

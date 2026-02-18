@@ -113,6 +113,7 @@ func (rq *DB) scheduleDataCleanup() {
 		if err != nil {
 			rq.logger.Error(fmt.Sprintf("Error while performing data cleanup: %s", err))
 			t.Reset(30 * time.Second)
+			continue
 		}
 		if cleaningTriggered {
 			//speed up cleaning if there is a lot to clean

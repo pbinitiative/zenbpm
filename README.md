@@ -58,6 +58,18 @@ You can run ZenBPM in a Docker container:
 docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm ghcr.io/pbinitiative/zenbpm
 ```
 
+To import configs into zen docker image use something like:
+
+```bash
+  -e CONFIG_FILE=/var/zenbpm/conf-dev.yaml -v ./conf/zenbpm/conf-dev.yaml:/var/zenbpm/conf-dev.yaml
+```
+
+Or compose up in root zenbpm folder using docker-compose.yml:
+
+```bash
+docker compose up
+```
+
 ## Architecture
 
 ZenBPM is built with a modular architecture:

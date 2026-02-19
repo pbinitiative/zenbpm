@@ -22,14 +22,14 @@ require (
 	github.com/senseyeio/duration v0.0.0-20180430131211-7c2a214ada46
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0
-	go.opentelemetry.io/otel v1.39.0
+	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.36.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.36.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.61.0
-	go.opentelemetry.io/otel/metric v1.39.0
+	go.opentelemetry.io/otel/metric v1.40.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/sdk/metric v1.39.0
-	go.opentelemetry.io/otel/trace v1.39.0
+	go.opentelemetry.io/otel/trace v1.40.0
 	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.11

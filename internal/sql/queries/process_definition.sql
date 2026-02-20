@@ -136,16 +136,6 @@ instance_counts AS (
   FROM process_instance AS pi
   WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
   GROUP BY pi.process_definition_key
-),
-incident_counts AS (
-  SELECT
-    pi.process_definition_key,
-    COUNT(*) AS total_incidents,
-    SUM(CASE WHEN inc.resolved_at IS NULL THEN 1 ELSE 0 END) AS unresolved_count
-  FROM incident AS inc
-  INNER JOIN process_instance AS pi ON inc.process_instance_key = pi.key
-  WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
-  GROUP BY pi.process_definition_key
 )
 SELECT
   fd."key",
@@ -157,12 +147,9 @@ SELECT
   COALESCE(ic.completed_count, 0) AS completed_count,
   COALESCE(ic.terminated_count, 0) AS terminated_count,
   COALESCE(ic.failed_count, 0) AS failed_count,
-  COALESCE(incc.total_incidents, 0) AS total_incidents,
-  COALESCE(incc.unresolved_count, 0) AS unresolved_count,
   COUNT(*) OVER() AS total_count
 FROM filtered_definitions AS fd
 LEFT JOIN instance_counts AS ic ON fd."key" = ic.process_definition_key
-LEFT JOIN incident_counts AS incc ON fd."key" = incc.process_definition_key
 ORDER BY
   -- workaround for sqlc - sort parameter handling
   CASE CAST(?3 AS TEXT) WHEN 'name_asc' THEN fd.bpmn_process_name END ASC,
@@ -173,8 +160,6 @@ ORDER BY
   CASE CAST(?3 AS TEXT) WHEN 'version_desc' THEN fd.version END DESC,
   CASE CAST(?3 AS TEXT) WHEN 'instanceCount_asc' THEN COALESCE(ic.total_instances, 0) END ASC,
   CASE CAST(?3 AS TEXT) WHEN 'instanceCount_desc' THEN COALESCE(ic.total_instances, 0) END DESC,
-  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_asc' THEN COALESCE(incc.total_incidents, 0) END ASC,
-  CASE CAST(?3 AS TEXT) WHEN 'incidentCount_desc' THEN COALESCE(incc.total_incidents, 0) END DESC,
   fd."key" DESC
 LIMIT @limit
 OFFSET @offset;

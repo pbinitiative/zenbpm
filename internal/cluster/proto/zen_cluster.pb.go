@@ -5584,7 +5584,6 @@ type ProcessDefinitionStatistics struct {
 	BpmnProcessId   *string                `protobuf:"bytes,3,opt,name=bpmn_process_id,json=bpmnProcessId" json:"bpmn_process_id,omitempty"`
 	BpmnProcessName *string                `protobuf:"bytes,4,opt,name=bpmn_process_name,json=bpmnProcessName" json:"bpmn_process_name,omitempty"`
 	InstanceCounts  *InstanceCounts        `protobuf:"bytes,5,opt,name=instance_counts,json=instanceCounts" json:"instance_counts,omitempty"`
-	IncidentCounts  *IncidentCounts        `protobuf:"bytes,6,opt,name=incident_counts,json=incidentCounts" json:"incident_counts,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -5650,13 +5649,6 @@ func (x *ProcessDefinitionStatistics) GetBpmnProcessName() string {
 func (x *ProcessDefinitionStatistics) GetInstanceCounts() *InstanceCounts {
 	if x != nil {
 		return x.InstanceCounts
-	}
-	return nil
-}
-
-func (x *ProcessDefinitionStatistics) GetIncidentCounts() *IncidentCounts {
-	if x != nil {
-		return x.IncidentCounts
 	}
 	return nil
 }
@@ -5737,58 +5729,6 @@ func (x *InstanceCounts) GetFailed() int64 {
 	return 0
 }
 
-type IncidentCounts struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Total         *int64                 `protobuf:"varint,1,opt,name=total" json:"total,omitempty"`
-	Unresolved    *int64                 `protobuf:"varint,2,opt,name=unresolved" json:"unresolved,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *IncidentCounts) Reset() {
-	*x = IncidentCounts{}
-	mi := &file_zen_cluster_proto_msgTypes[88]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *IncidentCounts) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*IncidentCounts) ProtoMessage() {}
-
-func (x *IncidentCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[88]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use IncidentCounts.ProtoReflect.Descriptor instead.
-func (*IncidentCounts) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{88}
-}
-
-func (x *IncidentCounts) GetTotal() int64 {
-	if x != nil && x.Total != nil {
-		return *x.Total
-	}
-	return 0
-}
-
-func (x *IncidentCounts) GetUnresolved() int64 {
-	if x != nil && x.Unresolved != nil {
-		return *x.Unresolved
-	}
-	return 0
-}
-
 type PartitionedProcessDefinitionStatistics struct {
 	state         protoimpl.MessageState         `protogen:"open.v1"`
 	PartitionId   *uint32                        `protobuf:"varint,1,opt,name=partition_id,json=partitionId" json:"partition_id,omitempty"`
@@ -5800,7 +5740,7 @@ type PartitionedProcessDefinitionStatistics struct {
 
 func (x *PartitionedProcessDefinitionStatistics) Reset() {
 	*x = PartitionedProcessDefinitionStatistics{}
-	mi := &file_zen_cluster_proto_msgTypes[89]
+	mi := &file_zen_cluster_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5812,7 +5752,7 @@ func (x *PartitionedProcessDefinitionStatistics) String() string {
 func (*PartitionedProcessDefinitionStatistics) ProtoMessage() {}
 
 func (x *PartitionedProcessDefinitionStatistics) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[89]
+	mi := &file_zen_cluster_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5825,7 +5765,7 @@ func (x *PartitionedProcessDefinitionStatistics) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use PartitionedProcessDefinitionStatistics.ProtoReflect.Descriptor instead.
 func (*PartitionedProcessDefinitionStatistics) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{89}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *PartitionedProcessDefinitionStatistics) GetPartitionId() uint32 {
@@ -5859,7 +5799,7 @@ type GetProcessDefinitionStatisticsResponse struct {
 
 func (x *GetProcessDefinitionStatisticsResponse) Reset() {
 	*x = GetProcessDefinitionStatisticsResponse{}
-	mi := &file_zen_cluster_proto_msgTypes[90]
+	mi := &file_zen_cluster_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5871,7 +5811,7 @@ func (x *GetProcessDefinitionStatisticsResponse) String() string {
 func (*GetProcessDefinitionStatisticsResponse) ProtoMessage() {}
 
 func (x *GetProcessDefinitionStatisticsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zen_cluster_proto_msgTypes[90]
+	mi := &file_zen_cluster_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5884,7 +5824,7 @@ func (x *GetProcessDefinitionStatisticsResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use GetProcessDefinitionStatisticsResponse.ProtoReflect.Descriptor instead.
 func (*GetProcessDefinitionStatisticsResponse) Descriptor() ([]byte, []int) {
-	return file_zen_cluster_proto_rawDescGZIP(), []int{90}
+	return file_zen_cluster_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *GetProcessDefinitionStatisticsResponse) GetError() *ErrorResult {

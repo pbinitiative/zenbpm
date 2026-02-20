@@ -2119,8 +2119,6 @@ components:
           description: "Process name from BPMN"
         instanceCounts:
           $ref: "#/components/schemas/InstanceCounts"
-        incidentCounts:
-          $ref: "#/components/schemas/IncidentCounts"
     InstanceCounts:
       type: object
       required:
@@ -2145,18 +2143,6 @@ components:
         failed:
           type: integer
           description: "Number of failed instances"
-    IncidentCounts:
-      type: object
-      required:
-        - total
-        - unresolved
-      properties:
-        total:
-          type: integer
-          description: "Total number of incidents"
-        unresolved:
-          type: integer
-          description: "Number of unresolved incidents"
     ProcessInstancePage:
       type: object
       allOf:

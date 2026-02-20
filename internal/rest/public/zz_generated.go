@@ -335,15 +335,6 @@ type Incident struct {
 	ResolvedAt         *time.Time `json:"resolvedAt,omitempty"`
 }
 
-// IncidentCounts defines model for IncidentCounts.
-type IncidentCounts struct {
-	// Total Total number of incidents
-	Total int `json:"total"`
-
-	// Unresolved Number of unresolved incidents
-	Unresolved int `json:"unresolved"`
-}
-
 // IncidentPage defines model for IncidentPage.
 type IncidentPage struct {
 	// Embedded fields due to inline allOf schema
@@ -485,7 +476,6 @@ type ProcessDefinitionSimple struct {
 // ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
 type ProcessDefinitionStatistics struct {
 	BpmnProcessId  string         `json:"bpmnProcessId"`
-	IncidentCounts IncidentCounts `json:"incidentCounts"`
 	InstanceCounts InstanceCounts `json:"instanceCounts"`
 	Key            int64          `json:"key"`
 

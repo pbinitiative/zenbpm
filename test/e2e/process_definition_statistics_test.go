@@ -80,7 +80,9 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 
 	t.Run("statistics with incidents", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
-			&zenclient.GetProcessDefinitionStatisticsParams{})
+			&zenclient.GetProcessDefinitionStatisticsParams{
+				BpmnProcessIdIn: &[]string{}, // testing with empty array to cover potential edge case
+			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
 
@@ -144,6 +146,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	t.Run("pagination", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
+				BpmnProcessDefinitionKeyIn: &[]int64{}, // testing with empty array to cover potential edge case,
 				Page: ptr.To(int32(1)),
 				Size: ptr.To(int32(1)),
 			})

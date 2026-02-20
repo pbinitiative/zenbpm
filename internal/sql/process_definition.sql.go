@@ -121,13 +121,25 @@ WITH filtered_definitions AS (
         WHERE pd2.bpmn_process_id = pd.bpmn_process_id
       )
     )
-    -- force sqlc to register both boolean flags before slices to maintain positional parameter order
-    AND CAST(?6 AS INTEGER) IS CAST(?6 AS INTEGER)
-    AND CAST(?7 AS INTEGER) IS CAST(?7 AS INTEGER)
-    -- bpmnProcessId IN filter (boolean flag + slice, each slice appears only once)
-    AND (CAST(?6 AS INTEGER) = 0 OR pd.bpmn_process_id IN (/*SLICE:bpmn_process_id_in*/?))
-    -- definitionKey IN filter (boolean flag + slice, each slice appears only once)
-    AND (CAST(?7 AS INTEGER) = 0 OR pd."key" IN (/*SLICE:definition_key_in*/?))
+    -- bpmnProcessId IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        ?6 IS NULL
+        OR json_array_length(?6) = 0
+        OR pd.bpmn_process_id IN (
+            SELECT value
+            FROM json_each(?6)
+        )
+    )
+
+    -- definitionKey IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        ?7 IS NULL
+        OR json_array_length(?7) = 0
+        OR pd."key" IN (
+            SELECT value
+            FROM json_each(?7)
+        )
+    )
 ),
 instance_counts AS (
   SELECT
@@ -170,15 +182,13 @@ OFFSET ?1
 `
 
 type FindProcessDefinitionStatisticsParams struct {
-	Offset             int64          `json:"offset"`
-	Limit              int64          `json:"limit"`
-	Sort               sql.NullString `json:"sort"`
-	NameFilter         sql.NullString `json:"name_filter"`
-	OnlyLatest         int64          `json:"only_latest"`
-	UseBpmnProcessIDIn int64          `json:"use_bpmn_process_id_in"`
-	UseDefinitionKeyIn int64          `json:"use_definition_key_in"`
-	BpmnProcessIDIn    []string       `json:"bpmn_process_id_in"`
-	DefinitionKeyIn    []int64        `json:"definition_key_in"`
+	Offset              int64          `json:"offset"`
+	Limit               int64          `json:"limit"`
+	Sort                sql.NullString `json:"sort"`
+	NameFilter          sql.NullString `json:"name_filter"`
+	OnlyLatest          int64          `json:"only_latest"`
+	BpmnProcessIDInJson interface{}    `json:"bpmn_process_id_in_json"`
+	DefinitionKeyInJson interface{}    `json:"definition_key_in_json"`
 }
 
 type FindProcessDefinitionStatisticsRow struct {
@@ -195,32 +205,15 @@ type FindProcessDefinitionStatisticsRow struct {
 }
 
 func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error) {
-	query := findProcessDefinitionStatistics
-	var queryParams []interface{}
-	queryParams = append(queryParams, arg.Offset)
-	queryParams = append(queryParams, arg.Limit)
-	queryParams = append(queryParams, arg.Sort)
-	queryParams = append(queryParams, arg.NameFilter)
-	queryParams = append(queryParams, arg.OnlyLatest)
-	queryParams = append(queryParams, arg.UseBpmnProcessIDIn)
-	queryParams = append(queryParams, arg.UseDefinitionKeyIn)
-	if len(arg.BpmnProcessIDIn) > 0 {
-		for _, v := range arg.BpmnProcessIDIn {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:bpmn_process_id_in*/?", strings.Repeat(",?", len(arg.BpmnProcessIDIn))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:bpmn_process_id_in*/?", "NULL", 1)
-	}
-	if len(arg.DefinitionKeyIn) > 0 {
-		for _, v := range arg.DefinitionKeyIn {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:definition_key_in*/?", strings.Repeat(",?", len(arg.DefinitionKeyIn))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:definition_key_in*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionStatistics,
+		arg.Offset,
+		arg.Limit,
+		arg.Sort,
+		arg.NameFilter,
+		arg.OnlyLatest,
+		arg.BpmnProcessIDInJson,
+		arg.DefinitionKeyInJson,
+	)
 	if err != nil {
 		return nil, err
 	}

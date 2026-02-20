@@ -117,13 +117,25 @@ WITH filtered_definitions AS (
         WHERE pd2.bpmn_process_id = pd.bpmn_process_id
       )
     )
-    -- force sqlc to register both boolean flags before slices to maintain positional parameter order
-    AND CAST(sqlc.arg('use_bpmn_process_id_in') AS INTEGER) IS CAST(sqlc.arg('use_bpmn_process_id_in') AS INTEGER)
-    AND CAST(sqlc.arg('use_definition_key_in') AS INTEGER) IS CAST(sqlc.arg('use_definition_key_in') AS INTEGER)
-    -- bpmnProcessId IN filter (boolean flag + slice, each slice appears only once)
-    AND (CAST(sqlc.arg('use_bpmn_process_id_in') AS INTEGER) = 0 OR pd.bpmn_process_id IN (sqlc.slice('bpmn_process_id_in')))
-    -- definitionKey IN filter (boolean flag + slice, each slice appears only once)
-    AND (CAST(sqlc.arg('use_definition_key_in') AS INTEGER) = 0 OR pd."key" IN (sqlc.slice('definition_key_in')))
+    -- bpmnProcessId IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        sqlc.narg('bpmn_process_id_in_json') IS NULL
+        OR json_array_length(sqlc.narg('bpmn_process_id_in_json')) = 0
+        OR pd.bpmn_process_id IN (
+            SELECT value
+            FROM json_each(?6)  -- TODO: sqlc.narg('bpmn_process_id_in_json') dont work here, use ?6 instead
+        )
+    )
+
+    -- definitionKey IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        sqlc.narg('definition_key_in_json') IS NULL
+        OR json_array_length(sqlc.narg('definition_key_in_json')) = 0
+        OR pd."key" IN (
+            SELECT value
+            FROM json_each(?7) -- TODO: sqlc.narg('definition_key_in_json') dont work here, use ?7 instead
+        )
+    )
 ),
 instance_counts AS (
   SELECT

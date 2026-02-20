@@ -42,7 +42,6 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.NotNil(t, found, "definition should be in statistics")
 		assert.Equal(t, 0, found.InstanceCounts.Total)
 		assert.Equal(t, 0, found.InstanceCounts.Active)
-		assert.Equal(t, 0, found.IncidentCounts.Total)
 	})
 
 	// Create 2 active instances (service task will wait for completion)
@@ -68,7 +67,6 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.Equal(t, 2, found.InstanceCounts.Total)
 		assert.Equal(t, 2, found.InstanceCounts.Active)
 		assert.Equal(t, 0, found.InstanceCounts.Completed)
-		assert.Equal(t, 0, found.IncidentCounts.Total)
 	})
 
 	// Deploy a definition that produces incidents
@@ -95,8 +93,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		}
 		assert.NotNil(t, found)
 		assert.Equal(t, 1, found.InstanceCounts.Total)
-		assert.Equal(t, 1, found.IncidentCounts.Total)
-		assert.Equal(t, 1, found.IncidentCounts.Unresolved)
+		assert.Equal(t, 1, found.InstanceCounts.Failed)
 	})
 
 	t.Run("filter by bpmnProcessIdIn", func(t *testing.T) {

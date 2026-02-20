@@ -657,10 +657,6 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 					Terminated: int(stat.InstanceCounts.GetTerminated()),
 					Failed:     int(stat.InstanceCounts.GetFailed()),
 				},
-				IncidentCounts: public.IncidentCounts{
-					Total:      int(stat.IncidentCounts.GetTotal()),
-					Unresolved: int(stat.IncidentCounts.GetUnresolved()),
-				},
 			}
 		}
 		partitions[i] = public.PartitionProcessDefinitionStatistics{

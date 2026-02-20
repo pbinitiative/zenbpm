@@ -1455,10 +1455,6 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 					Terminated: ptr.To(int64(stat.TerminatedCount)),
 					Failed:     ptr.To(int64(stat.FailedCount)),
 				},
-				IncidentCounts: &proto.IncidentCounts{
-					Total:      ptr.To(stat.TotalIncidents),
-					Unresolved: ptr.To(int64(stat.UnresolvedCount)),
-				},
 			}
 		}
 

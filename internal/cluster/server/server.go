@@ -1407,25 +1407,44 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			onlyLatest = 1
 		}
 
-		useBpmnProcessIdIn := int64(0)
-		if len(req.BpmnProcessIdIn) > 0 {
-			useBpmnProcessIdIn = 1
+		var bpmnProcessIDInJson interface{}
+		if req.BpmnProcessIdIn != nil {
+			b, err := json.Marshal(req.BpmnProcessIdIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal bpmn process id in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			bpmnProcessIDInJson = string(b)
 		}
-		useDefinitionKeyIn := int64(0)
-		if len(req.BpmnProcessDefinitionKeyIn) > 0 {
-			useDefinitionKeyIn = 1
+
+		var definitionKeyInJson interface{}
+		if req.BpmnProcessDefinitionKeyIn != nil {
+			b, err := json.Marshal(req.BpmnProcessDefinitionKeyIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal process definition key in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			definitionKeyInJson = string(b)
 		}
 
 		dbStats, err := queries.FindProcessDefinitionStatistics(ctx, sql.FindProcessDefinitionStatisticsParams{
-			Sort:               sql.ToNullString((*string)(sort)),
-			NameFilter:         sql.ToNullString(req.Name),
-			OnlyLatest:         onlyLatest,
-			Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
-			Limit:              int64(req.GetSize()),
-			UseBpmnProcessIDIn: useBpmnProcessIdIn,
-			UseDefinitionKeyIn: useDefinitionKeyIn,
-			BpmnProcessIDIn:    req.BpmnProcessIdIn,
-			DefinitionKeyIn:    req.BpmnProcessDefinitionKeyIn,
+			Sort:                sql.ToNullString((*string)(sort)),
+			NameFilter:          sql.ToNullString(req.Name),
+			OnlyLatest:          onlyLatest,
+			Offset:              int64(req.GetSize()) * int64(req.GetPage()-1),
+			Limit:               int64(req.GetSize()),
+			BpmnProcessIDInJson: bpmnProcessIDInJson,
+			DefinitionKeyInJson: definitionKeyInJson,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to find process definition statistics: %w", err)

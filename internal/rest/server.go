@@ -56,6 +56,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	}
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
+	r.Use(middleware.StripEmptyQueryParams())
 	r.Route("/v1", func(r chi.Router) {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{

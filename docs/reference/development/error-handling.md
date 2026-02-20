@@ -4,10 +4,10 @@ sidebar_position: 10
 
 # Error handling
 
-In ZenBPM besides handling errors in proper Golang style we need to properly return the correct HTTP status error code from our exposed REST API.
-Often the error handling happens deep in lower layers of the backend, also behind the GRPC call.
-In REST controllers we often lack the information if we should return the NOT_FOUND(404), CLUSTER_ERROR(502) or something else.
-To tackle this problem the simple error composition was created to encapsulate the error code enum. It obviously also implements the `Error` interface:
+In ZenBPM, in addition to idiomatic Go error handling, we need to return correct HTTP status codes from our exposed REST API.
+Often, the error handling happens deep in lower layers of the backend, including behind gRPC calls.
+In REST controllers, we often lack the information to decide whether to return `NOT_FOUND` (404), `CLUSTER_ERROR` (502), or something else.
+To solve this, we created a simple error composition to encapsulate an error code. It also implements the `error` interface:
 ```go
 type ZenError struct {
     Code ZenErrorCode

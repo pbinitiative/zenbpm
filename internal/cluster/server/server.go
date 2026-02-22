@@ -1010,6 +1010,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				CreatedAt:          ptr.To(job.CreatedAt),
 				State:              ptr.To(job.State),
 				Assignee:           a,
+				Variables:          []byte(job.Variables),
 			}
 		}
 

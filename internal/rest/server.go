@@ -1033,6 +1033,14 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
+			jobVars := make(map[string]any)
+			err = json.Unmarshal(job.GetVariables(), &jobVars)
+			if err != nil {
+				return public.GetJobs500JSONResponse{
+					Code:    "INTERNAL_SERVER_ERROR",
+					Message: err.Error(),
+				}, nil
+			}
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
@@ -1041,6 +1049,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
 				Assignee:           job.Assignee,
+				Variables:          jobVars,
 			}
 		}
 	}

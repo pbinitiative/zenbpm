@@ -41,7 +41,7 @@ func TestMessageEndEvent(t *testing.T) {
 	})
 
 	t.Run("complete the waiting job", func(t *testing.T) {
-		err := completeJob(t, jobToComplete, map[string]any{})
+		err := completeJob(t, jobToComplete, jobToComplete.Variables)
 		assert.NoError(t, err)
 	})
 
@@ -59,7 +59,7 @@ func TestMessageEndEvent(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, public.ProcessInstanceStateCompleted, fetchedProcessInstance.State)
 		assert.Equal(t, 0, len(fetchedProcessInstance.ActiveElementInstances))
-		assert.Equal(t, map[string]any{"instVar": "instVarValue", "city": "beijing"}, fetchedProcessInstance.Variables)
+		assert.Equal(t, map[string]any{"instVar": "instVarValue", "newCity": "beijing"}, fetchedProcessInstance.Variables)
 	})
 
 }

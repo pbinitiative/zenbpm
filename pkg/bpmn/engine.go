@@ -1079,8 +1079,9 @@ func (engine *Engine) handleMessageEndEvent(
 		}
 		return tokens, nil
 	default:
-		panic(fmt.Sprintf("unexpected activity state in handling MessageEndEvent %s", activityResult))
+		err = fmt.Errorf("unexpected activity state '%s' when handling MessageEndEvent for currentToken.ElementInstanceKey=%d", activityResult, currentToken.ElementInstanceKey)
 	}
+	return nil, err
 }
 
 func (engine *Engine) handleMessageEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,

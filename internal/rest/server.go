@@ -779,7 +779,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				})
 			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
-				ActiveElementInstances: make([]public.ElementInstance, 0),
+				ActiveElementInstances: respActiveElementInstances,
 				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 				Key:                    instance.GetKey(),
 				BpmnProcessId:          instance.ProcessId,

@@ -54,6 +54,11 @@ func (p *TProcess) GetInternalTaskById(id string) InternalTask {
 			return &e
 		}
 	}
+	for _, e := range p.EndEvents {
+		if e.GetId() == id {
+			return &e
+		}
+	}
 	return nil
 }
 

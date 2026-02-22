@@ -769,8 +769,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 					Message: err.Error(),
 				}, nil
 			}
+			respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[i].Items[k].ActiveElementInstances))
+			for _, elementInstance := range processInstancesPage.Partitions[i].Items[k].ActiveElementInstances {
+				respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+					CreatedAt:          elementInstance.CreatedAt,
+					ElementId:          elementInstance.ElementId,
+					ElementInstanceKey: elementInstance.ElementInstanceKey,
+					State:              elementInstance.State,
+				})
+			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
-				ActiveElementInstances: make([]public.ElementInstance, 0),
+				ActiveElementInstances: respActiveElementInstances,
 				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 				Key:                    instance.GetKey(),
 				BpmnProcessId:          instance.ProcessId,
@@ -817,7 +826,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
 			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
-			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+			State:              runtime.TokenState(elementInstance.GetState()).String(),
 		})
 	}
 
@@ -1024,6 +1033,14 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
+			jobVars := make(map[string]any)
+			err = json.Unmarshal(job.GetVariables(), &jobVars)
+			if err != nil {
+				return public.GetJobs500JSONResponse{
+					Code:    "INTERNAL_SERVER_ERROR",
+					Message: err.Error(),
+				}, nil
+			}
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
@@ -1032,6 +1049,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
 				Assignee:           job.Assignee,
+				Variables:          jobVars,
 			}
 		}
 	}

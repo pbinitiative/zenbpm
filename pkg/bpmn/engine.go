@@ -969,25 +969,34 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 }
 
 func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
-	currentToken.State = runtime.TokenStateCompleted
 	updatedTokens := make([]runtime.ExecutionToken, 0)
-	terminateEventProcessed := false
+	processPlainEvent := true
 	if len(endEvent.EvenDefinitions) > 0 {
 		for _, endEventDefinition := range endEvent.EvenDefinitions {
 			switch endEventDefinition.(type) {
 			case bpmn20.TTerminateEventDefinition:
+				currentToken.State = runtime.TokenStateCompleted
 				tokens, err := engine.handleTerminateEndEvent(ctx, batch, instance, currentToken)
 				if err != nil {
 					return nil, fmt.Errorf("failed to process terminateEndEvent: %w", err)
 				}
 				updatedTokens = append(updatedTokens, tokens...)
-				terminateEventProcessed = true
+				processPlainEvent = false
+			case bpmn20.TMessageEndEventDefinition:
+				tokens, err := engine.handleMessageEndEvent(ctx, batch, instance, endEvent, currentToken)
+				if err != nil {
+					return nil, fmt.Errorf("failed to process messageEndEvent: %w", err)
+				}
+				updatedTokens = append(updatedTokens, tokens...)
+				processPlainEvent = false
 			default:
 				return nil, fmt.Errorf("unsupported end event definition %T", endEventDefinition)
 			}
 		}
-	} else if !terminateEventProcessed { // additionally processing of plain end event might make sense only for future non terminate end events
-		err := engine.handlePlainEndEvent(ctx, instance)
+	}
+	if processPlainEvent { // additionally processing of plain end event might make sense only for future non terminate end events
+		currentToken.State = runtime.TokenStateCompleted
+		err := engine.handlePlainEndEvent(ctx, instance, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
 		}
@@ -1003,7 +1012,7 @@ func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *Engine
 	return tokens, nil
 }
 
-func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.ProcessInstance) error {
+func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.ProcessInstance, onJobCompletion bool) error {
 	activeSubscriptions := false
 
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
@@ -1026,8 +1035,14 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load pending process instance jobs for key: %d", instance.ProcessInstance().Key), err)
 	}
-	if len(jobs) > 0 {
-		activeSubscriptions = true
+	if onJobCompletion {
+		if len(jobs) > 1 {
+			activeSubscriptions = true
+		}
+	} else {
+		if len(jobs) > 0 {
+			activeSubscriptions = true
+		}
 	}
 
 	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
@@ -1042,4 +1057,51 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.
 		instance.ProcessInstance().State = runtime.ActivityStateCompleted
 	}
 	return nil
+}
+
+func (engine *Engine) handleMessageEndEvent(
+	ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance,
+	endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken,
+) (tokens []runtime.ExecutionToken, err error) {
+	activityResult, err := engine.createInternalTask(ctx, batch, instance, endEvent, currentToken)
+	if err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageEndEvent %d: %w", currentToken.ElementInstanceKey, err)
+	}
+	switch activityResult {
+	case runtime.ActivityStateActive:
+		currentToken.State = runtime.TokenStateWaiting
+		return []runtime.ExecutionToken{currentToken}, nil
+	case runtime.ActivityStateCompleted:
+		tokens, err := engine.handleElementTransition(ctx, batch, instance, endEvent, currentToken)
+		if err != nil {
+			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageEndEvent flow transition %d: %w", currentToken.ElementInstanceKey, err)
+		}
+		return tokens, nil
+	default:
+		panic(fmt.Sprintf("unexpected activity state in handling MessageEndEvent %s", activityResult))
+	}
+}
+
+func (engine *Engine) handleMessageEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
+	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
+) (updatedTokens []runtime.ExecutionToken, err error) {
+	for _, endEventDefinition := range endEvent.EvenDefinitions {
+		switch endEventDefinition.(type) {
+		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
+		// end event definitions completions twice on continuation
+		case bpmn20.TMessageEndEventDefinition:
+			err = engine.handlePlainEndEvent(ctx, instance, true)
+			if err != nil {
+				return nil, fmt.Errorf("failed to handle plain EndEvent: %w", err)
+			}
+			for i, _ := range tokens {
+				if tokens[i].Key == jobToken.Key {
+					tokens[i].State = runtime.TokenStateCompleted
+				}
+			}
+			return tokens, nil
+		}
+	}
+	return tokens, nil
 }

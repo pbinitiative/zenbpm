@@ -769,6 +769,15 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 					Message: err.Error(),
 				}, nil
 			}
+			respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[i].Items[k].ActiveElementInstances))
+			for _, elementInstance := range processInstancesPage.Partitions[i].Items[k].ActiveElementInstances {
+				respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+					CreatedAt:          elementInstance.CreatedAt,
+					ElementId:          elementInstance.ElementId,
+					ElementInstanceKey: elementInstance.ElementInstanceKey,
+					State:              elementInstance.State,
+				})
+			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
 				ActiveElementInstances: make([]public.ElementInstance, 0),
 				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
@@ -817,7 +826,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
 			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
-			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+			State:              runtime.TokenState(elementInstance.GetState()).String(),
 		})
 	}
 

@@ -33,6 +33,9 @@ func (startEvent TStartEvent) GetType() ElementType {
 type TEndEvent struct {
 	TEvent
 	EvenDefinitions []EventDefinition
+	TaskDefinition  extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Input           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
 type TTerminateEventDefinition struct {
@@ -41,10 +44,20 @@ type TTerminateEventDefinition struct {
 
 func (TTerminateEventDefinition) eventDefinition() {}
 
+type TMessageEndEventDefinition struct {
+	Id *string `xml:"id,attr"`
+}
+
+func (TMessageEndEventDefinition) eventDefinition() {}
+
 func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		TerminateEndEvent TTerminateEventDefinition `xml:"terminateEventDefinition"`
+		TerminateEndEvent     TTerminateEventDefinition  `xml:"terminateEventDefinition"`
+		TMessageEndEventEvent TMessageEndEventDefinition `xml:"messageEventDefinition"`
+		TaskDefinition        extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+		Input                 []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+		Output                []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -55,10 +68,28 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 	if tempStruct.TerminateEndEvent.Id != nil {
 		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEndEvent)
 	}
+	if tempStruct.TMessageEndEventEvent.Id != nil {
+		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TMessageEndEventEvent)
+		endEvent.TaskDefinition = tempStruct.TaskDefinition
+		endEvent.Input = tempStruct.Input
+		endEvent.Output = tempStruct.Output
+	}
 	return nil
 }
 
 func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }
+
+func (endEvent TEndEvent) GetTaskType() string {
+	return endEvent.TaskDefinition.TypeName
+}
+
+func (endEvent TEndEvent) GetInputMapping() []extensions.TIoMapping {
+	return endEvent.Input
+}
+
+func (endEvent TEndEvent) GetOutputMapping() []extensions.TIoMapping {
+	return endEvent.Input
+}
 
 type EventDefinition interface {
 	eventDefinition()

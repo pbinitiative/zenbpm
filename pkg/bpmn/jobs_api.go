@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -241,6 +243,18 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	job.State = runtime.ActivityStateCompleted
 	batch.SaveJob(ctx, job)
+
+	messageEndEventHandled := false
+	activity, err := engine.getExecutionTokenActivity(ctx, instance, job.Token)
+	switch element := activity.Element().(type) {
+	case *bpmn20.TEndEvent:
+		tokens, err = engine.handleMessageEndEventContinuation(ctx, instance, element, job.Token, tokens)
+		if err != nil {
+			return fmt.Errorf("failed to handle message end event continuation %w", err)
+		}
+		messageEndEventHandled = true
+	}
+
 	for _, token := range tokens {
 		batch.SaveToken(ctx, token)
 	}
@@ -270,9 +284,11 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 		engine.metrics.JobsCompleted.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 
-		err := engine.RunProcessInstance(ctx, instance, tokens)
-		if err != nil {
-			return fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
+		if !messageEndEventHandled {
+			err := engine.RunProcessInstance(ctx, instance, tokens)
+			if err != nil {
+				return fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
+			}
 		}
 		return err
 	}

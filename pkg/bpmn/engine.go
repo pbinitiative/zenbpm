@@ -982,7 +982,7 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 				}
 				updatedTokens = append(updatedTokens, tokens...)
 				processPlainEvent = false
-			case bpmn20.TMessageEndEventDefinition:
+			case bpmn20.TMessageEventDefinition:
 				tokens, err := engine.handleMessageEndEvent(ctx, batch, instance, endEvent, currentToken)
 				if err != nil {
 					return nil, fmt.Errorf("failed to process messageEndEvent: %w", err)
@@ -1084,14 +1084,14 @@ func (engine *Engine) handleMessageEndEvent(
 	return nil, err
 }
 
-func (engine *Engine) handleMessageEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
+func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
 ) (updatedTokens []runtime.ExecutionToken, err error) {
 	for _, endEventDefinition := range endEvent.EvenDefinitions {
 		switch endEventDefinition.(type) {
 		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
 		// end event definitions completions twice on continuation
-		case bpmn20.TMessageEndEventDefinition:
+		case bpmn20.TMessageEventDefinition:
 			err = engine.handlePlainEndEvent(ctx, instance, true)
 			if err != nil {
 				return nil, fmt.Errorf("failed to handle plain EndEvent: %w", err)

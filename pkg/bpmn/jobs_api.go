@@ -248,7 +248,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	activity, err := engine.getExecutionTokenActivity(ctx, instance, job.Token)
 	switch element := activity.Element().(type) {
 	case *bpmn20.TEndEvent:
-		tokens, err = engine.handleMessageEndEventContinuation(ctx, instance, element, job.Token, tokens)
+		tokens, err = engine.handleExternalEndEventContinuation(ctx, instance, element, job.Token, tokens)
 		if err != nil {
 			return fmt.Errorf("failed to handle message end event continuation %w", err)
 		}

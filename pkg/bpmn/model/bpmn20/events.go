@@ -88,7 +88,7 @@ func (endEvent TEndEvent) GetInputMapping() []extensions.TIoMapping {
 }
 
 func (endEvent TEndEvent) GetOutputMapping() []extensions.TIoMapping {
-	return endEvent.Input
+	return endEvent.Output
 }
 
 type EventDefinition interface {

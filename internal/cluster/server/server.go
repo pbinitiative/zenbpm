@@ -1397,6 +1397,102 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 	return nil
 }
 
+func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.GetProcessDefinitionStatisticsRequest) (*proto.GetProcessDefinitionStatisticsResponse, error) {
+	resp := make([]*proto.PartitionedProcessDefinitionStatistics, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetProcessDefinitionStatisticsResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+
+		onlyLatest := int64(0)
+		if req.OnlyLatest != nil && *req.OnlyLatest {
+			onlyLatest = 1
+		}
+
+		var bpmnProcessIDInJson interface{}
+		if req.BpmnProcessIdIn != nil {
+			b, err := json.Marshal(req.BpmnProcessIdIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal bpmn process id in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			bpmnProcessIDInJson = string(b)
+		}
+
+		var definitionKeyInJson interface{}
+		if req.BpmnProcessDefinitionKeyIn != nil {
+			b, err := json.Marshal(req.BpmnProcessDefinitionKeyIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal process definition key in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			definitionKeyInJson = string(b)
+		}
+
+		dbStats, err := queries.FindProcessDefinitionStatistics(ctx, sql.FindProcessDefinitionStatisticsParams{
+			Sort:                sql.ToNullString((*string)(req.Sort)),
+			NameFilter:          sql.ToNullString(req.Name),
+			OnlyLatest:          onlyLatest,
+			Offset:              int64(req.GetSize()) * int64(req.GetPage()-1),
+			Limit:               int64(req.GetSize()),
+			BpmnProcessIDInJson: bpmnProcessIDInJson,
+			DefinitionKeyInJson: definitionKeyInJson,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to find process definition statistics: %w", err)
+		}
+
+		partitionStats := make([]*proto.ProcessDefinitionStatistics, len(dbStats))
+
+		totalCount := int32(0)
+		for i, stat := range dbStats {
+			if i == 0 {
+				totalCount = int32(stat.TotalCount)
+			}
+
+			partitionStats[i] = &proto.ProcessDefinitionStatistics{
+				Key:             ptr.To(stat.Key),
+				Version:         ptr.To(int32(stat.Version)),
+				BpmnProcessId:   ptr.To(stat.BpmnProcessID),
+				BpmnProcessName: ptr.To(stat.BpmnProcessName),
+				InstanceCounts: &proto.InstanceCounts{
+					Total:      ptr.To(stat.TotalInstances),
+					Active:     ptr.To(int64(stat.ActiveCount)),
+					Completed:  ptr.To(int64(stat.CompletedCount)),
+					Terminated: ptr.To(int64(stat.TerminatedCount)),
+					Failed:     ptr.To(int64(stat.FailedCount)),
+				},
+			}
+		}
+
+		resp = append(resp, &proto.PartitionedProcessDefinitionStatistics{
+			PartitionId: &partitionId,
+			Statistics:  partitionStats,
+			TotalCount:  ptr.To(totalCount),
+		})
+	}
+	return &proto.GetProcessDefinitionStatisticsResponse{
+		Partitions: resp,
+	}, nil
+}
+
 func (s *Server) StartCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStartResult, error) {
 	if s.cpuProfile.Running == true {
 		return &proto.CpuProfilerStartResult{}, nil

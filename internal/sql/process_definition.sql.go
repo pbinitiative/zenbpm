@@ -127,7 +127,7 @@ WITH filtered_definitions AS (
         OR json_array_length(?6) = 0
         OR pd.bpmn_process_id IN (
             SELECT value
-            FROM json_each(?6)
+            FROM json_each(?6)  -- TODO: sqlc.narg('bpmn_process_id_in_json') dont work here, use ?6 instead
         )
     )
 
@@ -137,7 +137,7 @@ WITH filtered_definitions AS (
         OR json_array_length(?7) = 0
         OR pd."key" IN (
             SELECT value
-            FROM json_each(?7)
+            FROM json_each(?7) -- TODO: sqlc.narg('definition_key_in_json') dont work here, use ?7 instead
         )
     )
 ),

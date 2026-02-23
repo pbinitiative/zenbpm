@@ -643,8 +643,7 @@ message GetProcessDefinitionStatisticsRequest {
   repeated string bpmn_process_id_in = 5;
   repeated int64 bpmn_process_definition_key_in = 6;
   string name = 7;
-  string sort_by = 8;
-  string sort_order = 9;
+  string sort = 8;
 }
 
 message ProcessDefinitionStatistics {

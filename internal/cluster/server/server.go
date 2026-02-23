@@ -1413,9 +1413,6 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			}, err
 		}
 
-		// Build sort string
-		sort := sql.SortString(req.SortOrder, req.SortBy)
-
 		onlyLatest := int64(0)
 		if req.OnlyLatest != nil && *req.OnlyLatest {
 			onlyLatest = 1
@@ -1452,7 +1449,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 		}
 
 		dbStats, err := queries.FindProcessDefinitionStatistics(ctx, sql.FindProcessDefinitionStatisticsParams{
-			Sort:                sql.ToNullString((*string)(sort)),
+			Sort:                sql.ToNullString((*string)(req.Sort)),
 			NameFilter:          sql.ToNullString(req.Name),
 			OnlyLatest:          onlyLatest,
 			Offset:              int64(req.GetSize()) * int64(req.GetPage()-1),

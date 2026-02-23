@@ -601,15 +601,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 	}
 
 	// Build sort string
-	var sortBy, sortOrder *string
-	if request.Params.SortBy != nil {
-		s := string(*request.Params.SortBy)
-		sortBy = &s
-	}
-	if request.Params.SortOrder != nil {
-		s := string(*request.Params.SortOrder)
-		sortOrder = &s
-	}
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 
 	// Dereference slice pointers
 	var bpmnProcessIdIn []string
@@ -629,8 +621,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 		bpmnProcessIdIn,
 		bpmnProcessDefinitionKeyIn,
 		request.Params.Name,
-		sortBy,
-		sortOrder,
+		sort,
 	)
 	if err != nil {
 		return public.GetProcessDefinitionStatistics500JSONResponse{

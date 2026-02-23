@@ -605,8 +605,7 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 	bpmnProcessIdIn []string,
 	bpmnProcessDefinitionKeyIn []int64,
 	name *string,
-	sortBy *string,
-	sortOrder *string,
+	sort *sql.Sort,
 ) ([]*proto.PartitionedProcessDefinitionStatistics, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedProcessDefinitionStatistics, 0, len(state.Partitions))
@@ -622,15 +621,14 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 		}
 
 		resp, err := client.GetProcessDefinitionStatistics(ctx, &proto.GetProcessDefinitionStatisticsRequest{
-			Page:                         &page,
-			Size:                         &size,
-			Partitions:                   []uint32{partitionID},
-			OnlyLatest:                   &onlyLatest,
-			BpmnProcessIdIn:              bpmnProcessIdIn,
-			BpmnProcessDefinitionKeyIn:   bpmnProcessDefinitionKeyIn,
-			Name:                         name,
-			SortBy:                       sortBy,
-			SortOrder:                    sortOrder,
+			Page:                       &page,
+			Size:                       &size,
+			Partitions:                 []uint32{partitionID},
+			OnlyLatest:                 &onlyLatest,
+			BpmnProcessIdIn:            bpmnProcessIdIn,
+			BpmnProcessDefinitionKeyIn: bpmnProcessDefinitionKeyIn,
+			Name:                       name,
+			Sort:                       (*string)(sort),
 		})
 		if err != nil || resp.Error != nil {
 			e := fmt.Errorf("failed to get process definition statistics from partition %d", partitionID)

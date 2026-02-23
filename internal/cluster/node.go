@@ -311,7 +311,7 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	if key != 0 {
 		return DeployResult{key, true}, err
 	}
-	gen, _ := snowflake.NewNode(0)
+	gen, _ := snowflake.NewNode(0) // TODO: should not be initialized here, might cause unique constrain violation
 	definitionKey := gen.Generate()
 	state := node.store.ClusterState()
 	var errJoin error

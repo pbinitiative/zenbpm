@@ -595,6 +595,34 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	}, nil
 }
 
+func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, request public.GetProcessDefinitionElementStatisticsRequestObject) (public.GetProcessDefinitionElementStatisticsResponseObject, error) {
+	partitions, err := s.node.GetProcessDefinitionElementStatistics(ctx, request.ProcessDefinitionKey)
+	if err != nil {
+		return public.GetProcessDefinitionElementStatistics500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	result := public.ElementStatisticsPartitions{
+		Partitions: make([]public.PartitionElementStatistics, len(partitions)),
+	}
+	for i, partition := range partitions {
+		items := make(public.ElementStatistic, len(partition.GetStatistics()))
+		for _, entry := range partition.GetStatistics() {
+			items[entry.GetElementId()] = public.ElementStatisticCounts{
+				ActiveCount:   int(entry.GetActiveCount()),
+				IncidentCount: int(entry.GetIncidentCount()),
+			}
+		}
+		result.Partitions[i] = public.PartitionElementStatistics{
+			Partition: int(partition.GetPartitionId()),
+			Items:     items,
+		}
+	}
+	return public.GetProcessDefinitionElementStatistics200JSONResponse(result), nil
+}
+
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 

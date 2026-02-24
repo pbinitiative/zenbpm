@@ -225,6 +225,18 @@ WHERE
     ELSE
         1
     END
+    AND
+    -- workaround for sqlc
+    (
+     (?9 IS NOT NULL AND pi.process_type = ?9)
+     OR
+     (?10 IS NOT NULL AND pi.process_type = ?10)
+     OR
+     (?11 IS NOT NULL AND pi.process_type = ?11)
+     OR
+     (?12 IS NOT NULL AND pi.process_type = ?12)
+    )
+    -- end of workaround
 ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
@@ -234,20 +246,24 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
   pi.created_at DESC
 
-LIMIT ?10 OFFSET ?9
+LIMIT ?14 OFFSET ?13
 `
 
 type FindProcessInstancesPageParams struct {
-	SortByOrder          interface{} `json:"sort_by_order"`
-	ProcessDefinitionKey interface{} `json:"process_definition_key"`
-	ParentInstanceKey    interface{} `json:"parent_instance_key"`
-	BusinessKey          interface{} `json:"business_key"`
-	BpmnProcessID        interface{} `json:"bpmn_process_id"`
-	CreatedFrom          interface{} `json:"created_from"`
-	CreatedTo            interface{} `json:"created_to"`
-	State                interface{} `json:"state"`
-	Offset               int64       `json:"offset"`
-	Size                 int64       `json:"size"`
+	SortByOrder             interface{} `json:"sort_by_order"`
+	ProcessDefinitionKey    interface{} `json:"process_definition_key"`
+	ParentInstanceKey       interface{} `json:"parent_instance_key"`
+	BusinessKey             interface{} `json:"business_key"`
+	BpmnProcessID           interface{} `json:"bpmn_process_id"`
+	CreatedFrom             interface{} `json:"created_from"`
+	CreatedTo               interface{} `json:"created_to"`
+	State                   interface{} `json:"state"`
+	FilterTypeCallActivity  interface{} `json:"filter_type_call_activity"`
+	FilterTypeMultiInstance interface{} `json:"filter_type_multi_instance"`
+	FilterTypeDefault       interface{} `json:"filter_type_default"`
+	FilterTypeSubProcess    interface{} `json:"filter_type_sub_process"`
+	Offset                  int64       `json:"offset"`
+	Size                    int64       `json:"size"`
 }
 
 type FindProcessInstancesPageRow struct {
@@ -278,6 +294,10 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 		arg.CreatedFrom,
 		arg.CreatedTo,
 		arg.State,
+		arg.FilterTypeCallActivity,
+		arg.FilterTypeMultiInstance,
+		arg.FilterTypeDefault,
+		arg.FilterTypeSubProcess,
 		arg.Offset,
 		arg.Size,
 	)

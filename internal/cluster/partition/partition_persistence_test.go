@@ -566,6 +566,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.NotNil(t, dbInst2.(*runtime.CallActivityInstance).ParentProcessExecutionToken)
 
 	instncs, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
 		ProcessDefinitionKey: 0,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
@@ -573,7 +574,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
 		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
 		State:                ssql.NullInt64{Int64: 0, Valid: false},
-		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		ProcessType:          ssql.NullInt64{Int64: 0, Valid: false},
 		Offset:               0,
 		Size:                 20,
 	})
@@ -581,6 +582,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.Len(t, instncs, 5)
 
 	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
 		ProcessDefinitionKey: dbInst2.ProcessInstance().Definition.Key,
 		ParentInstanceKey:    0,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
@@ -588,7 +590,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
 		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
 		State:                ssql.NullInt64{Int64: 0, Valid: false},
-		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		ProcessType:          ssql.NullInt64{Int64: 0, Valid: false},
 		Offset:               0,
 		Size:                 20,
 	})
@@ -596,6 +598,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.Len(t, instncs, 2)
 
 	instncs, err = db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
 		ProcessDefinitionKey: dbInst2.ProcessInstance().Definition.Key,
 		ParentInstanceKey:    tok1.Key,
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
@@ -603,7 +606,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
 		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
 		State:                ssql.NullInt64{Int64: 0, Valid: false},
-		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		ProcessType:          ssql.NullInt64{Int64: 0, Valid: false},
 		Offset:               0,
 		Size:                 20,
 	})
@@ -611,6 +614,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.Len(t, instncs, 1)
 
 	subProcesses, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		SortByOrder:          ssql.NullString{String: "", Valid: false},
 		ProcessDefinitionKey: inst2.ProcessInstance().Definition.Key,
 		ParentInstanceKey:    inst1.ProcessInstance().GetInstanceKey(),
 		BusinessKey:          ssql.NullString{String: "", Valid: false},
@@ -618,7 +622,7 @@ func testInstanceParent(t *testing.T, db *DB) {
 		CreatedFrom:          ssql.NullInt64{Int64: 0, Valid: false},
 		CreatedTo:            ssql.NullInt64{Int64: 0, Valid: false},
 		State:                ssql.NullInt64{Int64: 0, Valid: false},
-		SortByOrder:          ssql.NullString{String: "", Valid: false},
+		ProcessType:          ssql.NullInt64{Int64: 0, Valid: false},
 		Offset:               0,
 		Size:                 20,
 	})

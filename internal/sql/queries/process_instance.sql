@@ -109,6 +109,18 @@ WHERE
     ELSE
         1
     END
+    AND
+    -- workaround for sqlc
+    (
+     (@filter_type_call_activity IS NOT NULL AND pi.process_type = @filter_type_call_activity)
+     OR
+     (@filter_type_multi_instance IS NOT NULL AND pi.process_type = @filter_type_multi_instance)
+     OR
+     (@filter_type_default IS NOT NULL AND pi.process_type = @filter_type_default)
+     OR
+     (@filter_type_sub_process IS NOT NULL AND pi.process_type = @filter_type_sub_process)
+    )
+    -- end of workaround
 ORDER BY
 -- workaround for sqlc which does not replace params in order by
   CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,

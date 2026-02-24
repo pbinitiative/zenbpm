@@ -114,7 +114,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
+            enum: [ dmnDefinitionName, dmnResourceDefinitionId, version, key ]
           description: "Sort field"
         - $ref: "#/components/parameters/sortOrder"
         - name: dmnResourceDefinitionId
@@ -339,7 +339,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [evaluatedAt, key]
+            enum: [ evaluatedAt, key ]
           description: "Sort field"
         - $ref: "#/components/parameters/sortOrder"
       responses:
@@ -476,7 +476,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
+            enum: [ name, bpmnProcessId, bpmnProcessName, version, key ]
           description: "Sort field"
 
         - $ref: "#/components/parameters/sortOrder"
@@ -828,7 +828,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, state]
+            enum: [ createdAt, key, state ]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
@@ -847,7 +847,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, completed, terminated, failed]
+            enum: [ active, completed, terminated, failed ]
           description: Filter by state
         - name: includeChildProcesses
           in: query
@@ -1002,7 +1002,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ createdAt, key, state ]
+            enum: [ key, state ]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: state
@@ -1249,7 +1249,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [resolved, unresolved]
+            enum: [ resolved, unresolved ]
         - name: page
           in: query
           schema:
@@ -1526,13 +1526,13 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, type, state]
+            enum: [ createdAt, key, type, state ]
           description: Sort field
         - name: sortOrder
           in: query
           schema:
             type: string
-            enum: [asc, desc]
+            enum: [ asc, desc ]
           description: Sort direction
       responses:
         200:
@@ -1774,7 +1774,7 @@ paths:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: ["flowNode-1", "flowNode-2"]
+              startingElementIds: [ "flowNode-1", "flowNode-2" ]
       responses:
         201:
           description: Process instance created
@@ -2172,7 +2172,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput: {}
+        decisionOutput: { }
     EvaluatedDecisionResult:
       type: object
       required:
@@ -2238,7 +2238,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue: {}
+        inputValue: { }
     EvaluatedDecisionOutput:
       type: object
       required:
@@ -2428,6 +2428,7 @@ components:
         - state
         - variables
         - activeElementInstances
+        - processType
       properties:
         key:
           type: integer
@@ -2669,5 +2670,5 @@ components:
       in: query
       schema:
         type: string
-        enum: [asc, desc]
+        enum: [ asc, desc ]
       description: "Sort direction"

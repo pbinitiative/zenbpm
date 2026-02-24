@@ -294,15 +294,18 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
 		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
+
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.ProcessInstance().Key,
-			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:     variables,
-			State:         ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.ProcessInstance().Definition.Key,
-			BusinessKey:   instance.ProcessInstance().BusinessKey,
+			Key:               &instance.ProcessInstance().Key,
+			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:         variables,
+			State:             ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
+			ParentInstanceKey: nil,
+			BusinessKey:       instance.ProcessInstance().BusinessKey,
+			Type:              ptr.To(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -331,14 +334,17 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
 		return &proto.StartInstanceOnElementIdsResponse{Error: err.ToProtoError()}, nil
 	}
+
 	return &proto.StartInstanceOnElementIdsResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.ProcessInstance().Key,
-			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:     variables,
-			State:         ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			Key:               &instance.ProcessInstance().Key,
+			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:         variables,
+			State:             ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
+			ParentInstanceKey: nil,
+			Type:              ptr.To(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -382,12 +388,14 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 
 	return &proto.ModifyProcessInstanceResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.ProcessInstance().Key,
-			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:     variables,
-			State:         ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			Key:               &instance.ProcessInstance().Key,
+			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:         variables,
+			State:             ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
+			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
+			Type:              ptr.To(int64(instance.Type())),
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -413,12 +421,15 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 
 	return &proto.DeleteProcessInstanceVariableResponse{
 		Process: &proto.ProcessInstance{
-			Key:           &instance.ProcessInstance().Key,
-			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:     variables,
-			State:         ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.ProcessInstance().Definition.Key,
+			Key:               &instance.ProcessInstance().Key,
+			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:         variables,
+			State:             ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
+			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
+			BusinessKey:       nil,
+			Type:              ptr.To(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -657,15 +668,18 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
+
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
-			Key:           &instance.ProcessInstance().Key,
-			ProcessId:     &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:     vars,
-			State:         ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:     ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey: &instance.ProcessInstance().Definition.Key,
-			BusinessKey:   instance.ProcessInstance().BusinessKey,
+			Key:               &instance.ProcessInstance().Key,
+			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
+			Variables:         vars,
+			State:             ptr.To(int64(instance.ProcessInstance().State)),
+			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
+			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
+			BusinessKey:       instance.ProcessInstance().BusinessKey,
+			Type:              ptr.To(int64(instance.Type())),
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -827,7 +841,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
-	flowElements, err := queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
+	flowElements, err := queries.FindFlowElementInstances(ctx, sql.FindFlowElementInstancesParams{
 		ProcessInstanceKey: *req.ProcessInstanceKey,
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
 		Limit:              int64(req.GetSize()),
@@ -836,6 +850,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		err := zenerr.TechnicalError(fmt.Errorf("failed to find flow element history for instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
+
 	result := make([]*proto.FlowElement, len(flowElements))
 	totalCount := int32(0)
 	if len(flowElements) > 0 {
@@ -849,6 +864,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 			CreatedAt:          &flowElement.CreatedAt,
 		}
 	}
+
 	return &proto.GetFlowElementHistoryResponse{
 		Flow:       result,
 		TotalCount: ptr.To(totalCount),
@@ -981,17 +997,37 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 			return &proto.GetProcessInstancesResponse{Error: err.ToProtoError()}, nil
 		}
+
+		var filterTypeCallActivity *int64
+		var filterTypeMultiInstance *int64
+		var filterTypeDefault *int64
+		var filterTypeSubProcess *int64
+
+		if req.ShowChildProcesses != nil && req.GetShowChildProcesses() == true {
+			filterTypeCallActivity = ptr.To(int64(runtime.ProcessTypeCallActivity))
+			filterTypeMultiInstance = ptr.To(int64(runtime.ProcessTypeMultiInstance))
+			filterTypeDefault = ptr.To(int64(runtime.ProcessTypeDefault))
+			filterTypeSubProcess = ptr.To(int64(runtime.ProcessTypeSubProcess))
+		} else {
+			filterTypeDefault = ptr.To(int64(runtime.ProcessTypeDefault))
+			filterTypeCallActivity = ptr.To(int64(runtime.ProcessTypeCallActivity))
+		}
+
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
-			ProcessDefinitionKey: req.GetDefinitionKey(),
-			ParentInstanceKey:    req.GetParentKey(),
-			BusinessKey:          sql.ToNullString(req.BusinessKey),
-			BpmnProcessID:        sql.ToNullString(req.ProcessId),
-			CreatedFrom:          sql.ToNullInt64(req.CreatedFrom),
-			CreatedTo:            sql.ToNullInt64(req.CreatedTo),
-			State:                sql.ToNullInt64(req.State),
-			SortByOrder:          sql.ToNullString(req.SortByOrder),
-			Offset:               int64(req.GetSize()) * int64(req.GetPage()-1),
-			Size:                 int64(req.GetSize()),
+			SortByOrder:             sql.ToNullString(req.SortByOrder),
+			ProcessDefinitionKey:    req.GetDefinitionKey(),
+			ParentInstanceKey:       req.GetParentKey(),
+			BusinessKey:             sql.ToNullString(req.BusinessKey),
+			BpmnProcessID:           sql.ToNullString(req.ProcessId),
+			CreatedFrom:             sql.ToNullInt64(req.CreatedFrom),
+			CreatedTo:               sql.ToNullInt64(req.CreatedTo),
+			State:                   sql.ToNullInt64(req.State),
+			FilterTypeCallActivity:  sql.ToNullInt64(filterTypeCallActivity),
+			FilterTypeMultiInstance: sql.ToNullInt64(filterTypeMultiInstance),
+			FilterTypeDefault:       sql.ToNullInt64(filterTypeDefault),
+			FilterTypeSubProcess:    sql.ToNullInt64(filterTypeSubProcess),
+			Offset:                  int64(req.GetSize()) * int64(req.GetPage()-1),
+			Size:                    int64(req.GetSize()),
 		})
 		if err != nil {
 			err := zenerr.TechnicalError(fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey))
@@ -1002,29 +1038,41 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			totalCount = int32(instances[0].TotalCount)
 		}
 		procInstances := make([]*proto.ProcessInstance, len(instances))
-		for i, inst := range instances {
+
+		parentTokenKeys := make([]int64, 0, len(instances))
+		for _, inst := range instances {
+			parentTokenKeys = append(parentTokenKeys, inst.ParentProcessExecutionToken.Int64)
+		}
+		parentTokens, err := queries.GetTokens(ctx, parentTokenKeys)
+		if err != nil {
+			return nil, err
+		}
+
+		for i, _ := range instances {
 			var businessKey *string
-			if inst.BusinessKey.Valid {
-				businessKey = &inst.BusinessKey.String
+			if instances[i].BusinessKey.Valid {
+				businessKey = &instances[i].BusinessKey.String
+			}
+
+			var parentInstanceKey *int64
+			if instances[i].ParentProcessExecutionToken.Valid {
+				for i2, _ := range parentTokens {
+					if parentTokens[i2].Key == instances[i].ParentProcessExecutionToken.Int64 {
+						parentInstanceKey = &parentTokens[i2].ProcessInstanceKey
+					}
+				}
 			}
 
 			procInstances[i] = &proto.ProcessInstance{
-				Key:           &inst.Key,
-				ProcessId:     &inst.BpmnProcessID,
-				Variables:     []byte(inst.Variables),
-				State:         ptr.To(inst.State),
-				CreatedAt:     &inst.CreatedAt,
-				DefinitionKey: &inst.ProcessDefinitionKey,
-				BusinessKey:   businessKey,
-			}
-			if inst.ParentProcessExecutionToken.Valid {
-				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})
-				if err != nil {
-					return &proto.GetProcessInstancesResponse{Error: zenerr.TechnicalError(err).ToProtoError()}, nil
-				}
-				if len(tokens) == 1 {
-					procInstances[i].ParentKey = &tokens[0].ProcessInstanceKey
-				}
+				Key:               &instances[i].Key,
+				ProcessId:         &instances[i].BpmnProcessID,
+				Variables:         []byte(instances[i].Variables),
+				State:             ptr.To(instances[i].State),
+				CreatedAt:         &instances[i].CreatedAt,
+				DefinitionKey:     &instances[i].ProcessDefinitionKey,
+				ParentInstanceKey: parentInstanceKey,
+				BusinessKey:       businessKey,
+				Type:              ptr.To(instances[i].ProcessType),
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{
@@ -1035,6 +1083,103 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 	}
 	return &proto.GetProcessInstancesResponse{
 		Partitions: resp,
+	}, nil
+}
+
+func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChildProcessInstancesRequest) (*proto.GetChildProcessInstancesResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetParentInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		return &proto.GetChildProcessInstancesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+
+	var filterTypeDefault *int64
+	filterTypeMultiInstance := ptr.To(int64(runtime.ProcessTypeMultiInstance))
+	filterTypeCallActivity := ptr.To(int64(runtime.ProcessTypeCallActivity))
+	filterTypeSubprocess := ptr.To(int64(runtime.ProcessTypeSubProcess))
+
+	var businessKey *string
+	var bpmnProcessID *string
+	var createdFrom *int64
+	var createdTo *int64
+
+	instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
+		SortByOrder:             sql.ToNullString(req.SortByOrder),
+		ProcessDefinitionKey:    0,
+		ParentInstanceKey:       req.GetParentInstanceKey(),
+		BusinessKey:             sql.ToNullString(businessKey),
+		BpmnProcessID:           sql.ToNullString(bpmnProcessID),
+		CreatedFrom:             sql.ToNullInt64(createdFrom),
+		CreatedTo:               sql.ToNullInt64(createdTo),
+		State:                   sql.ToNullInt64(req.State),
+		FilterTypeCallActivity:  sql.ToNullInt64(filterTypeCallActivity),
+		FilterTypeMultiInstance: sql.ToNullInt64(filterTypeMultiInstance),
+		FilterTypeDefault:       sql.ToNullInt64(filterTypeDefault),
+		FilterTypeSubProcess:    sql.ToNullInt64(filterTypeSubprocess),
+		Offset:                  int64(req.GetSize()) * int64(req.GetPage()-1),
+		Size:                    int64(req.GetSize()),
+	})
+	if err != nil {
+		err := fmt.Errorf("failed to find child process instances with key %d", req.ParentInstanceKey)
+		return &proto.GetChildProcessInstancesResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(err.Error()),
+			},
+		}, err
+	}
+	totalCount := int32(0)
+	if len(instances) > 0 {
+		totalCount = int32(instances[0].TotalCount)
+	}
+
+	parentTokenKeys := make([]int64, 0, len(instances))
+	for _, inst := range instances {
+		parentTokenKeys = append(parentTokenKeys, inst.ParentProcessExecutionToken.Int64)
+	}
+	parentTokens, err := queries.GetTokens(ctx, parentTokenKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	procInstances := make([]*proto.ProcessInstance, len(instances))
+	for i, _ := range instances {
+		var businessKey *string
+		if instances[i].BusinessKey.Valid {
+			businessKey = &instances[i].BusinessKey.String
+		}
+
+		var parentInstanceKey *int64
+		if instances[i].ParentProcessExecutionToken.Valid {
+			for i2, _ := range parentTokens {
+				if parentTokens[i2].Key == instances[i].ParentProcessExecutionToken.Int64 {
+					parentInstanceKey = &parentTokens[i2].ProcessInstanceKey
+				}
+			}
+		}
+
+		procInstances[i] = &proto.ProcessInstance{
+			Key:               &instances[i].Key,
+			ProcessId:         &instances[i].BpmnProcessID,
+			Variables:         []byte(instances[i].Variables),
+			State:             ptr.To(instances[i].State),
+			CreatedAt:         &instances[i].CreatedAt,
+			DefinitionKey:     &instances[i].ProcessDefinitionKey,
+			ParentInstanceKey: parentInstanceKey,
+			BusinessKey:       businessKey,
+			Type:              ptr.To(instances[i].ProcessType),
+		}
+	}
+
+	return &proto.GetChildProcessInstancesResponse{
+		Instances:  procInstances,
+		TotalCount: ptr.To(totalCount),
 	}, nil
 }
 

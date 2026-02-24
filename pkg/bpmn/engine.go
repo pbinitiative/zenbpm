@@ -653,7 +653,7 @@ func (engine *Engine) createBusinessRuleTask(
 	case *bpmn20.TBusinessRuleTaskExternal:
 		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
 	default:
-		panic(fmt.Sprintf("unsupported BusinessRuleTask Implementation %s", element.Implementation))
+		return runtime.ActivityStateFailed, fmt.Errorf("unsupported BusinessRuleTask Implementation %s", element.Implementation)
 	}
 
 	if err != nil {

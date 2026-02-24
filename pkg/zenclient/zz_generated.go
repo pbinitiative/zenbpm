@@ -232,6 +232,23 @@ type ElementInstance struct {
 	State              string    `json:"state"`
 }
 
+// ElementStatistic Map of elementId to active/incident counts
+type ElementStatistic map[string]ElementStatisticCounts
+
+// ElementStatisticCounts Active and incident counts for a single BPMN element
+type ElementStatisticCounts struct {
+	// ActiveCount Number of active element instances
+	ActiveCount int `json:"activeCount"`
+
+	// IncidentCount Number of incidents on this element
+	IncidentCount int `json:"incidentCount"`
+}
+
+// ElementStatisticsPartitions defines model for ElementStatisticsPartitions.
+type ElementStatisticsPartitions struct {
+	Partitions []PartitionElementStatistics `json:"partitions"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
@@ -462,6 +479,13 @@ type PartitionDecisionInstances struct {
 	Count     *int                      `json:"count,omitempty"`
 	Items     []DecisionInstanceSummary `json:"items"`
 	Partition int                       `json:"partition"`
+}
+
+// PartitionElementStatistics defines model for PartitionElementStatistics.
+type PartitionElementStatistics struct {
+	// Items Map of elementId to active/incident counts
+	Items     ElementStatistic `json:"items"`
+	Partition int              `json:"partition"`
 }
 
 // PartitionJobs defines model for PartitionJobs.
@@ -1061,6 +1085,9 @@ type ClientInterface interface {
 	// GetProcessDefinition request
 	GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetProcessDefinitionElementStatistics request
+	GetProcessDefinitionElementStatistics(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetProcessInstances request
 	GetProcessInstances(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1353,6 +1380,18 @@ func (c *Client) GetProcessDefinitionStatistics(ctx context.Context, params *Get
 
 func (c *Client) GetProcessDefinition(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProcessDefinitionRequest(c.Server, processDefinitionKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProcessDefinitionElementStatistics(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProcessDefinitionElementStatisticsRequest(c.Server, processDefinitionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -2734,6 +2773,40 @@ func NewGetProcessDefinitionRequest(server string, processDefinitionKey int64) (
 	return req, nil
 }
 
+// NewGetProcessDefinitionElementStatisticsRequest generates requests for GetProcessDefinitionElementStatistics
+func NewGetProcessDefinitionElementStatisticsRequest(server string, processDefinitionKey int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processDefinitionKey", runtime.ParamLocationPath, processDefinitionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-definitions/%s/statistics", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetProcessInstancesRequest generates requests for GetProcessInstances
 func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesParams) (*http.Request, error) {
 	var err error
@@ -3543,6 +3616,9 @@ type ClientWithResponsesInterface interface {
 	// GetProcessDefinitionWithResponse request
 	GetProcessDefinitionWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionResponse, error)
 
+	// GetProcessDefinitionElementStatisticsWithResponse request
+	GetProcessDefinitionElementStatisticsWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionElementStatisticsResponse, error)
+
 	// GetProcessInstancesWithResponse request
 	GetProcessInstancesWithResponse(ctx context.Context, params *GetProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetProcessInstancesResponse, error)
 
@@ -3989,6 +4065,29 @@ func (r GetProcessDefinitionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetProcessDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProcessDefinitionElementStatisticsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ElementStatisticsPartitions
+	JSON500      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProcessDefinitionElementStatisticsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProcessDefinitionElementStatisticsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4449,6 +4548,15 @@ func (c *ClientWithResponses) GetProcessDefinitionWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseGetProcessDefinitionResponse(rsp)
+}
+
+// GetProcessDefinitionElementStatisticsWithResponse request returning *GetProcessDefinitionElementStatisticsResponse
+func (c *ClientWithResponses) GetProcessDefinitionElementStatisticsWithResponse(ctx context.Context, processDefinitionKey int64, reqEditors ...RequestEditorFn) (*GetProcessDefinitionElementStatisticsResponse, error) {
+	rsp, err := c.GetProcessDefinitionElementStatistics(ctx, processDefinitionKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProcessDefinitionElementStatisticsResponse(rsp)
 }
 
 // GetProcessInstancesWithResponse request returning *GetProcessInstancesResponse
@@ -5233,6 +5341,39 @@ func ParseGetProcessDefinitionResponse(rsp *http.Response) (*GetProcessDefinitio
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProcessDefinitionElementStatisticsResponse parses an HTTP response from a GetProcessDefinitionElementStatisticsWithResponse call
+func ParseGetProcessDefinitionElementStatisticsResponse(rsp *http.Response) (*GetProcessDefinitionElementStatisticsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProcessDefinitionElementStatisticsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ElementStatisticsPartitions
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

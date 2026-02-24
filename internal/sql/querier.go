@@ -34,6 +34,7 @@ type Querier interface {
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
+	FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error)
 	FindInactiveInstancesToDelete(ctx context.Context, arg FindInactiveInstancesToDeleteParams) ([]int64, error)
 	FindIncidentByKey(ctx context.Context, key int64) (Incident, error)
 	FindIncidents(ctx context.Context, arg FindIncidentsParams) ([]Incident, error)

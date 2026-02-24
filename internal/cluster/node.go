@@ -596,6 +596,36 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 	}, nil
 }
 
+func (node *ZenNode) GetProcessDefinitionElementStatistics(ctx context.Context, processDefinitionKey int64) ([]*proto.PartitionedElementStatistics, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedElementStatistics, 0, len(state.Partitions))
+
+	for partitionID := range state.Partitions {
+		follower, err := state.GetPartitionFollower(partitionID)
+		if err != nil {
+			return result, fmt.Errorf("failed to read follower node to get element statistics: %w", err)
+		}
+		client, err := node.client.For(follower.Addr)
+		if err != nil {
+			return result, fmt.Errorf("failed to get client to get element statistics: %w", err)
+		}
+		resp, err := client.GetProcessDefinitionElementStatistics(ctx, &proto.GetProcessDefinitionElementStatisticsRequest{
+			ProcessDefinitionKey: &processDefinitionKey,
+			Partitions:           []uint32{partitionID},
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to get element statistics from partition %d", partitionID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		result = append(result, resp.Partitions...)
+	}
+	return result, nil
+}
+
 // GetProcessDefinitionStatistics will contact follower nodes and return process definition statistics from all partitions
 func (node *ZenNode) GetProcessDefinitionStatistics(
 	ctx context.Context,

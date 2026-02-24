@@ -20,50 +20,51 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ZenService_Notify_FullMethodName                         = "/cluster.ZenService/Notify"
-	ZenService_Join_FullMethodName                           = "/cluster.ZenService/Join"
-	ZenService_AddPartitionNode_FullMethodName               = "/cluster.ZenService/AddPartitionNode"
-	ZenService_ShutdownPartitionNode_FullMethodName          = "/cluster.ZenService/ShutdownPartitionNode"
-	ZenService_PartitionNodeLeaderChange_FullMethodName      = "/cluster.ZenService/PartitionNodeLeaderChange"
-	ZenService_RemovePartitionNode_FullMethodName            = "/cluster.ZenService/RemovePartitionNode"
-	ZenService_ResumePartitionNode_FullMethodName            = "/cluster.ZenService/ResumePartitionNode"
-	ZenService_ClusterBackup_FullMethodName                  = "/cluster.ZenService/ClusterBackup"
-	ZenService_ClusterRestore_FullMethodName                 = "/cluster.ZenService/ClusterRestore"
-	ZenService_ConfigurationUpdate_FullMethodName            = "/cluster.ZenService/ConfigurationUpdate"
-	ZenService_AssignPartition_FullMethodName                = "/cluster.ZenService/AssignPartition"
-	ZenService_UnassignPartition_FullMethodName              = "/cluster.ZenService/UnassignPartition"
-	ZenService_PartitionBackup_FullMethodName                = "/cluster.ZenService/PartitionBackup"
-	ZenService_PartitionRestore_FullMethodName               = "/cluster.ZenService/PartitionRestore"
-	ZenService_StartPprofServer_FullMethodName               = "/cluster.ZenService/StartPprofServer"
-	ZenService_StopPprofServer_FullMethodName                = "/cluster.ZenService/StopPprofServer"
-	ZenService_NodeCommand_FullMethodName                    = "/cluster.ZenService/NodeCommand"
-	ZenService_EvaluateDecision_FullMethodName               = "/cluster.ZenService/EvaluateDecision"
-	ZenService_DeployDmnResourceDefinition_FullMethodName    = "/cluster.ZenService/DeployDmnResourceDefinition"
-	ZenService_DeployProcessDefinition_FullMethodName        = "/cluster.ZenService/DeployProcessDefinition"
-	ZenService_ActivateJob_FullMethodName                    = "/cluster.ZenService/ActivateJob"
-	ZenService_PublishMessage_FullMethodName                 = "/cluster.ZenService/PublishMessage"
-	ZenService_SetMessageSubscriptionPointer_FullMethodName  = "/cluster.ZenService/SetMessageSubscriptionPointer"
-	ZenService_FindActiveMessage_FullMethodName              = "/cluster.ZenService/FindActiveMessage"
-	ZenService_CreateInstance_FullMethodName                 = "/cluster.ZenService/CreateInstance"
-	ZenService_StartProcessInstanceOnElements_FullMethodName = "/cluster.ZenService/StartProcessInstanceOnElements"
-	ZenService_ModifyProcessInstance_FullMethodName          = "/cluster.ZenService/ModifyProcessInstance"
-	ZenService_DeleteProcessInstanceVariable_FullMethodName  = "/cluster.ZenService/DeleteProcessInstanceVariable"
-	ZenService_CancelProcessInstance_FullMethodName          = "/cluster.ZenService/CancelProcessInstance"
-	ZenService_GetProcessInstances_FullMethodName            = "/cluster.ZenService/GetProcessInstances"
-	ZenService_GetDecisionInstance_FullMethodName            = "/cluster.ZenService/GetDecisionInstance"
-	ZenService_GetDecisionInstances_FullMethodName           = "/cluster.ZenService/GetDecisionInstances"
-	ZenService_GetJobs_FullMethodName                        = "/cluster.ZenService/GetJobs"
-	ZenService_GetJob_FullMethodName                         = "/cluster.ZenService/GetJob"
-	ZenService_GetProcessInstance_FullMethodName             = "/cluster.ZenService/GetProcessInstance"
-	ZenService_GetProcessInstanceJobs_FullMethodName         = "/cluster.ZenService/GetProcessInstanceJobs"
-	ZenService_GetFlowElementHistory_FullMethodName          = "/cluster.ZenService/GetFlowElementHistory"
-	ZenService_GetIncidents_FullMethodName                   = "/cluster.ZenService/GetIncidents"
-	ZenService_ResolveIncident_FullMethodName                = "/cluster.ZenService/ResolveIncident"
-	ZenService_SubscribeJob_FullMethodName                   = "/cluster.ZenService/SubscribeJob"
-	ZenService_CompleteJob_FullMethodName                    = "/cluster.ZenService/CompleteJob"
-	ZenService_FailJob_FullMethodName                        = "/cluster.ZenService/FailJob"
-	ZenService_ReassignJob_FullMethodName                    = "/cluster.ZenService/ReassignJob"
-	ZenService_GetProcessDefinitionStatistics_FullMethodName = "/cluster.ZenService/GetProcessDefinitionStatistics"
+	ZenService_Notify_FullMethodName                                = "/cluster.ZenService/Notify"
+	ZenService_Join_FullMethodName                                  = "/cluster.ZenService/Join"
+	ZenService_AddPartitionNode_FullMethodName                      = "/cluster.ZenService/AddPartitionNode"
+	ZenService_ShutdownPartitionNode_FullMethodName                 = "/cluster.ZenService/ShutdownPartitionNode"
+	ZenService_PartitionNodeLeaderChange_FullMethodName             = "/cluster.ZenService/PartitionNodeLeaderChange"
+	ZenService_RemovePartitionNode_FullMethodName                   = "/cluster.ZenService/RemovePartitionNode"
+	ZenService_ResumePartitionNode_FullMethodName                   = "/cluster.ZenService/ResumePartitionNode"
+	ZenService_ClusterBackup_FullMethodName                         = "/cluster.ZenService/ClusterBackup"
+	ZenService_ClusterRestore_FullMethodName                        = "/cluster.ZenService/ClusterRestore"
+	ZenService_ConfigurationUpdate_FullMethodName                   = "/cluster.ZenService/ConfigurationUpdate"
+	ZenService_AssignPartition_FullMethodName                       = "/cluster.ZenService/AssignPartition"
+	ZenService_UnassignPartition_FullMethodName                     = "/cluster.ZenService/UnassignPartition"
+	ZenService_PartitionBackup_FullMethodName                       = "/cluster.ZenService/PartitionBackup"
+	ZenService_PartitionRestore_FullMethodName                      = "/cluster.ZenService/PartitionRestore"
+	ZenService_StartPprofServer_FullMethodName                      = "/cluster.ZenService/StartPprofServer"
+	ZenService_StopPprofServer_FullMethodName                       = "/cluster.ZenService/StopPprofServer"
+	ZenService_NodeCommand_FullMethodName                           = "/cluster.ZenService/NodeCommand"
+	ZenService_EvaluateDecision_FullMethodName                      = "/cluster.ZenService/EvaluateDecision"
+	ZenService_DeployDmnResourceDefinition_FullMethodName           = "/cluster.ZenService/DeployDmnResourceDefinition"
+	ZenService_DeployProcessDefinition_FullMethodName               = "/cluster.ZenService/DeployProcessDefinition"
+	ZenService_ActivateJob_FullMethodName                           = "/cluster.ZenService/ActivateJob"
+	ZenService_PublishMessage_FullMethodName                        = "/cluster.ZenService/PublishMessage"
+	ZenService_SetMessageSubscriptionPointer_FullMethodName         = "/cluster.ZenService/SetMessageSubscriptionPointer"
+	ZenService_FindActiveMessage_FullMethodName                     = "/cluster.ZenService/FindActiveMessage"
+	ZenService_CreateInstance_FullMethodName                        = "/cluster.ZenService/CreateInstance"
+	ZenService_StartProcessInstanceOnElements_FullMethodName        = "/cluster.ZenService/StartProcessInstanceOnElements"
+	ZenService_ModifyProcessInstance_FullMethodName                 = "/cluster.ZenService/ModifyProcessInstance"
+	ZenService_DeleteProcessInstanceVariable_FullMethodName         = "/cluster.ZenService/DeleteProcessInstanceVariable"
+	ZenService_CancelProcessInstance_FullMethodName                 = "/cluster.ZenService/CancelProcessInstance"
+	ZenService_GetProcessInstances_FullMethodName                   = "/cluster.ZenService/GetProcessInstances"
+	ZenService_GetDecisionInstance_FullMethodName                   = "/cluster.ZenService/GetDecisionInstance"
+	ZenService_GetDecisionInstances_FullMethodName                  = "/cluster.ZenService/GetDecisionInstances"
+	ZenService_GetJobs_FullMethodName                               = "/cluster.ZenService/GetJobs"
+	ZenService_GetJob_FullMethodName                                = "/cluster.ZenService/GetJob"
+	ZenService_GetProcessInstance_FullMethodName                    = "/cluster.ZenService/GetProcessInstance"
+	ZenService_GetProcessInstanceJobs_FullMethodName                = "/cluster.ZenService/GetProcessInstanceJobs"
+	ZenService_GetFlowElementHistory_FullMethodName                 = "/cluster.ZenService/GetFlowElementHistory"
+	ZenService_GetIncidents_FullMethodName                          = "/cluster.ZenService/GetIncidents"
+	ZenService_ResolveIncident_FullMethodName                       = "/cluster.ZenService/ResolveIncident"
+	ZenService_SubscribeJob_FullMethodName                          = "/cluster.ZenService/SubscribeJob"
+	ZenService_CompleteJob_FullMethodName                           = "/cluster.ZenService/CompleteJob"
+	ZenService_FailJob_FullMethodName                               = "/cluster.ZenService/FailJob"
+	ZenService_ReassignJob_FullMethodName                           = "/cluster.ZenService/ReassignJob"
+	ZenService_GetProcessDefinitionStatistics_FullMethodName        = "/cluster.ZenService/GetProcessDefinitionStatistics"
+	ZenService_GetProcessDefinitionElementStatistics_FullMethodName = "/cluster.ZenService/GetProcessDefinitionElementStatistics"
 )
 
 // ZenServiceClient is the client API for ZenService service.
@@ -131,6 +132,7 @@ type ZenServiceClient interface {
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
 	GetProcessDefinitionStatistics(ctx context.Context, in *GetProcessDefinitionStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionStatisticsResponse, error)
+	GetProcessDefinitionElementStatistics(ctx context.Context, in *GetProcessDefinitionElementStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionElementStatisticsResponse, error)
 }
 
 type zenServiceClient struct {
@@ -593,6 +595,16 @@ func (c *zenServiceClient) GetProcessDefinitionStatistics(ctx context.Context, i
 	return out, nil
 }
 
+func (c *zenServiceClient) GetProcessDefinitionElementStatistics(ctx context.Context, in *GetProcessDefinitionElementStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionElementStatisticsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProcessDefinitionElementStatisticsResponse)
+	err := c.cc.Invoke(ctx, ZenService_GetProcessDefinitionElementStatistics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZenServiceServer is the server API for ZenService service.
 // All implementations must embed UnimplementedZenServiceServer
 // for forward compatibility.
@@ -658,6 +670,7 @@ type ZenServiceServer interface {
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
 	GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error)
+	GetProcessDefinitionElementStatistics(context.Context, *GetProcessDefinitionElementStatisticsRequest) (*GetProcessDefinitionElementStatisticsResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
 }
 
@@ -799,6 +812,9 @@ func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRe
 }
 func (UnimplementedZenServiceServer) GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessDefinitionStatistics not implemented")
+}
+func (UnimplementedZenServiceServer) GetProcessDefinitionElementStatistics(context.Context, *GetProcessDefinitionElementStatisticsRequest) (*GetProcessDefinitionElementStatisticsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProcessDefinitionElementStatistics not implemented")
 }
 func (UnimplementedZenServiceServer) mustEmbedUnimplementedZenServiceServer() {}
 func (UnimplementedZenServiceServer) testEmbeddedByValue()                    {}
@@ -1595,6 +1611,24 @@ func _ZenService_GetProcessDefinitionStatistics_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_GetProcessDefinitionElementStatistics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProcessDefinitionElementStatisticsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).GetProcessDefinitionElementStatistics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_GetProcessDefinitionElementStatistics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).GetProcessDefinitionElementStatistics(ctx, req.(*GetProcessDefinitionElementStatisticsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ZenService_ServiceDesc is the grpc.ServiceDesc for ZenService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1769,6 +1803,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProcessDefinitionStatistics",
 			Handler:    _ZenService_GetProcessDefinitionStatistics_Handler,
+		},
+		{
+			MethodName: "GetProcessDefinitionElementStatistics",
+			Handler:    _ZenService_GetProcessDefinitionElementStatistics_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

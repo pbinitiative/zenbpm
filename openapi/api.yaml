@@ -581,6 +581,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-definitions/{processDefinitionKey}/statistics:
+    get:
+      operationId: getProcessDefinitionElementStatistics
+      summary: Get running and incident counts per BPMN element
+      tags:
+        - process-definition
+      parameters:
+        - name: processDefinitionKey
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370498
+      responses:
+        200:
+          description: Element statistics as a map of elementId to counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElementStatisticsPartitions"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - elementId: "Task_CheckApplication"
+                        activeCount: 5
+                        incidentCount: 2
+                      - elementId: "Task_CreditCheck"
+                        activeCount: 3
+                        incidentCount: 1
+                  - partition: 2
+                    items:
+                      - elementId: "Task_CheckApplication"
+                        activeCount: 4
+                        incidentCount: 0
+                      - elementId: "Task_CreditCheck"
+                        activeCount: 6
+                        incidentCount: 3
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-definitions/statistics:
     get:
       operationId: getProcessDefinitionStatistics
@@ -2063,6 +2109,45 @@ components:
           properties:
             bpmnData:
               type: string
+    ElementStatisticCounts:
+      type: object
+      description: Active and incident counts for a single BPMN element
+      required:
+        - activeCount
+        - incidentCount
+      properties:
+        activeCount:
+          type: integer
+          description: Number of active element instances
+        incidentCount:
+          type: integer
+          description: Number of incidents on this element
+    ElementStatistic:
+      type: object
+      description: Map of elementId to active/incident counts
+      additionalProperties:
+        $ref: "#/components/schemas/ElementStatisticCounts"
+    PartitionElementStatistics:
+      type: object
+      required:
+        - partition
+        - items
+      properties:
+        partition:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElementStatistic"
+    ElementStatisticsPartitions:
+      type: object
+      required:
+        - partitions
+      properties:
+        partitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartitionElementStatistics"
     ProcessDefinitionStatisticsPage:
       type: object
       required:

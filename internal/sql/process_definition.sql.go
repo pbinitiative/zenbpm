@@ -442,6 +442,79 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	return key, err
 }
 
+const getElementStatisticsByProcessDefinitionKey = `-- name: GetElementStatisticsByProcessDefinitionKey :many
+WITH active_tokens AS (
+    SELECT
+        et.element_id,
+        COUNT(*) AS active_count,
+        0         AS incident_count
+    FROM
+        execution_token AS et
+        INNER JOIN process_instance AS pi ON et.process_instance_key = pi.key
+    WHERE
+        pi.process_definition_key = ?1
+        AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+    GROUP BY
+        et.element_id
+),
+active_incidents AS (
+    SELECT
+        i.element_id,
+        0         AS active_count,
+        COUNT(*) AS incident_count
+    FROM
+        incident AS i
+        INNER JOIN process_instance AS pi ON i.process_instance_key = pi.key
+    WHERE
+        pi.process_definition_key = ?1
+        AND i.resolved_at IS NULL
+    GROUP BY
+        i.element_id
+),
+combined AS (
+    SELECT element_id, active_count, incident_count FROM active_tokens
+    UNION ALL
+    SELECT element_id, active_count, incident_count FROM active_incidents
+)
+SELECT
+    element_id,
+    CAST(SUM(active_count)   AS INTEGER) AS active_count,
+    CAST(SUM(incident_count) AS INTEGER) AS incident_count
+FROM
+    combined
+GROUP BY
+    element_id
+`
+
+type GetElementStatisticsByProcessDefinitionKeyRow struct {
+	ElementID     string `json:"element_id"`
+	ActiveCount   int64  `json:"active_count"`
+	IncidentCount int64  `json:"incident_count"`
+}
+
+func (q *Queries) GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error) {
+	rows, err := q.db.QueryContext(ctx, getElementStatisticsByProcessDefinitionKey, processDefinitionKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetElementStatisticsByProcessDefinitionKeyRow{}
+	for rows.Next() {
+		var i GetElementStatisticsByProcessDefinitionKeyRow
+		if err := rows.Scan(&i.ElementID, &i.ActiveCount, &i.IncidentCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec
 INSERT INTO process_definition(key, version, bpmn_process_id, bpmn_data, bpmn_checksum,  bpmn_process_name)
     VALUES (?, ?, ?, ?, ?, ?)

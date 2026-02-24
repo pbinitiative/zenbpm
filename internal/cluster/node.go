@@ -69,6 +69,7 @@ type ZenNode struct {
 	logger     hclog.Logger
 	muxLn      net.Listener
 	JobManager *jobmanager.JobManager
+	idGen      *snowflake.Node
 	// TODO: add tracing to all the methods on ZenNode where it makes sense
 }
 
@@ -79,9 +80,14 @@ type DeployResult struct {
 
 // StartZenNode Starts a cluster node
 func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error) {
+	idGen, err := snowflake.NewNode(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create snowflake id generator: %w", err)
+	}
 	node := &ZenNode{
 		logger: hclog.Default().Named(fmt.Sprintf("zen-node-%s", conf.Cluster.NodeId)),
 		ctx:    mainCtx,
+		idGen:  idGen,
 	}
 
 	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr)
@@ -311,8 +317,7 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	if key != 0 {
 		return DeployResult{key, true}, err
 	}
-	gen, _ := snowflake.NewNode(0) // TODO: should not be initialized here, might cause unique constrain violation
-	definitionKey := gen.Generate()
+	definitionKey := node.idGen.Generate()
 	state := node.store.ClusterState()
 	var errJoin error
 	for _, partition := range state.Partitions {
@@ -387,8 +392,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	if key != 0 {
 		return DeployResult{key, true}, err
 	}
-	gen, _ := snowflake.NewNode(0)
-	definitionKey := gen.Generate()
+	definitionKey := node.idGen.Generate()
 	state := node.store.ClusterState()
 	var errJoin error
 	for _, partition := range state.Partitions {
@@ -594,6 +598,37 @@ func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto
 		ProcessId:  &def.BpmnProcessID,
 		Definition: []byte(def.BpmnData),
 	}, nil
+}
+
+// GetProcessDefinitionElementStatistics will contact follower nodes and return process definition element statistics from all partitions
+func (node *ZenNode) GetProcessDefinitionElementStatistics(ctx context.Context, processDefinitionKey int64) ([]*proto.PartitionedElementStatistics, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedElementStatistics, 0, len(state.Partitions))
+
+	for partitionID := range state.Partitions {
+		follower, err := state.GetPartitionFollower(partitionID)
+		if err != nil {
+			return result, fmt.Errorf("failed to read follower node to get element statistics: %w", err)
+		}
+		client, err := node.client.For(follower.Addr)
+		if err != nil {
+			return result, fmt.Errorf("failed to get client to get element statistics: %w", err)
+		}
+		resp, err := client.GetProcessDefinitionElementStatistics(ctx, &proto.GetProcessDefinitionElementStatisticsRequest{
+			ProcessDefinitionKey: &processDefinitionKey,
+			Partitions:           []uint32{partitionID},
+		})
+		if err != nil || resp.Error != nil {
+			e := fmt.Errorf("failed to get element statistics from partition %d", partitionID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", e, err)
+			} else if resp.Error != nil {
+				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+			}
+		}
+		result = append(result, resp.Partitions...)
+	}
+	return result, nil
 }
 
 // GetProcessDefinitionStatistics will contact follower nodes and return process definition statistics from all partitions

@@ -7,6 +7,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // allStatsItems collects all ProcessDefinitionStatistics items from all partitions.
@@ -147,8 +148,8 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
 				BpmnProcessDefinitionKeyIn: &[]int64{}, // testing with empty array to cover potential edge case,
-				Page: ptr.To(int32(1)),
-				Size: ptr.To(int32(1)),
+				Page:                       ptr.To(int32(1)),
+				Size:                       ptr.To(int32(1)),
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
@@ -215,4 +216,97 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 			assert.GreaterOrEqual(t, items[0].InstanceCounts.Total, items[1].InstanceCounts.Total)
 		}
 	})
+}
+
+func TestGetProcessDefinitionElementStatistics(t *testing.T) {
+	definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+	require.NoError(t, err)
+
+	t.Run("returns empty statistics when no instances exist", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, totalIncidents := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 0, totalActive)
+		assert.Equal(t, 0, totalIncidents)
+	})
+
+	// Create two instances that will block at the service task (waiting for job completion)
+	instance1, err := createProcessInstance(t, definition.Key, map[string]any{"testVar": 1})
+	require.NoError(t, err)
+	instance2, err := createProcessInstance(t, definition.Key, map[string]any{"testVar": 2})
+	require.NoError(t, err)
+
+	t.Run("returns active counts for blocked instances", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+		assert.NotEmpty(t, resp.JSON200.Partitions)
+
+		totalActive, _ := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 2, totalActive, "both instances should show active token at service-task-1")
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 2, activeByElement["service-task-1"], "both instances should be active at service-task-1")
+	})
+
+	t.Run("active count decreases after instance is cancelled", func(t *testing.T) {
+		cancelResp, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance1.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, cancelResp.StatusCode())
+
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 1, activeByElement["service-task-1"], "only one instance should remain active after cancel")
+	})
+
+	t.Run("incident count appears for process instance with incident", func(t *testing.T) {
+		incidentDefinition, err := deployGetUniqueDefinition(t, "exclusive-gateway-with-condition.bpmn")
+		require.NoError(t, err)
+
+		_, err = createProcessInstance(t, incidentDefinition.Key, map[string]any{"price": 0})
+		require.NoError(t, err)
+
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), incidentDefinition.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		_, totalIncidents := sumElementStatistics(resp.JSON200)
+		assert.Greater(t, totalIncidents, 0, "should have at least one incident")
+	})
+
+	// cleanup: cancel remaining instance
+	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key) //nolint:errcheck
+}
+
+func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalActive, totalIncidents int) {
+	for _, partition := range stats.Partitions {
+		for _, item := range partition.Items {
+			for _, counts := range item {
+				totalActive += counts.ActiveCount
+				totalIncidents += counts.IncidentCount
+			}
+		}
+	}
+	return
+}
+
+func collectActiveByElement(stats *zenclient.ElementStatisticsPartitions) map[string]int {
+	result := make(map[string]int)
+	for _, partition := range stats.Partitions {
+		for _, item := range partition.Items {
+			for elementId, counts := range item {
+				result[elementId] += counts.ActiveCount
+			}
+		}
+	}
+	return result
 }

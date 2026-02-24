@@ -606,18 +606,18 @@ paths:
                 partitions:
                   - partition: 1
                     items:
-                      - elementId: "Task_CheckApplication"
+                      Task_CheckApplication:
                         activeCount: 5
                         incidentCount: 2
-                      - elementId: "Task_CreditCheck"
+                      Task_CreditCheck:
                         activeCount: 3
                         incidentCount: 1
                   - partition: 2
                     items:
-                      - elementId: "Task_CheckApplication"
+                      Task_CheckApplication:
                         activeCount: 4
                         incidentCount: 0
-                      - elementId: "Task_CreditCheck"
+                      Task_CreditCheck:
                         activeCount: 6
                         incidentCount: 3
         500:
@@ -2136,9 +2136,7 @@ components:
         partition:
           type: integer
         items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ElementStatistic"
+          $ref: "#/components/schemas/ElementStatistic"
     ElementStatisticsPartitions:
       type: object
       required:

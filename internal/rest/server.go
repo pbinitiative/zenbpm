@@ -605,13 +605,11 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 		Partitions: make([]public.PartitionElementStatistics, len(partitions)),
 	}
 	for i, partition := range partitions {
-		items := make([]public.ElementStatistic, len(partition.GetStatistics()))
-		for j, entry := range partition.GetStatistics() {
-			items[j] = public.ElementStatistic{
-				entry.GetElementId(): public.ElementStatisticCounts{
-					ActiveCount:   int(entry.GetActiveCount()),
-					IncidentCount: int(entry.GetIncidentCount()),
-				},
+		items := make(public.ElementStatistic, len(partition.GetStatistics()))
+		for _, entry := range partition.GetStatistics() {
+			items[entry.GetElementId()] = public.ElementStatisticCounts{
+				ActiveCount:   int(entry.GetActiveCount()),
+				IncidentCount: int(entry.GetIncidentCount()),
 			}
 		}
 		result.Partitions[i] = public.PartitionElementStatistics{

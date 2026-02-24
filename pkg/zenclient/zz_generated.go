@@ -483,8 +483,9 @@ type PartitionDecisionInstances struct {
 
 // PartitionElementStatistics defines model for PartitionElementStatistics.
 type PartitionElementStatistics struct {
-	Items     []ElementStatistic `json:"items"`
-	Partition int                `json:"partition"`
+	// Items Map of elementId to active/incident counts
+	Items     ElementStatistic `json:"items"`
+	Partition int              `json:"partition"`
 }
 
 // PartitionJobs defines model for PartitionJobs.

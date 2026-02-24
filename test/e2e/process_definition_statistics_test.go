@@ -289,11 +289,9 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 
 func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalActive, totalIncidents int) {
 	for _, partition := range stats.Partitions {
-		for _, item := range partition.Items {
-			for _, counts := range item {
-				totalActive += counts.ActiveCount
-				totalIncidents += counts.IncidentCount
-			}
+		for _, counts := range partition.Items {
+			totalActive += counts.ActiveCount
+			totalIncidents += counts.IncidentCount
 		}
 	}
 	return
@@ -302,10 +300,8 @@ func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalAc
 func collectActiveByElement(stats *zenclient.ElementStatisticsPartitions) map[string]int {
 	result := make(map[string]int)
 	for _, partition := range stats.Partitions {
-		for _, item := range partition.Items {
-			for elementId, counts := range item {
-				result[elementId] += counts.ActiveCount
-			}
+		for elementId, counts := range partition.Items {
+			result[elementId] += counts.ActiveCount
 		}
 	}
 	return result

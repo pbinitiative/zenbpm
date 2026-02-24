@@ -608,11 +608,11 @@ func (node *ZenNode) GetProcessDefinitionElementStatistics(ctx context.Context, 
 	for partitionID := range state.Partitions {
 		follower, err := state.GetPartitionFollower(partitionID)
 		if err != nil {
-			return result, fmt.Errorf("failed to read follower node to get element statistics: %w", err)
+			return nil, fmt.Errorf("failed to read follower node to get element statistics: %w", err)
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return result, fmt.Errorf("failed to get client to get element statistics: %w", err)
+			return nil, fmt.Errorf("failed to get client to get element statistics: %w", err)
 		}
 		resp, err := client.GetProcessDefinitionElementStatistics(ctx, &proto.GetProcessDefinitionElementStatisticsRequest{
 			ProcessDefinitionKey: &processDefinitionKey,

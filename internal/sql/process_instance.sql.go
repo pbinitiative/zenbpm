@@ -92,10 +92,16 @@ WHERE
         OR parent_pi.state IN (4, 6, 9))
     AND (pi.history_delete_sec IS NULL
         OR pi.history_delete_sec < ?1)
+LIMIT ?2
 `
 
-func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, currunix sql.NullInt64) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, findInactiveInstancesToDelete, currunix)
+type FindInactiveInstancesToDeleteParams struct {
+	CurrUnix sql.NullInt64 `json:"currUnix"`
+	Limit    int64         `json:"limit"`
+}
+
+func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, arg FindInactiveInstancesToDeleteParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findInactiveInstancesToDelete, arg.CurrUnix, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

@@ -45,8 +45,8 @@ service ZenService {
   rpc PartitionBackup(PartitionBackupRequest) returns (PartitionBackupResponse);
   rpc PartitionRestore(PartitionRestoreRequest)
       returns (PartitionRestoreResponse);
-  rpc StartCpuProfiler(CpuProfilerRequest) returns (CpuProfilerStartResult);
-  rpc StopCpuProfiler(CpuProfilerRequest) returns (CpuProfilerStopResult);
+  rpc StartPprofServer(PprofServerRequest) returns (PprofServerStartResult);
+  rpc StopPprofServer(PprofServerRequest) returns (PprofServerStopResult);
 
   rpc NodeCommand(zencommand.Command) returns (NodeCommandResponse);
 
@@ -698,13 +698,68 @@ message GetProcessDefinitionStatisticsResponse {
 
 message PprofServerRequest {}
 
-message CpuProfilerStartResult {
+message ElementStatisticEntry {
+  string element_id = 1;
+  int32 active_count = 2;
+  int32 incident_count = 3;
+}
+
+message PartitionedElementStatistics {
+  uint32 partition_id = 1;
+  repeated ElementStatisticEntry statistics = 2;
+}
+
+message GetProcessDefinitionElementStatisticsResponse {
+  ErrorResult error = 1;
+  repeated PartitionedElementStatistics partitions = 2;
+}
+
+message GetProcessDefinitionStatisticsRequest {
+  int32 page = 1;
+  int32 size = 2;
+  repeated uint32 partitions = 3;
+  bool only_latest = 4;
+  repeated string bpmn_process_id_in = 5;
+  repeated int64 bpmn_process_definition_key_in = 6;
+  string name = 7;
+  string sort = 8;
+}
+
+message ProcessDefinitionStatistics {
+  int64 key = 1;
+  int32 version = 2;
+  string bpmn_process_id = 3;
+  string bpmn_process_name = 4;
+  InstanceCounts instance_counts = 5;
+}
+
+message InstanceCounts {
+  int64 total = 1;
+  int64 active = 2;
+  int64 completed = 3;
+  int64 terminated = 4;
+  int64 failed = 5;
+}
+
+message PartitionedProcessDefinitionStatistics {
+  uint32 partition_id = 1;
+  repeated ProcessDefinitionStatistics statistics = 2;
+  int32 total_count = 3;
+}
+
+message GetProcessDefinitionStatisticsResponse {
+  ErrorResult error = 1;
+  repeated PartitionedProcessDefinitionStatistics partitions = 2;
+}
+
+message PprofServerRequest {}
+
+message PprofServerStartResult {
   ErrorResult error = 1;
 }
 
-message CpuProfilerStopResult {
+message PprofServerStopResult {
   ErrorResult error = 1;
-  bytes pprof = 2;
 }
 
 // INTERNAL ENGINE API END

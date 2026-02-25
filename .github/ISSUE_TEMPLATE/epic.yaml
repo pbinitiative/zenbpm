@@ -20,6 +20,8 @@ body:
       placeholder: |
         - State the problem or opportunity
         - Explain the desired outcome
+    validations:
+      required: true    
 
   - type: textarea
     id: acceptance
@@ -29,3 +31,5 @@ body:
       placeholder: |
         - Criteria 1
         - Criteria 2
+    validations:
+      required: true     

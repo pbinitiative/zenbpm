@@ -113,30 +113,27 @@ func (s *Server) Stop(ctx context.Context) {
 	}
 }
 
-// TODO: implement turn off switch in regular usage
-func (s *Server) TestStartCpuProfile(ctx context.Context, request public.TestStartCpuProfileRequestObject) (public.TestStartCpuProfileResponseObject, error) {
+func (s *Server) TestStartPprofServer(ctx context.Context, request public.TestStartPprofServerRequestObject) (public.TestStartPprofServerResponseObject, error) {
 
-	err := s.node.StartCpuProfile(ctx, request.NodeId)
+	err := s.node.StartPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStartCpuProfile500JSONResponse{
+		return public.TestStartPprofServer500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.TestStartCpuProfile200Response{}, nil
+	return public.TestStartPprofServer200Response{}, nil
 }
 
-func (s *Server) TestStopCpuProfile(ctx context.Context, request public.TestStopCpuProfileRequestObject) (public.TestStopCpuProfileResponseObject, error) {
-	pprof, err := s.node.StopCpuProfile(ctx, request.NodeId)
+func (s *Server) TestStopPprofServer(ctx context.Context, request public.TestStopPprofServerRequestObject) (public.TestStopPprofServerResponseObject, error) {
+	err := s.node.StopPprofServer(ctx, request.NodeId)
 	if err != nil {
-		return public.TestStopCpuProfile500JSONResponse{
+		return public.TestStopPprofServer500JSONResponse{
 			Code:    "TODO",
 			Message: err.Error(),
 		}, nil
 	}
-	return public.TestStopCpuProfile200JSONResponse{
-		Pprof: &pprof,
-	}, nil
+	return public.TestStopPprofServer200Response{}, nil
 }
 
 func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {
@@ -876,8 +873,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 					Message: err.Error(),
 				}, nil
 			}
+			respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[i].Items[k].ActiveElementInstances))
+			for _, elementInstance := range processInstancesPage.Partitions[i].Items[k].ActiveElementInstances {
+				respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+					CreatedAt:          elementInstance.CreatedAt,
+					ElementId:          elementInstance.ElementId,
+					ElementInstanceKey: elementInstance.ElementInstanceKey,
+					State:              elementInstance.State,
+				})
+			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
-				ActiveElementInstances: make([]public.ElementInstance, 0),
+				ActiveElementInstances: respActiveElementInstances,
 				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 				Key:                    instance.GetKey(),
 				BpmnProcessId:          instance.ProcessId,
@@ -924,7 +930,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 			CreatedAt:          time.UnixMilli(elementInstance.GetCreatedAt()),
 			ElementId:          elementInstance.GetElementId(),
 			ElementInstanceKey: elementInstance.GetElementInstanceKey(),
-			State:              runtime.ActivityState(elementInstance.GetState()).String(),
+			State:              runtime.TokenState(elementInstance.GetState()).String(),
 		})
 	}
 
@@ -1131,6 +1137,14 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
+			jobVars := make(map[string]any)
+			err = json.Unmarshal(job.GetVariables(), &jobVars)
+			if err != nil {
+				return public.GetJobs500JSONResponse{
+					Code:    "INTERNAL_SERVER_ERROR",
+					Message: err.Error(),
+				}, nil
+			}
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
@@ -1139,6 +1153,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
 				Assignee:           job.Assignee,
+				Variables:          jobVars,
 			}
 		}
 	}

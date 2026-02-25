@@ -61,4 +61,4 @@ A bold single-line circle (solid thick outline).
 ```
 
 ## Current Implementation
-Currently there are only normal end events, error end events and terminate end events supported.
+Currently, normal end events, terminate end events, and message end events are supported.

@@ -92,8 +92,8 @@ type Script struct {
 }
 
 type ScriptVmPoolConf struct {
-	MaxVmPoolSize int `yaml:"maxVmPoolSize" json:"maxVmPoolSize"`
-	MinVmPoolSize int `yaml:"minVmPoolSize" json:"minVmPoolSize"`
+	MaxVmPoolSize int `yaml:"maxVmPoolSize" json:"maxVmPoolSize" env-default:"10"`
+	MinVmPoolSize int `yaml:"minVmPoolSize" json:"minVmPoolSize"  env-default:"2"`
 }
 
 // validate checks the configuration for internal consistency, and activates

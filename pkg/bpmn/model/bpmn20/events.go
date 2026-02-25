@@ -33,6 +33,9 @@ func (startEvent TStartEvent) GetType() ElementType {
 type TEndEvent struct {
 	TEvent
 	EvenDefinitions []EventDefinition
+	TaskDefinition  extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Input           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
 type TTerminateEventDefinition struct {
@@ -44,7 +47,11 @@ func (TTerminateEventDefinition) eventDefinition() {}
 func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		TerminateEndEvent TTerminateEventDefinition `xml:"terminateEventDefinition"`
+		TerminateEventDefinition TTerminateEventDefinition  `xml:"terminateEventDefinition"`
+		TMessageEventDefinition  TMessageEventDefinition    `xml:"messageEventDefinition"`
+		TaskDefinition           extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+		Input                    []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+		Output                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -52,13 +59,31 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 	}
 	endEvent.TEvent = tempStruct.TEvent
 	endEvent.EvenDefinitions = make([]EventDefinition, 0)
-	if tempStruct.TerminateEndEvent.Id != nil {
-		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEndEvent)
+	if tempStruct.TerminateEventDefinition.Id != nil {
+		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEventDefinition)
+	}
+	if tempStruct.TMessageEventDefinition.Id != nil {
+		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TMessageEventDefinition)
+		endEvent.TaskDefinition = tempStruct.TaskDefinition
+		endEvent.Input = tempStruct.Input
+		endEvent.Output = tempStruct.Output
 	}
 	return nil
 }
 
 func (endEvent TEndEvent) GetType() ElementType { return ElementTypeEndEvent }
+
+func (endEvent TEndEvent) GetTaskType() string {
+	return endEvent.TaskDefinition.TypeName
+}
+
+func (endEvent TEndEvent) GetInputMapping() []extensions.TIoMapping {
+	return endEvent.Input
+}
+
+func (endEvent TEndEvent) GetOutputMapping() []extensions.TIoMapping {
+	return endEvent.Output
+}
 
 type EventDefinition interface {
 	eventDefinition()
@@ -89,7 +114,7 @@ func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start x
 	}
 	definitions.TEvent = tempStruct.TEvent
 	switch {
-	case tempStruct.MessageEventDefinition.Id != "":
+	case tempStruct.MessageEventDefinition.Id != nil:
 		tempStruct.MessageEventDefinition.input = tempStruct.Input
 		tempStruct.MessageEventDefinition.output = tempStruct.Output
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
@@ -137,7 +162,7 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 	}
 	definitions.TEvent = tempStruct.TEvent
 	switch {
-	case tempStruct.MessageEventDefinition.Id != "":
+	case tempStruct.MessageEventDefinition.Id != nil:
 		tempStruct.MessageEventDefinition.input = tempStruct.Input
 		tempStruct.MessageEventDefinition.output = tempStruct.Output
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
@@ -179,7 +204,7 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 	}
 	definitions.TEvent = tempStruct.TEvent
 	switch {
-	case tempStruct.MessageEventDefinition.Id != "":
+	case tempStruct.MessageEventDefinition.Id != nil:
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition.Id != "":
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
@@ -198,14 +223,14 @@ func (d TBoundaryEvent) GetOutputMapping() []extensions.TIoMapping { return d.Ou
 
 type TMessageEventDefinition struct {
 	TFlowNode
-	Id         string `xml:"id,attr"`
-	MessageRef string `xml:"messageRef,attr"`
+	Id         *string `xml:"id,attr"`
+	MessageRef string  `xml:"messageRef,attr"`
 	input      []extensions.TIoMapping
 	output     []extensions.TIoMapping
 }
 
 func (TMessageEventDefinition) eventDefinition() {}
-func (d TMessageEventDefinition) GetId() string  { return d.Id }
+func (d TMessageEventDefinition) GetId() string  { return *d.Id }
 func (d TMessageEventDefinition) GetType() ElementType {
 	return ElementTypeIntermediateMessageThrowEvent
 }

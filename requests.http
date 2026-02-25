@@ -83,8 +83,8 @@ GET {{host}}/system/metrics
 ### Status
 GET {{host}}/system/status
 
-### StartCpuProfile
-POST {{host}}/v1/tests/{{node}}/start-cpu-profile
+### StartPprofServer
+POST {{host}}/v1/tests/{{node}}/start-pprof-server
 
-### StopCpuProfile
-POST {{host}}/v1/tests/{{node}}/stop-cpu-profile
+### StopPprofServer
+POST {{host}}/v1/tests/{{node}}/stop-pprof-server

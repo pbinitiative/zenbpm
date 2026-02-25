@@ -36,7 +36,8 @@ WHERE
     AND (pi.parent_process_execution_token IS NULL
         OR parent_pi.state IN (4, 6, 9))
     AND (pi.history_delete_sec IS NULL
-        OR pi.history_delete_sec < @currUnix);
+        OR pi.history_delete_sec < @currUnix)
+LIMIT @limit;
 
 -- name: FindActiveInstances :many
 SELECT

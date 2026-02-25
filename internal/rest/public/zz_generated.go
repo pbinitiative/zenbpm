@@ -130,6 +130,21 @@ const (
 	GetProcessDefinitionStatisticsParamsSortOrderDesc GetProcessDefinitionStatisticsParamsSortOrder = "desc"
 )
 
+// Defines values for GetProcessDefinitionStatisticsParamsSortBy.
+const (
+	GetProcessDefinitionStatisticsParamsSortByBpmnProcessId GetProcessDefinitionStatisticsParamsSortBy = "bpmnProcessId"
+	GetProcessDefinitionStatisticsParamsSortByIncidentCount GetProcessDefinitionStatisticsParamsSortBy = "incidentCount"
+	GetProcessDefinitionStatisticsParamsSortByInstanceCount GetProcessDefinitionStatisticsParamsSortBy = "instanceCount"
+	GetProcessDefinitionStatisticsParamsSortByName          GetProcessDefinitionStatisticsParamsSortBy = "name"
+	GetProcessDefinitionStatisticsParamsSortByVersion       GetProcessDefinitionStatisticsParamsSortBy = "version"
+)
+
+// Defines values for GetProcessDefinitionStatisticsParamsSortOrder.
+const (
+	GetProcessDefinitionStatisticsParamsSortOrderAsc  GetProcessDefinitionStatisticsParamsSortOrder = "asc"
+	GetProcessDefinitionStatisticsParamsSortOrderDesc GetProcessDefinitionStatisticsParamsSortOrder = "desc"
+)
+
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
 	GetProcessInstancesParamsSortByCreatedAt GetProcessInstancesParamsSortBy = "createdAt"
@@ -220,6 +235,23 @@ type ElementInstance struct {
 	ElementId          string    `json:"elementId"`
 	ElementInstanceKey int64     `json:"elementInstanceKey"`
 	State              string    `json:"state"`
+}
+
+// ElementStatistic Map of elementId to active/incident counts
+type ElementStatistic map[string]ElementStatisticCounts
+
+// ElementStatisticCounts Active and incident counts for a single BPMN element
+type ElementStatisticCounts struct {
+	// ActiveCount Number of active element instances
+	ActiveCount int `json:"activeCount"`
+
+	// IncidentCount Number of incidents on this element
+	IncidentCount int `json:"incidentCount"`
+}
+
+// ElementStatisticsPartitions defines model for ElementStatisticsPartitions.
+type ElementStatisticsPartitions struct {
+	Partitions []PartitionElementStatistics `json:"partitions"`
 }
 
 // ElementStatistic Map of elementId to active/incident counts
@@ -378,6 +410,24 @@ type InstanceCounts struct {
 	Total int `json:"total"`
 }
 
+// InstanceCounts defines model for InstanceCounts.
+type InstanceCounts struct {
+	// Active Number of active instances
+	Active int `json:"active"`
+
+	// Completed Number of completed instances
+	Completed int `json:"completed"`
+
+	// Failed Number of failed instances
+	Failed int `json:"failed"`
+
+	// Terminated Number of terminated instances
+	Terminated int `json:"terminated"`
+
+	// Total Total number of process instances
+	Total int `json:"total"`
+}
+
 // Job defines model for Job.
 type Job struct {
 	Assignee           *string                `json:"assignee,omitempty"`
@@ -446,10 +496,23 @@ type PartitionElementStatistics struct {
 	Partition int              `json:"partition"`
 }
 
+// PartitionElementStatistics defines model for PartitionElementStatistics.
+type PartitionElementStatistics struct {
+	// Items Map of elementId to active/incident counts
+	Items     ElementStatistic `json:"items"`
+	Partition int              `json:"partition"`
+}
+
 // PartitionJobs defines model for PartitionJobs.
 type PartitionJobs struct {
 	Items     []Job `json:"items"`
 	Partition int   `json:"partition"`
+}
+
+// PartitionProcessDefinitionStatistics defines model for PartitionProcessDefinitionStatistics.
+type PartitionProcessDefinitionStatistics struct {
+	Items     []ProcessDefinitionStatistics `json:"items"`
+	Partition int                           `json:"partition"`
 }
 
 // PartitionProcessDefinitionStatistics defines model for PartitionProcessDefinitionStatistics.
@@ -495,6 +558,29 @@ type ProcessDefinitionSimple struct {
 	BpmnProcessName *string `json:"bpmnProcessName,omitempty"`
 	Key             int64   `json:"key"`
 	Version         int     `json:"version"`
+}
+
+// ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
+type ProcessDefinitionStatistics struct {
+	BpmnProcessId  string         `json:"bpmnProcessId"`
+	InstanceCounts InstanceCounts `json:"instanceCounts"`
+	Key            int64          `json:"key"`
+
+	// Name Process name from BPMN
+	Name    *string `json:"name,omitempty"`
+	Version int     `json:"version"`
+}
+
+// ProcessDefinitionStatisticsPage defines model for ProcessDefinitionStatisticsPage.
+type ProcessDefinitionStatisticsPage struct {
+	// Count Number of items in current page
+	Count      int                                    `json:"count"`
+	Page       int                                    `json:"page"`
+	Partitions []PartitionProcessDefinitionStatistics `json:"partitions"`
+	Size       int                                    `json:"size"`
+
+	// TotalCount Total number of items across all pages
+	TotalCount int `json:"totalCount"`
 }
 
 // ProcessDefinitionStatistics defines model for ProcessDefinitionStatistics.
@@ -773,6 +859,39 @@ type GetProcessDefinitionStatisticsParamsSortBy string
 // GetProcessDefinitionStatisticsParamsSortOrder defines parameters for GetProcessDefinitionStatistics.
 type GetProcessDefinitionStatisticsParamsSortOrder string
 
+// GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// OnlyLatest If true, returns only the latest version of each process definition
+	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
+
+	// BpmnProcessIdIn Filter by BPMN process ID
+	BpmnProcessIdIn *[]string `form:"bpmnProcessIdIn,omitempty" json:"bpmnProcessIdIn,omitempty"`
+
+	// BpmnProcessDefinitionKeyIn Filter by process definition key
+	BpmnProcessDefinitionKeyIn *[]int64 `form:"bpmnProcessDefinitionKeyIn,omitempty" json:"bpmnProcessDefinitionKeyIn,omitempty"`
+
+	// Name Filter by name (partial match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// SortBy Sort field
+	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetProcessDefinitionStatisticsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+}
+
+// GetProcessDefinitionStatisticsParamsSortBy defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortBy string
+
+// GetProcessDefinitionStatisticsParamsSortOrder defines parameters for GetProcessDefinitionStatistics.
+type GetProcessDefinitionStatisticsParamsSortOrder string
+
 // GetProcessInstancesParams defines parameters for GetProcessInstances.
 type GetProcessInstancesParams struct {
 	// ProcessDefinitionKey Key of the process definition
@@ -940,9 +1059,15 @@ type ServerInterface interface {
 	// Get process definition statistics
 	// (GET /process-definitions/statistics)
 	GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
+	// Get running and incident counts per BPMN element
+	// (GET /process-definitions/{processDefinitionKey}/statistics)
+	GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
 	// Get running and incident counts per BPMN element
 	// (GET /process-definitions/{processDefinitionKey}/statistics)
 	GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64)
@@ -973,12 +1098,12 @@ type ServerInterface interface {
 	// Delete a process instance variable
 	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
 	DeleteProcessInstanceVariable(w http.ResponseWriter, r *http.Request, processInstanceKey int64, variableName string)
-	// start a cpu profiler
-	// (POST /tests/{nodeId}/start-cpu-profile)
-	TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
-	// stop a cpu profiler
-	// (POST /tests/{nodeId}/stop-cpu-profile)
-	TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string)
+	// start pprof server
+	// (POST /tests/{nodeId}/start-pprof-server)
+	TestStartPprofServer(w http.ResponseWriter, r *http.Request, nodeId string)
+	// stop pprof server
+	// (POST /tests/{nodeId}/stop-pprof-server)
+	TestStopPprofServer(w http.ResponseWriter, r *http.Request, nodeId string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -1081,9 +1206,21 @@ func (_ Unimplemented) GetProcessDefinitionStatistics(w http.ResponseWriter, r *
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get process definition statistics
+// (GET /process-definitions/statistics)
+func (_ Unimplemented) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Get process definition
 // (GET /process-definitions/{processDefinitionKey})
 func (_ Unimplemented) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get running and incident counts per BPMN element
+// (GET /process-definitions/{processDefinitionKey}/statistics)
+func (_ Unimplemented) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1147,15 +1284,15 @@ func (_ Unimplemented) DeleteProcessInstanceVariable(w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// start a cpu profiler
-// (POST /tests/{nodeId}/start-cpu-profile)
-func (_ Unimplemented) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
+// start pprof server
+// (POST /tests/{nodeId}/start-pprof-server)
+func (_ Unimplemented) TestStartPprofServer(w http.ResponseWriter, r *http.Request, nodeId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// stop a cpu profiler
-// (POST /tests/{nodeId}/stop-cpu-profile)
-func (_ Unimplemented) TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
+// stop pprof server
+// (POST /tests/{nodeId}/stop-pprof-server)
+func (_ Unimplemented) TestStopPprofServer(w http.ResponseWriter, r *http.Request, nodeId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1787,6 +1924,89 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinitionStatistics(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// GetProcessDefinitionStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessDefinitionStatisticsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "onlyLatest" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "onlyLatest", r.URL.Query(), &params.OnlyLatest)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "onlyLatest", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessIdIn" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessIdIn", r.URL.Query(), &params.BpmnProcessIdIn)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessIdIn", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "bpmnProcessDefinitionKeyIn" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "bpmnProcessDefinitionKeyIn", r.URL.Query(), &params.BpmnProcessDefinitionKeyIn)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bpmnProcessDefinitionKeyIn", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", r.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortBy", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sortOrder" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sortOrder", r.URL.Query(), &params.SortOrder)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortOrder", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessDefinitionStatistics(w, r, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProcessDefinition operation middleware
 func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r *http.Request) {
 
@@ -1803,6 +2023,31 @@ func (siw *ServerInterfaceWrapper) GetProcessDefinition(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProcessDefinition(w, r, processDefinitionKey)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProcessDefinitionElementStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processDefinitionKey" -------------
+	var processDefinitionKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processDefinitionKey", chi.URLParam(r, "processDefinitionKey"), &processDefinitionKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processDefinitionKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessDefinitionElementStatistics(w, r, processDefinitionKey)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -2207,8 +2452,8 @@ func (siw *ServerInterfaceWrapper) DeleteProcessInstanceVariable(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
-// TestStartCpuProfile operation middleware
-func (siw *ServerInterfaceWrapper) TestStartCpuProfile(w http.ResponseWriter, r *http.Request) {
+// TestStartPprofServer operation middleware
+func (siw *ServerInterfaceWrapper) TestStartPprofServer(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -2222,7 +2467,7 @@ func (siw *ServerInterfaceWrapper) TestStartCpuProfile(w http.ResponseWriter, r 
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TestStartCpuProfile(w, r, nodeId)
+		siw.Handler.TestStartPprofServer(w, r, nodeId)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -2232,8 +2477,8 @@ func (siw *ServerInterfaceWrapper) TestStartCpuProfile(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// TestStopCpuProfile operation middleware
-func (siw *ServerInterfaceWrapper) TestStopCpuProfile(w http.ResponseWriter, r *http.Request) {
+// TestStopPprofServer operation middleware
+func (siw *ServerInterfaceWrapper) TestStopPprofServer(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -2247,7 +2492,7 @@ func (siw *ServerInterfaceWrapper) TestStopCpuProfile(w http.ResponseWriter, r *
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TestStopCpuProfile(w, r, nodeId)
+		siw.Handler.TestStopPprofServer(w, r, nodeId)
 	}))
 
 	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
@@ -2419,7 +2664,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/process-definitions/statistics", wrapper.GetProcessDefinitionStatistics)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-definitions/statistics", wrapper.GetProcessDefinitionStatistics)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}", wrapper.GetProcessDefinition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}/statistics", wrapper.GetProcessDefinitionElementStatistics)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-definitions/{processDefinitionKey}/statistics", wrapper.GetProcessDefinitionElementStatistics)
@@ -2452,10 +2703,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/process-instances/{processInstanceKey}/variables/{variableName}", wrapper.DeleteProcessInstanceVariable)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/tests/{nodeId}/start-cpu-profile", wrapper.TestStartCpuProfile)
+		r.Post(options.BaseURL+"/tests/{nodeId}/start-pprof-server", wrapper.TestStartPprofServer)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/tests/{nodeId}/stop-cpu-profile", wrapper.TestStopCpuProfile)
+		r.Post(options.BaseURL+"/tests/{nodeId}/stop-pprof-server", wrapper.TestStopPprofServer)
 	})
 
 	return r
@@ -3053,6 +3304,32 @@ func (response GetProcessDefinitionStatistics500JSONResponse) VisitGetProcessDef
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProcessDefinitionStatisticsRequestObject struct {
+	Params GetProcessDefinitionStatisticsParams
+}
+
+type GetProcessDefinitionStatisticsResponseObject interface {
+	VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessDefinitionStatistics200JSONResponse ProcessDefinitionStatisticsPage
+
+func (response GetProcessDefinitionStatistics200JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionStatistics500JSONResponse Error
+
+func (response GetProcessDefinitionStatistics500JSONResponse) VisitGetProcessDefinitionStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProcessDefinitionRequestObject struct {
 	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 }
@@ -3082,6 +3359,32 @@ func (response GetProcessDefinition400JSONResponse) VisitGetProcessDefinitionRes
 type GetProcessDefinition500JSONResponse Error
 
 func (response GetProcessDefinition500JSONResponse) VisitGetProcessDefinitionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionElementStatisticsRequestObject struct {
+	ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+}
+
+type GetProcessDefinitionElementStatisticsResponseObject interface {
+	VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessDefinitionElementStatistics200JSONResponse ElementStatisticsPartitions
+
+func (response GetProcessDefinitionElementStatistics200JSONResponse) VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessDefinitionElementStatistics500JSONResponse Error
+
+func (response GetProcessDefinitionElementStatistics500JSONResponse) VisitGetProcessDefinitionElementStatisticsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -3485,53 +3788,50 @@ func (response DeleteProcessInstanceVariable502JSONResponse) VisitDeleteProcessI
 	return json.NewEncoder(w).Encode(response)
 }
 
-type TestStartCpuProfileRequestObject struct {
+type TestStartPprofServerRequestObject struct {
 	NodeId string `json:"nodeId"`
 }
 
-type TestStartCpuProfileResponseObject interface {
-	VisitTestStartCpuProfileResponse(w http.ResponseWriter) error
+type TestStartPprofServerResponseObject interface {
+	VisitTestStartPprofServerResponse(w http.ResponseWriter) error
 }
 
-type TestStartCpuProfile200Response struct {
+type TestStartPprofServer200Response struct {
 }
 
-func (response TestStartCpuProfile200Response) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
+func (response TestStartPprofServer200Response) VisitTestStartPprofServerResponse(w http.ResponseWriter) error {
 	w.WriteHeader(200)
 	return nil
 }
 
-type TestStartCpuProfile500JSONResponse Error
+type TestStartPprofServer500JSONResponse Error
 
-func (response TestStartCpuProfile500JSONResponse) VisitTestStartCpuProfileResponse(w http.ResponseWriter) error {
+func (response TestStartPprofServer500JSONResponse) VisitTestStartPprofServerResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type TestStopCpuProfileRequestObject struct {
+type TestStopPprofServerRequestObject struct {
 	NodeId string `json:"nodeId"`
 }
 
-type TestStopCpuProfileResponseObject interface {
-	VisitTestStopCpuProfileResponse(w http.ResponseWriter) error
+type TestStopPprofServerResponseObject interface {
+	VisitTestStopPprofServerResponse(w http.ResponseWriter) error
 }
 
-type TestStopCpuProfile200JSONResponse struct {
-	Pprof *[]byte `json:"pprof,omitempty"`
+type TestStopPprofServer200Response struct {
 }
 
-func (response TestStopCpuProfile200JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
+func (response TestStopPprofServer200Response) VisitTestStopPprofServerResponse(w http.ResponseWriter) error {
 	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
+	return nil
 }
 
-type TestStopCpuProfile500JSONResponse Error
+type TestStopPprofServer500JSONResponse Error
 
-func (response TestStopCpuProfile500JSONResponse) VisitTestStopCpuProfileResponse(w http.ResponseWriter) error {
+func (response TestStopPprofServer500JSONResponse) VisitTestStopPprofServerResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -3588,9 +3888,15 @@ type StrictServerInterface interface {
 	// Get process definition statistics
 	// (GET /process-definitions/statistics)
 	GetProcessDefinitionStatistics(ctx context.Context, request GetProcessDefinitionStatisticsRequestObject) (GetProcessDefinitionStatisticsResponseObject, error)
+	// Get process definition statistics
+	// (GET /process-definitions/statistics)
+	GetProcessDefinitionStatistics(ctx context.Context, request GetProcessDefinitionStatisticsRequestObject) (GetProcessDefinitionStatisticsResponseObject, error)
 	// Get process definition
 	// (GET /process-definitions/{processDefinitionKey})
 	GetProcessDefinition(ctx context.Context, request GetProcessDefinitionRequestObject) (GetProcessDefinitionResponseObject, error)
+	// Get running and incident counts per BPMN element
+	// (GET /process-definitions/{processDefinitionKey}/statistics)
+	GetProcessDefinitionElementStatistics(ctx context.Context, request GetProcessDefinitionElementStatisticsRequestObject) (GetProcessDefinitionElementStatisticsResponseObject, error)
 	// Get running and incident counts per BPMN element
 	// (GET /process-definitions/{processDefinitionKey}/statistics)
 	GetProcessDefinitionElementStatistics(ctx context.Context, request GetProcessDefinitionElementStatisticsRequestObject) (GetProcessDefinitionElementStatisticsResponseObject, error)
@@ -3621,12 +3927,12 @@ type StrictServerInterface interface {
 	// Delete a process instance variable
 	// (DELETE /process-instances/{processInstanceKey}/variables/{variableName})
 	DeleteProcessInstanceVariable(ctx context.Context, request DeleteProcessInstanceVariableRequestObject) (DeleteProcessInstanceVariableResponseObject, error)
-	// start a cpu profiler
-	// (POST /tests/{nodeId}/start-cpu-profile)
-	TestStartCpuProfile(ctx context.Context, request TestStartCpuProfileRequestObject) (TestStartCpuProfileResponseObject, error)
-	// stop a cpu profiler
-	// (POST /tests/{nodeId}/stop-cpu-profile)
-	TestStopCpuProfile(ctx context.Context, request TestStopCpuProfileRequestObject) (TestStopCpuProfileResponseObject, error)
+	// start pprof server
+	// (POST /tests/{nodeId}/start-pprof-server)
+	TestStartPprofServer(ctx context.Context, request TestStartPprofServerRequestObject) (TestStartPprofServerResponseObject, error)
+	// stop pprof server
+	// (POST /tests/{nodeId}/stop-pprof-server)
+	TestStopPprofServer(ctx context.Context, request TestStopPprofServerRequestObject) (TestStopPprofServerResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -4108,6 +4414,32 @@ func (sh *strictHandler) GetProcessDefinitionStatistics(w http.ResponseWriter, r
 	}
 }
 
+// GetProcessDefinitionStatistics operation middleware
+func (sh *strictHandler) GetProcessDefinitionStatistics(w http.ResponseWriter, r *http.Request, params GetProcessDefinitionStatisticsParams) {
+	var request GetProcessDefinitionStatisticsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessDefinitionStatistics(ctx, request.(GetProcessDefinitionStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessDefinitionStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessDefinitionStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetProcessDefinitionStatisticsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProcessDefinition operation middleware
 func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
 	var request GetProcessDefinitionRequestObject
@@ -4127,6 +4459,32 @@ func (sh *strictHandler) GetProcessDefinition(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProcessDefinitionResponseObject); ok {
 		if err := validResponse.VisitGetProcessDefinitionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessDefinitionElementStatistics operation middleware
+func (sh *strictHandler) GetProcessDefinitionElementStatistics(w http.ResponseWriter, r *http.Request, processDefinitionKey int64) {
+	var request GetProcessDefinitionElementStatisticsRequestObject
+
+	request.ProcessDefinitionKey = processDefinitionKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessDefinitionElementStatistics(ctx, request.(GetProcessDefinitionElementStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessDefinitionElementStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessDefinitionElementStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetProcessDefinitionElementStatisticsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4410,25 +4768,25 @@ func (sh *strictHandler) DeleteProcessInstanceVariable(w http.ResponseWriter, r 
 	}
 }
 
-// TestStartCpuProfile operation middleware
-func (sh *strictHandler) TestStartCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
-	var request TestStartCpuProfileRequestObject
+// TestStartPprofServer operation middleware
+func (sh *strictHandler) TestStartPprofServer(w http.ResponseWriter, r *http.Request, nodeId string) {
+	var request TestStartPprofServerRequestObject
 
 	request.NodeId = nodeId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.TestStartCpuProfile(ctx, request.(TestStartCpuProfileRequestObject))
+		return sh.ssi.TestStartPprofServer(ctx, request.(TestStartPprofServerRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "TestStartCpuProfile")
+		handler = middleware(handler, "TestStartPprofServer")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(TestStartCpuProfileResponseObject); ok {
-		if err := validResponse.VisitTestStartCpuProfileResponse(w); err != nil {
+	} else if validResponse, ok := response.(TestStartPprofServerResponseObject); ok {
+		if err := validResponse.VisitTestStartPprofServerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4436,25 +4794,25 @@ func (sh *strictHandler) TestStartCpuProfile(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// TestStopCpuProfile operation middleware
-func (sh *strictHandler) TestStopCpuProfile(w http.ResponseWriter, r *http.Request, nodeId string) {
-	var request TestStopCpuProfileRequestObject
+// TestStopPprofServer operation middleware
+func (sh *strictHandler) TestStopPprofServer(w http.ResponseWriter, r *http.Request, nodeId string) {
+	var request TestStopPprofServerRequestObject
 
 	request.NodeId = nodeId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.TestStopCpuProfile(ctx, request.(TestStopCpuProfileRequestObject))
+		return sh.ssi.TestStopPprofServer(ctx, request.(TestStopPprofServerRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "TestStopCpuProfile")
+		handler = middleware(handler, "TestStopPprofServer")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(TestStopCpuProfileResponseObject); ok {
-		if err := validResponse.VisitTestStopCpuProfileResponse(w); err != nil {
+	} else if validResponse, ok := response.(TestStopPprofServerResponseObject); ok {
+		if err := validResponse.VisitTestStopPprofServerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

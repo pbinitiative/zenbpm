@@ -1119,11 +1119,11 @@ type ClientInterface interface {
 	// DeleteProcessInstanceVariable request
 	DeleteProcessInstanceVariable(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// TestStartCpuProfile request
-	TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// TestStartPprofServer request
+	TestStartPprofServer(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// TestStopCpuProfile request
-	TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// TestStopPprofServer request
+	TestStopPprofServer(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) EvaluateDecisionWithBody(ctx context.Context, decisionId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1534,8 +1534,8 @@ func (c *Client) DeleteProcessInstanceVariable(ctx context.Context, processInsta
 	return c.Client.Do(req)
 }
 
-func (c *Client) TestStartCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewTestStartCpuProfileRequest(c.Server, nodeId)
+func (c *Client) TestStartPprofServer(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestStartPprofServerRequest(c.Server, nodeId)
 	if err != nil {
 		return nil, err
 	}
@@ -1546,8 +1546,8 @@ func (c *Client) TestStartCpuProfile(ctx context.Context, nodeId string, reqEdit
 	return c.Client.Do(req)
 }
 
-func (c *Client) TestStopCpuProfile(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewTestStopCpuProfileRequest(c.Server, nodeId)
+func (c *Client) TestStopPprofServer(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestStopPprofServerRequest(c.Server, nodeId)
 	if err != nil {
 		return nil, err
 	}
@@ -3444,8 +3444,8 @@ func NewDeleteProcessInstanceVariableRequest(server string, processInstanceKey i
 	return req, nil
 }
 
-// NewTestStartCpuProfileRequest generates requests for TestStartCpuProfile
-func NewTestStartCpuProfileRequest(server string, nodeId string) (*http.Request, error) {
+// NewTestStartPprofServerRequest generates requests for TestStartPprofServer
+func NewTestStartPprofServerRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -3460,7 +3460,7 @@ func NewTestStartCpuProfileRequest(server string, nodeId string) (*http.Request,
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/tests/%s/start-cpu-profile", pathParam0)
+	operationPath := fmt.Sprintf("/tests/%s/start-pprof-server", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3478,8 +3478,8 @@ func NewTestStartCpuProfileRequest(server string, nodeId string) (*http.Request,
 	return req, nil
 }
 
-// NewTestStopCpuProfileRequest generates requests for TestStopCpuProfile
-func NewTestStopCpuProfileRequest(server string, nodeId string) (*http.Request, error) {
+// NewTestStopPprofServerRequest generates requests for TestStopPprofServer
+func NewTestStopPprofServerRequest(server string, nodeId string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -3494,7 +3494,7 @@ func NewTestStopCpuProfileRequest(server string, nodeId string) (*http.Request, 
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/tests/%s/stop-cpu-profile", pathParam0)
+	operationPath := fmt.Sprintf("/tests/%s/stop-pprof-server", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3650,11 +3650,11 @@ type ClientWithResponsesInterface interface {
 	// DeleteProcessInstanceVariableWithResponse request
 	DeleteProcessInstanceVariableWithResponse(ctx context.Context, processInstanceKey int64, variableName string, reqEditors ...RequestEditorFn) (*DeleteProcessInstanceVariableResponse, error)
 
-	// TestStartCpuProfileWithResponse request
-	TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error)
+	// TestStartPprofServerWithResponse request
+	TestStartPprofServerWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartPprofServerResponse, error)
 
-	// TestStopCpuProfileWithResponse request
-	TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error)
+	// TestStopPprofServerWithResponse request
+	TestStopPprofServerWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopPprofServerResponse, error)
 }
 
 type EvaluateDecisionResponse struct {
@@ -4313,14 +4313,14 @@ func (r DeleteProcessInstanceVariableResponse) StatusCode() int {
 	return 0
 }
 
-type TestStartCpuProfileResponse struct {
+type TestStartPprofServerResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON500      *Error
 }
 
 // Status returns HTTPResponse.Status
-func (r TestStartCpuProfileResponse) Status() string {
+func (r TestStartPprofServerResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -4328,24 +4328,21 @@ func (r TestStartCpuProfileResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r TestStartCpuProfileResponse) StatusCode() int {
+func (r TestStartPprofServerResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type TestStopCpuProfileResponse struct {
+type TestStopPprofServerResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		Pprof *[]byte `json:"pprof,omitempty"`
-	}
-	JSON500 *Error
+	JSON500      *Error
 }
 
 // Status returns HTTPResponse.Status
-func (r TestStopCpuProfileResponse) Status() string {
+func (r TestStopPprofServerResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -4353,7 +4350,7 @@ func (r TestStopCpuProfileResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r TestStopCpuProfileResponse) StatusCode() int {
+func (r TestStopPprofServerResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4659,22 +4656,22 @@ func (c *ClientWithResponses) DeleteProcessInstanceVariableWithResponse(ctx cont
 	return ParseDeleteProcessInstanceVariableResponse(rsp)
 }
 
-// TestStartCpuProfileWithResponse request returning *TestStartCpuProfileResponse
-func (c *ClientWithResponses) TestStartCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartCpuProfileResponse, error) {
-	rsp, err := c.TestStartCpuProfile(ctx, nodeId, reqEditors...)
+// TestStartPprofServerWithResponse request returning *TestStartPprofServerResponse
+func (c *ClientWithResponses) TestStartPprofServerWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStartPprofServerResponse, error) {
+	rsp, err := c.TestStartPprofServer(ctx, nodeId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseTestStartCpuProfileResponse(rsp)
+	return ParseTestStartPprofServerResponse(rsp)
 }
 
-// TestStopCpuProfileWithResponse request returning *TestStopCpuProfileResponse
-func (c *ClientWithResponses) TestStopCpuProfileWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopCpuProfileResponse, error) {
-	rsp, err := c.TestStopCpuProfile(ctx, nodeId, reqEditors...)
+// TestStopPprofServerWithResponse request returning *TestStopPprofServerResponse
+func (c *ClientWithResponses) TestStopPprofServerWithResponse(ctx context.Context, nodeId string, reqEditors ...RequestEditorFn) (*TestStopPprofServerResponse, error) {
+	rsp, err := c.TestStopPprofServer(ctx, nodeId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseTestStopCpuProfileResponse(rsp)
+	return ParseTestStopPprofServerResponse(rsp)
 }
 
 // ParseEvaluateDecisionResponse parses an HTTP response from a EvaluateDecisionWithResponse call
@@ -5771,15 +5768,15 @@ func ParseDeleteProcessInstanceVariableResponse(rsp *http.Response) (*DeleteProc
 	return response, nil
 }
 
-// ParseTestStartCpuProfileResponse parses an HTTP response from a TestStartCpuProfileWithResponse call
-func ParseTestStartCpuProfileResponse(rsp *http.Response) (*TestStartCpuProfileResponse, error) {
+// ParseTestStartPprofServerResponse parses an HTTP response from a TestStartPprofServerWithResponse call
+func ParseTestStartPprofServerResponse(rsp *http.Response) (*TestStartPprofServerResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &TestStartCpuProfileResponse{
+	response := &TestStartPprofServerResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -5797,29 +5794,20 @@ func ParseTestStartCpuProfileResponse(rsp *http.Response) (*TestStartCpuProfileR
 	return response, nil
 }
 
-// ParseTestStopCpuProfileResponse parses an HTTP response from a TestStopCpuProfileWithResponse call
-func ParseTestStopCpuProfileResponse(rsp *http.Response) (*TestStopCpuProfileResponse, error) {
+// ParseTestStopPprofServerResponse parses an HTTP response from a TestStopPprofServerWithResponse call
+func ParseTestStopPprofServerResponse(rsp *http.Response) (*TestStopPprofServerResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &TestStopCpuProfileResponse{
+	response := &TestStopPprofServerResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Pprof *[]byte `json:"pprof,omitempty"`
-		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -34,13 +34,8 @@ const (
 	ZenService_UnassignPartition_FullMethodName                     = "/cluster.ZenService/UnassignPartition"
 	ZenService_PartitionBackup_FullMethodName                       = "/cluster.ZenService/PartitionBackup"
 	ZenService_PartitionRestore_FullMethodName                      = "/cluster.ZenService/PartitionRestore"
-<<<<<<< HEAD
-	ZenService_StartCpuProfiler_FullMethodName                      = "/cluster.ZenService/StartCpuProfiler"
-	ZenService_StopCpuProfiler_FullMethodName                       = "/cluster.ZenService/StopCpuProfiler"
-=======
 	ZenService_StartPprofServer_FullMethodName                      = "/cluster.ZenService/StartPprofServer"
 	ZenService_StopPprofServer_FullMethodName                       = "/cluster.ZenService/StopPprofServer"
->>>>>>> f67d6fdff72e11bece0b2f4e775b664dbe920d97
 	ZenService_NodeCommand_FullMethodName                           = "/cluster.ZenService/NodeCommand"
 	ZenService_EvaluateDecision_FullMethodName                      = "/cluster.ZenService/EvaluateDecision"
 	ZenService_DeployDmnResourceDefinition_FullMethodName           = "/cluster.ZenService/DeployDmnResourceDefinition"

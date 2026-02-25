@@ -678,7 +678,7 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 	return result, nil
 }
 
-func (node *ZenNode) StartCpuProfile(ctx context.Context, nodeId string) error {
+func (node *ZenNode) StartPprofServer(ctx context.Context, nodeId string) error {
 	state := node.store.ClusterState()
 	targetNode, err2 := state.GetNode(nodeId)
 	if err2 != nil {

@@ -306,8 +306,8 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)
-	randomCorellationKey := rand.Int63()
-	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+	randomCorrelationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorrelationKey)
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
@@ -358,6 +358,20 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 
 }
 
+func TestProcessInstanceMustBeInActiveStateForCreateInstanceByKey(t *testing.T) {
+	// setup
+	process, err := bpmnEngine.LoadFromFile("./test-cases/parallel_flow_with_terminate_end_task.bpmn")
+	assert.NoError(t, err)
+
+	// when
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, make(map[string]interface{}))
+	assert.NoError(t, err)
+
+	err = bpmnEngine.CancelInstanceByKey(t.Context(), instance.ProcessInstance().GetInstanceKey())
+	assert.ErrorContains(t, err, "cannot cancel process instance")
+	assert.ErrorContains(t, err, "it is not in correct state, expected=ActivityStateActive, actual=ActivityStateCompleted")
+}
+
 func TestModifyProcessInstance(t *testing.T) {
 	// setup
 	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
@@ -366,8 +380,8 @@ func TestModifyProcessInstance(t *testing.T) {
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)
-	randomCorellationKey := rand.Int63()
-	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+	randomCorrelationKey := rand.Int63()
+	variableContext["correlationKey"] = fmt.Sprint(randomCorrelationKey)
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), definition.Key, variableContext)

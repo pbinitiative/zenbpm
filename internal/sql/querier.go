@@ -56,6 +56,7 @@ type Querier interface {
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
+	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)
@@ -77,6 +78,7 @@ type Querier interface {
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
 	GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error)
 	GetDmnResourceDefinitionKeyByChecksum(ctx context.Context, dmnChecksum []byte) (int64, error)
+	GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error)
 	GetFlowElementInstanceByKey(ctx context.Context, key int64) (FlowElementInstance, error)
 	GetFlowElementInstanceByTokenKey(ctx context.Context, executionTokenKey int64) (FlowElementInstance, error)
 	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)

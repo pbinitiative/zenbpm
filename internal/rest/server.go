@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
@@ -56,6 +58,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 	}
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
+	r.Use(middleware.StripEmptyQueryParams())
 	r.Route("/v1", func(r chi.Router) {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
@@ -592,6 +595,109 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 	}, nil
 }
 
+func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, request public.GetProcessDefinitionElementStatisticsRequestObject) (public.GetProcessDefinitionElementStatisticsResponseObject, error) {
+	partitions, err := s.node.GetProcessDefinitionElementStatistics(ctx, request.ProcessDefinitionKey)
+	if err != nil {
+		return public.GetProcessDefinitionElementStatistics500JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	result := public.ElementStatisticsPartitions{
+		Partitions: make([]public.PartitionElementStatistics, len(partitions)),
+	}
+	for i, partition := range partitions {
+		items := make(public.ElementStatistic, len(partition.GetStatistics()))
+		for _, entry := range partition.GetStatistics() {
+			items[entry.GetElementId()] = public.ElementStatisticCounts{
+				ActiveCount:   int(entry.GetActiveCount()),
+				IncidentCount: int(entry.GetIncidentCount()),
+			}
+		}
+		result.Partitions[i] = public.PartitionElementStatistics{
+			Partition: int(partition.GetPartitionId()),
+			Items:     items,
+		}
+	}
+	return public.GetProcessDefinitionElementStatistics200JSONResponse(result), nil
+}
+
+func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	onlyLatest := false
+	if request.Params.OnlyLatest != nil {
+		onlyLatest = *request.Params.OnlyLatest
+	}
+
+	// Build sort string
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+
+	// Dereference slice pointers
+	var bpmnProcessIdIn []string
+	if request.Params.BpmnProcessIdIn != nil {
+		bpmnProcessIdIn = *request.Params.BpmnProcessIdIn
+	}
+	var bpmnProcessDefinitionKeyIn []int64
+	if request.Params.BpmnProcessDefinitionKeyIn != nil {
+		bpmnProcessDefinitionKeyIn = *request.Params.BpmnProcessDefinitionKeyIn
+	}
+
+	partitionedStats, err := s.node.GetProcessDefinitionStatistics(
+		ctx,
+		*request.Params.Page,
+		*request.Params.Size,
+		onlyLatest,
+		bpmnProcessIdIn,
+		bpmnProcessDefinitionKeyIn,
+		request.Params.Name,
+		sort,
+	)
+	if err != nil {
+		return public.GetProcessDefinitionStatistics500JSONResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: err.Error(),
+		}, nil
+	}
+
+	partitions := make([]public.PartitionProcessDefinitionStatistics, len(partitionedStats))
+	count := 0
+	totalCount := 0
+	for i, partition := range partitionedStats {
+		items := make([]public.ProcessDefinitionStatistics, len(partition.Statistics))
+		for k, stat := range partition.Statistics {
+			items[k] = public.ProcessDefinitionStatistics{
+				Key:           stat.GetKey(),
+				Version:       int(stat.GetVersion()),
+				BpmnProcessId: stat.GetBpmnProcessId(),
+				Name:          ptr.To(stat.GetBpmnProcessName()),
+				InstanceCounts: public.InstanceCounts{
+					Total:      int(stat.InstanceCounts.GetTotal()),
+					Active:     int(stat.InstanceCounts.GetActive()),
+					Completed:  int(stat.InstanceCounts.GetCompleted()),
+					Terminated: int(stat.InstanceCounts.GetTerminated()),
+					Failed:     int(stat.InstanceCounts.GetFailed()),
+				},
+			}
+		}
+		partitions[i] = public.PartitionProcessDefinitionStatistics{
+			Items:     items,
+			Partition: int(partition.GetPartitionId()),
+		}
+		count += len(partition.Statistics)
+		totalCount += int(partition.GetTotalCount())
+	}
+
+	return public.GetProcessDefinitionStatistics200JSONResponse{
+		Partitions: partitions,
+		Page:       int(*request.Params.Page),
+		Size:       int(*request.Params.Size),
+		Count:      count,
+		TotalCount: totalCount,
+	}, nil
+}
+
 func (s *Server) CreateProcessInstance(ctx context.Context, request public.CreateProcessInstanceRequestObject) (public.CreateProcessInstanceResponseObject, error) {
 	variables := make(map[string]interface{})
 	if request.Body.Variables != nil {
@@ -793,18 +899,23 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProcessInstanceRequestObject) (public.GetProcessInstanceResponseObject, error) {
 	instance, activeElementInstances, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		return public.GetProcessInstance502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.GetProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	vars := map[string]any{}
 	err = json.Unmarshal(instance.GetVariables(), &vars)
 	if err != nil {
-		return public.GetProcessInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.GetProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))
@@ -891,6 +1002,17 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 	}
 
 	return public.DeleteProcessInstanceVariable204Response{}, nil
+}
+
+func (s *Server) CancelProcessInstance(ctx context.Context, request public.CancelProcessInstanceRequestObject) (public.CancelProcessInstanceResponseObject, error) {
+	err := s.node.CancelProcessInstance(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		return public.CancelProcessInstance500JSONResponse{
+			Code:    "INTERNAL_SERVER_ERROR",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.CancelProcessInstance204Response{}, nil
 }
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {

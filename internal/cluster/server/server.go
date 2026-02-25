@@ -19,6 +19,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
+	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -381,7 +382,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 }
 
 func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyProcessInstanceRequest) (*proto.ModifyProcessInstanceResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return &proto.ModifyProcessInstanceResponse{
@@ -450,7 +452,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 }
 
 func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.DeleteProcessInstanceVariableRequest) (*proto.DeleteProcessInstanceVariableResponse, error) {
-	engine := s.GetRandomEngine(ctx)
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
 		err := fmt.Errorf("no engine available on this node")
 		return createDeleteProcessInstanceVariableErrorResponse(err)
@@ -480,6 +483,30 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 
 func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
 	return &proto.DeleteProcessInstanceVariableResponse{
+		Error: &proto.ErrorResult{
+			Code:    nil,
+			Message: ptr.To(err.Error()),
+		},
+	}, err
+}
+
+func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelProcessInstanceRequest) (*proto.CancelProcessInstanceResponse, error) {
+	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := fmt.Errorf("no engine available on this node")
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	err := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
+	if err != nil {
+		err := fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, err)
+		return createCancelProcessInstanceErrorResponse(err)
+	}
+	return &proto.CancelProcessInstanceResponse{}, nil
+}
+
+func createCancelProcessInstanceErrorResponse(err error) (*proto.CancelProcessInstanceResponse, error) {
+	return &proto.CancelProcessInstanceResponse{
 		Error: &proto.ErrorResult{
 			Code:    nil,
 			Message: ptr.To(err.Error()),
@@ -665,33 +692,24 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", partitionId)
+		err := zenerr.ClusterError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	instance, err := engine.FindProcessInstance(req.GetProcessInstanceKey())
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey())
+		err := zenerr.NotFound(fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d not found", partitionId)
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 
@@ -701,12 +719,9 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		States:             activeStates,
 	})
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey())
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
@@ -723,12 +738,9 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 
 	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey())
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
 		return &proto.GetProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
+			Error: err.ToProtoError(),
 		}, err
 	}
 	return &proto.GetProcessInstanceResponse{
@@ -1383,6 +1395,138 @@ func (s *Server) GetRandomEngine(ctx context.Context) *bpmn.Engine {
 		i++
 	}
 	return nil
+}
+
+func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req *proto.GetProcessDefinitionElementStatisticsRequest) (*proto.GetProcessDefinitionElementStatisticsResponse, error) {
+	resp := make([]*proto.PartitionedElementStatistics, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetProcessDefinitionElementStatisticsResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+
+		rows, err := queries.GetElementStatisticsByProcessDefinitionKey(ctx, req.GetProcessDefinitionKey())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get element statistics for process definition %d: %w", req.GetProcessDefinitionKey(), err)
+		}
+
+		statistics := make([]*proto.ElementStatisticEntry, len(rows))
+		for i, row := range rows {
+			statistics[i] = &proto.ElementStatisticEntry{
+				ElementId:     ptr.To(row.ElementID),
+				ActiveCount:   ptr.To(int32(row.ActiveCount)),
+				IncidentCount: ptr.To(int32(row.IncidentCount)),
+			}
+		}
+
+		resp = append(resp, &proto.PartitionedElementStatistics{
+			PartitionId: &partitionId,
+			Statistics:  statistics,
+		})
+	}
+	return &proto.GetProcessDefinitionElementStatisticsResponse{Partitions: resp}, nil
+}
+
+func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.GetProcessDefinitionStatisticsRequest) (*proto.GetProcessDefinitionStatisticsResponse, error) {
+	resp := make([]*proto.PartitionedProcessDefinitionStatistics, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			return &proto.GetProcessDefinitionStatisticsResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, err
+		}
+
+		onlyLatest := int64(0)
+		if req.OnlyLatest != nil && *req.OnlyLatest {
+			onlyLatest = 1
+		}
+
+		var bpmnProcessIDInJson interface{}
+		if req.BpmnProcessIdIn != nil {
+			b, err := json.Marshal(req.BpmnProcessIdIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal bpmn process id in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			bpmnProcessIDInJson = string(b)
+		}
+
+		var definitionKeyInJson interface{}
+		if req.BpmnProcessDefinitionKeyIn != nil {
+			b, err := json.Marshal(req.BpmnProcessDefinitionKeyIn)
+			if err != nil {
+				err := fmt.Errorf("failed to marshal process definition key in filter: %w", err)
+				return &proto.GetProcessDefinitionStatisticsResponse{
+					Error: &proto.ErrorResult{
+						Code:    nil,
+						Message: ptr.To(err.Error()),
+					},
+				}, err
+			}
+			definitionKeyInJson = string(b)
+		}
+
+		dbStats, err := queries.FindProcessDefinitionStatistics(ctx, sql.FindProcessDefinitionStatisticsParams{
+			Sort:                sql.ToNullString((*string)(req.Sort)),
+			NameFilter:          sql.ToNullString(req.Name),
+			OnlyLatest:          onlyLatest,
+			Offset:              int64(req.GetSize()) * int64(req.GetPage()-1),
+			Limit:               int64(req.GetSize()),
+			BpmnProcessIDInJson: bpmnProcessIDInJson,
+			DefinitionKeyInJson: definitionKeyInJson,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to find process definition statistics: %w", err)
+		}
+
+		partitionStats := make([]*proto.ProcessDefinitionStatistics, len(dbStats))
+
+		totalCount := int32(0)
+		for i, stat := range dbStats {
+			if i == 0 {
+				totalCount = int32(stat.TotalCount)
+			}
+
+			partitionStats[i] = &proto.ProcessDefinitionStatistics{
+				Key:             ptr.To(stat.Key),
+				Version:         ptr.To(int32(stat.Version)),
+				BpmnProcessId:   ptr.To(stat.BpmnProcessID),
+				BpmnProcessName: ptr.To(stat.BpmnProcessName),
+				InstanceCounts: &proto.InstanceCounts{
+					Total:      ptr.To(stat.TotalInstances),
+					Active:     ptr.To(int64(stat.ActiveCount)),
+					Completed:  ptr.To(int64(stat.CompletedCount)),
+					Terminated: ptr.To(int64(stat.TerminatedCount)),
+					Failed:     ptr.To(int64(stat.FailedCount)),
+				},
+			}
+		}
+
+		resp = append(resp, &proto.PartitionedProcessDefinitionStatistics{
+			PartitionId: &partitionId,
+			Statistics:  partitionStats,
+			TotalCount:  ptr.To(totalCount),
+		})
+	}
+	return &proto.GetProcessDefinitionStatisticsResponse{
+		Partitions: resp,
+	}, nil
 }
 
 func (s *Server) StartCpuProfiler(context.Context, *proto.CpuProfilerRequest) (*proto.CpuProfilerStartResult, error) {

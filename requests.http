@@ -49,6 +49,9 @@ Content-Type: application/json
 ### DeleteProcessInstanceVariable
 DELETE {{host}}/v1/process-instances/{{instance_key}}/variables/name
 
+### CancelProcessInstance
+POST {{host}}/v1/process-instances/{{instance_key}}/cancel
+
 ### GetProcessInstanceJobs
 GET {{host}}/v1/process-instances/{{instance_key}}/jobs
 

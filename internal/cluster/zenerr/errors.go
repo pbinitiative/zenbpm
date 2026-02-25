@@ -1,6 +1,12 @@
 package zenerr
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
+)
 
 var (
 	// ErrNotOpen is returned when a Store is not open.
@@ -20,3 +26,79 @@ var (
 	// within the specified time.
 	ErrWaitForLeaderTimeout = errors.New("timeout waiting for leader")
 )
+
+type ZenErrorCode uint32
+
+const (
+	NoErrorCode ZenErrorCode = iota
+	TechnicalErrorCode
+	ClusterErrorCode
+	NotFoundCode
+)
+
+func (zenErrorCode ZenErrorCode) ToString() string {
+	switch zenErrorCode {
+	case NoErrorCode:
+		return ""
+	case TechnicalErrorCode:
+		return "TECHNICAL_ERROR"
+	case ClusterErrorCode:
+		return "CLUSTER_ERROR"
+	case NotFoundCode:
+		return "NOT_FOUND"
+	default:
+		return "UNKNOWN_ERROR"
+	}
+}
+
+type ZenError struct {
+	Code ZenErrorCode
+	err  error
+}
+
+func (zenError *ZenError) Error() string {
+	return zenError.err.Error()
+}
+
+func TechnicalError(err error) *ZenError {
+	return &ZenError{TechnicalErrorCode, err}
+}
+
+func ClusterError(err error) *ZenError {
+	return &ZenError{ClusterErrorCode, err}
+}
+
+func NotFound(err error) *ZenError {
+	return &ZenError{NotFoundCode, err}
+}
+
+func (zenError *ZenError) ToProtoError() *proto.ErrorResult {
+	return &proto.ErrorResult{
+		Code:    (*uint32)(ptr.To(zenError.Code)),
+		Message: ptr.To(zenError.err.Error()),
+	}
+}
+
+func (zenError *ZenError) ToApiError() public.Error {
+	return public.Error{
+		Code:    zenError.Code.ToString(),
+		Message: zenError.err.Error(),
+	}
+}
+
+func ToZenError(protoError *proto.ErrorResult, err ...error) *ZenError {
+	var resErr = errors.Join(err...)
+	if protoError.Message != nil {
+		protoErr := errors.New(protoError.GetMessage())
+		if resErr != nil {
+			resErr = errors.Join(resErr, protoErr)
+		} else {
+			resErr = protoErr
+		}
+	}
+	code := TechnicalErrorCode
+	if protoError.Code != nil {
+		code = ZenErrorCode(*protoError.Code)
+	}
+	return &ZenError{code, resErr}
+}

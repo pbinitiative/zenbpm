@@ -52,6 +52,34 @@ func TestRestApiProcessInstance(t *testing.T) {
 	})
 }
 
+func TestCancelProcessInstance(t *testing.T) {
+	var instance public.ProcessInstance
+	definition, err := deployGetDefinition(t, "service-task-input-output.bpmn", "service-task-input-output")
+
+	t.Run("create process instance", func(t *testing.T) {
+		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+	})
+	t.Run("read instance, state is active", func(t *testing.T) {
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, public.ProcessInstanceStateActive, fetchedInstance.State)
+	})
+	t.Run("cancel process instance", func(t *testing.T) {
+		cancelResponse, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, 204, cancelResponse.StatusCode())
+	})
+	t.Run("read instance, state is terminated", func(t *testing.T) {
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, public.ProcessInstanceStateTerminated, fetchedInstance.State)
+	})
+}
+
 func TestRestApiParentProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	definition, err := deployGetDefinition(t, "call-activity-simple.bpmn", "Simple_CallActivity_Process")
@@ -348,6 +376,19 @@ func TestDeleteProcessInstanceVariable(t *testing.T) {
 	t.Run("TestDeleteProcessInstanceVariable for non-existing variable", func(t *testing.T) {
 		deleteProcessInstanceVariableResponse, _ := app.restClient.DeleteProcessInstanceVariableWithResponse(t.Context(), processInstanceKey, "non-existing-variable")
 		assert.Equal(t, "NOT_FOUND", deleteProcessInstanceVariableResponse.JSON404.Code)
+	})
+}
+
+func TestGetProcessInstanceErrorResponse(t *testing.T) {
+	t.Run("read non existing process instance", func(t *testing.T) {
+		var nonExistingProcessInstanceKey int64 = -1
+		var resp *zenclient.GetProcessInstanceResponse
+		resp, _ = app.restClient.GetProcessInstanceWithResponse(t.Context(), nonExistingProcessInstanceKey)
+
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON502)
+		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
+		assert.Equal(t, "failed to get follower node to get process instance: partition not found", resp.JSON502.Message)
 	})
 }
 

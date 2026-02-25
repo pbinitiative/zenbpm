@@ -364,6 +364,10 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		// Cancel all child process instances
 		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key)
 	}
+	if instance.ProcessInstance().GetState() != runtime.ActivityStateActive {
+		return fmt.Errorf("cannot cancel process instance %d, it is not in correct state, expected=%v, actual=%v",
+			instance.ProcessInstance().Key, runtime.ActivityStateActive, instance.ProcessInstance().State)
+	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {

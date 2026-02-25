@@ -176,6 +176,8 @@ func (rq *DB) generateStatement(sql string, parameters ...interface{}) *proto.St
 
 	for _, par := range parameters {
 		switch par := par.(type) {
+		case nil:
+			resultParams = append(resultParams, &proto.Parameter{})
 		case string:
 			resultParams = append(resultParams, &proto.Parameter{
 				Value: &proto.Parameter_S{

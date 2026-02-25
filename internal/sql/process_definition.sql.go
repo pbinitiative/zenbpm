@@ -99,6 +99,153 @@ func (q *Queries) FindProcessDefinitionByKey(ctx context.Context, key int64) (Pr
 	return i, err
 }
 
+const findProcessDefinitionStatistics = `-- name: FindProcessDefinitionStatistics :many
+WITH filtered_definitions AS (
+  SELECT
+    pd."key",
+    pd.version,
+    pd.bpmn_process_id,
+    pd.bpmn_process_name
+  FROM process_definition AS pd
+  WHERE
+    -- force sqlc to keep sort param
+    CAST(?3 AS TEXT) IS CAST(?3 AS TEXT)
+    -- name filter (partial match)
+    AND (CAST(?4 AS TEXT) IS NULL OR pd.bpmn_process_name LIKE '%' || CAST(?4 AS TEXT) || '%')
+    -- onlyLatest filter
+    AND (
+      CAST(?5 AS INTEGER) = 0
+      OR pd.version = (
+        SELECT MAX(pd2.version)
+        FROM process_definition AS pd2
+        WHERE pd2.bpmn_process_id = pd.bpmn_process_id
+      )
+    )
+    -- bpmnProcessId IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        ?6 IS NULL
+        OR json_array_length(?6) = 0
+        OR pd.bpmn_process_id IN (
+            SELECT value
+            FROM json_each(?6)  -- TODO: sqlc.narg('bpmn_process_id_in_json') dont work here, use ?6 instead
+        )
+    )
+
+    -- definitionKey IN filter (JSON array; NULL/[] => no filter)
+    AND (
+        ?7 IS NULL
+        OR json_array_length(?7) = 0
+        OR pd."key" IN (
+            SELECT value
+            FROM json_each(?7) -- TODO: sqlc.narg('definition_key_in_json') dont work here, use ?7 instead
+        )
+    )
+),
+instance_counts AS (
+  SELECT
+    pi.process_definition_key,
+    COUNT(*) AS total_instances,
+    SUM(CASE WHEN pi.state = 1 THEN 1 ELSE 0 END) AS active_count,
+    SUM(CASE WHEN pi.state = 4 THEN 1 ELSE 0 END) AS completed_count,
+    SUM(CASE WHEN pi.state = 9 THEN 1 ELSE 0 END) AS terminated_count,
+    SUM(CASE WHEN pi.state = 6 THEN 1 ELSE 0 END) AS failed_count
+  FROM process_instance AS pi
+  WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
+  GROUP BY pi.process_definition_key
+)
+SELECT
+  fd."key",
+  fd.version,
+  fd.bpmn_process_id,
+  fd.bpmn_process_name,
+  COALESCE(ic.total_instances, 0) AS total_instances,
+  COALESCE(ic.active_count, 0) AS active_count,
+  COALESCE(ic.completed_count, 0) AS completed_count,
+  COALESCE(ic.terminated_count, 0) AS terminated_count,
+  COALESCE(ic.failed_count, 0) AS failed_count,
+  COUNT(*) OVER() AS total_count
+FROM filtered_definitions AS fd
+LEFT JOIN instance_counts AS ic ON fd."key" = ic.process_definition_key
+ORDER BY
+  -- workaround for sqlc - sort parameter handling
+  CASE CAST(?3 AS TEXT) WHEN 'name_asc' THEN fd.bpmn_process_name END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'name_desc' THEN fd.bpmn_process_name END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'bpmnProcessId_asc' THEN fd.bpmn_process_id END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'bpmnProcessId_desc' THEN fd.bpmn_process_id END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'version_asc' THEN fd.version END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'version_desc' THEN fd.version END DESC,
+  CASE CAST(?3 AS TEXT) WHEN 'instanceCount_asc' THEN COALESCE(ic.total_instances, 0) END ASC,
+  CASE CAST(?3 AS TEXT) WHEN 'instanceCount_desc' THEN COALESCE(ic.total_instances, 0) END DESC,
+  fd."key" DESC
+LIMIT ?2
+OFFSET ?1
+`
+
+type FindProcessDefinitionStatisticsParams struct {
+	Offset              int64          `json:"offset"`
+	Limit               int64          `json:"limit"`
+	Sort                sql.NullString `json:"sort"`
+	NameFilter          sql.NullString `json:"name_filter"`
+	OnlyLatest          int64          `json:"only_latest"`
+	BpmnProcessIDInJson interface{}    `json:"bpmn_process_id_in_json"`
+	DefinitionKeyInJson interface{}    `json:"definition_key_in_json"`
+}
+
+type FindProcessDefinitionStatisticsRow struct {
+	Key             int64   `json:"key"`
+	Version         int64   `json:"version"`
+	BpmnProcessID   string  `json:"bpmn_process_id"`
+	BpmnProcessName string  `json:"bpmn_process_name"`
+	TotalInstances  int64   `json:"total_instances"`
+	ActiveCount     float64 `json:"active_count"`
+	CompletedCount  float64 `json:"completed_count"`
+	TerminatedCount float64 `json:"terminated_count"`
+	FailedCount     float64 `json:"failed_count"`
+	TotalCount      int64   `json:"total_count"`
+}
+
+func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionStatistics,
+		arg.Offset,
+		arg.Limit,
+		arg.Sort,
+		arg.NameFilter,
+		arg.OnlyLatest,
+		arg.BpmnProcessIDInJson,
+		arg.DefinitionKeyInJson,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindProcessDefinitionStatisticsRow{}
+	for rows.Next() {
+		var i FindProcessDefinitionStatisticsRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.Version,
+			&i.BpmnProcessID,
+			&i.BpmnProcessName,
+			&i.TotalInstances,
+			&i.ActiveCount,
+			&i.CompletedCount,
+			&i.TerminatedCount,
+			&i.FailedCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessDefinitions = `-- name: FindProcessDefinitions :many
 SELECT
   pd."key",
@@ -293,6 +440,79 @@ func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum [
 	var key int64
 	err := row.Scan(&key)
 	return key, err
+}
+
+const getElementStatisticsByProcessDefinitionKey = `-- name: GetElementStatisticsByProcessDefinitionKey :many
+WITH active_tokens AS (
+    SELECT
+        et.element_id,
+        COUNT(*) AS active_count,
+        0         AS incident_count
+    FROM
+        execution_token AS et
+        INNER JOIN process_instance AS pi ON et.process_instance_key = pi.key
+    WHERE
+        pi.process_definition_key = ?1
+        AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+    GROUP BY
+        et.element_id
+),
+active_incidents AS (
+    SELECT
+        i.element_id,
+        0         AS active_count,
+        COUNT(*) AS incident_count
+    FROM
+        incident AS i
+        INNER JOIN process_instance AS pi ON i.process_instance_key = pi.key
+    WHERE
+        pi.process_definition_key = ?1
+        AND i.resolved_at IS NULL
+    GROUP BY
+        i.element_id
+),
+combined AS (
+    SELECT element_id, active_count, incident_count FROM active_tokens
+    UNION ALL
+    SELECT element_id, active_count, incident_count FROM active_incidents
+)
+SELECT
+    element_id,
+    CAST(SUM(active_count)   AS INTEGER) AS active_count,
+    CAST(SUM(incident_count) AS INTEGER) AS incident_count
+FROM
+    combined
+GROUP BY
+    element_id
+`
+
+type GetElementStatisticsByProcessDefinitionKeyRow struct {
+	ElementID     string `json:"element_id"`
+	ActiveCount   int64  `json:"active_count"`
+	IncidentCount int64  `json:"incident_count"`
+}
+
+func (q *Queries) GetElementStatisticsByProcessDefinitionKey(ctx context.Context, processDefinitionKey int64) ([]GetElementStatisticsByProcessDefinitionKeyRow, error) {
+	rows, err := q.db.QueryContext(ctx, getElementStatisticsByProcessDefinitionKey, processDefinitionKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetElementStatisticsByProcessDefinitionKeyRow{}
+	for rows.Next() {
+		var i GetElementStatisticsByProcessDefinitionKeyRow
+		if err := rows.Scan(&i.ElementID, &i.ActiveCount, &i.IncidentCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const saveProcessDefinition = `-- name: SaveProcessDefinition :exec

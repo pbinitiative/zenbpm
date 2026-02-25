@@ -48,20 +48,32 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	t.Run("get history multiInstance", func(t *testing.T) {
-		processInstances, err := app.restClient.GetHistoryWithResponse(t.Context(), instance1Key, &zenclient.GetHistoryParams{})
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance1Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
-		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
+		assert.Equal(t, 4, history.JSON200.TotalCount)
 	})
 
 	t.Run("get history callActivity", func(t *testing.T) {
-		processInstances, err := app.restClient.GetHistoryWithResponse(t.Context(), instance2Key, &zenclient.GetHistoryParams{})
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance2Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
-		assert.Equal(t, 3, processInstances.JSON200.TotalCount)
+		assert.Equal(t, 3, history.JSON200.TotalCount)
 	})
 
 	t.Run("get history subprocess", func(t *testing.T) {
-		processInstances, err := app.restClient.GetHistoryWithResponse(t.Context(), instance3Key, &zenclient.GetHistoryParams{})
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance3Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
-		assert.Equal(t, 6, processInstances.JSON200.TotalCount)
+		assert.Equal(t, 6, history.JSON200.TotalCount)
 	})
+
+	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
+	err = publishMessage(t, "boundary message", "1234", &map[string]any{
+		"test-var": "test",
+	})
+	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
 }

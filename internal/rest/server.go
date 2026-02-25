@@ -1417,7 +1417,7 @@ func getRestProcessInstanceType(state runtime.ProcessType) public.ProcessInstanc
 	case runtime.ProcessTypeMultiInstance:
 		return public.ProcessInstanceProcessTypeMultiInstance
 	default:
-		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+		panic(fmt.Sprintf("unexpected runtime.ProcessType: %#v", state))
 	}
 }
 

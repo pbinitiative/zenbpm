@@ -89,7 +89,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, definition.Key, map[string]any{
-			"testVar": 123,
+			"variable_name": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
@@ -114,6 +114,11 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 		assert.NotEmpty(t, childrenPage.Partitions[0].Items)
 		assert.Equal(t, instance.Key, *childrenPage.Partitions[0].Items[0].ParentProcessInstanceKey)
 	})
+
+	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
 }
 
 func TestBusinessKey(t *testing.T) {
@@ -361,6 +366,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 	t.Run("find process instances by IncludeChildProcesses=true", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			IncludeChildProcesses: ptr.To(true),
+			BpmnProcessId:         &multiInstanceDefinition.BpmnProcessId,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 6, processInstances.JSON200.TotalCount)
@@ -373,6 +379,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 	t.Run("find process instances by IncludeChildProcesses=false", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			IncludeChildProcesses: ptr.To(false),
+			BpmnProcessId:         &callActivityDefinition.BpmnProcessId,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
@@ -383,7 +390,9 @@ func TestIncludeChildProcesses(t *testing.T) {
 	})
 
 	t.Run("find process instances by IncludeChildProcesses not filled out", func(t *testing.T) {
-		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{})
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: &callActivityDefinition.BpmnProcessId,
+		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
 		assert.Equal(t, 1, len(processInstances.JSON200.Partitions))
@@ -391,6 +400,18 @@ func TestIncludeChildProcesses(t *testing.T) {
 			assert.Contains(t, []zenclient.ProcessInstanceProcessType{"default", "callActivity"}, instance.ProcessType)
 		}
 	})
+
+	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
+	err = publishMessage(t, "boundary message", "1234", &map[string]any{
+		"test-var": "test",
+	})
+	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
 }
 
 func TestFindChildProcesses(t *testing.T) {
@@ -459,6 +480,19 @@ func TestFindChildProcesses(t *testing.T) {
 		assert.Equal(t, 1, len(processInstances.JSON200.Partitions[0].Items))
 		assert.Equal(t, zenclient.ProcessInstanceProcessType("subprocess"), processInstances.JSON200.Partitions[0].Items[0].ProcessType)
 	})
+
+	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
+	err = publishMessage(t, "boundary message", "1234", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
+	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
+		"test-var": "test",
+	})
+	assert.NoError(t, err)
 }
 
 func TestUpdateProcessInstanceVariables(t *testing.T) {
@@ -607,7 +641,7 @@ func getProcessInstance(t testing.TB, key int64) (public.ProcessInstance, error)
 
 func getChildInstances(t testing.TB, key int64) (public.ProcessInstancePage, error) {
 	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d", key)).
+		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d&includeChildProcesses=true", key)).
 		DoOk()
 	if err != nil {
 		return public.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)

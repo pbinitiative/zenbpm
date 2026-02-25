@@ -1047,6 +1047,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		if err != nil {
 			return nil, err
 		}
+		parentTokensMap := make(map[int64]sql.ExecutionToken, len(parentTokens))
+		for i, _ := range parentTokens {
+			parentTokensMap[parentTokens[i].Key] = parentTokens[i]
+		}
 
 		for i, _ := range instances {
 			var businessKey *string
@@ -1056,11 +1060,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 
 			var parentInstanceKey *int64
 			if instances[i].ParentProcessExecutionToken.Valid {
-				for i2, _ := range parentTokens {
-					if parentTokens[i2].Key == instances[i].ParentProcessExecutionToken.Int64 {
-						parentInstanceKey = &parentTokens[i2].ProcessInstanceKey
-					}
-				}
+				parentInstanceKey = ptr.To(parentTokensMap[instances[i].ParentProcessExecutionToken.Int64].ProcessInstanceKey)
 			}
 
 			procInstances[i] = &proto.ProcessInstance{
@@ -1147,6 +1147,10 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 	if err != nil {
 		return nil, err
 	}
+	parentTokensMap := make(map[int64]sql.ExecutionToken, len(parentTokens))
+	for i, _ := range parentTokens {
+		parentTokensMap[parentTokens[i].Key] = parentTokens[i]
+	}
 
 	procInstances := make([]*proto.ProcessInstance, len(instances))
 	for i, _ := range instances {
@@ -1157,11 +1161,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 
 		var parentInstanceKey *int64
 		if instances[i].ParentProcessExecutionToken.Valid {
-			for i2, _ := range parentTokens {
-				if parentTokens[i2].Key == instances[i].ParentProcessExecutionToken.Int64 {
-					parentInstanceKey = &parentTokens[i2].ProcessInstanceKey
-				}
-			}
+			parentInstanceKey = ptr.To(parentTokensMap[instances[i].ParentProcessExecutionToken.Int64].ProcessInstanceKey)
 		}
 
 		procInstances[i] = &proto.ProcessInstance{

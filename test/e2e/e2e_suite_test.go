@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"net/http"
 	"os"
@@ -111,7 +113,6 @@ func TestMain(m *testing.M) {
 	}
 
 	code := m.Run()
-
 	// cleanup after the app
 	ctxCancel()
 	// cleanup
@@ -124,4 +125,56 @@ func TestMain(m *testing.M) {
 	openTelemetry.Stop(appContext)
 	os.RemoveAll(tempDir)
 	os.Exit(code)
+}
+
+func cleanProcessInstances(t *testing.T) {
+	processInstances, err := app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+		State: ptr.To(zenclient.GetProcessInstancesParamsState("failed")),
+		Size:  ptr.To(int32(5000)),
+	})
+	assert.NoError(t, err)
+	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
+		for i, _ := range processInstances.JSON200.Partitions[0].Items {
+			if processInstances.JSON200.Partitions[0].Items[i].ProcessType == zenclient.ProcessInstanceProcessType("callActivity") {
+				continue
+			}
+			resp, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstances.JSON200.Partitions[0].Items[i].Key)
+			assert.NoError(t, err)
+			assert.Nil(t, resp.JSON400)
+			assert.Nil(t, resp.JSON500)
+			assert.Nil(t, resp.JSON502)
+		}
+	}
+
+	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+		State: ptr.To(zenclient.GetProcessInstancesParamsState("failed")),
+		Size:  ptr.To(int32(5000)),
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
+
+	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+		State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
+		Size:  ptr.To(int32(5000)),
+	})
+	assert.NoError(t, err)
+	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
+		for i, _ := range processInstances.JSON200.Partitions[0].Items {
+			if processInstances.JSON200.Partitions[0].Items[i].ProcessType == zenclient.ProcessInstanceProcessType("callActivity") {
+				continue
+			}
+			resp, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), processInstances.JSON200.Partitions[0].Items[i].Key)
+			assert.Nil(t, resp.JSON400)
+			assert.Nil(t, resp.JSON500)
+			assert.Nil(t, resp.JSON502)
+			assert.NoError(t, err)
+		}
+	}
+	processInstances, err = app.restClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{
+		State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
+		Size:  ptr.To(int32(5000)),
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(processInstances.JSON200.Partitions[0].Items))
+
 }

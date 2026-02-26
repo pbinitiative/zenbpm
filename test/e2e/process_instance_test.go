@@ -81,6 +81,8 @@ func TestCancelProcessInstance(t *testing.T) {
 }
 
 func TestRestApiParentProcessInstance(t *testing.T) {
+	cleanProcessInstances(t)
+
 	var instance public.ProcessInstance
 	definition, err := deployGetDefinition(t, "call-activity-simple.bpmn", "Simple_CallActivity_Process")
 	assert.NoError(t, err)
@@ -114,11 +116,6 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 		assert.NotEmpty(t, childrenPage.Partitions[0].Items)
 		assert.Equal(t, instance.Key, *childrenPage.Partitions[0].Items[0].ParentProcessInstanceKey)
 	})
-
-	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
-	assert.NoError(t, err)
 }
 
 func TestBusinessKey(t *testing.T) {
@@ -330,6 +327,8 @@ func TestState(t *testing.T) {
 }
 
 func TestIncludeChildProcesses(t *testing.T) {
+	cleanProcessInstances(t)
+
 	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
 	assert.NoError(t, err)
 
@@ -366,7 +365,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 	t.Run("find process instances by IncludeChildProcesses=true", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			IncludeChildProcesses: ptr.To(true),
-			BpmnProcessId:         &multiInstanceDefinition.BpmnProcessId,
+			State:                 ptr.To(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 6, processInstances.JSON200.TotalCount)
@@ -379,7 +378,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 	t.Run("find process instances by IncludeChildProcesses=false", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 			IncludeChildProcesses: ptr.To(false),
-			BpmnProcessId:         &callActivityDefinition.BpmnProcessId,
+			State:                 ptr.To(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
@@ -391,7 +390,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	t.Run("find process instances by IncludeChildProcesses not filled out", func(t *testing.T) {
 		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &callActivityDefinition.BpmnProcessId,
+			State: ptr.To(zenclient.GetProcessInstancesParamsState("active")),
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 4, processInstances.JSON200.TotalCount)
@@ -400,21 +399,12 @@ func TestIncludeChildProcesses(t *testing.T) {
 			assert.Contains(t, []zenclient.ProcessInstanceProcessType{"default", "callActivity"}, instance.ProcessType)
 		}
 	})
-
-	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
-	assert.NoError(t, err)
-	err = publishMessage(t, "boundary message", "1234", &map[string]any{
-		"test-var": "test",
-	})
-	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
 	assert.NoError(t, err)
 }
 
 func TestFindChildProcesses(t *testing.T) {
+	cleanProcessInstances(t)
+
 	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
 	assert.NoError(t, err)
 
@@ -479,18 +469,6 @@ func TestFindChildProcesses(t *testing.T) {
 		assert.Equal(t, 1, len(processInstances.JSON200.Partitions))
 		assert.Equal(t, 1, len(processInstances.JSON200.Partitions[0].Items))
 		assert.Equal(t, zenclient.ProcessInstanceProcessType("subprocess"), processInstances.JSON200.Partitions[0].Items[0].ProcessType)
-	})
-
-	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
-	assert.NoError(t, err)
-	err = publishMessage(t, "boundary message", "1234", &map[string]any{
-		"test-var": "test",
-	})
-	assert.NoError(t, err)
-	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
-		"test-var": "test",
 	})
 	assert.NoError(t, err)
 }

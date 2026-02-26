@@ -529,7 +529,7 @@ message GetProcessInstancesResponse {
 message GetChildProcessInstancesResponse {
   ErrorResult error = 1;
   repeated ProcessInstance instances = 2;
-  int32 totalCount = 3;
+  int32 total_count = 3;
 }
 
 message GetDecisionInstancesResponse {

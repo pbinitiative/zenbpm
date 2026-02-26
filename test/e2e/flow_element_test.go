@@ -8,6 +8,8 @@ import (
 )
 
 func TestGetFlowElementInstanceHistory(t *testing.T) {
+	cleanProcessInstances(t)
+
 	multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
 	assert.NoError(t, err)
 
@@ -65,15 +67,5 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		assert.Equal(t, 6, history.JSON200.TotalCount)
 	})
 
-	err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
-	assert.NoError(t, err)
-	err = publishMessage(t, "boundary message", "1234", &map[string]any{
-		"test-var": "test",
-	})
-	err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
-		"test-var": "test",
-	})
 	assert.NoError(t, err)
 }

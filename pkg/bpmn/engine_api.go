@@ -365,7 +365,7 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 		// Cancel all child process instances
 		return zenerr.TechnicalError(fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key))
 	}
-	if instance.ProcessInstance().GetState() != runtime.ActivityStateActive {
+	if instance.ProcessInstance().GetState() != runtime.ActivityStateActive && instance.ProcessInstance().GetState() != runtime.ActivityStateFailed {
 		return zenerr.Conflict(fmt.Errorf("cannot cancel process instance %d, it is not in correct state, expected=%v, actual=%v",
 			instance.ProcessInstance().Key, runtime.ActivityStateActive, instance.ProcessInstance().State))
 	}

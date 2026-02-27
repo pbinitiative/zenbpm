@@ -52,11 +52,19 @@ make test
 
 ### Docker
 
-You can run ZenBPM in a Docker container:
+You can run ZenBPM in a prebuild Docker container:
 
 ```bash
 docker run -d -p 8080:8080 -p 9090:9090 --name zenbpm ghcr.io/pbinitiative/zenbpm
 ```
+
+OR you can build and run your own Docker container:
+
+```
+docker build -t zenbpm -f Dockerfile.local .
+docker run --rm zenbpm:latest
+```
+
 
 ## Architecture
 

@@ -3,10 +3,11 @@ package bpmn
 import (
 	"context"
 	"fmt"
-	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"reflect"
 	"runtime"
+
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 type EngineBatch struct {

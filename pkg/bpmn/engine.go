@@ -919,7 +919,11 @@ func (engine *Engine) handleDefaultElementTransition(
 ) ([]runtime.ExecutionToken, error) {
 	var resTokens = []runtime.ExecutionToken{currentToken}
 
-	// TODO: handle no outgoing associations
+	// No outgoing associations
+	if len(element.GetOutgoingAssociation()) == 0 {
+		resTokens[0].State = runtime.TokenStateCompleted
+	}
+
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions
 		if i == 0 {

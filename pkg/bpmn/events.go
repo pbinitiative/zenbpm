@@ -88,33 +88,36 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	if listener.CancellActivity {
 		// cancel job
 		job, err := engine.persistence.FindJobByElementID(ctx, instance.ProcessInstance().Key, token.ElementId)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
-		}
-
-		if !errors.Is(err, storage.ErrNotFound) {
-			job.State = runtime.ActivityStateTerminated
-			err = batch.SaveJob(ctx, job)
+		if !errors.Is(err, storage.ErrNotFound) || job.Key != 0 {
 			if err != nil {
-				return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+				return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
+			}
+			if !errors.Is(err, storage.ErrNotFound) {
+				job.State = runtime.ActivityStateTerminated
+				err = batch.SaveJob(ctx, job)
+				if err != nil {
+					return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+				}
 			}
 		}
+
+		childInstances, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		if !errors.Is(err, storage.ErrNotFound) || len(childInstances) > 0 {
+			if err != nil {
+				return nil, fmt.Errorf("failed to find child instances for token %d: %w", token.Key, err)
+			}
+			for _, chi := range childInstances {
+				err := engine.cancelSubProcessInstance(ctx, chi, batch)
+				if err != nil {
+					return nil, fmt.Errorf("failed to cancel child instance for token %d: %w", token.Key, err)
+				}
+			}
+		}
+
 		err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to cancel boundary subscriptions: %w", err)
 		}
-		// cancel all called processes
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
-		}
-		for _, calledProcess := range calledProcesses {
-			err := engine.cancelSubProcessInstance(ctx, calledProcess, batch)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 	} else {
 		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		// recreate the message subscription

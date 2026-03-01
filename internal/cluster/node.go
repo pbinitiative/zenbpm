@@ -820,7 +820,7 @@ func (node *ZenNode) ModifyProcessInstance(ctx context.Context, processInstanceK
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
-		return nil, nil, zenerr.TechnicalError(fmt.Errorf("failed to marshal variables to modify process instance: %w", err))
+		return nil, nil, zenerr.BadRequest(fmt.Errorf("failed to marshal variables to modify process instance: %w", err))
 	}
 
 	resp, err := client.ModifyProcessInstance(ctx, &proto.ModifyProcessInstanceRequest{
@@ -1140,7 +1140,7 @@ func (node *ZenNode) StartProcessInstanceOnElements(ctx context.Context, process
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
-		return nil, zenerr.TechnicalError(fmt.Errorf("failed to marshal variables to start process instance on elements: %w", err))
+		return nil, zenerr.BadRequest(fmt.Errorf("failed to marshal variables to start process instance on elements: %w", err))
 	}
 	resp, err := client.StartProcessInstanceOnElements(ctx, &proto.StartInstanceOnElementIdsRequest{
 		DefinitionKey:      &processDefinitionKey,

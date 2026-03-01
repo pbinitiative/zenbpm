@@ -132,7 +132,7 @@ func TestStartProcessInstanceOnElementsWithResponse404Response(t *testing.T) {
 				ProcessDefinitionKey: nonExistingProcessDefinitionKey,
 			})
 		assert.NotNil(t, response.JSON404)
-		assert.NotEqual(t, "404", response.JSON404.Code)
+		assert.Equal(t, "NOT_FOUND", response.JSON404.Code)
 		assert.Contains(t, response.JSON404.Message, "no process definition with key -1 was found (prior loaded into the engine)")
 	})
 }

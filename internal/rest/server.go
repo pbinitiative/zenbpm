@@ -752,6 +752,8 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.StartProcessInstanceOnElements502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.StartProcessInstanceOnElements400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.StartProcessInstanceOnElements404JSONResponse(zerr.ToApiError()), nil
 			default:
@@ -982,6 +984,8 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.UpdateProcessInstanceVariables502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.UpdateProcessInstanceVariables400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.UpdateProcessInstanceVariables404JSONResponse(zerr.ToApiError()), nil
 			default:
@@ -1366,6 +1370,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.ModifyProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.ModifyProcessInstance400JSONResponse(zerr.ToApiError()), nil
 			case zenerr.NotFoundCode:
 				return public.ModifyProcessInstance404JSONResponse(zerr.ToApiError()), nil
 			default:

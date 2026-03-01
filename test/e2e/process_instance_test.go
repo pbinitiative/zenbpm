@@ -392,6 +392,39 @@ func TestGetProcessInstanceErrorResponse(t *testing.T) {
 	})
 }
 
+func TestCreateProcessInstanceNotFoundResponse(t *testing.T) {
+	t.Run("try to create process instance with non-existing process definition key. Expect NOT_FOUND", func(t *testing.T) {
+		var nonExistingProcessDefinitionKey int64 = -1
+		var resp *zenclient.CreateProcessInstanceResponse
+		resp, _ = app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+			ProcessDefinitionKey: nonExistingProcessDefinitionKey,
+		})
+
+		assert.Nil(t, resp.JSON201)
+		assert.NotNil(t, resp.JSON404)
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Contains(t, resp.JSON404.Message, "no process definition with key -1 was found")
+	})
+}
+
+func TestCancelProcessInstanceInWrongStateReturnsConflict(t *testing.T) {
+	t.Run("Return CONFLICT(409) response when trying to cancel instance in non-cancellable state", func(t *testing.T) {
+		var instance public.ProcessInstance
+		definition, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
+		assert.NoError(t, err)
+
+		instance, err = createProcessInstance(t, definition.Key, map[string]any{})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+
+		cancelResponse, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		assert.NotNil(t, cancelResponse.JSON409)
+		assert.Equal(t, "CONFLICT", cancelResponse.JSON409.Code)
+		assert.Contains(t, cancelResponse.JSON409.Message, "cannot cancel process instance")
+		assert.Contains(t, cancelResponse.JSON409.Message, "it is not in correct state, expected=ActivityStateActive, actual=ActivityStateCompleted")
+	})
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
 	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
 }

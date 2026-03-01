@@ -124,6 +124,19 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 	})
 }
 
+func TestStartProcessInstanceOnElementsWithResponse404Response(t *testing.T) {
+	t.Run("StartProcessInstanceOnElementsWithResponse should return NOT_FOUND(404) on non existing ProcessDefinitionKey", func(t *testing.T) {
+		var nonExistingProcessDefinitionKey int64 = -1
+		response, _ := app.restClient.StartProcessInstanceOnElementsWithResponse(t.Context(),
+			zenclient.StartProcessInstanceOnElementsJSONRequestBody{
+				ProcessDefinitionKey: nonExistingProcessDefinitionKey,
+			})
+		assert.NotNil(t, response.JSON404)
+		assert.NotEqual(t, "404", response.JSON404.Code)
+		assert.Contains(t, response.JSON404.Message, "no process definition with key -1 was found (prior loaded into the engine)")
+	})
+}
+
 func startProcessInstanceOnElements(t testing.TB, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
 	req := public.StartProcessInstanceOnElementsJSONBody{
 		ProcessDefinitionKey: processDefinitionKey,

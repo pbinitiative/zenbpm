@@ -260,24 +260,14 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRequest) (*proto.CreateInstanceResponse, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return &proto.CreateInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("no engine available on this node"))
+		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
-		return &proto.CreateInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal process variables: %w", err))
+		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	if req.HistoryTTL != nil {
 		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
@@ -287,31 +277,22 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		ctx = appcontext.WithBusinessKey(ctx, ptr.Deref(req.BusinessKey, ""))
 	}
 	var instance runtime.ProcessInstance
+	var zerr *zenerr.ZenError
 	switch startBy := req.StartBy.(type) {
 	case *proto.CreateInstanceRequest_DefinitionKey:
-		instance, err = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
+		instance, zerr = engine.CreateInstanceByKey(ctx, startBy.DefinitionKey, vars)
 	case *proto.CreateInstanceRequest_LatestProcessId:
-		instance, err = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
+		instance, zerr = engine.CreateInstanceById(ctx, startBy.LatestProcessId, vars)
 	}
 
-	if err != nil && instance == nil {
-		err := fmt.Errorf("failed to create process instance: %w", err)
-		return &proto.CreateInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+	if zerr != nil && instance == nil {
+		err := fmt.Errorf("failed to create process instance: %w", zerr)
+		return &proto.CreateInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
 	}
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal process instance result: %w", err)
-		return &proto.CreateInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
+		return &proto.CreateInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	return &proto.CreateInstanceResponse{
 		Process: &proto.ProcessInstance{
@@ -329,46 +310,26 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.StartInstanceOnElementIdsRequest) (*proto.StartInstanceOnElementIdsResponse, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return &proto.StartInstanceOnElementIdsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("no engine available on this node"))
+		return &proto.StartInstanceOnElementIdsResponse{Error: err.ToProtoError()}, nil
 	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
-		return &proto.StartInstanceOnElementIdsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal process variables: %w", err))
+		return &proto.StartInstanceOnElementIdsResponse{Error: err.ToProtoError()}, nil
 	}
 
-	instance, err := engine.CreateInstanceWithStartingElements(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
-	if err != nil {
-		err := fmt.Errorf("failed to start process instance: %w", err)
-		return &proto.StartInstanceOnElementIdsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+	instance, zerr := engine.CreateInstanceWithStartingElements(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
+	if zerr != nil {
+		err := fmt.Errorf("failed to create process instance on elements: %w", zerr)
+		return &proto.StartInstanceOnElementIdsResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
 	}
 
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal process instance result: %w", err)
-		return &proto.StartInstanceOnElementIdsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
+		return &proto.StartInstanceOnElementIdsResponse{Error: err.ToProtoError()}, nil
 	}
 	return &proto.StartInstanceOnElementIdsResponse{
 		Process: &proto.ProcessInstance{
@@ -386,45 +347,25 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return &proto.ModifyProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+		return &proto.ModifyProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal process variables: %w", err)
-		return &proto.ModifyProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal process variables: %w", err))
+		return &proto.ModifyProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	var instance runtime.ProcessInstance
-	instance, tokens, err := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.ElementInstanceIdsToTerminate, req.ElementIdsToStartInstance, vars)
-	if err != nil {
-		err := fmt.Errorf("failed to modify process instance: %w", err)
-		return &proto.ModifyProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+	instance, tokens, zerr := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.ElementInstanceIdsToTerminate, req.ElementIdsToStartInstance, vars)
+	if zerr != nil {
+		err := fmt.Errorf("failed to modify process instance: %w", zerr)
+		return &proto.ModifyProcessInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
 	}
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal process instance result: %w", err)
-		return &proto.ModifyProcessInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
+		return &proto.ModifyProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
@@ -456,18 +397,18 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return createDeleteProcessInstanceVariableErrorResponse(err)
+		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+		return &proto.DeleteProcessInstanceVariableResponse{Error: err.ToProtoError()}, nil
 	}
 	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
 	if err != nil {
-		err := fmt.Errorf("failed to delete process instance variable: %w", err)
-		return createDeleteProcessInstanceVariableErrorResponse(err)
+		err := zenerr.TechnicalError(fmt.Errorf("failed to delete process instance variable: %w", err))
+		return &proto.DeleteProcessInstanceVariableResponse{Error: err.ToProtoError()}, nil
 	}
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
-		err := fmt.Errorf("failed to marshal process instance result: %w", err)
-		return createDeleteProcessInstanceVariableErrorResponse(err)
+		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal process instance result: %w", err))
+		return &proto.DeleteProcessInstanceVariableResponse{Error: err.ToProtoError()}, nil
 	}
 
 	return &proto.DeleteProcessInstanceVariableResponse{
@@ -482,37 +423,19 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 	}, nil
 }
 
-func createDeleteProcessInstanceVariableErrorResponse(err error) (*proto.DeleteProcessInstanceVariableResponse, error) {
-	return &proto.DeleteProcessInstanceVariableResponse{
-		Error: &proto.ErrorResult{
-			Code:    nil,
-			Message: ptr.To(err.Error()),
-		},
-	}, err
-}
-
 func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelProcessInstanceRequest) (*proto.CancelProcessInstanceResponse, error) {
 	partitionId := zenflake.GetPartitionId(*req.ProcessInstanceKey)
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return createCancelProcessInstanceErrorResponse(err)
+		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+		return &proto.CancelProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
-	err := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
-	if err != nil {
-		err := fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, err)
-		return createCancelProcessInstanceErrorResponse(err)
+	zerr := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
+	if zerr != nil {
+		err := fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, zerr)
+		return &proto.CancelProcessInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
 	}
 	return &proto.CancelProcessInstanceResponse{}, nil
-}
-
-func createCancelProcessInstanceErrorResponse(err error) (*proto.CancelProcessInstanceResponse, error) {
-	return &proto.CancelProcessInstanceResponse{
-		Error: &proto.ErrorResult{
-			Code:    nil,
-			Message: ptr.To(err.Error()),
-		},
-	}, err
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
@@ -693,25 +616,19 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := zenerr.ClusterError(fmt.Errorf("engine with partition %d was not found", partitionId))
-		return &proto.GetProcessInstanceResponse{
-			Error: err.ToProtoError(),
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	instance, err := engine.FindProcessInstance(req.GetProcessInstanceKey())
 	if err != nil {
 		err := zenerr.NotFound(fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{
-			Error: err.ToProtoError(),
-		}, err
+		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
 		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
-		return &proto.GetProcessInstanceResponse{
-			Error: err.ToProtoError(),
-		}, err
+		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 
 	activeStates := []int64{int64(runtime.TokenStateWaiting), int64(runtime.TokenStateRunning), int64(runtime.TokenStateFailed)}
@@ -721,9 +638,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	})
 	if err != nil {
 		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{
-			Error: err.ToProtoError(),
-		}, err
+		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
 	for _, token := range tokens {
@@ -740,9 +655,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
 		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{
-			Error: err.ToProtoError(),
-		}, err
+		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
@@ -872,13 +785,8 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d not found", partitionId)
-		return &proto.GetProcessInstanceJobsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+		return &proto.GetProcessInstanceJobsResponse{Error: err.ToProtoError()}, nil
 	}
 	result, err := queries.FindProcessInstanceJobs(ctx, sql.FindProcessInstanceJobsParams{
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
@@ -886,13 +794,8 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 		ProcessInstanceKey: req.GetProcessInstanceKey(),
 	})
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
-		return &proto.GetProcessInstanceJobsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey()))
+		return &proto.GetProcessInstanceJobsResponse{Error: err.ToProtoError()}, nil
 	}
 	jobs := make([]*proto.Job, len(result))
 	totalCount := int32(0)
@@ -921,13 +824,8 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d not found", partitionId)
-		return &proto.GetFlowElementHistoryResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
 	flowElements, err := queries.GetFlowElementInstances(ctx, sql.GetFlowElementInstancesParams{
 		ProcessInstanceKey: *req.ProcessInstanceKey,
@@ -935,13 +833,8 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		Limit:              int64(req.GetSize()),
 	})
 	if err != nil {
-		err := fmt.Errorf("failed to find process instance jobs for instance %d", req.GetProcessInstanceKey())
-		return &proto.GetFlowElementHistoryResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find flow element history for instance %d", req.GetProcessInstanceKey()))
+		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
 	result := make([]*proto.FlowElement, len(flowElements))
 	totalCount := int32(0)
@@ -1085,13 +978,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 	for _, partitionId := range req.Partitions {
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
-			return &proto.GetProcessInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+			return &proto.GetProcessInstancesResponse{Error: err.ToProtoError()}, nil
 		}
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
 			ProcessDefinitionKey: req.GetDefinitionKey(),
@@ -1106,13 +994,8 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			Size:                 int64(req.GetSize()),
 		})
 		if err != nil {
-			err := fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey)
-			return &proto.GetProcessInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			err := zenerr.TechnicalError(fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey))
+			return &proto.GetProcessInstancesResponse{Error: err.ToProtoError()}, nil
 		}
 		totalCount := int32(0)
 		if len(instances) > 0 {
@@ -1137,12 +1020,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			if inst.ParentProcessExecutionToken.Valid {
 				tokens, err := queries.GetTokens(ctx, []int64{inst.ParentProcessExecutionToken.Int64})
 				if err != nil {
-					return &proto.GetProcessInstancesResponse{
-						Error: &proto.ErrorResult{
-							Code:    nil,
-							Message: ptr.To(err.Error()),
-						},
-					}, err
+					return &proto.GetProcessInstancesResponse{Error: zenerr.TechnicalError(err).ToProtoError()}, nil
 				}
 				if len(tokens) == 1 {
 					procInstances[i].ParentKey = &tokens[0].ProcessInstanceKey
@@ -1299,13 +1177,8 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d not found", partitionId)
-		return &proto.GetIncidentsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+		return &proto.GetIncidentsResponse{Error: err.ToProtoError()}, nil
 	}
 
 	incidents, err := queries.FindIncidentsPageByProcessInstanceKey(ctx, sql.FindIncidentsPageByProcessInstanceKeyParams{
@@ -1316,13 +1189,8 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 	})
 
 	if err != nil {
-		err := fmt.Errorf("failed to find incidents for instance %d", req.GetProcessInstanceKey())
-		return &proto.GetIncidentsResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find incidents for instance %d", req.GetProcessInstanceKey()))
+		return &proto.GetIncidentsResponse{Error: err.ToProtoError()}, nil
 	}
 	var totalCount int32
 

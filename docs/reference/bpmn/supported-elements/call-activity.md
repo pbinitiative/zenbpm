@@ -6,6 +6,43 @@ sidebar_position: 50
 
 A Call Activity is a BPMN flow element that invokes a global process or a global task. It allows processes to reuse externally defined process logic, enabling modular and reusable process design.
 
+## Starting a Call Activity
+
+**Binding:** Specifies how the process definition is resolved.
+Currently, only `latest` tag is supported. This means the most recent version of the referenced process definition will be executed.
+
+**ProcessId:** Identifies the process definition to be executed. Currently, only a direct ID reference is supported.
+
+## Engine Behavior
+A Call Activity behaves similarly to an independent process, but it is logically connected to the parent process instance.
+
+When a Call Activity is triggered:
+- A new process instance is created.
+- The new instance is linked to its parent process instance.
+- The child process runs in its own isolated scope.
+
+The called process for Call Activity is started on the same [partition](/reference/cluster) as the parent process that invoked it.
+
+#### Variable Handling
+By default, no variables are inherited from the parent process instance.
+The called process operates within its own variable scope.
+Upon completion, result variables are not automatically propagated back to the parent process instance.
+Explicit input and output mappings must be defined if variable transfer is required.
+
+## Input/Output
+Input and Output parameters define how variables are transferred between the parent instance and Call Activity instance.
+
+#### Input parameters
+Used to initialize variables in the called process when the Call Activity starts.
+#### Output parameters
+Used to map variables from the called process back to the parent process when the Call Activity completes.
+
+These mappings control the variable scope at the start and end of the Call Activity instance.
+
+## Boundary Events
+Boundary Events can be attached to a Call Activity element to handle exceptional situations or alternative flows during its execution.
+Interrupting Boundary Events cause Call Activity to terminate and the parent process continues execution along the Boundary Event’s outgoing flow. 
+
 ## Key characteristics
 - Reusable subprocess invocation:
 	Call Activities reference global processes or subprocesses that can be called from multiple places, promoting reusability.
@@ -48,5 +85,3 @@ A rectangle with a thick border and a subprocess marker (small rectangle with a 
 </bpmn:callActivity>
 ```
 
-## Current Implementation
-The subprocess for call activity is started on the same partition as the process that invoked it.

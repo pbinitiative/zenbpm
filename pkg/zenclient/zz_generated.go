@@ -653,10 +653,10 @@ type GetDecisionInstancesParams struct {
 	// ProcessInstanceKey Filter by process instance
 	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
 
-	// EvaluatedFrom Filter: evaluated after this date
+	// EvaluatedFrom Filter - evaluated after this date
 	EvaluatedFrom *time.Time `form:"evaluatedFrom,omitempty" json:"evaluatedFrom,omitempty"`
 
-	// EvaluatedTo Filter: evaluated before this date
+	// EvaluatedTo Filter - evaluated before this date
 	EvaluatedTo *time.Time `form:"evaluatedTo,omitempty" json:"evaluatedTo,omitempty"`
 
 	// Page Page number (1-based indexing)
@@ -710,16 +710,23 @@ type GetDmnResourceDefinitionsParamsSortOrder string
 
 // GetJobsParams defines parameters for GetJobs.
 type GetJobsParams struct {
-	JobType *string   `form:"jobType,omitempty" json:"jobType,omitempty"`
-	State   *JobState `form:"state,omitempty" json:"state,omitempty"`
+	// ProcessInstanceKey Filter by process instance
+	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
+
+	// JobType Filter by job type
+	JobType *string `form:"jobType,omitempty" json:"jobType,omitempty"`
 
 	// Assignee Filter by assignee
 	Assignee *string `form:"assignee,omitempty" json:"assignee,omitempty"`
 
-	// ProcessInstanceKey Filter by process instance
-	ProcessInstanceKey *int64 `form:"processInstanceKey,omitempty" json:"processInstanceKey,omitempty"`
-	Page               *int32 `form:"page,omitempty" json:"page,omitempty"`
-	Size               *int32 `form:"size,omitempty" json:"size,omitempty"`
+	// State Filter by job state
+	State *JobState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 
 	// SortBy Sort field
 	SortBy *GetJobsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
@@ -770,6 +777,12 @@ type StartProcessInstanceOnElementsJSONBody struct {
 
 // GetProcessDefinitionsParams defines parameters for GetProcessDefinitions.
 type GetProcessDefinitionsParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page (max 100)
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
 	// OnlyLatest If true, returns only the latest version of each process definition grouped by bpmnProcessId
 	OnlyLatest *bool `form:"onlyLatest,omitempty" json:"onlyLatest,omitempty"`
 
@@ -781,12 +794,6 @@ type GetProcessDefinitionsParams struct {
 
 	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
 	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
-
-	// Page Page number (1-based indexing)
-	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
-
-	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
 }
 
 // GetProcessDefinitionsParamsSortBy defines parameters for GetProcessDefinitions.
@@ -860,14 +867,17 @@ type GetProcessInstancesParams struct {
 	// SortOrder Sort direction
 	SortOrder *GetProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 
-	// CreatedFrom Filter: created after this date
+	// CreatedFrom Filter - created after this date
 	CreatedFrom *time.Time `form:"createdFrom,omitempty" json:"createdFrom,omitempty"`
 
-	// CreatedTo Filter: created before this date
+	// CreatedTo Filter - created before this date
 	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
 
 	// State Filter by state
 	State *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// ActivityId Filter by current activity element ID
+	ActivityId *string `form:"activityId,omitempty" json:"activityId,omitempty"`
 }
 
 // GetProcessInstancesParamsSortBy defines parameters for GetProcessInstances.
@@ -901,6 +911,7 @@ type GetHistoryParams struct {
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
+	// State Filter by incident state (omit to get all incidents)
 	State *GetIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
 
 	// Page Page number (1-based indexing)
@@ -2080,9 +2091,9 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.JobType != nil {
+		if params.ProcessInstanceKey != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "jobType", runtime.ParamLocationQuery, *params.JobType); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2096,9 +2107,9 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
-		if params.State != nil {
+		if params.JobType != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "jobType", runtime.ParamLocationQuery, *params.JobType); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2128,9 +2139,9 @@ func NewGetJobsRequest(server string, params *GetJobsParams) (*http.Request, err
 
 		}
 
-		if params.ProcessInstanceKey != nil {
+		if params.State != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "processInstanceKey", runtime.ParamLocationQuery, *params.ProcessInstanceKey); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2442,6 +2453,38 @@ func NewGetProcessDefinitionsRequest(server string, params *GetProcessDefinition
 	if params != nil {
 		queryValues := queryURL.Query()
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if params.OnlyLatest != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "onlyLatest", runtime.ParamLocationQuery, *params.OnlyLatest); err != nil {
@@ -2493,38 +2536,6 @@ func NewGetProcessDefinitionsRequest(server string, params *GetProcessDefinition
 		if params.BpmnProcessId != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, *params.BpmnProcessId); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Page != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Size != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2992,6 +3003,22 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ActivityId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "activityId", runtime.ParamLocationQuery, *params.ActivityId); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

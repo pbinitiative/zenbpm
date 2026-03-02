@@ -845,6 +845,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			State:         state,
 			CreatedFrom:   createdFrom,
 			CreatedTo:     createdTo,
+			ActivityId:    request.Params.ActivityId,
 			SortByOrder:   (*string)(sortByOrder),
 		},
 	)

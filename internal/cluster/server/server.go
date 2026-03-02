@@ -992,6 +992,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			SortByOrder:          sql.ToNullString(req.SortByOrder),
 			Offset:               int64(req.GetSize()) * int64(req.GetPage()-1),
 			Size:                 int64(req.GetSize()),
+			ActivityID:           sql.ToNullString(req.ActivityId),
 		})
 		if err != nil {
 			err := zenerr.TechnicalError(fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey))

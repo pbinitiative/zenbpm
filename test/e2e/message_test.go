@@ -3,11 +3,10 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"testing"
-
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 // TODO: Test with multiple partitions/nodes
@@ -64,12 +63,12 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 
 		instance, err = createProcessInstance(t, multiInstanceDefinition.Key, map[string]any{
-			"testVar": 123,
+			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
 
-		err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		err = publishMessage(t, "boundary message", "1234", &map[string]any{
 			"test-var": "test",
 		})
 		assert.NoError(t, err)
@@ -78,9 +77,8 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NotEmpty(t, processInstance.Variables)
 		assert.NotEmpty(t, processInstance.Variables["test-var"])
 		assert.Equal(t, "test", processInstance.Variables["test-var"])
-		assert.Equal(t, float64(123), processInstance.Variables["testVar"])
 
-		err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
+		err = publishMessage(t, "boundary message", "1234", &map[string]any{
 			"test-var": "test",
 		})
 		assert.Error(t, err)
@@ -103,7 +101,7 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
 
-		err = publishMessage(t, "boundary message", "1234", &map[string]any{
+		err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
 			"test-var": "test",
 		})
 		assert.NoError(t, err)
@@ -114,7 +112,7 @@ func TestRestApiMessage(t *testing.T) {
 		assert.Equal(t, "test", processInstance.Variables["test-var"])
 		assert.Equal(t, float64(123), processInstance.Variables["testVar"])
 
-		err = publishMessage(t, "boundary message", "1234", &map[string]any{
+		err = publishMessage(t, "Message_2ffbhei", "testMessage", &map[string]any{
 			"test-var": "test",
 		})
 		assert.Error(t, err)
@@ -149,7 +147,7 @@ func TestRestApiMessage(t *testing.T) {
 		err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
 			"test-var": "test",
 		})
-		assert.NoError(t, err)
+		assert.Error(t, err)
 
 		_, err = createProcessInstance(t, definition.Key, map[string]any{
 			"testVar": 123,

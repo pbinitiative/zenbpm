@@ -59,6 +59,7 @@ SELECT
 FROM
     process_instance AS pi
     INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+
 WHERE
     -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
     CASE WHEN @sort_by_order IS NULL THEN 1 ELSE 1 END
@@ -88,6 +89,16 @@ WHERE
     AND
     CASE WHEN @bpmn_process_id IS NOT NULL THEN
         pd.bpmn_process_id = @bpmn_process_id
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN @activity_id IS NOT NULL THEN
+        EXISTS (
+            SELECT 1 FROM execution_token et
+            WHERE et.process_instance_key = pi.key
+              AND et.element_id = @activity_id
+        )
     ELSE
         1
     END

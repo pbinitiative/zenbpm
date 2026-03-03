@@ -87,17 +87,15 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.ProcessInstance().Key, token.ElementId)
-		if !errors.Is(err, storage.ErrNotFound) || job.Key != 0 {
+		jobs, err := engine.persistence.FindTokenJobsInState(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
+		if err != nil {
+			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
+		}
+		for i := range jobs {
+			jobs[i].State = runtime.ActivityStateTerminated
+			err = batch.SaveJob(ctx, jobs[i])
 			if err != nil {
-				return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
-			}
-			if !errors.Is(err, storage.ErrNotFound) {
-				job.State = runtime.ActivityStateTerminated
-				err = batch.SaveJob(ctx, job)
-				if err != nil {
-					return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
-				}
+				return nil, fmt.Errorf("failed to save changes to job %d: %w", jobs[i].Key, err)
 			}
 		}
 

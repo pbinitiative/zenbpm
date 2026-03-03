@@ -848,6 +848,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        404:
+          description: Not found (e.g. process definition was not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -1096,6 +1102,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        404:
+          description: Not found (e.g process instance is not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict (e.g process instance is not in correct state for this operation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -1133,7 +1151,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         404:
-          description: Variable not found
+          description: Not found (e.g. process instance or variable not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict (e.g process instance is not in correct state for this operation)
           content:
             application/json:
               schema:
@@ -1292,6 +1316,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to collect data from responsible node
           content:
@@ -1376,6 +1406,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to collect data from responsible node
           content:
@@ -1400,7 +1436,19 @@ paths:
         204:
           description: Process instance cancelled
         400:
-          description: Bad request (e.g. process instance is not in a cancellable state)
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found (e.g. process instance is not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: Conflict (e.g process instance is not in cancellable state)
           content:
             application/json:
               schema:
@@ -1969,6 +2017,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        404:
+          description: Not found (e.g. process definition with processDefinitionKey not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         500:
           description: Internal server error
           content:
@@ -2030,6 +2084,12 @@ paths:
                       $ref: "#/components/schemas/ElementInstance"
         400:
           description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found
           content:
             application/json:
               schema:

@@ -457,7 +457,7 @@ func TestModifyProcessInstance(t *testing.T) {
 	assert.Equal(t, 0, len(timers), "expected 0 timers, but found %d", len(timers))
 
 	// All jobs should be canceled
-	jobs, err := bpmnEngine.persistence.FindTokenJobsInState(t.Context(), mainToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
+	jobs, err := bpmnEngine.persistence.GetJobsInStateByTokenKey(t.Context(), mainToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs), "expected 0 jobs, but found %d", len(jobs))
 

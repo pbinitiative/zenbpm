@@ -228,13 +228,17 @@ WHERE
     AND
     -- workaround for sqlc
     (
-     (?9 IS NOT NULL AND pi.process_type = ?9)
-     OR
-     (?10 IS NOT NULL AND pi.process_type = ?10)
-     OR
-     (?11 IS NOT NULL AND pi.process_type = ?11)
-     OR
-     (?12 IS NOT NULL AND pi.process_type = ?12)
+    CASE WHEN ?9 IS NULL AND ?10 IS NULL AND ?11 IS NULL AND ?12 IS NULL THEN
+       1
+    ELSE
+         (?9 IS NOT NULL AND pi.process_type = ?9)
+         OR
+         (?10 IS NOT NULL AND pi.process_type = ?10)
+         OR
+         (?11 IS NOT NULL AND pi.process_type = ?11)
+         OR
+         (?12 IS NOT NULL AND pi.process_type = ?12)
+    END
     )
     -- end of workaround
 ORDER BY

@@ -112,13 +112,17 @@ WHERE
     AND
     -- workaround for sqlc
     (
-     (@filter_type_call_activity IS NOT NULL AND pi.process_type = @filter_type_call_activity)
-     OR
-     (@filter_type_multi_instance IS NOT NULL AND pi.process_type = @filter_type_multi_instance)
-     OR
-     (@filter_type_default IS NOT NULL AND pi.process_type = @filter_type_default)
-     OR
-     (@filter_type_sub_process IS NOT NULL AND pi.process_type = @filter_type_sub_process)
+    CASE WHEN @filter_type_call_activity IS NULL AND @filter_type_multi_instance IS NULL AND @filter_type_default IS NULL AND @filter_type_sub_process IS NULL THEN
+       1
+    ELSE
+         (@filter_type_call_activity IS NOT NULL AND pi.process_type = @filter_type_call_activity)
+         OR
+         (@filter_type_multi_instance IS NOT NULL AND pi.process_type = @filter_type_multi_instance)
+         OR
+         (@filter_type_default IS NOT NULL AND pi.process_type = @filter_type_default)
+         OR
+         (@filter_type_sub_process IS NOT NULL AND pi.process_type = @filter_type_sub_process)
+    END
     )
     -- end of workaround
 ORDER BY

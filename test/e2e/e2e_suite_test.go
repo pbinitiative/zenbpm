@@ -135,7 +135,7 @@ func cleanProcessInstances(t *testing.T) {
 	assert.NoError(t, err)
 	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
 		for i, _ := range processInstances.JSON200.Partitions[0].Items {
-			if processInstances.JSON200.Partitions[0].Items[i].ProcessType == zenclient.ProcessInstanceProcessType("callActivity") {
+			if processInstances.JSON200.Partitions[0].Items[i].ProcessType != zenclient.ProcessInstanceProcessType("default") {
 				continue
 			}
 			resp, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstances.JSON200.Partitions[0].Items[i].Key)
@@ -160,7 +160,7 @@ func cleanProcessInstances(t *testing.T) {
 	assert.NoError(t, err)
 	if processInstances != nil && len(processInstances.JSON200.Partitions) > 0 {
 		for i, _ := range processInstances.JSON200.Partitions[0].Items {
-			if processInstances.JSON200.Partitions[0].Items[i].ProcessType == zenclient.ProcessInstanceProcessType("callActivity") {
+			if processInstances.JSON200.Partitions[0].Items[i].ProcessType != zenclient.ProcessInstanceProcessType("default") {
 				continue
 			}
 			resp, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), processInstances.JSON200.Partitions[0].Items[i].Key)

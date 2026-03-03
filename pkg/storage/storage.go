@@ -156,11 +156,9 @@ type JobStorageReader interface {
 	// FindPendingProcessInstanceJobs returns jobs for process instance that are in Active or Completing state
 	FindPendingProcessInstanceJobs(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Job, error)
 
-	FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error)
+	GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error)
 
 	FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error)
-
-	FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error)
 
 	FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error)
 }

@@ -363,7 +363,7 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 		assert.Equal(t, job, storeJob)
 		assert.NotEmpty(t, job.Type)
 
-		storeJobs, err := s.FindTokenJobsInState(t.Context(), token.Key, []bpmnruntime.ActivityState{bpmnruntime.ActivityStateActive})
+		storeJobs, err := s.GetJobsInStateByTokenKey(t.Context(), token.Key, []bpmnruntime.ActivityState{bpmnruntime.ActivityStateActive})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(storeJobs))
 		assert.Equal(t, job, storeJobs[0])

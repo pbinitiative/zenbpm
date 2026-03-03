@@ -88,7 +88,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 
 	if listener.CancellActivity {
 		// cancel job
-		jobs, err := engine.persistence.FindTokenJobsInState(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
+		jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
 		if err != nil {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}

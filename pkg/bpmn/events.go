@@ -87,7 +87,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 
 	if listener.CancellActivity {
 		// cancel job
-		jobs, err := engine.persistence.FindTokenJobsInState(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
+		jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
 		if err != nil {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
@@ -294,7 +294,7 @@ func (engine *Engine) createMessageSubscription(instance runtime.ProcessInstance
 		ck, ok := correlationKeyResult.(string)
 		if !ok {
 			token.State = runtime.TokenStateFailed
-			return runtime.MessageSubscription{}, fmt.Errorf("result of correlation key  evaluation is not a string: %w", err)
+			return runtime.MessageSubscription{}, fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
 		}
 		correlationKey = ck
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRestApiProcessDefinition(t *testing.T) {
@@ -176,7 +178,7 @@ func deployDefinition(t testing.TB, filename string) error {
 		return fmt.Errorf("failed to deploy process definition: %w", err)
 	}
 
-	if resp.StatusCode() >= 400 {
+	if resp.StatusCode() >= 400 && resp.StatusCode() != http.StatusConflict {
 		return fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
 	}
 
@@ -254,6 +256,115 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 		return nil, fmt.Errorf("failed to list process definitions: %w", err)
 	}
 	return resp.JSON200.Items, nil
+}
+
+func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	wd = strings.ReplaceAll(wd, "/test/e2e", "")
+	file, err := os.ReadFile(filepath.Join(wd, "pkg", "bpmn", "test-cases", filename))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	part, err := writer.CreateFormFile("resource", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err = part.Write(file); err != nil {
+		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+	if err = writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+}
+
+func TestRestApiProcessDefinitionErrors(t *testing.T) {
+	t.Run("CreateProcessDefinition - 409 conflict on duplicate content", func(t *testing.T) {
+		// Ensure the definition is deployed at least once before testing conflict
+		_, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
+		require.NoError(t, err)
+		// Second deployment of identical content must always return 409
+		resp, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusConflict, resp.StatusCode())
+		require.NotNil(t, resp.JSON409)
+		assert.Equal(t, "CONFLICT", resp.JSON409.Code)
+	})
+
+	t.Run("GetProcessDefinition - 404 for nonexistent key", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionWithResponse(t.Context(), int64(999999999))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode())
+		require.NotNil(t, resp.JSON404)
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+	})
+
+	t.Run("GetProcessDefinition - 400 for key 0", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionWithResponse(t.Context(), int64(0))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
+
+	t.Run("GetProcessDefinitions - 400 for page=0", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
+			&zenclient.GetProcessDefinitionsParams{
+				Page: ptr.To(int32(0)),
+				Size: ptr.To(int32(10)),
+			})
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
+
+	t.Run("GetProcessDefinitions - 400 for size=0", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
+			&zenclient.GetProcessDefinitionsParams{
+				Page: ptr.To(int32(1)),
+				Size: ptr.To(int32(0)),
+			})
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
+
+	t.Run("GetProcessDefinitions - 400 for size>100", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
+			&zenclient.GetProcessDefinitionsParams{
+				Page: ptr.To(int32(1)),
+				Size: ptr.To(int32(101)),
+			})
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
+
+	t.Run("GetProcessDefinitionElementStatistics - 404 for nonexistent key", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), int64(999999999))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode())
+		require.NotNil(t, resp.JSON404)
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+	})
+
+	t.Run("GetProcessDefinitionElementStatistics - 400 for key 0", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), int64(0))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
 }
 
 func getStringInBetweenTwoString(str string, startS string, endS string) (result string, found bool) {

@@ -1272,18 +1272,18 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req 
 	for _, partitionId := range req.Partitions {
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 			return &proto.GetProcessDefinitionElementStatisticsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
+				Error: err.ToProtoError(),
 			}, err
 		}
 
 		rows, err := queries.GetElementStatisticsByProcessDefinitionKey(ctx, req.GetProcessDefinitionKey())
 		if err != nil {
-			return nil, fmt.Errorf("failed to get element statistics for process definition %d: %w", req.GetProcessDefinitionKey(), err)
+			zenErr := zenerr.TechnicalError(fmt.Errorf("failed to get element statistics for process definition %d: %w", req.GetProcessDefinitionKey(), err))
+			return &proto.GetProcessDefinitionElementStatisticsResponse{
+				Error: zenErr.ToProtoError(),
+			}, zenErr
 		}
 
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
@@ -1308,12 +1308,9 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 	for _, partitionId := range req.Partitions {
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
+			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 			return &proto.GetProcessDefinitionStatisticsResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
+				Error: err.ToProtoError(),
 			}, err
 		}
 
@@ -1326,13 +1323,10 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 		if req.BpmnProcessIdIn != nil {
 			b, err := json.Marshal(req.BpmnProcessIdIn)
 			if err != nil {
-				err := fmt.Errorf("failed to marshal bpmn process id in filter: %w", err)
+				zenErr := zenerr.TechnicalError(fmt.Errorf("failed to marshal bpmn process id in filter: %w", err))
 				return &proto.GetProcessDefinitionStatisticsResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: ptr.To(err.Error()),
-					},
-				}, err
+					Error: zenErr.ToProtoError(),
+				}, zenErr
 			}
 			bpmnProcessIDInJson = string(b)
 		}
@@ -1341,13 +1335,10 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 		if req.BpmnProcessDefinitionKeyIn != nil {
 			b, err := json.Marshal(req.BpmnProcessDefinitionKeyIn)
 			if err != nil {
-				err := fmt.Errorf("failed to marshal process definition key in filter: %w", err)
+				zenErr := zenerr.TechnicalError(fmt.Errorf("failed to marshal process definition key in filter: %w", err))
 				return &proto.GetProcessDefinitionStatisticsResponse{
-					Error: &proto.ErrorResult{
-						Code:    nil,
-						Message: ptr.To(err.Error()),
-					},
-				}, err
+					Error: zenErr.ToProtoError(),
+				}, zenErr
 			}
 			definitionKeyInJson = string(b)
 		}
@@ -1362,7 +1353,10 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			DefinitionKeyInJson: definitionKeyInJson,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to find process definition statistics: %w", err)
+			zenErr := zenerr.TechnicalError(fmt.Errorf("failed to find process definition statistics: %w", err))
+			return &proto.GetProcessDefinitionStatisticsResponse{
+				Error: zenErr.ToProtoError(),
+			}, zenErr
 		}
 
 		partitionStats := make([]*proto.ProcessDefinitionStatistics, len(dbStats))

@@ -33,6 +33,7 @@ import (
 const (
 	PaginationDefaultPage int32 = 1
 	PaginationDefaultSize int32 = 10
+	PaginationMaxSize     int32 = 100
 )
 
 type Server struct {
@@ -468,10 +469,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			break
 		}
 		if err != nil {
-			return public.CreateProcessDefinition400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("Failed to read multipart form: %s", err.Error()),
-			}, nil
+			return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("failed to read multipart form: %w", err)).ToApiError()), nil
 		}
 
 		if part.FormName() == "resource" {
@@ -481,10 +479,7 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			// Read file data
 			data, err = io.ReadAll(part)
 			if err != nil {
-				return public.CreateProcessDefinition400JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
+				return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(err).ToApiError()), nil
 			}
 			part.Close()
 			break
@@ -493,19 +488,16 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	}
 
 	if !found {
-		return public.CreateProcessDefinition400JSONResponse{
-			Code:    "TODO",
-			Message: "Resource file is required",
-		}, nil
+		return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("resource file is required")).ToApiError()), nil
 	}
 
 	// Deploy with filename
 	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
-		return public.CreateProcessDefinition502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.CreateProcessDefinition502JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	if deployResult.IsDuplicate {
+		return public.CreateProcessDefinition409JSONResponse(zenerr.Conflict(fmt.Errorf("a process definition with the same content already exists")).ToApiError()), nil
 	}
 
 	return public.CreateProcessDefinition201JSONResponse{
@@ -538,6 +530,10 @@ func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessa
 func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetProcessDefinitionsRequestObject) (public.GetProcessDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetProcessDefinitions400JSONResponse(paginationErr.ToApiError()), nil
+	}
+
 	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 
 	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
@@ -547,10 +543,16 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 		*request.Params.Page, *request.Params.Size)
 
 	if err != nil {
-		return public.GetProcessDefinitions500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.BadRequestCode:
+				return public.GetProcessDefinitions400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessDefinitions500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessDefinitions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	items := make([]public.ProcessDefinitionSimple, len(definitionsPage.Items))
 	result := public.ProcessDefinitionsPage{
@@ -575,13 +577,26 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 }
 
 func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetProcessDefinitionRequestObject) (public.GetProcessDefinitionResponseObject, error) {
+	if request.ProcessDefinitionKey <= 0 {
+		return public.GetProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("processDefinitionKey must be > 0, got %d", request.ProcessDefinitionKey)).ToApiError()), nil
+	}
+
 	definition, err := s.node.GetProcessDefinition(ctx, request.ProcessDefinitionKey)
 	if err != nil {
-		return public.GetProcessDefinition500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.GetProcessDefinition404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.GetProcessDefinition400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
+
 	return public.GetProcessDefinition200JSONResponse{
 		ProcessDefinitionSimple: public.ProcessDefinitionSimple{
 			BpmnProcessId: definition.GetProcessId(),
@@ -593,17 +608,37 @@ func (s *Server) GetProcessDefinition(ctx context.Context, request public.GetPro
 }
 
 func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, request public.GetProcessDefinitionElementStatisticsRequestObject) (public.GetProcessDefinitionElementStatisticsResponseObject, error) {
+	if request.ProcessDefinitionKey <= 0 {
+		return public.GetProcessDefinitionElementStatistics400JSONResponse(zenerr.BadRequest(fmt.Errorf("processDefinitionKey must be > 0, got %d", request.ProcessDefinitionKey)).ToApiError()), nil
+	}
+
+	if _, err := s.node.GetProcessDefinition(ctx, request.ProcessDefinitionKey); err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode {
+			return public.GetProcessDefinitionElementStatistics404JSONResponse(zerr.ToApiError()), nil
+		}
+	}
+
 	partitions, err := s.node.GetProcessDefinitionElementStatistics(ctx, request.ProcessDefinitionKey)
 	if err != nil {
-		return public.GetProcessDefinitionElementStatistics500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessDefinitionElementStatistics502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.GetProcessDefinitionElementStatistics400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessDefinitionElementStatistics500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessDefinitionElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	result := public.ElementStatisticsPartitions{
 		Partitions: make([]public.PartitionElementStatistics, len(partitions)),
 	}
+
 	for i, partition := range partitions {
 		items := make(public.ElementStatistic, len(partition.GetStatistics()))
 		for _, entry := range partition.GetStatistics() {
@@ -617,11 +652,16 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 			Items:     items,
 		}
 	}
+
 	return public.GetProcessDefinitionElementStatistics200JSONResponse(result), nil
 }
 
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetProcessDefinitionStatistics400JSONResponse(paginationErr.ToApiError()), nil
+	}
 
 	onlyLatest := false
 	if request.Params.OnlyLatest != nil {
@@ -652,10 +692,18 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 		sort,
 	)
 	if err != nil {
-		return public.GetProcessDefinitionStatistics500JSONResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessDefinitionStatistics502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.GetProcessDefinitionStatistics400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessDefinitionStatistics500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessDefinitionStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	partitions := make([]public.PartitionProcessDefinitionStatistics, len(partitionedStats))
@@ -1428,6 +1476,16 @@ func defaultPagination(page **int32, size **int32) {
 		s := PaginationDefaultSize
 		*size = &s
 	}
+}
+
+func validatePagination(page, size int32) *zenerr.ZenError {
+	if page < 1 {
+		return zenerr.BadRequest(fmt.Errorf("page must be >= 1, got %d", page))
+	}
+	if size < 1 || size > PaginationMaxSize {
+		return zenerr.BadRequest(fmt.Errorf("size must be between 1 and %d, got %d", PaginationMaxSize, size))
+	}
+	return nil
 }
 
 func getEvaluatedDecisionsResponse(evaluatedDecisions []dmn.EvaluatedDecisionResult) []public.EvaluatedDecision {

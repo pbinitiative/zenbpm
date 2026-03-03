@@ -31,11 +31,11 @@ func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-broken.bpmn")
 	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h)
-	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Error(t, err)
+	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Error(t, zerr)
 
 	// then
-	assert.ErrorContains(t, err, "failed to find link")
+	assert.ErrorContains(t, zerr, "failed to find link")
 	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.Equal(t, "", cp.CallPath)
 

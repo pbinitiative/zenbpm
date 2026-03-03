@@ -34,6 +34,8 @@ const (
 	TechnicalErrorCode
 	ClusterErrorCode
 	NotFoundCode
+	BadRequestCode
+	ConflictCode
 )
 
 func (zenErrorCode ZenErrorCode) ToString() string {
@@ -46,6 +48,10 @@ func (zenErrorCode ZenErrorCode) ToString() string {
 		return "CLUSTER_ERROR"
 	case NotFoundCode:
 		return "NOT_FOUND"
+	case BadRequestCode:
+		return "BAD_REQUEST"
+	case ConflictCode:
+		return "CONFLICT"
 	default:
 		return "UNKNOWN_ERROR"
 	}
@@ -70,6 +76,18 @@ func ClusterError(err error) *ZenError {
 
 func NotFound(err error) *ZenError {
 	return &ZenError{NotFoundCode, err}
+}
+
+func BadRequest(err error) *ZenError {
+	return &ZenError{BadRequestCode, err}
+}
+
+func Conflict(err error) *ZenError {
+	return &ZenError{ConflictCode, err}
+}
+
+func Join(new error, original *ZenError) *ZenError {
+	return &ZenError{original.Code, errors.Join(new, original.err)}
 }
 
 func (zenError *ZenError) ToProtoError() *proto.ErrorResult {

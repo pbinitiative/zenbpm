@@ -704,28 +704,32 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	if request.Body.HistoryTimeToLive != nil {
 		parsedTTL, err := types.ParseTTL(*request.Body.HistoryTimeToLive)
 		if err != nil {
-			return public.CreateProcessInstance400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("Failed to parse historyTimeToLive: %s", err),
-			}, nil
+			return public.CreateProcessInstance400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("failed to parse historyTimeToLive: %w", err)).ToApiError(),
+			), nil
 		}
 		ttl = &parsedTTL
 	}
 
 	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
-		return public.CreateProcessInstance502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CreateProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.CreateProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.CreateProcessInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.CreateProcessInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.CreateProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.CreateProcessInstance201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
@@ -743,18 +747,25 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 	}
 	process, err := s.node.StartProcessInstanceOnElements(ctx, request.Body.ProcessDefinitionKey, request.Body.StartingElementIds, variables)
 	if err != nil {
-		return public.StartProcessInstanceOnElements502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.StartProcessInstanceOnElements502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.StartProcessInstanceOnElements400JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.StartProcessInstanceOnElements404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.StartProcessInstanceOnElements500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.StartProcessInstanceOnElements500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.StartProcessInstanceOnElements201JSONResponse{
 		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
@@ -786,10 +797,9 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		case public.GetProcessInstancesParamsStateFailed:
 			state = ptr.To(int64(runtime.ActivityStateFailed))
 		default:
-			return public.GetProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates),
-			}, nil
+			return public.GetProcessInstances400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
+			), nil
 		}
 	}
 	if request.Params.CreatedFrom != nil {
@@ -806,19 +816,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			sortByDbColumn = &s
 		default:
 			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
-			return public.GetProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
-			}, nil
+			return public.GetProcessInstances400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
+			), nil
 		}
 	}
 	if request.Params.SortOrder != nil {
 		supportedSortOrder := []public.GetProcessInstancesParamsSortOrder{public.GetProcessInstancesParamsSortOrderAsc, public.GetProcessInstancesParamsSortOrderDesc}
 		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetProcessInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
-			}, nil
+			return public.GetProcessInstances400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
+			), nil
 		}
 	} else {
 		request.Params.SortOrder = ptr.To(public.GetProcessInstancesParamsSortOrderDesc)
@@ -841,10 +849,16 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		},
 	)
 	if err != nil {
-		return public.GetProcessInstances502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstances502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstances500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	processInstancesPage := public.GetProcessInstances200JSONResponse{
@@ -868,10 +882,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			vars := map[string]any{}
 			err = json.Unmarshal(instance.GetVariables(), &vars)
 			if err != nil {
-				return public.GetProcessInstances500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
+				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 			}
 			respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[i].Items[k].ActiveElementInstances))
 			for _, elementInstance := range processInstancesPage.Partitions[i].Items[k].ActiveElementInstances {
@@ -948,23 +959,40 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request public.UpdateProcessInstanceVariablesRequestObject) (public.UpdateProcessInstanceVariablesResponseObject, error) {
 	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		return public.UpdateProcessInstanceVariables502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.UpdateProcessInstanceVariables502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.UpdateProcessInstanceVariables404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.UpdateProcessInstanceVariables500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.UpdateProcessInstanceVariables500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	if process.GetState() != int64(runtime.ActivityStateActive) && process.GetState() != int64(runtime.ActivityStateFailed) {
-		return public.UpdateProcessInstanceVariables400JSONResponse{
-			Code:    "INVALID_STATE",
-			Message: "Can update variables only for process instances in active or failed state",
-		}, nil
+		return public.UpdateProcessInstanceVariables409JSONResponse(
+			zenerr.Conflict(fmt.Errorf("Can update variables only for process instances in active or failed state")).ToApiError(),
+		), nil
 	}
 	err = s.node.UpdateProcessInstanceVariables(ctx, request.ProcessInstanceKey, request.Body.Variables)
 	if err != nil {
-		return public.UpdateProcessInstanceVariables502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.UpdateProcessInstanceVariables502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.UpdateProcessInstanceVariables400JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.UpdateProcessInstanceVariables404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.UpdateProcessInstanceVariables500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.UpdateProcessInstanceVariables500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	return public.UpdateProcessInstanceVariables204Response{}, nil
@@ -973,38 +1001,47 @@ func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request pub
 func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request public.DeleteProcessInstanceVariableRequestObject) (public.DeleteProcessInstanceVariableResponseObject, error) {
 	process, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		return public.DeleteProcessInstanceVariable502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.DeleteProcessInstanceVariable404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.DeleteProcessInstanceVariable500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	existingVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &existingVars)
 	if err != nil {
-		return public.DeleteProcessInstanceVariable502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	_, exists := existingVars[request.VariableName]
 	if !exists {
-		return public.DeleteProcessInstanceVariable404JSONResponse{
-			Code:    "NOT_FOUND",
-			Message: fmt.Sprintf("Variable %v does not exist for process instance with key=%v", request.VariableName, request.ProcessInstanceKey),
-		}, nil
+		return public.DeleteProcessInstanceVariable404JSONResponse(
+			zenerr.NotFound(fmt.Errorf("variable %v does not exist for process instance with key=%v", request.VariableName, request.ProcessInstanceKey)).ToApiError(),
+		), nil
 	}
 	if process.GetState() != int64(runtime.ActivityStateActive) {
-		return public.DeleteProcessInstanceVariable400JSONResponse{
-			Code:    "INVALID_STATE",
-			Message: "Can delete variables only for process instances in active state",
-		}, nil
+		return public.DeleteProcessInstanceVariable409JSONResponse(
+			zenerr.Conflict(fmt.Errorf("can delete variables only for process instances in active state")).ToApiError(),
+		), nil
 	}
 	err = s.node.DeleteProcessInstanceVariable(ctx, request.ProcessInstanceKey, request.VariableName)
 	if err != nil {
-		return public.DeleteProcessInstanceVariable502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.DeleteProcessInstanceVariable502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.DeleteProcessInstanceVariable500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.DeleteProcessInstanceVariable500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	return public.DeleteProcessInstanceVariable204Response{}, nil
@@ -1013,10 +1050,20 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, request publ
 func (s *Server) CancelProcessInstance(ctx context.Context, request public.CancelProcessInstanceRequestObject) (public.CancelProcessInstanceResponseObject, error) {
 	err := s.node.CancelProcessInstance(ctx, request.ProcessInstanceKey)
 	if err != nil {
-		return public.CancelProcessInstance500JSONResponse{
-			Code:    "INTERNAL_SERVER_ERROR",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CancelProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.CancelProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.CancelProcessInstance409JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.CancelProcessInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.CancelProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.CancelProcessInstance204Response{}, nil
 }
@@ -1025,10 +1072,16 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
 	if err != nil {
-		return public.GetHistory502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetHistory502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetHistory500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetHistory500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	resp := make([]public.FlowElementHistory, len(flow.Flow))
 	for i, flowNode := range flow.Flow {
@@ -1057,20 +1110,23 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	jobs, err := s.node.GetProcessInstanceJobs(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
 	if err != nil {
-		return public.GetProcessInstanceJobs502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceJobs502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceJobs500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	resp := make([]public.Job, len(jobs.Jobs))
 	for i, job := range jobs.Jobs {
 		vars := map[string]any{}
 		err := json.Unmarshal(job.GetVariables(), &vars)
 		if err != nil {
-			return public.GetProcessInstanceJobs500JSONResponse{
-				Code:    "TODO",
-				Message: err.Error(),
-			}, nil
+			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 		}
 		resp[i] = public.Job{
 			CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
@@ -1081,7 +1137,6 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 			Type:               job.GetType(),
 			Variables:          vars,
 		}
-
 	}
 	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
@@ -1232,10 +1287,16 @@ func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRe
 	}
 	incidents, err := s.node.GetIncidents(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, state)
 	if err != nil {
-		return public.GetIncidents502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetIncidents502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetIncidents500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetIncidents500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	resp := make([]public.Incident, len(incidents.Incidents))
@@ -1304,19 +1365,26 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 
 	process, activeElementInstances, err := s.node.ModifyProcessInstance(ctx, request.Body.ProcessInstanceKey, elementInstancesToTerminate, elementInstancesToStart, variables)
 	if err != nil {
-		return public.ModifyProcessInstance502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.ModifyProcessInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.ModifyProcessInstance400JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.ModifyProcessInstance404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.ModifyProcessInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	processVars := make(map[string]any)
 	err = json.Unmarshal(process.GetVariables(), &processVars)
 	if err != nil {
-		return public.ModifyProcessInstance500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	respActiveElementInstances := make([]public.ElementInstance, 0, len(activeElementInstances))

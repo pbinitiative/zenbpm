@@ -614,9 +614,15 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 
 	if _, err := s.node.GetProcessDefinition(ctx, request.ProcessDefinitionKey); err != nil {
 		var zerr *zenerr.ZenError
-		if errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode {
-			return public.GetProcessDefinitionElementStatistics404JSONResponse(zerr.ToApiError()), nil
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.GetProcessDefinitionElementStatistics404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessDefinitionElementStatistics500JSONResponse(zerr.ToApiError()), nil
+			}
 		}
+		return public.GetProcessDefinitionElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	partitions, err := s.node.GetProcessDefinitionElementStatistics(ctx, request.ProcessDefinitionKey)

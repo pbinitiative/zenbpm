@@ -11,6 +11,8 @@ import (
 
 // TODO: Test with multiple partitions/nodes
 func TestRestApiMessage(t *testing.T) {
+	cleanProcessInstances(t)
+
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")

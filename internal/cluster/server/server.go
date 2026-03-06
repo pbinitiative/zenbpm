@@ -1275,7 +1275,7 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req 
 			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 			return &proto.GetProcessDefinitionElementStatisticsResponse{
 				Error: err.ToProtoError(),
-			}, err
+			}, nil
 		}
 
 		rows, err := queries.GetElementStatisticsByProcessDefinitionKey(ctx, req.GetProcessDefinitionKey())
@@ -1283,7 +1283,7 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req 
 			zenErr := zenerr.TechnicalError(fmt.Errorf("failed to get element statistics for process definition %d: %w", req.GetProcessDefinitionKey(), err))
 			return &proto.GetProcessDefinitionElementStatisticsResponse{
 				Error: zenErr.ToProtoError(),
-			}, zenErr
+			}, nil
 		}
 
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
@@ -1311,7 +1311,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
 			return &proto.GetProcessDefinitionStatisticsResponse{
 				Error: err.ToProtoError(),
-			}, err
+			}, nil
 		}
 
 		onlyLatest := int64(0)
@@ -1326,7 +1326,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 				zenErr := zenerr.TechnicalError(fmt.Errorf("failed to marshal bpmn process id in filter: %w", err))
 				return &proto.GetProcessDefinitionStatisticsResponse{
 					Error: zenErr.ToProtoError(),
-				}, zenErr
+				}, nil
 			}
 			bpmnProcessIDInJson = string(b)
 		}
@@ -1338,7 +1338,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 				zenErr := zenerr.TechnicalError(fmt.Errorf("failed to marshal process definition key in filter: %w", err))
 				return &proto.GetProcessDefinitionStatisticsResponse{
 					Error: zenErr.ToProtoError(),
-				}, zenErr
+				}, nil
 			}
 			definitionKeyInJson = string(b)
 		}
@@ -1356,7 +1356,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			zenErr := zenerr.TechnicalError(fmt.Errorf("failed to find process definition statistics: %w", err))
 			return &proto.GetProcessDefinitionStatisticsResponse{
 				Error: zenErr.ToProtoError(),
-			}, zenErr
+			}, nil
 		}
 
 		partitionStats := make([]*proto.ProcessDefinitionStatistics, len(dbStats))

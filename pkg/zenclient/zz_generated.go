@@ -801,6 +801,11 @@ type CreateProcessDefinitionMultipartBody struct {
 	Resource openapi_types.File `json:"resource"`
 }
 
+// GetLatestProcessDefinitionParams defines parameters for GetLatestProcessDefinition.
+type GetLatestProcessDefinitionParams struct {
+	BpmnProcessId string `form:"bpmnProcessId" json:"bpmnProcessId"`
+}
+
 // GetProcessDefinitionStatisticsParams defines parameters for GetProcessDefinitionStatistics.
 type GetProcessDefinitionStatisticsParams struct {
 	// Page Page number (1-based indexing)
@@ -1079,6 +1084,9 @@ type ClientInterface interface {
 	// CreateProcessDefinitionWithBody request with any body
 	CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLatestProcessDefinition request
+	GetLatestProcessDefinition(ctx context.Context, params *GetLatestProcessDefinitionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetProcessDefinitionStatistics request
 	GetProcessDefinitionStatistics(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1356,6 +1364,18 @@ func (c *Client) GetProcessDefinitions(ctx context.Context, params *GetProcessDe
 
 func (c *Client) CreateProcessDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateProcessDefinitionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetLatestProcessDefinition(ctx context.Context, params *GetLatestProcessDefinitionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLatestProcessDefinitionRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2578,6 +2598,51 @@ func NewCreateProcessDefinitionRequestWithBody(server string, contentType string
 	return req, nil
 }
 
+// NewGetLatestProcessDefinitionRequest generates requests for GetLatestProcessDefinition
+func NewGetLatestProcessDefinitionRequest(server string, params *GetLatestProcessDefinitionParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-definitions/latest")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "bpmnProcessId", runtime.ParamLocationQuery, params.BpmnProcessId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetProcessDefinitionStatisticsRequest generates requests for GetProcessDefinitionStatistics
 func NewGetProcessDefinitionStatisticsRequest(server string, params *GetProcessDefinitionStatisticsParams) (*http.Request, error) {
 	var err error
@@ -3610,6 +3675,9 @@ type ClientWithResponsesInterface interface {
 	// CreateProcessDefinitionWithBodyWithResponse request with any body
 	CreateProcessDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProcessDefinitionResponse, error)
 
+	// GetLatestProcessDefinitionWithResponse request
+	GetLatestProcessDefinitionWithResponse(ctx context.Context, params *GetLatestProcessDefinitionParams, reqEditors ...RequestEditorFn) (*GetLatestProcessDefinitionResponse, error)
+
 	// GetProcessDefinitionStatisticsWithResponse request
 	GetProcessDefinitionStatisticsWithResponse(ctx context.Context, params *GetProcessDefinitionStatisticsParams, reqEditors ...RequestEditorFn) (*GetProcessDefinitionStatisticsResponse, error)
 
@@ -3980,6 +4048,7 @@ type GetProcessDefinitionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionsPage
+	JSON400      *Error
 	JSON500      *Error
 }
 
@@ -4007,6 +4076,7 @@ type CreateProcessDefinitionResponse struct {
 	}
 	JSON400 *Error
 	JSON409 *Error
+	JSON500 *Error
 	JSON502 *Error
 }
 
@@ -4026,11 +4096,38 @@ func (r CreateProcessDefinitionResponse) StatusCode() int {
 	return 0
 }
 
+type GetLatestProcessDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessDefinitionDetail
+	JSON400      *Error
+	JSON404      *Error
+	JSON500      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLatestProcessDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLatestProcessDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetProcessDefinitionStatisticsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionStatisticsPage
+	JSON400      *Error
 	JSON500      *Error
+	JSON502      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -4054,6 +4151,7 @@ type GetProcessDefinitionResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionDetail
 	JSON400      *Error
+	JSON404      *Error
 	JSON500      *Error
 }
 
@@ -4077,7 +4175,10 @@ type GetProcessDefinitionElementStatisticsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ElementStatisticsPartitions
+	JSON400      *Error
+	JSON404      *Error
 	JSON500      *Error
+	JSON502      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -4542,6 +4643,15 @@ func (c *ClientWithResponses) CreateProcessDefinitionWithBodyWithResponse(ctx co
 		return nil, err
 	}
 	return ParseCreateProcessDefinitionResponse(rsp)
+}
+
+// GetLatestProcessDefinitionWithResponse request returning *GetLatestProcessDefinitionResponse
+func (c *ClientWithResponses) GetLatestProcessDefinitionWithResponse(ctx context.Context, params *GetLatestProcessDefinitionParams, reqEditors ...RequestEditorFn) (*GetLatestProcessDefinitionResponse, error) {
+	rsp, err := c.GetLatestProcessDefinition(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLatestProcessDefinitionResponse(rsp)
 }
 
 // GetProcessDefinitionStatisticsWithResponse request returning *GetProcessDefinitionStatisticsResponse
@@ -5246,6 +5356,13 @@ func ParseGetProcessDefinitionsResponse(rsp *http.Response) (*GetProcessDefiniti
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5295,12 +5412,66 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLatestProcessDefinitionResponse parses an HTTP response from a GetLatestProcessDefinitionWithResponse call
+func ParseGetLatestProcessDefinitionResponse(rsp *http.Response) (*GetLatestProcessDefinitionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLatestProcessDefinitionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessDefinitionDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -5328,12 +5499,26 @@ func ParseGetProcessDefinitionStatisticsResponse(rsp *http.Response) (*GetProces
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 
@@ -5368,6 +5553,13 @@ func ParseGetProcessDefinitionResponse(rsp *http.Response) (*GetProcessDefinitio
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5401,12 +5593,33 @@ func ParseGetProcessDefinitionElementStatisticsResponse(rsp *http.Response) (*Ge
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

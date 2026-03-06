@@ -216,6 +216,30 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 			assert.GreaterOrEqual(t, items[0].InstanceCounts.Total, items[1].InstanceCounts.Total)
 		}
 	})
+
+	t.Run("bad request for page=0", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
+			&zenclient.GetProcessDefinitionStatisticsParams{
+				Page: ptr.To(int32(0)),
+				Size: ptr.To(int32(10)),
+			})
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
+
+	t.Run("bad request for size>100", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
+			&zenclient.GetProcessDefinitionStatisticsParams{
+				Page: ptr.To(int32(1)),
+				Size: ptr.To(int32(101)),
+			})
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+	})
 }
 
 func TestGetProcessDefinitionElementStatistics(t *testing.T) {

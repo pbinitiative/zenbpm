@@ -1222,12 +1222,12 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer
 
 var _ storage.JobStorageReader = &DB{}
 
-func (rq *DB) FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
+func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
 	int64States := make([]int64, len(states))
 	for _, s := range states {
 		int64States = append(int64States, int64(s))
 	}
-	dbJobs, err := rq.Queries.FindTokenJobsInState(ctx, sql.FindTokenJobsInStateParams{
+	dbJobs, err := rq.Queries.GetJobsInStateByTokenKey(ctx, sql.GetJobsInStateByTokenKeyParams{
 		ExecutionTokenKey: tokenKey,
 		States:            int64States,
 	})
@@ -1318,42 +1318,6 @@ token:
 				continue token
 			}
 		}
-	}
-	return res, nil
-}
-
-func (rq *DB) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error) {
-	var res bpmnruntime.Job
-	job, err := rq.Queries.FindJobByElementId(ctx, sql.FindJobByElementIdParams{
-		ElementID:          elementID,
-		ProcessInstanceKey: processInstanceKey,
-	})
-	if err != nil {
-		return res, fmt.Errorf("failed to find job for elementId %s and process instance key %d: %w", elementID, processInstanceKey, fmt.Errorf("%w: %w", err, storage.ErrNotFound))
-	}
-	tokens, err := rq.Queries.GetTokens(ctx, []int64{job.ExecutionToken})
-	if err != nil {
-		return res, fmt.Errorf("failed to find job token %d: %w", job.ExecutionToken, err)
-	}
-	if len(tokens) != 1 {
-		return res, fmt.Errorf("failed to find job token %d in the database", job.ExecutionToken)
-	}
-	token := tokens[0]
-	res = bpmnruntime.Job{
-		ElementId:          job.ElementID,
-		ElementInstanceKey: job.ElementInstanceKey,
-		ProcessInstanceKey: job.ProcessInstanceKey,
-		Key:                job.Key,
-		Type:               job.Type,
-		State:              bpmnruntime.ActivityState(job.State),
-		CreatedAt:          time.UnixMilli(job.CreatedAt),
-		Token: bpmnruntime.ExecutionToken{
-			Key:                token.Key,
-			ElementInstanceKey: token.ElementInstanceKey,
-			ElementId:          token.ElementID,
-			ProcessInstanceKey: token.ProcessInstanceKey,
-			State:              bpmnruntime.TokenState(token.State),
-		},
 	}
 	return res, nil
 }

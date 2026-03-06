@@ -32,6 +32,14 @@ const (
 	JobStateTerminated JobState = "terminated"
 )
 
+// Defines values for ProcessInstanceProcessType.
+const (
+	ProcessInstanceProcessTypeCallActivity  ProcessInstanceProcessType = "callActivity"
+	ProcessInstanceProcessTypeDefault       ProcessInstanceProcessType = "default"
+	ProcessInstanceProcessTypeMultiInstance ProcessInstanceProcessType = "multiInstance"
+	ProcessInstanceProcessTypeSubprocess    ProcessInstanceProcessType = "subprocess"
+)
+
 // Defines values for ProcessInstanceState.
 const (
 	ProcessInstanceStateActive     ProcessInstanceState = "active"
@@ -142,6 +150,26 @@ const (
 	GetProcessInstancesParamsStateCompleted  GetProcessInstancesParamsState = "completed"
 	GetProcessInstancesParamsStateFailed     GetProcessInstancesParamsState = "failed"
 	GetProcessInstancesParamsStateTerminated GetProcessInstancesParamsState = "terminated"
+)
+
+// Defines values for GetChildProcessInstancesParamsSortBy.
+const (
+	GetChildProcessInstancesParamsSortByKey   GetChildProcessInstancesParamsSortBy = "key"
+	GetChildProcessInstancesParamsSortByState GetChildProcessInstancesParamsSortBy = "state"
+)
+
+// Defines values for GetChildProcessInstancesParamsSortOrder.
+const (
+	GetChildProcessInstancesParamsSortOrderAsc  GetChildProcessInstancesParamsSortOrder = "asc"
+	GetChildProcessInstancesParamsSortOrderDesc GetChildProcessInstancesParamsSortOrder = "desc"
+)
+
+// Defines values for GetChildProcessInstancesParamsState.
+const (
+	GetChildProcessInstancesParamsStateActive     GetChildProcessInstancesParamsState = "active"
+	GetChildProcessInstancesParamsStateCompleted  GetChildProcessInstancesParamsState = "completed"
+	GetChildProcessInstancesParamsStateFailed     GetChildProcessInstancesParamsState = "failed"
+	GetChildProcessInstancesParamsStateTerminated GetChildProcessInstancesParamsState = "terminated"
 )
 
 // Defines values for GetIncidentsParamsState.
@@ -583,16 +611,20 @@ type ProcessDefinitionsPage struct {
 
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
-	ActiveElementInstances   []ElementInstance      `json:"activeElementInstances"`
-	BpmnProcessId            *string                `json:"bpmnProcessId,omitempty"`
-	BusinessKey              *string                `json:"businessKey,omitempty"`
-	CreatedAt                time.Time              `json:"createdAt"`
-	Key                      int64                  `json:"key"`
-	ParentProcessInstanceKey *int64                 `json:"parentProcessInstanceKey,omitempty"`
-	ProcessDefinitionKey     int64                  `json:"processDefinitionKey"`
-	State                    ProcessInstanceState   `json:"state"`
-	Variables                map[string]interface{} `json:"variables"`
+	ActiveElementInstances   []ElementInstance          `json:"activeElementInstances"`
+	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
+	BusinessKey              *string                    `json:"businessKey,omitempty"`
+	CreatedAt                time.Time                  `json:"createdAt"`
+	Key                      int64                      `json:"key"`
+	ParentProcessInstanceKey *int64                     `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                      `json:"processDefinitionKey"`
+	ProcessType              ProcessInstanceProcessType `json:"processType"`
+	State                    ProcessInstanceState       `json:"state"`
+	Variables                map[string]interface{}     `json:"variables"`
 }
+
+// ProcessInstanceProcessType defines model for ProcessInstance.ProcessType.
+type ProcessInstanceProcessType string
 
 // ProcessInstanceState defines model for ProcessInstance.State.
 type ProcessInstanceState string
@@ -867,7 +899,8 @@ type GetProcessInstancesParams struct {
 	CreatedTo *time.Time `form:"createdTo,omitempty" json:"createdTo,omitempty"`
 
 	// State Filter by state
-	State *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+	State                 *GetProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+	IncludeChildProcesses *bool                           `form:"includeChildProcesses,omitempty" json:"includeChildProcesses,omitempty"`
 }
 
 // GetProcessInstancesParamsSortBy defines parameters for GetProcessInstances.
@@ -889,6 +922,33 @@ type CreateProcessInstanceJSONBody struct {
 	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
+
+// GetChildProcessInstancesParams defines parameters for GetChildProcessInstances.
+type GetChildProcessInstancesParams struct {
+	// Page Page number (1-based indexing)
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// Size Number of items per page
+	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+
+	// SortBy Sort field (applies globally across partitions)
+	SortBy *GetChildProcessInstancesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetChildProcessInstancesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
+
+	// State Filter by state
+	State *GetChildProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetChildProcessInstancesParamsSortBy defines parameters for GetChildProcessInstances.
+type GetChildProcessInstancesParamsSortBy string
+
+// GetChildProcessInstancesParamsSortOrder defines parameters for GetChildProcessInstances.
+type GetChildProcessInstancesParamsSortOrder string
+
+// GetChildProcessInstancesParamsState defines parameters for GetChildProcessInstances.
+type GetChildProcessInstancesParamsState string
 
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
@@ -1101,6 +1161,9 @@ type ClientInterface interface {
 
 	// CancelProcessInstance request
 	CancelProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetChildProcessInstances request
+	GetChildProcessInstances(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHistory request
 	GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1452,6 +1515,18 @@ func (c *Client) GetProcessInstance(ctx context.Context, processInstanceKey int6
 
 func (c *Client) CancelProcessInstance(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCancelProcessInstanceRequest(c.Server, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetChildProcessInstances(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetChildProcessInstancesRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3005,6 +3080,22 @@ func NewGetProcessInstancesRequest(server string, params *GetProcessInstancesPar
 
 		}
 
+		if params.IncludeChildProcesses != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "includeChildProcesses", runtime.ParamLocationQuery, *params.IncludeChildProcesses); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -3117,6 +3208,126 @@ func NewCancelProcessInstanceRequest(server string, processInstanceKey int64) (*
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetChildProcessInstancesRequest generates requests for GetChildProcessInstances
+func NewGetChildProcessInstancesRequest(server string, processInstanceKey int64, params *GetChildProcessInstancesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/child-processes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3632,6 +3843,9 @@ type ClientWithResponsesInterface interface {
 
 	// CancelProcessInstanceWithResponse request
 	CancelProcessInstanceWithResponse(ctx context.Context, processInstanceKey int64, reqEditors ...RequestEditorFn) (*CancelProcessInstanceResponse, error)
+
+	// GetChildProcessInstancesWithResponse request
+	GetChildProcessInstancesWithResponse(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetChildProcessInstancesResponse, error)
 
 	// GetHistoryWithResponse request
 	GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
@@ -4198,6 +4412,31 @@ func (r CancelProcessInstanceResponse) StatusCode() int {
 	return 0
 }
 
+type GetChildProcessInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessInstancePage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetChildProcessInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetChildProcessInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetHistoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4613,6 +4852,15 @@ func (c *ClientWithResponses) CancelProcessInstanceWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseCancelProcessInstanceResponse(rsp)
+}
+
+// GetChildProcessInstancesWithResponse request returning *GetChildProcessInstancesResponse
+func (c *ClientWithResponses) GetChildProcessInstancesWithResponse(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetChildProcessInstancesResponse, error) {
+	rsp, err := c.GetChildProcessInstances(ctx, processInstanceKey, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetChildProcessInstancesResponse(rsp)
 }
 
 // GetHistoryWithResponse request returning *GetHistoryResponse
@@ -5595,6 +5843,53 @@ func ParseCancelProcessInstanceResponse(rsp *http.Response) (*CancelProcessInsta
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetChildProcessInstancesResponse parses an HTTP response from a GetChildProcessInstancesWithResponse call
+func ParseGetChildProcessInstancesResponse(rsp *http.Response) (*GetChildProcessInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetChildProcessInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessInstancePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

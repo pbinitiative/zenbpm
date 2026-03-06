@@ -28,15 +28,6 @@ WHERE
     type = @type
     AND state = 1;
 
--- name: FindJobByElementId :one
-SELECT
-    *
-FROM
-    job
-WHERE
-    element_id = @element_id
-    AND process_instance_key = @process_instance_key;
-
 -- name: FindJobByJobKey :one
 SELECT
     *
@@ -84,7 +75,7 @@ ORDER BY
     created_at ASC
 LIMIT ?; -- https://github.com/sqlc-dev/sqlc/issues/2452
 
--- name: FindTokenJobsInState :many
+-- name: GetJobsInStateByTokenKey :many
 SELECT
     *
 FROM

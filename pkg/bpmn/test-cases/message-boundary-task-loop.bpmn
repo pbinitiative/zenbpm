@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1bs25jn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:collaboration id="Collaboration_1ckpgi4">
+    <bpmn:participant id="Participant_1t0rpa0" name="DocsFlow" processRef="approval-basic" />
+  </bpmn:collaboration>
+  <bpmn:process id="approval-basic" name="DocsFlow schvalování základní" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_0syyfuq">
+      <bpmn:lane id="Lane_1hdnoei" name="Připomínkující">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_015kf7c</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_1ahn26j</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_1netrbb</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_0efsawk" name="Zadavatel">
+        <bpmn:flowNodeRef>Activity_0pyngsg</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:userTask id="Activity_0pyngsg" name="Doplnění">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_1j9c1pm</bpmn:incoming>
+      <bpmn:outgoing>Flow_1cmeyqc</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:startEvent id="StartEvent_1" name="Nové schvalování">
+      <bpmn:outgoing>Flow_0wlfo11</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Activity_015kf7c" name="Připomínkování">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_0wlfo11</bpmn:incoming>
+      <bpmn:incoming>Flow_1cmeyqc</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ma5onn</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="Event_1ahn26j" name="Schváleno">
+      <bpmn:incoming>Flow_1ma5onn</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="Event_1netrbb" name="Vrácení k doplnění" attachedToRef="Activity_015kf7c">
+      <bpmn:outgoing>Flow_1j9c1pm</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0q46o0a" messageRef="Message_0fprdg6" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_1j9c1pm" sourceRef="Event_1netrbb" targetRef="Activity_0pyngsg" />
+    <bpmn:sequenceFlow id="Flow_1cmeyqc" sourceRef="Activity_0pyngsg" targetRef="Activity_015kf7c" />
+    <bpmn:sequenceFlow id="Flow_0wlfo11" sourceRef="StartEvent_1" targetRef="Activity_015kf7c" />
+    <bpmn:sequenceFlow id="Flow_1ma5onn" sourceRef="Activity_015kf7c" targetRef="Event_1ahn26j" />
+  </bpmn:process>
+  <bpmn:message id="Message_2kup1ij" name="cancel">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=approvalId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_0fprdg6" name="return">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;approvalId&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_2q4m1ht" name="dissapprove">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=approvalId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1ckpgi4">
+      <bpmndi:BPMNShape id="Participant_1t0rpa0_di" bpmnElement="Participant_1t0rpa0" isHorizontal="true">
+        <dc:Bounds x="185" y="80" width="840" height="390" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_1hdnoei_di" bpmnElement="Lane_1hdnoei" isHorizontal="true">
+        <dc:Bounds x="215" y="240" width="810" height="230" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_0efsawk_di" bpmnElement="Lane_0efsawk" isHorizontal="true">
+        <dc:Bounds x="215" y="80" width="810" height="160" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1rba0eq_di" bpmnElement="Activity_0pyngsg">
+        <dc:Bounds x="525" y="135" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="427" y="337" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="402" y="380" width="88" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_00fx9ce_di" bpmnElement="Activity_015kf7c">
+        <dc:Bounds x="525" y="315" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1ahn26j_di" bpmnElement="Event_1ahn26j">
+        <dc:Bounds x="707" y="337" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="699" y="380" width="52" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1kadk1u_di" bpmnElement="Event_1netrbb">
+        <dc:Bounds x="607" y="297" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="603" y="267" width="46" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1j9c1pm_di" bpmnElement="Flow_1j9c1pm">
+        <di:waypoint x="643" y="315" />
+        <di:waypoint x="725" y="315" />
+        <di:waypoint x="725" y="175" />
+        <di:waypoint x="625" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1cmeyqc_di" bpmnElement="Flow_1cmeyqc">
+        <di:waypoint x="575" y="215" />
+        <di:waypoint x="575" y="315" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0wlfo11_di" bpmnElement="Flow_0wlfo11">
+        <di:waypoint x="463" y="355" />
+        <di:waypoint x="525" y="355" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ma5onn_di" bpmnElement="Flow_1ma5onn">
+        <di:waypoint x="625" y="355" />
+        <di:waypoint x="707" y="355" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

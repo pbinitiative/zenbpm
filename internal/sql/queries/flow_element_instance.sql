@@ -16,6 +16,21 @@ ON CONFLICT
 DELETE FROM flow_element_instance
 WHERE process_instance_key IN (sqlc.slice('keys'));
 
+-- name: FindFlowElementInstances :many
+SELECT
+    fei.*,
+    COUNT(*) OVER() AS total_count
+FROM execution_token AS et
+JOIN process_instance AS pi
+    ON (pi.parent_process_execution_token = et.key
+    OR pi.key = @process_instance_key)
+    AND process_type != 3
+JOIN flow_element_instance AS fei
+    ON fei.process_instance_key = pi.key
+WHERE
+    et.process_instance_key = @process_instance_key
+LIMIT @limit OFFSET @offset;
+
 -- name: GetFlowElementInstances :many
 SELECT
     *,

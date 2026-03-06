@@ -454,20 +454,6 @@ func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([
 	return res, nil
 }
 
-func (mem *Storage) FindJobByElementID(ctx context.Context, processInstanceKey int64, elementID string) (bpmnruntime.Job, error) {
-	var res bpmnruntime.Job
-	for _, job := range mem.Jobs {
-		if job.ProcessInstanceKey != processInstanceKey {
-			continue
-		}
-		if job.ElementId != elementID {
-			continue
-		}
-		return job, nil
-	}
-	return res, storage.ErrNotFound
-}
-
 func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Job, error) {
 	var res bpmnruntime.Job
 	res, ok := mem.Jobs[jobKey]
@@ -477,7 +463,7 @@ func (mem *Storage) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnrunt
 	return res, nil
 }
 
-func (mem *Storage) FindTokenJobsInState(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
+func (mem *Storage) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, states []bpmnruntime.ActivityState) ([]bpmnruntime.Job, error) {
 	res := make([]bpmnruntime.Job, 0)
 	for _, job := range mem.Jobs {
 		if job.Token.Key != tokenKey {

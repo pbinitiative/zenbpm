@@ -66,12 +66,13 @@ service ZenService {
   rpc DeleteProcessInstanceVariable(DeleteProcessInstanceVariableRequest) returns (DeleteProcessInstanceVariableResponse);
   rpc CancelProcessInstance(CancelProcessInstanceRequest) returns (CancelProcessInstanceResponse);
   rpc GetProcessInstances(GetProcessInstancesRequest) returns (GetProcessInstancesResponse);
+  rpc GetChildProcessInstances(GetChildProcessInstancesRequest) returns (GetChildProcessInstancesResponse);
+  rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
+  rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetDecisionInstance(GetDecisionInstanceRequest) returns (GetDecisionInstanceResponse);
   rpc GetDecisionInstances(GetDecisionInstancesRequest) returns (GetDecisionInstancesResponse);
   rpc GetJobs(GetJobsRequest) returns (GetJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
-  rpc GetProcessInstance(GetProcessInstanceRequest) returns (GetProcessInstanceResponse);
-  rpc GetProcessInstanceJobs(GetProcessInstanceJobsRequest) returns (GetProcessInstanceJobsResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
@@ -242,8 +243,10 @@ message ProcessInstance {
   int64 state = 4;
   int64 created_at = 5;
   int64 definition_key = 6;
-  int64 parent_key = 7;
-  string business_key = 8;
+  int64 parent_instance_key = 7;
+  int64 parent_token_key = 8;
+  string business_key = 9;
+  int64 type = 10;
 }
 
 message DecisionInstance {
@@ -453,6 +456,14 @@ message CancelProcessInstanceResponse {
   ErrorResult error = 1;
 }
 
+message GetChildProcessInstancesRequest{
+  int32 page = 1;
+  int32 size = 2;
+  int64 parent_instance_key = 3;
+  int64 state = 4;
+  string sort_by_order = 5;
+}
+
 message GetProcessInstancesRequest {
   int32 page = 1;
   int32 size = 2;
@@ -464,7 +475,8 @@ message GetProcessInstancesRequest {
   int64 created_from = 8;
   int64 created_to = 9;
   int64 state = 10;
-  string sort_by_order = 11;
+  bool show_child_processes = 11;
+  string sort_by_order = 12;
 }
 
 message GetDecisionInstanceRequest {
@@ -512,6 +524,12 @@ message PartitionedDecisionInstances {
 message GetProcessInstancesResponse {
   ErrorResult error = 1;
   repeated PartitionedProcessInstances partitions = 2;
+}
+
+message GetChildProcessInstancesResponse {
+  ErrorResult error = 1;
+  repeated ProcessInstance instances = 2;
+  int32 total_count = 3;
 }
 
 message GetDecisionInstancesResponse {

@@ -91,9 +91,9 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 			message.State = runtime.ActivityStateFailed
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			batch.WriteMessageIncident(ctx, message, instance, err)
-			err = batch.Flush(ctx)
-			if err != nil {
-				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
+			flushErr := batch.Flush(ctx)
+			if flushErr != nil {
+				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), flushErr)
 			}
 			return errors.Join(newEngineErrorf("failed to publish message %s to task %d. ", message.Name, message.ProcessInstanceKey), err)
 		}

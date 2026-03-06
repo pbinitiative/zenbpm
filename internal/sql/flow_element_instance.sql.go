@@ -46,6 +46,71 @@ func (q *Queries) DeleteFlowElementInstance(ctx context.Context, keys []int64) e
 	return err
 }
 
+const findFlowElementInstances = `-- name: FindFlowElementInstances :many
+SELECT
+    fei."key", fei.element_id, fei.process_instance_key, fei.execution_token_key, fei.created_at, fei.input_variables, fei.output_variables,
+    COUNT(*) OVER() AS total_count
+FROM execution_token AS et
+JOIN process_instance AS pi
+    ON (pi.parent_process_execution_token = et.key
+    OR pi.key = ?1)
+    AND process_type != 3
+JOIN flow_element_instance AS fei
+    ON fei.process_instance_key = pi.key
+WHERE
+    et.process_instance_key = ?1
+LIMIT ?3 OFFSET ?2
+`
+
+type FindFlowElementInstancesParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	Offset             int64 `json:"offset"`
+	Limit              int64 `json:"limit"`
+}
+
+type FindFlowElementInstancesRow struct {
+	Key                int64  `json:"key"`
+	ElementID          string `json:"element_id"`
+	ProcessInstanceKey int64  `json:"process_instance_key"`
+	ExecutionTokenKey  int64  `json:"execution_token_key"`
+	CreatedAt          int64  `json:"created_at"`
+	InputVariables     string `json:"input_variables"`
+	OutputVariables    string `json:"output_variables"`
+	TotalCount         int64  `json:"total_count"`
+}
+
+func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error) {
+	rows, err := q.db.QueryContext(ctx, findFlowElementInstances, arg.ProcessInstanceKey, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindFlowElementInstancesRow{}
+	for rows.Next() {
+		var i FindFlowElementInstancesRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementID,
+			&i.ProcessInstanceKey,
+			&i.ExecutionTokenKey,
+			&i.CreatedAt,
+			&i.InputVariables,
+			&i.OutputVariables,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFlowElementInstanceByKey = `-- name: GetFlowElementInstanceByKey :one
 SELECT
     "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables

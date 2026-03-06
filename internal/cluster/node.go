@@ -972,6 +972,41 @@ func (node *ZenNode) GetProcessInstance(ctx context.Context, processInstanceKey 
 	return resp.Processes, resp.ExecutionTokens, nil
 }
 
+// GetChildProcessInstances will contact follower nodes and return instances in partitions they are following
+func (node *ZenNode) GetChildProcessInstances(
+	ctx context.Context,
+	request *proto.GetChildProcessInstancesRequest,
+) ([]*proto.PartitionedProcessInstances, error) {
+	state := node.store.ClusterState()
+	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
+	partitionId := zenflake.GetPartitionId(*request.ParentInstanceKey)
+	follower, err := state.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get child process instances: %w", err))
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get child process instances: %w", err))
+	}
+
+	resp, err := client.GetChildProcessInstances(ctx, request)
+	if err != nil || resp.Error != nil {
+		e := fmt.Errorf("failed to get child process instances from partition %d", partitionId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", e, err)
+		} else if resp.Error != nil {
+			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
+		}
+	}
+	result = append(result, &proto.PartitionedProcessInstances{
+		PartitionId: &partitionId,
+		Instances:   resp.Instances,
+		TotalCount:  resp.TotalCount,
+	})
+
+	return result, nil
+}
+
 func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKey int64) (*proto.DecisionInstance, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(decisionInstanceKey)

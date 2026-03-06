@@ -138,39 +138,6 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 	return items, nil
 }
 
-const findJobByElementId = `-- name: FindJobByElementId :one
-SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
-FROM
-    job
-WHERE
-    element_id = ?1
-    AND process_instance_key = ?2
-`
-
-type FindJobByElementIdParams struct {
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-}
-
-func (q *Queries) FindJobByElementId(ctx context.Context, arg FindJobByElementIdParams) (Job, error) {
-	row := q.db.QueryRowContext(ctx, findJobByElementId, arg.ElementID, arg.ProcessInstanceKey)
-	var i Job
-	err := row.Scan(
-		&i.Key,
-		&i.ElementInstanceKey,
-		&i.ElementID,
-		&i.ProcessInstanceKey,
-		&i.Type,
-		&i.State,
-		&i.CreatedAt,
-		&i.Variables,
-		&i.ExecutionToken,
-		&i.Assignee,
-	)
-	return i, err
-}
-
 const findJobByJobKey = `-- name: FindJobByJobKey :one
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
@@ -447,7 +414,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 	return items, nil
 }
 
-const findTokenJobsInState = `-- name: FindTokenJobsInState :many
+const getJobsInStateByTokenKey = `-- name: GetJobsInStateByTokenKey :many
 
 SELECT
     "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
@@ -458,14 +425,14 @@ WHERE
     AND state IN (/*SLICE:states*/?)
 `
 
-type FindTokenJobsInStateParams struct {
+type GetJobsInStateByTokenKeyParams struct {
 	ExecutionTokenKey int64   `json:"execution_token_key"`
 	States            []int64 `json:"states"`
 }
 
 // https://github.com/sqlc-dev/sqlc/issues/2452
-func (q *Queries) FindTokenJobsInState(ctx context.Context, arg FindTokenJobsInStateParams) ([]Job, error) {
-	query := findTokenJobsInState
+func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInStateByTokenKeyParams) ([]Job, error) {
+	query := getJobsInStateByTokenKey
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.ExecutionTokenKey)
 	if len(arg.States) > 0 {

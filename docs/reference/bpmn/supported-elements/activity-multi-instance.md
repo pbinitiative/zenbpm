@@ -34,23 +34,12 @@ Multi-instance behavior can be applied to activities.
 
 A Multi-Instance configuration acts as a wrapper around the activity and controls how it is repeated and completed. Configuration has the following parameters:
 
-| Parameter Name       | Description                                                                                                                                                                                                                                    |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Input Collection     | Specifies the collection that the Multi-Instance activity iterates over. A new instance of the wrapped activity is created for each element in this collection. Each iteration processes a single element from the collection                  |
-| Output Collection    | Specifies the collection that aggregates results from all iterations. The collection becomes available after the entire Multi-Instance execution completes                                                                                     |
-| Output Element       | Defines the result produced by a single iteration of the Multi-Instance activity. This value is derived from variables within the iteration scope                                                                                              |
-| Completion Condition | Defines a condition that can complete the entire Multi-Instance execution before all iterations finish. The condition is evaluated after each iteration completes. If the condition evaluates to true, all remaining iterations are cancelled. |
-
-### Completion Condition
-
-The Completion Condition supports predefined parameters that can be used to evaluate the condition. These parameters are available exclusively at the time the completion condition is being evaluated.
-
-| Parameter Name              | Description                                                       |
-|-----------------------------|-------------------------------------------------------------------|
-| numberOfInstances           | Total number of instances created for the Multi-Instance activity |
-| numberOfActiveInstances     | Number of currently active (not yet completed) instances          |
-| numberOfCompletedInstances  | Number of instances that have already completed                   |
-| numberOfTerminatedInstances | not supported yet ( its zero )                                    |
+| Parameter Name       | Description                                                                                                                                                                                                                   |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Input Collection     | Specifies the collection that the Multi-Instance activity iterates over. A new instance of the wrapped activity is created for each element in this collection. Each iteration processes a single element from the collection |
+| Output Collection    | Specifies the collection that aggregates results from all iterations. The collection becomes available after the entire Multi-Instance execution completes                                                                    |
+| Output Element       | Defines the result produced by a single iteration of the Multi-Instance activity. This value is derived from variables within the iteration scope                                                                             |
+| Completion Condition | Not supported yet.                                                                                                                                                                                                            |
 
 ## Execution behavior
 

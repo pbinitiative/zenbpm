@@ -81,6 +81,7 @@ service ZenService {
   rpc FailJob(FailJobRequest) returns (FailJobResponse);
   // Used by client to let server know that the job needs to be reassigned to another node
   rpc ReassignJob(ReassignJobRequest) returns (ReassignJobResponse);
+  rpc AssignJobToAssignee(AssignJobToAssigneeRequest) returns (AssignJobToAssigneeResponse);
   rpc GetProcessDefinitionStatistics(GetProcessDefinitionStatisticsRequest) returns (GetProcessDefinitionStatisticsResponse);
   rpc GetProcessDefinitionElementStatistics(GetProcessDefinitionElementStatisticsRequest) returns (GetProcessDefinitionElementStatisticsResponse);
 }
@@ -634,6 +635,15 @@ message ReassignJobRequest {
 }
 
 message ReassignJobResponse {
+  ErrorResult error = 1;
+}
+
+message AssignJobToAssigneeRequest {
+  int64 key = 1;
+  string assignee = 2;
+}
+
+message AssignJobToAssigneeResponse {
   ErrorResult error = 1;
 }
 

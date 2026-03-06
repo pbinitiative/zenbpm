@@ -524,6 +524,27 @@ func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequ
 	return public.CompleteJob201Response{}, nil
 }
 
+func (s *Server) AssignJob(ctx context.Context, request public.AssignJobRequestObject) (public.AssignJobResponseObject, error) {
+	err := s.node.AssignJob(ctx, request.JobKey, request.Body.Assignee)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.AssignJob502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.AssignJob404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.AssignJob400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.AssignJob502JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+			}
+		}
+		return public.AssignJob502JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	return public.AssignJob204Response{}, nil
+}
+
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
 	err := s.node.PublishMessage(ctx, request.Body.MessageName, request.Body.CorrelationKey, *request.Body.Variables)
 	if err != nil {
@@ -1137,6 +1158,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 			State:              getRestJobState(runtime.ActivityState(job.GetState())),
 			Type:               job.GetType(),
 			Variables:          vars,
+			Assignee:           ptr.To(job.GetAssignee()),
 		}
 	}
 	return public.GetProcessInstanceJobs200JSONResponse{

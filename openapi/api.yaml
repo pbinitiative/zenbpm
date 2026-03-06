@@ -1640,6 +1640,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /jobs/{jobKey}/assign:
+    post:
+      operationId: assignJob
+      summary: Assign a job to a user
+      tags:
+        - job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370540
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assignee
+              properties:
+                assignee:
+                  type: string
+            example:
+              assignee: "john.doe"
+      responses:
+        204:
+          description: Job assigned
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /jobs/{jobKey}/complete:
     post:
       operationId: completeJob

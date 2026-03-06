@@ -803,6 +803,10 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 		totalCount = int32(result[0].TotalCount)
 	}
 	for i, job := range result {
+		var assignee *string
+		if job.Assignee.Valid {
+			assignee = &job.Assignee.String
+		}
 		jobs[i] = &proto.Job{
 			Key:                &job.Key,
 			ElementInstanceKey: &job.ElementInstanceKey,
@@ -812,12 +816,32 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			State:              ptr.To(job.State),
 			CreatedAt:          &job.CreatedAt,
 			Variables:          []byte(job.Variables),
+			Assignee:           assignee,
 		}
 	}
 	return &proto.GetProcessInstanceJobsResponse{
 		Jobs:       jobs,
 		TotalCount: &totalCount,
 	}, nil
+}
+
+func (s *Server) AssignJobToAssignee(ctx context.Context, req *proto.AssignJobToAssigneeRequest) (*proto.AssignJobToAssigneeResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetKey())
+	engine := s.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("engine for partition %d not found", partitionId))
+		return &proto.AssignJobToAssigneeResponse{Error: err.ToProtoError()}, nil
+	}
+	assignee := req.GetAssignee()
+	var assigneePtr *string
+	if assignee != "" {
+		assigneePtr = &assignee
+	}
+	if err := engine.JobAssignByKey(ctx, req.GetKey(), assigneePtr); err != nil {
+		zenErr := zenerr.NotFound(fmt.Errorf("failed to assign job %d: %w", req.GetKey(), err))
+		return &proto.AssignJobToAssigneeResponse{Error: zenErr.ToProtoError()}, nil
+	}
+	return &proto.AssignJobToAssigneeResponse{}, nil
 }
 
 func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowElementHistoryRequest) (*proto.GetFlowElementHistoryResponse, error) {

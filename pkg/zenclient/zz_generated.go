@@ -741,6 +741,11 @@ type GetJobsParamsSortBy string
 // GetJobsParamsSortOrder defines parameters for GetJobs.
 type GetJobsParamsSortOrder string
 
+// AssignJobJSONBody defines parameters for AssignJob.
+type AssignJobJSONBody struct {
+	Assignee string `json:"assignee"`
+}
+
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
 	Variables *map[string]interface{} `json:"variables,omitempty"`
@@ -941,6 +946,9 @@ type UpdateProcessInstanceVariablesJSONBody struct {
 // EvaluateDecisionJSONRequestBody defines body for EvaluateDecision for application/json ContentType.
 type EvaluateDecisionJSONRequestBody EvaluateDecisionJSONBody
 
+// AssignJobJSONRequestBody defines body for AssignJob for application/json ContentType.
+type AssignJobJSONRequestBody AssignJobJSONBody
+
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
 
@@ -1063,6 +1071,11 @@ type ClientInterface interface {
 
 	// GetJob request
 	GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AssignJobWithBody request with any body
+	AssignJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AssignJob(ctx context.Context, jobKey int64, body AssignJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CompleteJobWithBody request with any body
 	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1247,6 +1260,30 @@ func (c *Client) GetJobs(ctx context.Context, params *GetJobsParams, reqEditors 
 
 func (c *Client) GetJob(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetJobRequest(c.Server, jobKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignJobRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignJob(ctx context.Context, jobKey int64, body AssignJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignJobRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2260,6 +2297,53 @@ func NewGetJobRequest(server string, jobKey int64) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewAssignJobRequest calls the generic AssignJob builder with application/json body
+func NewAssignJobRequest(server string, jobKey int64, body AssignJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAssignJobRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewAssignJobRequestWithBody generates requests for AssignJob with any type of body
+func NewAssignJobRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/assign", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -3611,6 +3695,11 @@ type ClientWithResponsesInterface interface {
 	// GetJobWithResponse request
 	GetJobWithResponse(ctx context.Context, jobKey int64, reqEditors ...RequestEditorFn) (*GetJobResponse, error)
 
+	// AssignJobWithBodyWithResponse request with any body
+	AssignJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignJobResponse, error)
+
+	AssignJobWithResponse(ctx context.Context, jobKey int64, body AssignJobJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignJobResponse, error)
+
 	// CompleteJobWithBodyWithResponse request with any body
 	CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
@@ -3896,6 +3985,30 @@ func (r GetJobResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AssignJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AssignJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AssignJobResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4485,6 +4598,23 @@ func (c *ClientWithResponses) GetJobWithResponse(ctx context.Context, jobKey int
 	return ParseGetJobResponse(rsp)
 }
 
+// AssignJobWithBodyWithResponse request with arbitrary body returning *AssignJobResponse
+func (c *ClientWithResponses) AssignJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignJobResponse, error) {
+	rsp, err := c.AssignJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignJobResponse(rsp)
+}
+
+func (c *ClientWithResponses) AssignJobWithResponse(ctx context.Context, jobKey int64, body AssignJobJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignJobResponse, error) {
+	rsp, err := c.AssignJob(ctx, jobKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignJobResponse(rsp)
+}
+
 // CompleteJobWithBodyWithResponse request with arbitrary body returning *CompleteJobResponse
 func (c *ClientWithResponses) CompleteJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error) {
 	rsp, err := c.CompleteJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
@@ -5062,6 +5192,46 @@ func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAssignJobResponse parses an HTTP response from a AssignJobWithResponse call
+func ParseAssignJobResponse(rsp *http.Response) (*AssignJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AssignJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error

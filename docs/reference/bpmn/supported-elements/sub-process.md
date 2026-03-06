@@ -9,7 +9,7 @@ A Sub Process is a BPMN flow element that defines a new process scope running wi
 ## Starting Sub Process
 Currently, there is no limitation to Start Event elements. There can be any supported types and amount.
 
-## Engine Behavior
+## Execution behavior
 A Sub Process behaves similarly to an independent process, but it is logically connected to the parent process instance.
 
 When a Sub Process is triggered:
@@ -19,7 +19,7 @@ When a Sub Process is triggered:
 
 The child process for Sub Process  is started on the same [partition](/reference/cluster) as the parent process.
 
-#### Variable Handling
+#### Variable handling
 By default, no variables are inherited from the parent process instance.
 The child process operates within its own variable scope.
 Upon completion, result variables are not automatically propagated back to the parent process instance.
@@ -34,10 +34,6 @@ Used to initialize variables in the child process when the Sub Process starts.
 Used to map variables from the child process back to the parent process when the Sub Process completes.
 
 These mappings control the variable scope at the start and end of the Sub Process instance.
-
-## Boundary Events
-Boundary Events can be attached to a Sub Process element to handle exceptional situations or alternative flows during its execution.
-Interrupting Boundary Events cause Sub Process to terminate and the parent process continues execution along the Boundary Event’s outgoing flow.
 
 ## XML Definition
 ```xml

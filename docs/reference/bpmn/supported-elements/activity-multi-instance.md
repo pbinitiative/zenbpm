@@ -73,8 +73,7 @@ Multi Instance process.
 
 By default, no variables are inherited from the parent process instance.
 The child process operates within its own variable scope using variables from **Input Collection**.
-Upon completion **Output Elements** are collected and aggregated to **Output Collection** which is then propagated into
-parent instance.
+Upon completion **Output Elements** are collected and aggregated to **Output Collection** which is then propagated into the parent instance.
 
 ## Input/Output
 

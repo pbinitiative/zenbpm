@@ -46,13 +46,22 @@ A Multi-Instance configuration acts as a wrapper around the activity and control
 A Multi Instance behaves similarly to an independent process, but it is logically connected to the parent process
 instance.
 
-When a Multi Instance is triggered:
 
+### Sequential Multi Instance
+When a Sequential Multi Instance is triggered:
 - A new process instance is created.
 - The new instance is linked to its parent process instance.
 - The child process runs in its own isolated scope.
-- For **parallel multi-instance**, child process executes given activity.
-- For **sequential multi-instance**, child process executes only its given activity one by one in a loop.
+- Only one activity instance is created and active at once.
+- Child process executes only its given activity one by one in a loop.
+
+### Parallel Multi Instance
+When a Parallel Multi Instance is triggered:
+- A new process instance is created.
+- The new instance is linked to its parent process instance.
+- The child process runs in its own isolated scope.
+- All the required activity instances are created.
+- Activity instance are executed in parallel.
 
 The child process for Multi Instance is started on the same [partition](/reference/cluster) as the parent process that
 invoked it.

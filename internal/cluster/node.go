@@ -568,7 +568,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId string) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get process definition: %w", err))
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get node db to get process definition: %w", err))
 	}
 	def, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
@@ -589,7 +589,7 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get process definition: %w", err))
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get node db to get process definition: %w", err))
 	}
 	def, err := db.Queries.FindProcessDefinitionByKey(ctx, key)
 	if err != nil {

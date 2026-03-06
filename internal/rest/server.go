@@ -494,7 +494,16 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	// Deploy with filename
 	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
-		return public.CreateProcessDefinition502JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CreateProcessDefinition502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.CreateProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	if deployResult.IsDuplicate {
 		return public.CreateProcessDefinition409JSONResponse(zenerr.Conflict(fmt.Errorf("a process definition with the same content already exists")).ToApiError()), nil

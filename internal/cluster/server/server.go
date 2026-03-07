@@ -287,7 +287,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance: %w", err))
 		}
-		return &proto.CreateInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
+		return &proto.CreateInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
@@ -331,7 +331,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance on elements from process definition %d: %w", req.GetDefinitionKey(), err))
 		}
-		return &proto.StartInstanceOnElementIdsResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
+		return &proto.StartInstanceOnElementIdsResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
@@ -376,7 +376,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to modify process instance %d: %w", *req.ProcessInstanceKey, err))
 		}
-		return &proto.ModifyProcessInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
+		return &proto.ModifyProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 	variables, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
 	if err != nil {
@@ -466,7 +466,7 @@ func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelPro
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to cancel process instance %d: %w", *req.ProcessInstanceKey, err))
 		}
-		return &proto.CancelProcessInstanceResponse{Error: zenerr.Join(err, zerr).ToProtoError()}, nil
+		return &proto.CancelProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 	return &proto.CancelProcessInstanceResponse{}, nil
 }

@@ -556,17 +556,56 @@ func TestCreateProcessInstanceNotFoundResponse(t *testing.T) {
 	})
 }
 
-func TestCancelProcessInstanceInWrongStateReturnsConflict(t *testing.T) {
-	t.Run("Return CONFLICT(409) response when trying to cancel instance in non-cancellable state", func(t *testing.T) {
+func TestGetProcessInstancesBadRequest(t *testing.T) {
+	t.Run("GetProcessInstances with invalid state would return a BadRequest", func(t *testing.T) {
+		var resp *zenclient.GetProcessInstancesResponse
+		resp, _ = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			State: (*zenclient.GetProcessInstancesParamsState)(ptr.To("invalid-state")),
+		})
+
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Equal(t, "unexpected GetProcessInstancesRequest.state: invalid-state, supported: [active completed terminated failed]", resp.JSON400.Message)
+	})
+}
+
+func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *testing.T) {
+	var instanceKey int64
+	t.Run("Create instance with completed state", func(t *testing.T) {
 		var instance public.ProcessInstance
 		definition, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
 		assert.NoError(t, err)
 
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{})
+		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+			"var1": "var1 value",
+		})
+		instanceKey = instance.Key
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
+	})
 
-		cancelResponse, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+	t.Run("Return CONFLICT(409) response when trying to update process instance variable in non active state ", func(t *testing.T) {
+		response, _ := app.restClient.UpdateProcessInstanceVariablesWithResponse(t.Context(), instanceKey, zenclient.UpdateProcessInstanceVariablesJSONRequestBody{
+			Variables: map[string]any{
+				"var1":    "var1 value changed",
+				"newVar2": "var2 value",
+			},
+		})
+		assert.NotNil(t, response.JSON409)
+		assert.Equal(t, "CONFLICT", response.JSON409.Code)
+		assert.Equal(t, "Can update variables only for process instances in active or failed state", response.JSON409.Message)
+	})
+
+	t.Run("Return CONFLICT(409) response when trying to delete process instance variable in non active state ", func(t *testing.T) {
+		response, _ := app.restClient.DeleteProcessInstanceVariableWithResponse(t.Context(), instanceKey, "var1")
+		assert.NotNil(t, response.JSON409)
+		assert.Equal(t, "CONFLICT", response.JSON409.Code)
+		assert.Equal(t, "can delete variables only for process instances in active state", response.JSON409.Message)
+	})
+
+	t.Run("Return CONFLICT(409) response when trying to cancel process instance variable in non active state ", func(t *testing.T) {
+		cancelResponse, _ := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instanceKey)
 		assert.NotNil(t, cancelResponse.JSON409)
 		assert.Equal(t, "CONFLICT", cancelResponse.JSON409.Code)
 		assert.Contains(t, cancelResponse.JSON409.Message, "cannot cancel process instance")

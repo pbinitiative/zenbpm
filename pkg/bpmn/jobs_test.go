@@ -35,8 +35,8 @@ func TestAJobCanFailAndMovesProcessToFailedState(t *testing.T) {
 	h := bpmnEngine.NewTaskHandler().Id("id").Handler(jobFailHandler)
 	defer bpmnEngine.RemoveHandler(h)
 
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Error(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Error(t, err)
 
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
@@ -64,7 +64,7 @@ func TestSimpleCountLoop(t *testing.T) {
 	vars := map[string]interface{}{}
 	vars[varCounter] = int64(0)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, int64(4), instance.ProcessInstance().GetVariable(varCounter))
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
@@ -90,8 +90,8 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	})
 	defer bpmnEngine.RemoveHandler(validate)
 
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, vars) // should stop at the intermediate message catch event
+	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg" {
@@ -107,7 +107,7 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 		}
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	assert.True(t, instance.ProcessInstance().GetVariable(varHasReachedMaxAttempts).(bool))
@@ -222,8 +222,8 @@ func TestJobFailsOnInvalidOutputMapping(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h)
 
 	// when
-	pi, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Error(t, zerr)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.Error(t, err)
 
 	// then
 	assert.Equal(t, "invalid-output", cp.CallPath)
@@ -406,8 +406,8 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 	// given
 	ah := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(ah)
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 	assert.Equal(t, "id-a-1", cp.CallPath)
 
@@ -430,8 +430,8 @@ func TestMissingTaskHandlersBreakExecutionAndCanBeContinuedLater(t *testing.T) {
 func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
 
-	pi, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	foundServiceJob := runtime.Job{}
 	for _, job := range engineStorage.Jobs {
@@ -442,7 +442,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	}
 	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
 
-	err := bpmnEngine.JobCompleteByKey(t.Context(), foundServiceJob.Key, foundServiceJob.Variables)
+	err = bpmnEngine.JobCompleteByKey(t.Context(), foundServiceJob.Key, foundServiceJob.Variables)
 	assert.NoError(t, err)
 
 	serviceToken := runtime.ExecutionToken{}
@@ -494,8 +494,8 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 func TestJobFailIsHandledCorrectly(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/service-task-input-output.bpmn")
 
-	pi, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	foundServiceJob := runtime.Job{}
 	for _, job := range engineStorage.Jobs {
@@ -506,7 +506,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	}
 	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
 
-	err := bpmnEngine.JobFailByKey(t.Context(), foundServiceJob.Key, "testing fail job", nil, nil)
+	err = bpmnEngine.JobFailByKey(t.Context(), foundServiceJob.Key, "testing fail job", nil, nil)
 	assert.NoError(t, err)
 
 	for _, job := range engineStorage.Jobs {

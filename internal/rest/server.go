@@ -516,10 +516,20 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 func (s *Server) CompleteJob(ctx context.Context, request public.CompleteJobRequestObject) (public.CompleteJobResponseObject, error) {
 	err := s.node.CompleteJob(ctx, request.JobKey, ptr.Deref(request.Body.Variables, map[string]any{}))
 	if err != nil {
-		return public.CompleteJob502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CompleteJob502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.CompleteJob400JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.CompleteJob404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.CompleteJob500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.CompleteJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.CompleteJob201Response{}, nil
 }
@@ -784,7 +794,6 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	parentInstanceKey := ptr.Deref(request.Params.ParentProcessInstanceKey, int64(0))
 	var state, createdFrom, createdTo *int64
 	if request.Params.State != nil {
-		supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
 		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
 		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
 		switch *request.Params.State {
@@ -797,6 +806,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		case public.GetProcessInstancesParamsStateFailed:
 			state = ptr.To(int64(runtime.ActivityStateFailed))
 		default:
+			supportedStates := [...]public.GetProcessInstancesParamsState{public.GetProcessInstancesParamsStateActive, public.GetProcessInstancesParamsStateCompleted, public.GetProcessInstancesParamsStateTerminated, public.GetProcessInstancesParamsStateFailed}
 			return public.GetProcessInstances400JSONResponse(
 				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
 			), nil
@@ -1288,17 +1298,26 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		case public.JobStateTerminated:
 			reqState = ptr.To(runtime.ActivityStateActive)
 		default:
-			panic("unexpected public.JobState")
+			supportedStates := [...]public.JobState{public.JobStateActive, public.JobStateCompleted, public.JobStateTerminated}
+			return public.GetJobs400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetJobsRequest state: %v, supported: %v", *request.Params.State, supportedStates)).ToApiError(),
+			), nil
 		}
 	}
 
 	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
 	jobs, err := s.node.GetJobs(ctx, *request.Params.Page, *request.Params.Size, request.Params.JobType, reqState, request.Params.Assignee, request.Params.ProcessInstanceKey, sort)
 	if err != nil {
-		return public.GetJobs502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetJobs502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetJobs500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	jobsPage := public.GetJobs200JSONResponse{
@@ -1322,10 +1341,7 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			jobVars := make(map[string]any)
 			err = json.Unmarshal(job.GetVariables(), &jobVars)
 			if err != nil {
-				return public.GetJobs500JSONResponse{
-					Code:    "INTERNAL_SERVER_ERROR",
-					Message: err.Error(),
-				}, nil
+				return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 			}
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
@@ -1347,20 +1363,24 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject) (public.GetJobResponseObject, error) {
 	job, err := s.node.GetJob(ctx, request.JobKey)
 	if err != nil {
-		// Not your cluster error type → treat as internal (or map generically)
-		return public.GetJob500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetJob502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.GetJob404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetJob500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	jobVars := make(map[string]any)
 	err = json.Unmarshal(job.GetVariables(), &jobVars)
 	if err != nil {
-		return public.GetJob500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	return public.GetJob200JSONResponse{

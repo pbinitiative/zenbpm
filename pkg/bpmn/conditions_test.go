@@ -26,7 +26,7 @@ func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, "task-b", cp.CallPath)
@@ -78,7 +78,7 @@ func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, "task-a", cp.CallPath)
@@ -104,7 +104,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, "task-default", cp.CallPath)
@@ -207,7 +207,7 @@ func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, cp.CallPath, "task-b")
@@ -257,7 +257,7 @@ func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 
 	// when
 	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// then
 	assert.Equal(t, "task-a,task-b", cp.CallPath)

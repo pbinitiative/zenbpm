@@ -32,13 +32,13 @@ func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T)
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	pi, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "globalMsgRef" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -54,7 +54,7 @@ func TestIntermediateCatchEventACatchEventProducesAnActiveSubscription(t *testin
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
 	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	subscriptions := engineStorage.MessageSubscriptions
 	var subscription runtime.MessageSubscription
@@ -76,10 +76,10 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-catch-event.bpmn")
-	pi1, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
-	assert.Nil(t, zerr)
-	pi2, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
-	assert.Error(t, zerr)
+	pi1, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
+	assert.NoError(t, err)
+	pi2, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
+	assert.Error(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "globalMsgRef" {
@@ -90,7 +90,7 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 		}
 	}
 
-	pi1, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi1.ProcessInstance().Key)
+	pi1, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi1.ProcessInstance().Key)
 	assert.NoError(t, err)
 	pi2, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi2.ProcessInstance().Key)
 	assert.NoError(t, err)
@@ -165,8 +165,8 @@ func TestMultipleIntermediateCatchEventsPossible(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(h2)
 	h3 := bpmnEngine.NewTaskHandler().Id("task3").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h3)
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-2" {
@@ -175,7 +175,7 @@ func TestMultipleIntermediateCatchEventsPossible(t *testing.T) {
 		}
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -188,31 +188,31 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndMergedCOMPLETED(t *testin
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-1" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-2" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-3" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	// then
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
@@ -222,12 +222,12 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndMergedACTIVE(t *testing.T
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-merged.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-2" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -240,15 +240,15 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.State != runtime.ActivityStateActive {
 			continue
 		}
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 		assert.NoError(t, err)
 	}
 
@@ -256,7 +256,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(
 		if message.State != runtime.ActivityStateActive {
 			continue
 		}
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 		assert.NoError(t, err)
 	}
 
@@ -264,11 +264,11 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(
 		if message.State != runtime.ActivityStateActive {
 			continue
 		}
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 		assert.NoError(t, err)
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -279,12 +279,12 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayACTIVE(t *
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-parallel.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 		assert.NoError(t, err)
 	}
 
@@ -296,31 +296,31 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayCOMPLETED
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-1" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-2" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "msg-event-3" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 		}
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -331,8 +331,8 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayACTIVE(t 
 	cleanUpMessageSubscriptions()
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-multiple-intermediate-catch-events-exclusive.bpmn")
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
@@ -342,7 +342,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayACTIVE(t 
 		}
 	}
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -583,8 +583,8 @@ func TestMessageEventMultiInstanceBusinessRule(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_business_rule.bpmn")
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
 
@@ -592,14 +592,14 @@ func TestMessageEventMultiInstanceBusinessRule(t *testing.T) {
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "boundary message" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 			count++
 		}
 	}
 	assert.Equal(t, 1, count)
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -627,8 +627,8 @@ func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_business_rule.bpmn")
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
 
@@ -636,14 +636,14 @@ func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "boundary message" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 			count++
 		}
 	}
 	assert.Equal(t, 1, count)
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -678,8 +678,8 @@ func TestMessageEventMultiInstance(t *testing.T) {
 
 			variableContext := make(map[string]interface{}, 1)
 			variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
-			instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-			assert.Nil(t, zerr)
+			instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+			assert.NoError(t, err)
 
 			time.Sleep(1 * time.Second)
 
@@ -687,14 +687,14 @@ func TestMessageEventMultiInstance(t *testing.T) {
 			count := 0
 			for _, message := range engineStorage.MessageSubscriptions {
 				if message.Name == "boundary message" {
-					err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+					err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 					assert.NoError(t, err)
 					count++
 				}
 			}
 			assert.Equal(t, 1, count)
 
-			instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+			instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 			assert.NoError(t, err)
 
 			// then
@@ -724,22 +724,22 @@ func TestMessageEventMultiInstanceCallActivity(t *testing.T) {
 
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
 
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "boundary message" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 			count++
 		}
 	}
 	assert.Equal(t, 1, count)
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then
@@ -767,8 +767,8 @@ func TestMessageEventMultiInstanceParallelCallActivity(t *testing.T) {
 
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
 
@@ -776,14 +776,14 @@ func TestMessageEventMultiInstanceParallelCallActivity(t *testing.T) {
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
 		if message.Name == "boundary message" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
 			assert.NoError(t, err)
 			count++
 		}
 	}
 	assert.Equal(t, 1, count)
 
-	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 
 	// then

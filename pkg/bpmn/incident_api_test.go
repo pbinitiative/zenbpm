@@ -25,8 +25,8 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 	}
 
 	// when
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Error(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	assert.Error(t, err)
 
 	// then
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
@@ -58,8 +58,8 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	}
 
 	// when
-	instance, zerr := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
-	assert.Error(t, zerr)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	assert.Error(t, err)
 
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)

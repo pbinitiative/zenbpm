@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
@@ -443,18 +442,18 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	if err != nil {
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
-		return processInstance, nil, zenerr.TechnicalError(err)
+		return processInstance, nil, err
 	}
 
 	err = batch.Flush(ctx)
 	if err != nil {
 		return processInstance, activeTokens,
-			zenerr.TechnicalError(fmt.Errorf("failed to modify process instance %d: %w", processInstance.ProcessInstance().Key, err))
+			fmt.Errorf("failed to modify process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
 	err = engine.RunProcessInstance(ctx, processInstance, activeTokens)
 	if err != nil {
-		return processInstance, activeTokens, zenerr.TechnicalError(err)
+		return processInstance, activeTokens, err
 	}
 
 	return processInstance, activeTokens, nil

@@ -217,7 +217,7 @@ func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest)
 	err = s.jobManager.CompleteJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), vars)
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, storage.ErrNotFound) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to complete job %d: %w", req.GetKey(), err))
@@ -282,7 +282,7 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 
 	if err != nil && instance == nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, sql.ErrNoRows) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process definition %d not found: %w", req.GetDefinitionKey(), err))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance: %w", err))
@@ -326,7 +326,7 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 	instance, err := engine.CreateInstanceWithStartingElements(ctx, req.GetDefinitionKey(), req.StartingElementIds, vars, nil)
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, storage.ErrNotFound) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process definition %d not found: %w", req.GetDefinitionKey(), err))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to create process instance on elements from process definition %d: %w", req.GetDefinitionKey(), err))
@@ -371,7 +371,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 	instance, tokens, err := engine.ModifyInstance(ctx, *req.ProcessInstanceKey, req.ElementInstanceIdsToTerminate, req.ElementIdsToStartInstance, vars)
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, storage.ErrNotFound) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to modify process instance %d: %w", *req.ProcessInstanceKey, err))
@@ -421,7 +421,7 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 	instance, err := engine.DeleteInstanceVariable(ctx, *req.ProcessInstanceKey, req.GetVariable())
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, storage.ErrNotFound) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to delete process instance variable: %w", err))
@@ -459,7 +459,7 @@ func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelPro
 	err := engine.CancelInstanceByKey(ctx, *req.ProcessInstanceKey)
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, storage.ErrNotFound) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
 		} else if errors.Is(err, bpmn.InvalidStateError) {
 			zerr = zenerr.Conflict(err)
@@ -964,7 +964,7 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 
 	if err != nil {
 		var zerr *zenerr.ZenError
-		if errors.Is(err, sql.ErrNoRows) {
+		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetJobKey()))
 		} else {
 			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get job %d: %w", req.GetJobKey(), err))
@@ -1288,7 +1288,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 		ExecutionToken: req.GetExecutionTokenKey(),
 		State:          int64(runtime.ActivityStateActive),
 	})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !isErrNotFound(err) {
 		err := fmt.Errorf("failed to find message subscriptions %d", partitionId)
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
@@ -1589,4 +1589,8 @@ func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*p
 	return &proto.PprofServerStopResult{
 		Error: nil,
 	}, nil
+}
+
+func isErrNotFound(err error) bool {
+	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound)
 }

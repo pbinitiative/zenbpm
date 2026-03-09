@@ -121,13 +121,13 @@ func TestRestApiJob(t *testing.T) {
 func TestRestApiJobBadRequestResponse(t *testing.T) {
 	t.Run("test BadRequest response", func(t *testing.T) {
 		response, _ := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
-			State: (*zenclient.JobState)(ptr.To("non-exisintg-state")),
+			State: (*zenclient.JobState)(ptr.To("non-existing-state")),
 		})
 		assert.Nil(t, response.JSON200)
 		assert.NotNil(t, response.JSON400)
 		assert.Equal(t, "BAD_REQUEST", response.JSON400.Code)
 		assert.Equal(t,
-			"unexpected GetJobsRequest state: non-exisintg-state, supported: [active completed terminated]",
+			"unexpected GetJobsRequest state: non-existing-state, supported: [active completed terminated]",
 			response.JSON400.Message,
 		)
 	})

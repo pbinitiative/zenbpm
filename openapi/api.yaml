@@ -447,18 +447,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The provided BPMN file is invalid: missing required 'process' element"
         409:
           description: Conflict - process definition already exists
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "CONFLICT"
+                message: "A process definition with the same BPMN process ID and version already exists"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while processing the BPMN file"
         502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to redirect request to responsible node"
     get:
       operationId: getProcessDefinitions
       summary: Get list of process definitions
@@ -529,12 +547,24 @@ paths:
                 size: 10
                 count: 3
                 totalCount: 3
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The request parameters are invalid"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving process definitions"
 
   /process-definitions/{processDefinitionKey}:
     get:
@@ -574,12 +604,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The provided processDefinitionKey is invalid"
+        404:
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "No process definition found for the given key"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving the process definition"
 
   /process-definitions/{processDefinitionKey}/statistics:
     get:
@@ -620,12 +665,42 @@ paths:
                       Task_CreditCheck:
                         activeCount: 6
                         incidentCount: 3
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The provided processDefinitionKey is invalid"
+        404:
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "No process definition found for the given key"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving process definition statistics"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to redirect request to responsible node"
 
   /process-definitions/statistics:
     get:
@@ -696,12 +771,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessDefinitionStatisticsPage"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370498"
+                        version: 1
+                        bpmnProcessId: "loan-application"
+                        name: "Loan Application Process"
+                        instanceCount: 10
+                        incidentCount: 5
+                      - key: "4503599627370499"
+                        version: 2
+                        bpmnProcessId: "loan-application"
+                        name: "Loan Application Process"
+                        instanceCount: 7
+                        incidentCount: 2
+                  - partition: 2
+                    items:
+                      - key: "4503599627370500"
+                        version: 1
+                        bpmnProcessId: "credit-check"
+                        name: "Credit Check Process"
+                        instanceCount: 15
+                        incidentCount: 3
+                page: 1
+                size: 10
+                count: 3
+                totalCount: 3 
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The request parameters are invalid"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving process definition statistics"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to redirect request to responsible node"
 
   /process-instances:
     post:

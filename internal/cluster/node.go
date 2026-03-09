@@ -416,7 +416,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		}
 	}
 	if errJoin != nil {
-		return DeployResult{definitionKey.Int64(), false}, errJoin
+		return DeployResult{definitionKey.Int64(), false}, zenerr.ClusterError(errJoin)
 	}
 	return DeployResult{definitionKey.Int64(), false}, nil
 }
@@ -526,7 +526,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 	// Get storage for the selected partition
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to get partition store: %w", err)
+		return proto.ProcessDefinitionsPage{}, zenerr.TechnicalError(fmt.Errorf("failed to get partition store: %w", err))
 	}
 
 	latest := 0
@@ -542,7 +542,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 		Limit:               int64(size),
 	})
 	if err != nil {
-		return proto.ProcessDefinitionsPage{}, fmt.Errorf("failed to find process definitions: %w", err)
+		return proto.ProcessDefinitionsPage{}, zenerr.TechnicalError(fmt.Errorf("failed to find process definitions: %w", err))
 	}
 
 	resp := make([]*proto.ProcessDefinition, 0, len(dbDefinitions))
@@ -568,11 +568,14 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId string) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get node db to get process definition: %w", err))
 	}
 	def, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
-		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return proto.ProcessDefinition{}, zenerr.NotFound(fmt.Errorf("process definition with id %s not found", processId))
+		}
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to read process definition from database: %w", err))
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
@@ -586,11 +589,14 @@ func (node *ZenNode) GetLatestProcessDefinition(ctx context.Context, processId s
 func (node *ZenNode) GetProcessDefinition(ctx context.Context, key int64) (proto.ProcessDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.ProcessDefinition{}, fmt.Errorf("failed to get process definition: %w", err)
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get node db to get process definition: %w", err))
 	}
 	def, err := db.Queries.FindProcessDefinitionByKey(ctx, key)
 	if err != nil {
-		return proto.ProcessDefinition{}, fmt.Errorf("failed to read process definition from database: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return proto.ProcessDefinition{}, zenerr.NotFound(fmt.Errorf("process definition with key %d not found", key))
+		}
+		return proto.ProcessDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to read process definition from database: %w", err))
 	}
 	return proto.ProcessDefinition{
 		Key:        &def.Key,
@@ -608,23 +614,22 @@ func (node *ZenNode) GetProcessDefinitionElementStatistics(ctx context.Context, 
 	for partitionID := range state.Partitions {
 		follower, err := state.GetPartitionFollower(partitionID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read follower node to get element statistics: %w", err)
+			return nil, zenerr.ClusterError(fmt.Errorf("failed to read follower node to get element statistics: %w", err))
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get client to get element statistics: %w", err)
+			return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get element statistics: %w", err))
 		}
 		resp, err := client.GetProcessDefinitionElementStatistics(ctx, &proto.GetProcessDefinitionElementStatisticsRequest{
 			ProcessDefinitionKey: &processDefinitionKey,
 			Partitions:           []uint32{partitionID},
 		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("failed to get element statistics from partition %d", partitionID)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", e, err)
-			} else if resp.Error != nil {
-				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-			}
+		e := fmt.Errorf("failed to get element statistics from partition %d", partitionID)
+		if resp != nil && resp.Error != nil {
+			return nil, zenerr.ToZenError(resp.Error, e)
+		}
+		if err != nil {
+			return nil, zenerr.TechnicalError(fmt.Errorf("%w: %w", e, err))
 		}
 		result = append(result, resp.Partitions...)
 	}
@@ -648,11 +653,11 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 	for partitionID := range state.Partitions {
 		follower, err := state.GetPartitionFollower(partitionID)
 		if err != nil {
-			return result, fmt.Errorf("failed to read follower node to get process definition statistics: %w", err)
+			return nil, zenerr.ClusterError(fmt.Errorf("failed to read follower node to get process definition statistics: %w", err))
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return result, fmt.Errorf("failed to get client to get process definition statistics: %w", err)
+			return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get process definition statistics: %w", err))
 		}
 
 		resp, err := client.GetProcessDefinitionStatistics(ctx, &proto.GetProcessDefinitionStatisticsRequest{
@@ -665,13 +670,12 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 			Name:                       name,
 			Sort:                       (*string)(sort),
 		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("failed to get process definition statistics from partition %d", partitionID)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", e, err)
-			} else if resp.Error != nil {
-				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-			}
+		e := fmt.Errorf("failed to get process definition statistics from partition %d", partitionID)
+		if resp != nil && resp.Error != nil {
+			return nil, zenerr.ToZenError(resp.Error, e)
+		}
+		if err != nil {
+			return nil, zenerr.TechnicalError(fmt.Errorf("%w: %w", e, err))
 		}
 		result = append(result, resp.Partitions...)
 	}

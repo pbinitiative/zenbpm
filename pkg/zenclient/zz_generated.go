@@ -4197,6 +4197,7 @@ type GetProcessDefinitionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionsPage
+	JSON400      *Error
 	JSON500      *Error
 }
 
@@ -4224,6 +4225,7 @@ type CreateProcessDefinitionResponse struct {
 	}
 	JSON400 *Error
 	JSON409 *Error
+	JSON500 *Error
 	JSON502 *Error
 }
 
@@ -4247,7 +4249,9 @@ type GetProcessDefinitionStatisticsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionStatisticsPage
+	JSON400      *Error
 	JSON500      *Error
+	JSON502      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -4271,6 +4275,7 @@ type GetProcessDefinitionResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *ProcessDefinitionDetail
 	JSON400      *Error
+	JSON404      *Error
 	JSON500      *Error
 }
 
@@ -4294,7 +4299,10 @@ type GetProcessDefinitionElementStatisticsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *ElementStatisticsPartitions
+	JSON400      *Error
+	JSON404      *Error
 	JSON500      *Error
+	JSON502      *Error
 }
 
 // Status returns HTTPResponse.Status
@@ -5518,6 +5526,13 @@ func ParseGetProcessDefinitionsResponse(rsp *http.Response) (*GetProcessDefiniti
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5567,6 +5582,13 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5600,12 +5622,26 @@ func ParseGetProcessDefinitionStatisticsResponse(rsp *http.Response) (*GetProces
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 
@@ -5640,6 +5676,13 @@ func ParseGetProcessDefinitionResponse(rsp *http.Response) (*GetProcessDefinitio
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -5673,12 +5716,33 @@ func ParseGetProcessDefinitionElementStatisticsResponse(rsp *http.Response) (*Ge
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
 
 	}
 

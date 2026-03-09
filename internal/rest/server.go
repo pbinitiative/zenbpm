@@ -899,16 +899,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	partitionedInstances, err := s.node.GetProcessInstances(
 		ctx,
 		&proto.GetProcessInstancesRequest{
-			Page:          request.Params.Page,
-			Size:          request.Params.Size,
-			DefinitionKey: &definitionKey,
-			ParentKey:     &parentInstanceKey,
-			BusinessKey:   request.Params.BusinessKey,
-			ProcessId:     request.Params.BpmnProcessId,
-			State:         state,
-			CreatedFrom:   createdFrom,
-			CreatedTo:     createdTo,
-			SortByOrder:   (*string)(sortByOrder),
+			Page:               request.Params.Page,
+			Size:               request.Params.Size,
+			DefinitionKey:      &definitionKey,
+			ParentKey:          &parentInstanceKey,
+			BusinessKey:        request.Params.BusinessKey,
+			ProcessId:          request.Params.BpmnProcessId,
+			CreatedFrom:        createdFrom,
+			CreatedTo:          createdTo,
+			State:              state,
+			ShowChildProcesses: request.Params.IncludeChildProcesses,
+			SortByOrder:        (*string)(sortByOrder),
 		},
 	)
 	if err != nil {
@@ -958,16 +959,17 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 			}
 			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
 				ActiveElementInstances: respActiveElementInstances,
+				BpmnProcessId:          instance.ProcessId,
+				BusinessKey:            instance.BusinessKey,
 				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
 				Key:                    instance.GetKey(),
-				BpmnProcessId:          instance.ProcessId,
 				ProcessDefinitionKey:   instance.GetDefinitionKey(),
+				ProcessType:            getRestProcessInstanceType(runtime.ProcessType(instance.GetType())),
 				State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
-				BusinessKey:            instance.BusinessKey,
 				Variables:              vars,
 			}
-			if instance.GetParentKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentKey())
+			if instance.GetParentInstanceKey() != 0 {
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
 			}
 		}
 	}
@@ -1017,6 +1019,131 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
 		Variables:              vars,
 	}, nil
+}
+
+func (s *Server) GetChildProcessInstances(ctx context.Context, request public.GetChildProcessInstancesRequestObject) (public.GetChildProcessInstancesResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+
+	var state *int64
+	if request.Params.State != nil {
+		supportedStates := [...]public.GetChildProcessInstancesParamsState{public.GetChildProcessInstancesParamsStateActive, public.GetChildProcessInstancesParamsStateCompleted, public.GetChildProcessInstancesParamsStateTerminated, public.GetChildProcessInstancesParamsStateFailed}
+		// TODO: input "state" filter values (active, completed, terminated, failed) are different from the response
+		// output values we return (ActivityStateActive, ActivityStateCompleted, ...). Unify the input/output values.
+		switch *request.Params.State {
+		case public.GetChildProcessInstancesParamsStateActive:
+			state = ptr.To(int64(runtime.ActivityStateActive))
+		case public.GetChildProcessInstancesParamsStateCompleted:
+			state = ptr.To(int64(runtime.ActivityStateCompleted))
+		case public.GetChildProcessInstancesParamsStateTerminated:
+			state = ptr.To(int64(runtime.ActivityStateTerminated))
+		case public.GetChildProcessInstancesParamsStateFailed:
+			state = ptr.To(int64(runtime.ActivityStateFailed))
+		default:
+			return public.GetChildProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.state: %v, supported: %v", *request.Params.State, supportedStates),
+			}, nil
+		}
+	}
+	var sortByDbColumn *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		switch *request.Params.SortBy {
+		case public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState:
+			sortByDbColumn = &s
+		default:
+			supportedSortBy := []public.GetChildProcessInstancesParamsSortBy{public.GetChildProcessInstancesParamsSortByKey, public.GetChildProcessInstancesParamsSortByState}
+			return public.GetChildProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
+			}, nil
+		}
+	}
+	if request.Params.SortOrder != nil {
+		supportedSortOrder := []public.GetChildProcessInstancesParamsSortOrder{public.GetChildProcessInstancesParamsSortOrderAsc, public.GetChildProcessInstancesParamsSortOrderDesc}
+		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
+			return public.GetChildProcessInstances400JSONResponse{
+				Code:    "TODO",
+				Message: fmt.Sprintf("unexpected GetChildProcessInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
+			}, nil
+		}
+	} else {
+		request.Params.SortOrder = ptr.To(public.GetChildProcessInstancesParamsSortOrderDesc)
+	}
+	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
+
+	var page int32
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+
+	var size int32 = 20
+	if request.Params.Size != nil {
+		size = *request.Params.Size
+	}
+
+	partitionedInstances, err := s.node.GetChildProcessInstances(
+		ctx,
+		&proto.GetChildProcessInstancesRequest{
+			Page:              &page,
+			Size:              &size,
+			ParentInstanceKey: &request.ProcessInstanceKey,
+			State:             state,
+			SortByOrder:       (*string)(sortByOrder),
+		},
+	)
+	if err != nil {
+		return public.GetChildProcessInstances502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+
+	processInstancesPage := public.GetChildProcessInstances200JSONResponse{
+		Partitions: make([]public.PartitionProcessInstances, len(partitionedInstances)),
+		PartitionedPageMetadata: public.PartitionedPageMetadata{
+			Page: int(*request.Params.Page),
+			Size: int(*request.Params.Size),
+		},
+	}
+
+	count := 0
+	totalCount := 0
+	for i, partitionInstances := range partitionedInstances {
+		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
+			Items:     make([]public.ProcessInstance, len(partitionInstances.GetInstances())),
+			Partition: int(partitionInstances.GetPartitionId()),
+		}
+		count += len(partitionInstances.GetInstances())
+		totalCount += int(partitionInstances.GetTotalCount())
+		for k, instance := range partitionInstances.GetInstances() {
+			vars := map[string]any{}
+			err = json.Unmarshal(instance.GetVariables(), &vars)
+			if err != nil {
+				return public.GetChildProcessInstances500JSONResponse{
+					Code:    "TODO",
+					Message: err.Error(),
+				}, nil
+			}
+			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
+				ActiveElementInstances: make([]public.ElementInstance, 0),
+				BpmnProcessId:          instance.ProcessId,
+				BusinessKey:            instance.BusinessKey,
+				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
+				Key:                    instance.GetKey(),
+				ProcessDefinitionKey:   instance.GetDefinitionKey(),
+				ProcessType:            getRestProcessInstanceType(runtime.ProcessType(instance.GetType())),
+				State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+				Variables:              vars,
+			}
+			if instance.GetParentInstanceKey() != 0 {
+				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+			}
+		}
+	}
+	processInstancesPage.Count = count
+	processInstancesPage.TotalCount = totalCount
+	return processInstancesPage, nil
 }
 
 func (s *Server) UpdateProcessInstanceVariables(ctx context.Context, request public.UpdateProcessInstanceVariablesRequestObject) (public.UpdateProcessInstanceVariablesResponseObject, error) {
@@ -1342,6 +1469,21 @@ func getRestProcessInstanceState(state runtime.ActivityState) public.ProcessInst
 	}
 }
 
+func getRestProcessInstanceType(state runtime.ProcessType) public.ProcessInstanceProcessType {
+	switch state {
+	case runtime.ProcessTypeDefault:
+		return public.ProcessInstanceProcessTypeDefault
+	case runtime.ProcessTypeSubProcess:
+		return public.ProcessInstanceProcessTypeSubprocess
+	case runtime.ProcessTypeCallActivity:
+		return public.ProcessInstanceProcessTypeCallActivity
+	case runtime.ProcessTypeMultiInstance:
+		return public.ProcessInstanceProcessTypeMultiInstance
+	default:
+		panic(fmt.Sprintf("unexpected runtime.ProcessType: %#v", state))
+	}
+}
+
 func (s *Server) GetIncidents(ctx context.Context, request public.GetIncidentsRequestObject) (public.GetIncidentsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 	var state *string
@@ -1465,6 +1607,7 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
 			Key:                  process.GetKey(),
 			ProcessDefinitionKey: process.GetDefinitionKey(),
+			ProcessType:          getRestProcessInstanceType(runtime.ProcessType(process.GetType())),
 			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
 			Variables:            processVars,
 		},

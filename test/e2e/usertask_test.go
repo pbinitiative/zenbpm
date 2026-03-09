@@ -43,5 +43,4 @@ func TestRestApiUsertask(t *testing.T) {
 			assert.Equal(t, "static", ptr.Deref(job.Assignee, ""))
 		}
 	}
-
 }

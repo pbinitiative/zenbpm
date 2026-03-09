@@ -88,15 +88,18 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 
 	if listener.CancellActivity {
 		// cancel job
-		job, err := engine.persistence.FindJobByElementID(ctx, instance.ProcessInstance().Key, token.ElementId)
+		jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, token.Key, []runtime.ActivityState{runtime.ActivityStateActive})
 		if err != nil {
 			return nil, fmt.Errorf("failed to find job for token %d: %w", token.Key, err)
 		}
-		job.State = runtime.ActivityStateTerminated
-		err = batch.SaveJob(ctx, job)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+		for i := range jobs {
+			jobs[i].State = runtime.ActivityStateTerminated
+			err = batch.SaveJob(ctx, jobs[i])
+			if err != nil {
+				return nil, fmt.Errorf("failed to save changes to job %d: %w", jobs[i].Key, err)
+			}
 		}
+
 		err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
 		if err != nil {
 			return nil, err

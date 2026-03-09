@@ -39,6 +39,7 @@ const (
 type ProcessInstance interface {
 	Type() ProcessType
 	ProcessInstance() *ProcessInstanceData
+	GetParentProcessInstanceKey() *int64
 }
 
 type SubProcessInstance struct {
@@ -56,6 +57,10 @@ func (s *SubProcessInstance) Type() ProcessType {
 	return ProcessTypeSubProcess
 }
 
+func (s *SubProcessInstance) GetParentProcessInstanceKey() *int64 {
+	return &s.ParentProcessExecutionToken.ProcessInstanceKey
+}
+
 type MultiInstanceInstance struct {
 	ParentProcessExecutionToken           ExecutionToken
 	ParentProcessTargetElementInstanceKey int64
@@ -69,6 +74,10 @@ func (m *MultiInstanceInstance) ProcessInstance() *ProcessInstanceData {
 
 func (m *MultiInstanceInstance) Type() ProcessType {
 	return ProcessTypeMultiInstance
+}
+
+func (m *MultiInstanceInstance) GetParentProcessInstanceKey() *int64 {
+	return &m.ParentProcessExecutionToken.ProcessInstanceKey
 }
 
 type CallActivityInstance struct {
@@ -85,6 +94,10 @@ func (c *CallActivityInstance) Type() ProcessType {
 	return ProcessTypeCallActivity
 }
 
+func (c *CallActivityInstance) GetParentProcessInstanceKey() *int64 {
+	return &c.ParentProcessExecutionToken.ProcessInstanceKey
+}
+
 type DefaultProcessInstance struct {
 	ProcessInstanceData
 }
@@ -95,6 +108,10 @@ func (d *DefaultProcessInstance) ProcessInstance() *ProcessInstanceData {
 
 func (d *DefaultProcessInstance) Type() ProcessType {
 	return ProcessTypeDefault
+}
+
+func (d *DefaultProcessInstance) GetParentProcessInstanceKey() *int64 {
+	return nil
 }
 
 type ProcessInstanceData struct {

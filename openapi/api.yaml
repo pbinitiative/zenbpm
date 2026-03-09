@@ -114,7 +114,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
+            enum: [ dmnDefinitionName, dmnResourceDefinitionId, version, key ]
           description: "Sort field"
         - $ref: "#/components/parameters/sortOrder"
         - name: dmnResourceDefinitionId
@@ -339,7 +339,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [evaluatedAt, key]
+            enum: [ evaluatedAt, key ]
           description: "Sort field"
         - $ref: "#/components/parameters/sortOrder"
       responses:
@@ -494,7 +494,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
+            enum: [ name, bpmnProcessId, bpmnProcessName, version, key ]
           description: "Sort field"
 
         - $ref: "#/components/parameters/sortOrder"
@@ -952,7 +952,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, state]
+            enum: [ createdAt, key, state ]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
@@ -971,8 +971,12 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, completed, terminated, failed]
+            enum: [ active, completed, terminated, failed ]
           description: Filter by state
+        - name: includeChildProcesses
+          in: query
+          schema:
+            type: boolean
       responses:
         200:
           description: List of running process instances
@@ -1080,6 +1084,112 @@ paths:
                 $ref: "#/components/schemas/Error"
         502:
           description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+
+  /process-instances/{processInstanceKey}/child-processes:
+    get:
+      summary: Get list of running child process instances
+      operationId: getChildProcessInstances
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          description: Page number (1-based indexing)
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 10
+          description: Number of items per page
+          example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [ key, state ]
+          description: Sort field (applies globally across partitions)
+        - $ref: "#/components/parameters/sortOrder"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [ active, completed, terminated, failed ]
+          description: Filter by state
+      responses:
+        200:
+          description: List of child process instances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessInstancePage"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      - key: "4503599627370501"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T14:30:25Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-456"
+                          amount: 1000
+                          applicationDate: "2025-08-22"
+                      - key: "4503599627370505"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T15:10:12Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-789"
+                          amount: 5000
+                          applicationDate: "2025-08-22"
+                  - partition: 2
+                    items:
+                      - key: "9007199254740992"
+                        processDefinitionKey: "4503599627370498"
+                        createdAt: "2025-08-22T15:45:33Z"
+                        state: "active"
+                        variables:
+                          customerId: "customer-101"
+                          amount: 7500
+                          applicationDate: "2025-08-22"
+                page: 1
+                size: 10
+                count: 3
+                totalCount: 3
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible nodes
           content:
             application/json:
               schema:
@@ -1263,7 +1373,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [resolved, unresolved]
+            enum: [ resolved, unresolved ]
         - name: page
           in: query
           schema:
@@ -1540,13 +1650,13 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, type, state]
+            enum: [ createdAt, key, type, state ]
           description: Sort field
         - name: sortOrder
           in: query
           schema:
             type: string
-            enum: [asc, desc]
+            enum: [ asc, desc ]
           description: Sort direction
       responses:
         200:
@@ -1788,7 +1898,7 @@ paths:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: ["flowNode-1", "flowNode-2"]
+              startingElementIds: [ "flowNode-1", "flowNode-2" ]
       responses:
         201:
           description: Process instance created
@@ -2186,7 +2296,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput: {}
+        decisionOutput: { }
     EvaluatedDecisionResult:
       type: object
       required:
@@ -2252,7 +2362,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue: {}
+        inputValue: { }
     EvaluatedDecisionOutput:
       type: object
       required:
@@ -2442,6 +2552,7 @@ components:
         - state
         - variables
         - activeElementInstances
+        - processType
       properties:
         key:
           type: integer
@@ -2466,6 +2577,13 @@ components:
         parentProcessInstanceKey:
           type: integer
           format: int64
+        processType:
+          type: string
+          enum:
+            - default
+            - multiInstance
+            - subprocess
+            - callActivity
         variables:
           type: object
         activeElementInstances:
@@ -2676,5 +2794,5 @@ components:
       in: query
       schema:
         type: string
-        enum: [asc, desc]
+        enum: [ asc, desc ]
       description: "Sort direction"

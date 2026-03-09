@@ -267,7 +267,7 @@ func (engine *Engine) terminateExecutionTokens(
 				}
 
 				// Cancel all jobs
-				jobs, err := engine.persistence.FindTokenJobsInState(ctx, activeToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
+				jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, activeToken.Key, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
 				if err != nil {
 					return nil, fmt.Errorf("failed to find jobs for execution token %d: %w", activeToken.Key, err)
 				}

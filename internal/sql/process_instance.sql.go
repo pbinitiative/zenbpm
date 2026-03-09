@@ -175,6 +175,7 @@ SELECT
 FROM
     process_instance AS pi
     INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+
 WHERE
     -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
     CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
@@ -209,35 +210,45 @@ WHERE
     END
     AND
     CASE WHEN ?6 IS NOT NULL THEN
-       pi.created_at >= ?6
+        EXISTS (
+            SELECT 1 FROM execution_token et
+            WHERE et.process_instance_key = pi.key
+              AND et.element_id = ?6
+        )
     ELSE
         1
     END
     AND
     CASE WHEN ?7 IS NOT NULL THEN
-       pi.created_at <= ?7
+       pi.created_at >= ?7
     ELSE
         1
     END
     AND
     CASE WHEN ?8 IS NOT NULL THEN
-       pi.state = ?8
+       pi.created_at <= ?8
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?9 IS NOT NULL THEN
+       pi.state = ?9
     ELSE
         1
     END
     AND
     -- workaround for sqlc
     (
-    CASE WHEN ?9 IS NULL AND ?10 IS NULL AND ?11 IS NULL AND ?12 IS NULL THEN
+    CASE WHEN ?10 IS NULL AND ?11 IS NULL AND ?12 IS NULL AND ?13 IS NULL THEN
        1
     ELSE
-         (?9 IS NOT NULL AND pi.process_type = ?9)
-         OR
          (?10 IS NOT NULL AND pi.process_type = ?10)
          OR
          (?11 IS NOT NULL AND pi.process_type = ?11)
          OR
          (?12 IS NOT NULL AND pi.process_type = ?12)
+         OR
+         (?13 IS NOT NULL AND pi.process_type = ?13)
     END
     )
     -- end of workaround
@@ -250,7 +261,7 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
   pi.created_at DESC
 
-LIMIT ?14 OFFSET ?13
+LIMIT ?15 OFFSET ?14
 `
 
 type FindProcessInstancesPageParams struct {
@@ -259,6 +270,7 @@ type FindProcessInstancesPageParams struct {
 	ParentInstanceKey       interface{} `json:"parent_instance_key"`
 	BusinessKey             interface{} `json:"business_key"`
 	BpmnProcessID           interface{} `json:"bpmn_process_id"`
+	ActivityID              interface{} `json:"activity_id"`
 	CreatedFrom             interface{} `json:"created_from"`
 	CreatedTo               interface{} `json:"created_to"`
 	State                   interface{} `json:"state"`
@@ -295,6 +307,7 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 		arg.ParentInstanceKey,
 		arg.BusinessKey,
 		arg.BpmnProcessID,
+		arg.ActivityID,
 		arg.CreatedFrom,
 		arg.CreatedTo,
 		arg.State,

@@ -64,6 +64,7 @@ const (
 	ZenService_CompleteJob_FullMethodName                           = "/cluster.ZenService/CompleteJob"
 	ZenService_FailJob_FullMethodName                               = "/cluster.ZenService/FailJob"
 	ZenService_ReassignJob_FullMethodName                           = "/cluster.ZenService/ReassignJob"
+	ZenService_AssignJobToAssignee_FullMethodName                   = "/cluster.ZenService/AssignJobToAssignee"
 	ZenService_GetProcessDefinitionStatistics_FullMethodName        = "/cluster.ZenService/GetProcessDefinitionStatistics"
 	ZenService_GetProcessDefinitionElementStatistics_FullMethodName = "/cluster.ZenService/GetProcessDefinitionElementStatistics"
 )
@@ -133,6 +134,7 @@ type ZenServiceClient interface {
 	FailJob(ctx context.Context, in *FailJobRequest, opts ...grpc.CallOption) (*FailJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(ctx context.Context, in *ReassignJobRequest, opts ...grpc.CallOption) (*ReassignJobResponse, error)
+	AssignJobToAssignee(ctx context.Context, in *AssignJobToAssigneeRequest, opts ...grpc.CallOption) (*AssignJobToAssigneeResponse, error)
 	GetProcessDefinitionStatistics(ctx context.Context, in *GetProcessDefinitionStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionStatisticsResponse, error)
 	GetProcessDefinitionElementStatistics(ctx context.Context, in *GetProcessDefinitionElementStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionElementStatisticsResponse, error)
 }
@@ -597,6 +599,16 @@ func (c *zenServiceClient) ReassignJob(ctx context.Context, in *ReassignJobReque
 	return out, nil
 }
 
+func (c *zenServiceClient) AssignJobToAssignee(ctx context.Context, in *AssignJobToAssigneeRequest, opts ...grpc.CallOption) (*AssignJobToAssigneeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AssignJobToAssigneeResponse)
+	err := c.cc.Invoke(ctx, ZenService_AssignJobToAssignee_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *zenServiceClient) GetProcessDefinitionStatistics(ctx context.Context, in *GetProcessDefinitionStatisticsRequest, opts ...grpc.CallOption) (*GetProcessDefinitionStatisticsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProcessDefinitionStatisticsResponse)
@@ -682,6 +694,7 @@ type ZenServiceServer interface {
 	FailJob(context.Context, *FailJobRequest) (*FailJobResponse, error)
 	// Used by client to let server know that the job needs to be reassigned to another node
 	ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error)
+	AssignJobToAssignee(context.Context, *AssignJobToAssigneeRequest) (*AssignJobToAssigneeResponse, error)
 	GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error)
 	GetProcessDefinitionElementStatistics(context.Context, *GetProcessDefinitionElementStatisticsRequest) (*GetProcessDefinitionElementStatisticsResponse, error)
 	mustEmbedUnimplementedZenServiceServer()
@@ -825,6 +838,9 @@ func (UnimplementedZenServiceServer) FailJob(context.Context, *FailJobRequest) (
 }
 func (UnimplementedZenServiceServer) ReassignJob(context.Context, *ReassignJobRequest) (*ReassignJobResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReassignJob not implemented")
+}
+func (UnimplementedZenServiceServer) AssignJobToAssignee(context.Context, *AssignJobToAssigneeRequest) (*AssignJobToAssigneeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssignJobToAssignee not implemented")
 }
 func (UnimplementedZenServiceServer) GetProcessDefinitionStatistics(context.Context, *GetProcessDefinitionStatisticsRequest) (*GetProcessDefinitionStatisticsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProcessDefinitionStatistics not implemented")
@@ -1627,6 +1643,24 @@ func _ZenService_ReassignJob_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ZenService_AssignJobToAssignee_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignJobToAssigneeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).AssignJobToAssignee(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_AssignJobToAssignee_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).AssignJobToAssignee(ctx, req.(*AssignJobToAssigneeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ZenService_GetProcessDefinitionStatistics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProcessDefinitionStatisticsRequest)
 	if err := dec(in); err != nil {
@@ -1837,6 +1871,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReassignJob",
 			Handler:    _ZenService_ReassignJob_Handler,
+		},
+		{
+			MethodName: "AssignJobToAssignee",
+			Handler:    _ZenService_AssignJobToAssignee_Handler,
 		},
 		{
 			MethodName: "GetProcessDefinitionStatistics",

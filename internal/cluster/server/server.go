@@ -654,8 +654,13 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 	}
 	instance, err := engine.FindProcessInstance(req.GetProcessInstanceKey())
 	if err != nil {
-		err := zenerr.NotFound(fmt.Errorf("failed to find process instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get process instance %d: %w", *req.ProcessInstanceKey, err))
+		}
+		return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	queries := s.controller.PartitionQueries(ctx, partitionId)
@@ -874,8 +879,13 @@ func (s *Server) AssignJobToAssignee(ctx context.Context, req *proto.AssignJobTo
 		assigneePtr = &assignee
 	}
 	if err := engine.JobAssignByKey(ctx, req.GetKey(), assigneePtr); err != nil {
-		zenErr := zenerr.NotFound(fmt.Errorf("failed to assign job %d: %w", req.GetKey(), err))
-		return &proto.AssignJobToAssigneeResponse{Error: zenErr.ToProtoError()}, nil
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("job %d not found: %w", req.GetKey(), err))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to assign job %d: %w", req.GetKey(), err))
+		}
+		return &proto.AssignJobToAssigneeResponse{Error: zerr.ToProtoError()}, nil
 	}
 	return &proto.AssignJobToAssigneeResponse{}, nil
 }
@@ -1056,7 +1066,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 			FilterTypeSubProcess:    sql.ToNullInt64(filterTypeSubProcess),
 			Offset:                  int64(req.GetSize()) * int64(req.GetPage()-1),
 			Size:                    int64(req.GetSize()),
-			ActivityID:           sql.ToNullString(req.ActivityId),
+			ActivityID:              sql.ToNullString(req.ActivityId),
 		})
 		if err != nil {
 			err := zenerr.TechnicalError(fmt.Errorf("failed to find process instances with definition key %d", req.DefinitionKey))

@@ -14,6 +14,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// JobAssignByKey sets (or clears) the assignee of a job. Pass nil to unassign.
+func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee *string) error {
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return newEngineErrorf("failed to find job with key: %d", jobKey)
+	}
+	job.Assignee = assignee
+	if err := engine.persistence.SaveJob(ctx, job); err != nil {
+		return newEngineErrorf("failed to save job assignee for key: %d", jobKey)
+	}
+	return nil
+}
+
 // JobFailByKey is used to mark external jobs as failed
 func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (retErr error) {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)

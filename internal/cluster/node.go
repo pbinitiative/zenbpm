@@ -459,6 +459,25 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 	return nil
 }
 
+func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) *zenerr.ZenError {
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+	}
+	resp, err := client.AssignJobToAssignee(ctx, &proto.AssignJobToAssigneeRequest{
+		Key:      &key,
+		Assignee: &assignee,
+	})
+	if err != nil {
+		return zenerr.TechnicalError(fmt.Errorf("client call to assign job failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to assign job failed"))
+	}
+	return nil
+}
+
 func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
@@ -1231,6 +1250,15 @@ func (node *ZenNode) JobCompleteByKey(ctx context.Context, jobKey int64, variabl
 		return err
 	}
 	return nil
+}
+
+func (node *ZenNode) JobAssignByKey(ctx context.Context, jobKey int64, assignee *string) error {
+	partitionId := zenflake.GetPartitionId(jobKey)
+	engine := node.controller.PartitionEngine(ctx, partitionId)
+	if engine == nil {
+		return fmt.Errorf("engine to assign job was not found on the node")
+	}
+	return engine.JobAssignByKey(ctx, jobKey, assignee)
 }
 
 func (node *ZenNode) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]any) error {

@@ -249,16 +249,16 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
-				return public.EvaluateDecision502JSONResponse(zerr.ToApiError()), nil
+				return public.EvaluateDecision502JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "cluster error"}), nil
 			case zenerr.NotFoundCode:
 				return public.EvaluateDecision404JSONResponse(zerr.ToApiError()), nil
 			case zenerr.BadRequestCode:
 				return public.EvaluateDecision400JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.EvaluateDecision500JSONResponse(zerr.ToApiError()), nil
+				return public.EvaluateDecision500JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "internal server error"}), nil
 			}
 		}
-		return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.EvaluateDecision500JSONResponse(public.Error{Code: "INTERNAL_ERROR", Message: "internal server error"}), nil
 	}
 
 	var decisionOutput any
@@ -388,12 +388,12 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
-				return public.GetDecisionInstances502JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstances502JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "cluster error"}), nil
 			default:
-				return public.GetDecisionInstances500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstances500JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "internal server error"}), nil
 			}
 		}
-		return public.GetDecisionInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDecisionInstances500JSONResponse(public.Error{Code: "INTERNAL_ERROR", Message: "internal server error"}), nil
 	}
 
 	decisionInstancesPage := public.GetDecisionInstances200JSONResponse{
@@ -436,14 +436,14 @@ func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDeci
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
-				return public.GetDecisionInstance502JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstance502JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "cluster error"}), nil
 			case zenerr.NotFoundCode:
 				return public.GetDecisionInstance404JSONResponse(zerr.ToApiError()), nil
 			default:
-				return public.GetDecisionInstance500JSONResponse(zerr.ToApiError()), nil
+				return public.GetDecisionInstance500JSONResponse(public.Error{Code: zerr.Code.ToString(), Message: "internal server error"}), nil
 			}
 		}
-		return public.GetDecisionInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+		return public.GetDecisionInstance500JSONResponse(public.Error{Code: "INTERNAL_ERROR", Message: "internal server error"}), nil
 	}
 	var evaluatedDecisions []dmn.EvaluatedDecisionResult
 	if instance.EvaluatedDecisions != nil {

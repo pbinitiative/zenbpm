@@ -207,7 +207,7 @@ func TestGetDecisionInstanceErrorResponses(t *testing.T) {
 		assert.Nil(t, resp.JSON200)
 		assert.NotNil(t, resp.JSON502)
 		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
-		assert.Equal(t, "failed to get follower node to get decision instance: partition not found", resp.JSON502.Message)
+		assert.Equal(t, "cluster error", resp.JSON502.Message)
 	})
 
 	t.Run("valid partition key but non-existing instance returns 404 NOT_FOUND", func(t *testing.T) {

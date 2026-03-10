@@ -1042,7 +1042,7 @@ func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKe
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
-		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get decision instance: %w", err))
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get client to get decision instance: %w", err))
 	}
 	resp, err := client.GetDecisionInstance(ctx, &proto.GetDecisionInstanceRequest{
 		DecisionInstanceKey: &decisionInstanceKey,
@@ -1068,11 +1068,11 @@ func (node *ZenNode) GetDecisionInstances(
 		getDecisionInstancesRequest.Partitions = []uint32{partitionId}
 		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
-			return result, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get decision instances: %w", err))
+			return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get decision instances: %w", err))
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return result, zenerr.TechnicalError(fmt.Errorf("failed to get client to get decision instances: %w", err))
+			return nil, zenerr.ClusterError(fmt.Errorf("failed to get client to get decision instances: %w", err))
 		}
 		resp, err := client.GetDecisionInstances(ctx, getDecisionInstancesRequest)
 		if err != nil {

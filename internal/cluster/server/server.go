@@ -25,6 +25,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	pkgdmn "github.com/pbinitiative/zenbpm/pkg/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -474,24 +475,14 @@ func (s *Server) CancelProcessInstance(ctx context.Context, req *proto.CancelPro
 func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisionRequest) (*proto.EvaluatedDRDResult, error) {
 	engine := s.GetRandomEngine(ctx)
 	if engine == nil {
-		err := fmt.Errorf("no engine available on this node")
-		return &proto.EvaluatedDRDResult{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		zerr := zenerr.TechnicalError(fmt.Errorf("no engine available on this node"))
+		return &proto.EvaluatedDRDResult{Error: zerr.ToProtoError()}, nil
 	}
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal decision variables: %w", err)
-		return &proto.EvaluatedDRDResult{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal decision variables: %w", err))
+		return &proto.EvaluatedDRDResult{Error: zerr.ToProtoError()}, nil
 	}
 
 	result, err := engine.GetDmnEngine().FindAndEvaluateDRD(
@@ -502,13 +493,14 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 		vars,
 	)
 	if err != nil {
-		err := fmt.Errorf("failed to create process instance: %w", err)
-		return &proto.EvaluatedDRDResult{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		var zerr *zenerr.ZenError
+		var notFoundErr *pkgdmn.DecisionNotFoundError
+		if errors.As(err, &notFoundErr) || isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("decision definition %s not found: %w", req.GetDecisionId(), err))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to evaluate decision: %w", err))
+		}
+		return &proto.EvaluatedDRDResult{Error: zerr.ToProtoError()}, nil
 	}
 
 	decisionOutput, err := json.Marshal(result.DecisionOutput)
@@ -716,24 +708,19 @@ func (s *Server) GetDecisionInstance(ctx context.Context, req *proto.GetDecision
 	partitionId := zenflake.GetPartitionId(req.GetDecisionInstanceKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
-		err := fmt.Errorf("queries for partition %d was not found", partitionId)
-		return &proto.GetDecisionInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		zerr := zenerr.TechnicalError(fmt.Errorf("queries for partition %d was not found", partitionId))
+		return &proto.GetDecisionInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	decisionInstance, err := queries.FindDecisionInstanceByKey(ctx, req.GetDecisionInstanceKey())
 	if err != nil {
-		err := fmt.Errorf("failed to find decision decisionInstance %d", req.GetDecisionInstanceKey())
-		return &proto.GetDecisionInstanceResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("decision instance %d not found", req.GetDecisionInstanceKey()))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to find decision instance %d: %w", req.GetDecisionInstanceKey(), err))
+		}
+		return &proto.GetDecisionInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	var processInstanceKey *int64
@@ -762,13 +749,8 @@ func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisio
 	for _, partitionId := range req.Partitions {
 		queries := s.controller.PartitionQueries(ctx, partitionId)
 		if queries == nil {
-			err := fmt.Errorf("queries for partition %d not found", partitionId)
-			return &proto.GetDecisionInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			zerr := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+			return &proto.GetDecisionInstancesResponse{Error: zerr.ToProtoError()}, nil
 		}
 		instances, err := queries.FindDecisionInstancesPage(ctx, sql.FindDecisionInstancesPageParams{
 			DmnResourceDefinitionKey: sql.ToNullInt64(req.DmnResourceDefinitionKey),
@@ -781,13 +763,8 @@ func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisio
 			Size:                     int64(req.GetSize()),
 		})
 		if err != nil {
-			err := fmt.Errorf("failed to find decision instances for request %v", req)
-			return &proto.GetDecisionInstancesResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+			zerr := zenerr.TechnicalError(fmt.Errorf("failed to find decision instances for request %v: %w", req, err))
+			return &proto.GetDecisionInstancesResponse{Error: zerr.ToProtoError()}, nil
 		}
 		totalCount := int32(0)
 		if len(instances) > 0 {

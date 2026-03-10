@@ -361,15 +361,15 @@ func (node *ZenNode) GetDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, decisionId string, versionTag string, variables map[string]any) (*proto.EvaluatedDRDResult, error) {
 	candidateNode, err := node.GetStatus().GetLeastStressedPartitionLeader()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node to evaluate decision: %w", err)
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get node to evaluate decision: %w", err))
 	}
 	client, err := node.client.For(candidateNode.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client to evaluate decision: %w", err)
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get client to evaluate decision: %w", err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal variables to evaluate decision: %w", err)
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to marshal variables to evaluate decision: %w", err))
 	}
 	resp, err := client.EvaluateDecision(ctx, &proto.EvaluateDecisionRequest{
 		BindingType: &bindingType,
@@ -378,9 +378,11 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 		Variables:   vars,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", fmt.Errorf("failed to find and evaluate decision %s", decisionId), err)
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to evaluate decision %s: %w", decisionId, err))
 	}
-
+	if resp.Error != nil {
+		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to evaluate decision %s", decisionId))
+	}
 	return resp, nil
 }
 
@@ -1036,24 +1038,21 @@ func (node *ZenNode) GetDecisionInstance(ctx context.Context, decisionInstanceKe
 	partitionId := zenflake.GetPartitionId(decisionInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get follower node to get decision instance: %w", err)
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get decision instance: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client to get decision instance: %w", err)
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get decision instance: %w", err))
 	}
 	resp, err := client.GetDecisionInstance(ctx, &proto.GetDecisionInstanceRequest{
 		DecisionInstanceKey: &decisionInstanceKey,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("failed to get decision instance from partition %d", partitionId)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get decision instance from partition %d: %w", partitionId, err))
 	}
-
+	if resp.Error != nil {
+		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to get decision instance from partition %d", partitionId))
+	}
 	return resp.DecisionInstance, nil
 }
 
@@ -1069,20 +1068,18 @@ func (node *ZenNode) GetDecisionInstances(
 		getDecisionInstancesRequest.Partitions = []uint32{partitionId}
 		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
-			return result, fmt.Errorf("failed to get follower node to get decision instances: %w", err)
+			return result, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get decision instances: %w", err))
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return result, fmt.Errorf("failed to get client to get decision instances: %w", err)
+			return result, zenerr.TechnicalError(fmt.Errorf("failed to get client to get decision instances: %w", err))
 		}
 		resp, err := client.GetDecisionInstances(ctx, getDecisionInstancesRequest)
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("failed to get decision instances from partition %d", partitionId)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", e, err)
-			} else if resp.Error != nil {
-				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-			}
+		if err != nil {
+			return nil, zenerr.TechnicalError(fmt.Errorf("failed to get decision instances from partition %d: %w", partitionId, err))
+		}
+		if resp.Error != nil {
+			return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to get decision instances from partition %d", partitionId))
 		}
 		result = append(result, resp.Partitions...)
 	}

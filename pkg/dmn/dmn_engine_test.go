@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
@@ -313,4 +314,13 @@ func loadBulkTestConfigs() ([]configuration, error) {
 	}
 
 	return configurations, nil
+}
+
+func TestFindAndEvaluateDRDNonExistingDecisionWrapsStorageErrNotFound(t *testing.T) {
+	engine := NewEngine(EngineWithStorage(inmemory.NewStorage()))
+
+	_, err := engine.FindAndEvaluateDRD(t.Context(), "latest", "non-existing-decision-id", "", nil)
+
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, storage.ErrNotFound), "error should wrap storage.ErrNotFound so the cluster layer can detect it as a 404")
 }

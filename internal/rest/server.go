@@ -226,6 +226,12 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 }
 
 func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDecisionRequestObject) (public.EvaluateDecisionResponseObject, error) {
+	if request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeDeployment {
+		return public.EvaluateDecision400JSONResponse(
+			zenerr.BadRequest(fmt.Errorf("bindingType 'deployment' is not supported")).ToApiError(),
+		), nil
+	}
+
 	var decision = request.DecisionId
 	if request.Body.DmnResourceDefinitionId != nil && request.Body.BindingType == public.EvaluateDecisionJSONBodyBindingTypeLatest {
 		decision = *request.Body.DmnResourceDefinitionId + "." + request.DecisionId
@@ -239,19 +245,26 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		ptr.Deref(request.Body.Variables, make(map[string]interface{})),
 	)
 	if err != nil {
-		return public.EvaluateDecision500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.EvaluateDecision502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.EvaluateDecision404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.EvaluateDecision400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.EvaluateDecision500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	var decisionOutput any
 	err = json.Unmarshal(result.GetDecisionOutput(), &decisionOutput)
 	if err != nil {
-		return public.EvaluateDecision500JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	evaluatedDecisions := make([]public.EvaluatedDecisionResult, 0, len(result.GetEvaluatedDecisions()))
@@ -269,10 +282,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 				}
 				err = json.Unmarshal(evaluatedOutput.GetOutputValue(), &resultEvaluatedOutput.OutputValue)
 				if err != nil {
-					return public.EvaluateDecision500JSONResponse{
-						Code:    "TODO",
-						Message: err.Error(),
-					}, nil
+					return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 				}
 				evaluatedOutputs = append(evaluatedOutputs, resultEvaluatedOutput)
 			}
@@ -288,10 +298,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 		resultDecisionOutput := make(map[string]any)
 		err = json.Unmarshal(result.GetDecisionOutput(), &resultDecisionOutput)
 		if err != nil {
-			return public.EvaluateDecision500JSONResponse{
-				Code:    "TODO",
-				Message: err.Error(),
-			}, nil
+			return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 		}
 
 		evaluatedInputs := make([]public.EvaluatedDecisionInput, 0, len(evaluatedDecision.GetEvaluatedInputs()))
@@ -303,10 +310,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, request public.EvaluateDe
 			}
 			err = json.Unmarshal(evaluatedInput.GetInputValue(), &resultEvaluatedInput.InputValue)
 			if err != nil {
-				return public.EvaluateDecision500JSONResponse{
-					Code:    "TODO",
-					Message: err.Error(),
-				}, nil
+				return public.EvaluateDecision500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 			}
 			evaluatedInputs = append(evaluatedInputs, resultEvaluatedInput)
 		}
@@ -349,19 +353,17 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 			sortByColumn = &s
 		default:
 			supportedSortBy := []public.GetDecisionInstancesParamsSortBy{public.GetDecisionInstancesParamsSortByKey, public.GetDecisionInstancesParamsSortByEvaluatedAt}
-			return public.GetDecisionInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetDecisionInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy),
-			}, nil
+			return public.GetDecisionInstances400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
+			), nil
 		}
 	}
 	if request.Params.SortOrder != nil {
 		supportedSortOrder := []public.GetDecisionInstancesParamsSortOrder{public.GetDecisionInstancesParamsSortOrderAsc, public.GetDecisionInstancesParamsSortOrderDesc}
 		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
-			return public.GetDecisionInstances400JSONResponse{
-				Code:    "TODO",
-				Message: fmt.Sprintf("unexpected GetDecisionInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder),
-			}, nil
+			return public.GetDecisionInstances400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetDecisionInstancesRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
+			), nil
 		}
 	} else {
 		request.Params.SortOrder = ptr.To(public.GetDecisionInstancesParamsSortOrderDesc)
@@ -382,10 +384,16 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		},
 	)
 	if err != nil {
-		return public.GetDecisionInstances502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetDecisionInstances502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetDecisionInstances500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetDecisionInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	decisionInstancesPage := public.GetDecisionInstances200JSONResponse{
@@ -424,19 +432,24 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 func (s *Server) GetDecisionInstance(ctx context.Context, request public.GetDecisionInstanceRequestObject) (public.GetDecisionInstanceResponseObject, error) {
 	instance, err := s.node.GetDecisionInstance(ctx, request.DecisionInstanceKey)
 	if err != nil {
-		return public.GetDecisionInstance502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetDecisionInstance502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.GetDecisionInstance404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetDecisionInstance500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetDecisionInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	var evaluatedDecisions []dmn.EvaluatedDecisionResult
 	if instance.EvaluatedDecisions != nil {
 		err = json.Unmarshal([]byte(*instance.EvaluatedDecisions), &evaluatedDecisions)
 		if err != nil {
-			return public.GetDecisionInstance500JSONResponse{
-				Code:    "TODO",
-				Message: err.Error(),
-			}, nil
+			return public.GetDecisionInstance500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 		}
 	}
 	var decisionOutput *json.RawMessage

@@ -39,7 +39,7 @@ func TestCallActivityStartsAndCompletes(t *testing.T) {
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -74,7 +74,7 @@ func TestCallActivityStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// wait for call activity process to be created
 	time.Sleep(1 * time.Second)
@@ -139,7 +139,7 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// wait for call activity process to be created
 	time.Sleep(1 * time.Second)
@@ -205,7 +205,7 @@ func TestSubProcessStartsAndCompletes(t *testing.T) {
 
 	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -252,7 +252,7 @@ func TestMultiInstanceServiceTaskStartsAndCompletesLocalJob(t *testing.T) {
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -301,7 +301,7 @@ func TestMultiInstanceServiceTaskStartsAndCompletesOnWorkerJob(t *testing.T) {
 	testInputCollection := []string{"test1", "test2", "test3"}
 	variableContext["testInputCollection"] = testInputCollection
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	time.Sleep(1000 * time.Millisecond)
 
@@ -361,7 +361,7 @@ func TestMultiInstanceParallelServiceTaskStartsAndCompletesWorkerJob(t *testing.
 	testInputCollection := []string{"test1", "test2", "test3"}
 	variableContext["testInputCollection"] = testInputCollection
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	time.Sleep(1000 * time.Millisecond)
 
@@ -436,7 +436,7 @@ func TestMultiInstanceParallelServiceTaskStartsAndCompletesLocalJob(t *testing.T
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -492,7 +492,7 @@ func TestMultiInstanceBusinessRuleTaskStartsAndCompletesLocalJob(t *testing.T) {
 	testInputCollection := []int{1000, 500000, 200}
 	variableContext["testInputCollection"] = testInputCollection
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -541,7 +541,7 @@ func TestMultiInstanceParallelBusinessRuleTaskStartsAndCompletesLocalJob(t *test
 	testInputCollection := []int{1000, 500000, 200}
 	variableContext["testInputCollection"] = testInputCollection
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -595,7 +595,7 @@ func TestMultiInstanceCallActivityStartsAndCompletes(t *testing.T) {
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -656,7 +656,7 @@ func TestMultiInstanceParallelCallActivityStartsAndCompletes(t *testing.T) {
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -741,7 +741,7 @@ func TestMultiInstanceSubProcessStartsAndCompletes(t *testing.T) {
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -799,7 +799,7 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -887,7 +887,7 @@ func TestMultiInstanceSkipsWhenInputIsEmptyButFillsOutputWithEmptyList(t *testin
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -943,7 +943,7 @@ func TestMultiInstanceParallelSkipsWhenInputIsEmptyButFillsOutputWithEmptyList(t
 	variableContext := make(map[string]interface{}, 1)
 	variableContext["testInputCollection"] = []string{}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
 		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {

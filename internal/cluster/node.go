@@ -438,23 +438,23 @@ func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[s
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
-		return fmt.Errorf("failed marshal variables: %w", err)
+		return zenerr.BadRequest(fmt.Errorf("failed marshal variables: %w", err))
 	}
 	resp, err := client.CompleteJob(ctx, &proto.CompleteJobRequest{
 		Key:       &key,
 		Variables: vars,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("client call to complete job failed")
-		if err != nil {
-			return fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		e := fmt.Errorf("client call to complete job %d failed: %w", key, err)
+		return zenerr.TechnicalError(e)
+	}
+	if resp.Error != nil {
+		e := fmt.Errorf("client call to complete job %d failed", key)
+		return zenerr.ToZenError(resp.Error, e)
 	}
 	return nil
 }
@@ -868,15 +868,15 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedJobs, 0, len(state.Partitions))
 
-	for partitionID := range state.Partitions {
+	for partitionId := range state.Partitions {
 		// TODO: we can smack these into goroutines
-		follower, err := state.GetPartitionFollower(partitionID)
+		follower, err := state.GetPartitionFollower(partitionId)
 		if err != nil {
-			return result, fmt.Errorf("failed to read follower node to get jobs: %w", err)
+			return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get jobs: %w", err))
 		}
 		client, err := node.client.For(follower.Addr)
 		if err != nil {
-			return result, fmt.Errorf("failed to get client to get jobs: %w", err)
+			return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get jobs: %w", err))
 		}
 		var reqState *int64
 		if jobState != nil {
@@ -890,20 +890,20 @@ func (node *ZenNode) GetJobs(ctx context.Context, page int32, size int32, jobTyp
 		resp, err := client.GetJobs(ctx, &proto.GetJobsRequest{
 			Page:               &page,
 			Size:               &size,
-			Partitions:         []uint32{partitionID},
+			Partitions:         []uint32{partitionId},
 			JobType:            jobType,
 			State:              reqState,
 			Assignee:           assignee,
 			ProcessInstanceKey: processInstanceKey,
 			Sort:               &sortString,
 		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("failed to get jobs from partition %d", partitionID)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", e, err)
-			} else if resp.Error != nil {
-				return nil, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-			}
+		if err != nil {
+			e := fmt.Errorf("failed to get jobs from partition %d %w", partitionId, err)
+			return nil, zenerr.TechnicalError(e)
+		}
+		if resp.Error != nil {
+			e := fmt.Errorf("failed to get jobs from partition %d", partitionId)
+			return nil, zenerr.ToZenError(resp.Error, e)
 		}
 		result = append(result, resp.Partitions...)
 	}
@@ -915,21 +915,22 @@ func (node *ZenNode) GetJob(ctx context.Context, jobKey int64) (*proto.Job, erro
 	partitionId := zenflake.GetPartitionId(jobKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get follower node to get job: %w", err)
-
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get job: %w", err))
 	}
 	client, err := node.client.For(follower.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client to get job: %w", err)
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get job: %w", err))
 	}
 	resp, err := client.GetJob(ctx, &proto.GetJobRequest{
 		JobKey: &jobKey,
 	})
-	if err != nil || resp.Error != nil {
+	if err != nil {
+		e := fmt.Errorf("failed to get job from partition %d %w", partitionId, err)
+		return nil, zenerr.TechnicalError(e)
+	}
+	if resp.Error != nil {
 		e := fmt.Errorf("failed to get job from partition %d", partitionId)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", e, err)
-		}
+		return nil, zenerr.ToZenError(resp.Error, e)
 	}
 	return resp.Job, nil
 }

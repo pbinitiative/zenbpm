@@ -40,3 +40,5 @@ func (e *ExpressionEvaluationError) Error() string {
 	}
 	return e.Msg
 }
+
+var InvalidStateError = fmt.Errorf("InvalidStateError")

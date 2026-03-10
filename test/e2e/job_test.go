@@ -118,6 +118,21 @@ func TestRestApiJob(t *testing.T) {
 
 }
 
+func TestRestApiJobBadRequestResponse(t *testing.T) {
+	t.Run("test BadRequest response", func(t *testing.T) {
+		response, _ := app.restClient.GetJobsWithResponse(t.Context(), &zenclient.GetJobsParams{
+			State: (*zenclient.JobState)(ptr.To("non-existing-state")),
+		})
+		assert.Nil(t, response.JSON200)
+		assert.NotNil(t, response.JSON400)
+		assert.Equal(t, "BAD_REQUEST", response.JSON400.Code)
+		assert.Equal(t,
+			"unexpected GetJobsRequest state: non-existing-state, supported: [active completed terminated]",
+			response.JSON400.Message,
+		)
+	})
+}
+
 func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {
 	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: ptr.To(zenclient.JobStateActive)})
 }
@@ -141,6 +156,7 @@ func completeJob(t testing.TB, job zenclient.Job, vars map[string]any) error {
 	response, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{
 		Variables: &vars,
 	})
+	assert.NoError(t, err)
 	if response.StatusCode() != 201 {
 		return fmt.Errorf("status should be 201")
 	}

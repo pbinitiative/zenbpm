@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
@@ -260,15 +259,15 @@ func endErrorSpan(tokenSpan trace.Span, err error) {
 
 // CreateInstanceById creates a new instance for a process with given process ID and uses latest version (if available)
 // Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (runtime.ProcessInstance, *zenerr.ZenError) {
+func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindLatestProcessDefinitionById(ctx, processId)
 	if err != nil {
-		return nil, zenerr.NotFound(errors.Join(newEngineErrorf("no process with id=%s was found (prior loaded into the engine)", processId), err))
+		return nil, errors.Join(newEngineErrorf("no process definition with id=%s was found (prior loaded into the engine)", processId), err)
 	}
 
 	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
 	if err != nil {
-		return instance, zenerr.TechnicalError(errors.Join(newEngineErrorf("failed to create process instance: %s", processId), err))
+		return instance, errors.Join(newEngineErrorf("failed to create process instance: %s", processId), err)
 	}
 
 	return instance, nil
@@ -276,15 +275,15 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 
 // CreateInstanceByKey creates a new instance for a process with given process definition key
 // Might return BpmnEngineError, when no process with given ID was found
-func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (runtime.ProcessInstance, *zenerr.ZenError) {
+func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
 	if err != nil {
-		return nil, zenerr.NotFound(errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err))
+		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", definitionKey), err)
 	}
 
 	instance, err := engine.CreateInstance(ctx, &processDefinition, variableContext)
 	if err != nil {
-		return instance, zenerr.TechnicalError(errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", definitionKey), err))
+		return instance, errors.Join(newEngineErrorf("failed to create process instance with definition key: %d", definitionKey), err)
 	}
 
 	return instance, nil
@@ -316,17 +315,17 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 	return instance, nil
 }
 
-func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (runtime.ProcessInstance, *zenerr.ZenError) {
+func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, processDefinitionKey int64, startingElementIds []string, variableContext map[string]interface{}, parentToken *runtime.ExecutionToken) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
-		return nil, zenerr.NotFound(errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err))
+		return nil, errors.Join(newEngineErrorf("no process definition with key %d was found (prior loaded into the engine)", processDefinitionKey), err)
 	}
 
 	startingFlowNodes := make([]bpmn20.FlowNode, 0, len(startingElementIds))
 	for _, startingFlowNodeId := range startingElementIds {
 		startNode := processDefinition.Definitions.Process.GetFlowNodeById(startingFlowNodeId)
 		if startNode == nil {
-			return nil, zenerr.TechnicalError(fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key))
+			return nil, fmt.Errorf("could not find starting flow node with id %s in process definition %d", startingFlowNodeId, processDefinition.Key)
 		}
 		startingFlowNodes = append(startingFlowNodes, startNode)
 	}
@@ -335,12 +334,12 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 
 	instance, executionTokens, err := engine.createInstanceWithStartingElements(ctx, batch, &processDefinition, startingFlowNodes, runtime.NewVariableHolder(nil, variableContext), &runtime.DefaultProcessInstance{})
 	if err != nil {
-		return nil, zenerr.TechnicalError(fmt.Errorf("failed to create instance on elements: %w", err))
+		return nil, fmt.Errorf("failed to create instance on elements: %w", err)
 	}
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return nil, zenerr.TechnicalError(fmt.Errorf("failed to start process instance: %w", err))
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
 
 	engine.metrics.ProcessesStarted.Add(ctx, 1, metric.WithAttributes(
@@ -349,30 +348,30 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 
 	err = engine.RunProcessInstance(ctx, instance, executionTokens)
 	if err != nil {
-		return instance, zenerr.TechnicalError(fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err))
+		return instance, fmt.Errorf("failed to run process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
 	return instance, nil
 }
 
-func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) (retError *zenerr.ZenError) {
+func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64) (retError error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, instanceKey)
 	if err != nil {
-		return zenerr.NotFound(fmt.Errorf("failed to find process instance %d: %w", instanceKey, err))
+		return fmt.Errorf("failed to find process instance %d: %w", instanceKey, err)
 	}
 	// Check if process is root
 	if instance.Type() != runtime.ProcessTypeDefault {
 		// Cancel all child process instances
-		return zenerr.TechnicalError(fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key))
+		return fmt.Errorf("cannot cancel process instance %d, it is not a root process", instance.ProcessInstance().Key)
 	}
 	if instance.ProcessInstance().GetState() != runtime.ActivityStateActive && instance.ProcessInstance().GetState() != runtime.ActivityStateFailed {
-		return zenerr.Conflict(fmt.Errorf("cannot cancel process instance %d, it is not in correct state, expected=%v, actual=%v",
-			instance.ProcessInstance().Key, runtime.ActivityStateActive, instance.ProcessInstance().State))
+		return fmt.Errorf("cannot cancel process instance %d, it is not in correct state, expected=%v, actual=%v. %w",
+			instance.ProcessInstance().Key, runtime.ActivityStateActive, instance.ProcessInstance().State, InvalidStateError)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
-		return zenerr.TechnicalError(fmt.Errorf("failed to create engine batch: %w", err))
+		return fmt.Errorf("failed to create engine batch: %w", err)
 	}
 	defer func() {
 		if retError != nil {
@@ -382,22 +381,22 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 
 	err = engine.cancelInstance(ctx, instance, &batch)
 	if err != nil {
-		return zenerr.TechnicalError(err)
+		return err
 	}
 
 	err = batch.Flush(ctx)
 	if err != nil {
-		return zenerr.TechnicalError(err)
+		return err
 	}
 	return nil
 }
 
 // TODO: this method is not counting in that some tokens on elementInstanceIdsToTerminate could have already moved to next elementInstance
 // TODO: then elementIdsToStartInstance could create a duplicate token that user didn't mean to duplicate.
-func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (pi runtime.ProcessInstance, exTokens []runtime.ExecutionToken, retErr *zenerr.ZenError) {
+func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int64, elementInstanceIdsToTerminate []int64, elementIdsToStartInstance []string, variableContext map[string]interface{}) (pi runtime.ProcessInstance, exTokens []runtime.ExecutionToken, retErr error) {
 	processInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 	if err != nil {
-		return nil, nil, zenerr.NotFound(fmt.Errorf("failed to find process instance %d: %w", processInstanceKey, err))
+		return nil, nil, fmt.Errorf("failed to find process instance %d: %w", processInstanceKey, err)
 	}
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("modify-instance:%s", processInstance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
@@ -409,7 +408,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 
 	batch, err := engine.NewEngineBatch(ctx, processInstance)
 	if err != nil {
-		return nil, nil, zenerr.TechnicalError(fmt.Errorf("failed to create engine batch: %w", err))
+		return nil, nil, fmt.Errorf("failed to create engine batch: %w", err)
 	}
 	defer func() {
 		if retErr != nil {
@@ -423,7 +422,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 		if err != nil {
 			createSpan.RecordError(err)
 			createSpan.SetStatus(codes.Error, err.Error())
-			return processInstance, nil, zenerr.TechnicalError(err)
+			return processInstance, nil, err
 		}
 	}
 
@@ -431,7 +430,7 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	if err != nil {
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
-		return processInstance, nil, zenerr.TechnicalError(err)
+		return processInstance, nil, err
 	}
 
 	activeTokens := append(activeTokensLeft, startedTokens...)
@@ -443,18 +442,18 @@ func (engine *Engine) ModifyInstance(ctx context.Context, processInstanceKey int
 	if err != nil {
 		createSpan.RecordError(err)
 		createSpan.SetStatus(codes.Error, err.Error())
-		return processInstance, nil, zenerr.TechnicalError(err)
+		return processInstance, nil, err
 	}
 
 	err = batch.Flush(ctx)
 	if err != nil {
 		return processInstance, activeTokens,
-			zenerr.TechnicalError(fmt.Errorf("failed to modify process instance %d: %w", processInstance.ProcessInstance().Key, err))
+			fmt.Errorf("failed to modify process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
 	err = engine.RunProcessInstance(ctx, processInstance, activeTokens)
 	if err != nil {
-		return processInstance, activeTokens, zenerr.TechnicalError(err)
+		return processInstance, activeTokens, err
 	}
 
 	return processInstance, activeTokens, nil

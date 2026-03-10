@@ -156,6 +156,7 @@ func completeJob(t testing.TB, job zenclient.Job, vars map[string]any) error {
 	response, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{
 		Variables: &vars,
 	})
+	assert.NoError(t, err)
 	if response.StatusCode() != 201 {
 		return fmt.Errorf("status should be 201")
 	}

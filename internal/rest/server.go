@@ -1055,14 +1055,22 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 		})
 	}
 
+	var parentProcessInstanceKey *int64
+	if pKey := instance.GetParentInstanceKey(); pKey != 0 {
+		parentProcessInstanceKey = ptr.To(pKey)
+	}
+
 	return &public.GetProcessInstance200JSONResponse{
-		ActiveElementInstances: respActiveElementInstances,
-		CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
-		Key:                    instance.GetKey(),
-		BusinessKey:            instance.BusinessKey,
-		ProcessDefinitionKey:   instance.GetDefinitionKey(),
-		State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
-		Variables:              vars,
+		ActiveElementInstances:   respActiveElementInstances,
+		CreatedAt:                time.UnixMilli(instance.GetCreatedAt()),
+		Key:                      instance.GetKey(),
+		BusinessKey:              instance.BusinessKey,
+		ProcessDefinitionKey:     instance.GetDefinitionKey(),
+		State:                    getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+		Variables:                vars,
+		ProcessType:              getRestProcessInstanceType(runtime.ProcessType(instance.GetType())),
+		BpmnProcessId:            instance.ProcessId,
+		ParentProcessInstanceKey: parentProcessInstanceKey,
 	}, nil
 }
 

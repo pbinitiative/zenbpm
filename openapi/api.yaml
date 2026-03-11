@@ -1061,7 +1061,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ createdAt, key, state ]
+            enum: [ createdAt, key, state, businessKey ]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
@@ -1383,16 +1383,16 @@ paths:
                 partitions:
                   - partition: 1
                     items:
-                      - key: "4503599627370501"
-                        processDefinitionKey: "4503599627370498"
+                      - key: 4503599627370501
+                        processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T14:30:25Z"
                         state: "active"
                         variables:
                           customerId: "customer-456"
                           amount: 1000
                           applicationDate: "2025-08-22"
-                      - key: "4503599627370505"
-                        processDefinitionKey: "4503599627370498"
+                      - key: 4503599627370505
+                        processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:10:12Z"
                         state: "active"
                         variables:
@@ -1401,8 +1401,8 @@ paths:
                           applicationDate: "2025-08-22"
                   - partition: 2
                     items:
-                      - key: "9007199254740992"
-                        processDefinitionKey: "4503599627370498"
+                      - key: 9007199254740992
+                        processDefinitionKey: 4503599627370498
                         createdAt: "2025-08-22T15:45:33Z"
                         state: "active"
                         variables:

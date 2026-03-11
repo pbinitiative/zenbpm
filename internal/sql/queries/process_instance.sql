@@ -144,6 +144,8 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
   CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN pi.business_key END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN pi.business_key END DESC,
   pi.created_at DESC
 
 LIMIT @size OFFSET @offset;

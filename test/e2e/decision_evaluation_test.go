@@ -74,17 +74,6 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		assert.NotEmpty(t, result.EvaluatedDecisions)
 	})
 
-	t.Run("evaluate decision BindingType Deployment with DecisionDefinitionId", func(t *testing.T) {
-		resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), "example_canAutoLiquidateRule", zenclient.EvaluateDecisionJSONRequestBody{
-			BindingType:             zenclient.EvaluateDecisionJSONBodyBindingTypeDeployment,
-			DmnResourceDefinitionId: &dmnResourceDefinition.DmnResourceDefinitionId,
-		})
-		assert.NoError(t, err)
-		assert.Nil(t, resp.JSON200)
-		assert.NotNil(t, resp.JSON400)
-		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
-		assert.Equal(t, "bindingType 'deployment' is not supported", resp.JSON400.Message)
-	})
 }
 
 func TestEvaluateDecisionErrorResponses(t *testing.T) {

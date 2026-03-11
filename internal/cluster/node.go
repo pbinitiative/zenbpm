@@ -335,8 +335,7 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 		}
 	}
 	if errJoin != nil {
-		// for simplicity all joined errors under errJoin will be aggregated to TechnicalError
-		return definitionKey.Int64(), zenerr.TechnicalError(errJoin)
+		return definitionKey.Int64(), zenerr.ClusterError(errJoin)
 	}
 	return definitionKey.Int64(), nil
 }
@@ -348,7 +347,7 @@ func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, dat
 	}
 	md5sum := md5.Sum(data)
 	key, err := db.Queries.GetDmnResourceDefinitionKeyByChecksum(ctx, md5sum[:])
-	if err != nil && err.Error() != sql.ErrNoRows.Error() {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("failed to find dmn resource definition by checksum: %w", err)
 	}
 	return key, nil
@@ -412,8 +411,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		}
 	}
 	if errJoin != nil {
-		// for simplicity all joined errors under errJoin will be aggregated to TechnicalError
-		return definitionKey.Int64(), zenerr.TechnicalError(errJoin)
+		return definitionKey.Int64(), zenerr.ClusterError(errJoin)
 	}
 	return definitionKey.Int64(), nil
 }

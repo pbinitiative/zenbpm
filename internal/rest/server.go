@@ -247,6 +247,8 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CreateDmnResourceDefinition502JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ConflictCode:
 				return public.CreateDmnResourceDefinition409JSONResponse(zerr.ToApiError()), nil
 			default:
@@ -545,6 +547,8 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
 			case zenerr.ConflictCode:
 				return public.CreateProcessDefinition409JSONResponse(zerr.ToApiError()), nil
 			default:

@@ -23,7 +23,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -71,11 +70,6 @@ type ZenNode struct {
 	JobManager *jobmanager.JobManager
 	idGen      *snowflake.Node
 	// TODO: add tracing to all the methods on ZenNode where it makes sense
-}
-
-type DeployResult struct {
-	Key         int64
-	IsDuplicate bool
 }
 
 // StartZenNode Starts a cluster node
@@ -251,7 +245,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 	// in order not to have up to 8 and more arguments line in getJobs. Unify the approach
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.DmnResourceDefinitionsPage{}, fmt.Errorf("failed to get node DB: %w", err)
+		return proto.DmnResourceDefinitionsPage{}, zenerr.TechnicalError(fmt.Errorf("failed to get node DB: %w", err))
 	}
 	page := *request.Page
 	size := *request.Size
@@ -268,7 +262,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 		Size:                    int64(size),
 	})
 	if err != nil {
-		return proto.DmnResourceDefinitionsPage{}, fmt.Errorf("failed to read dmn resource definitions from database: %w", err)
+		return proto.DmnResourceDefinitionsPage{}, zenerr.TechnicalError(fmt.Errorf("failed to read dmn resource definitions from database: %w", err))
 	}
 	items := make([]*proto.DmnResourceDefinition, 0, len(definitions))
 	totalCount := 0
@@ -294,11 +288,14 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (proto.DmnResourceDefinition, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
-		return proto.DmnResourceDefinition{}, fmt.Errorf("failed to get dmn resource definition: %w", err)
+		return proto.DmnResourceDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to get node DB: %w", err))
 	}
 	def, err := db.Queries.FindDmnResourceDefinitionByKey(ctx, key)
 	if err != nil {
-		return proto.DmnResourceDefinition{}, fmt.Errorf("failed to read dmn resource definition by key: %d from database: %w", key, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return proto.DmnResourceDefinition{}, zenerr.NotFound(fmt.Errorf("dmn resource definition by key %d not found", key))
+		}
+		return proto.DmnResourceDefinition{}, zenerr.TechnicalError(fmt.Errorf("failed to read dmn resource definition by key: %d from database: %w", key, err))
 	}
 	return proto.DmnResourceDefinition{
 		Key:                     &def.Key,
@@ -309,13 +306,13 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 	}, nil
 }
 
-func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (DeployResult, error) {
-	key, err := node.GetDmnResourceDefinitionKeyByBytes(ctx, data)
+func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		log.Error("Failed to get dmn resource definition key by bytes: %s", err)
+		return key, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return DeployResult{key, true}, err
+		return key, zenerr.Conflict(fmt.Errorf("duplicate dmn resource definition %d exists", key))
 	}
 	definitionKey := node.idGen.Generate()
 	state := node.store.ClusterState()
@@ -330,29 +327,28 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 			Key:  ptr.To(definitionKey.Int64()),
 			Data: data,
 		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("client call to deploy dmn resource definition failed")
-			if err != nil {
-				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
-			} else if resp.Error != nil {
-				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage())))
-			}
+		if err != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy dmn resource definition"), err))
+		}
+		if resp.Error != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy dmn resource definition"), errors.New(resp.Error.GetMessage())))
 		}
 	}
 	if errJoin != nil {
-		return DeployResult{definitionKey.Int64(), false}, errJoin
+		// for simplicity all joined errors under errJoin will be aggregated to TechnicalError
+		return definitionKey.Int64(), zenerr.TechnicalError(errJoin)
 	}
-	return DeployResult{definitionKey.Int64(), false}, nil
+	return definitionKey.Int64(), nil
 }
 
-func (node *ZenNode) GetDmnResourceDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) getDmnResourceDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database for dmn resource definition key lookup: %w", err)
 	}
 	md5sum := md5.Sum(data)
 	key, err := db.Queries.GetDmnResourceDefinitionKeyByChecksum(ctx, md5sum[:])
-	if err != nil && err.Error() != "No result row" {
+	if err != nil && err.Error() != sql.ErrNoRows.Error() {
 		return 0, fmt.Errorf("failed to find dmn resource definition by checksum: %w", err)
 	}
 	return key, nil
@@ -386,13 +382,13 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (DeployResult, error) {
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		log.Error("Failed to get definition key by bytes: %s", err)
+		return key, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return DeployResult{key, true}, err
+		return key, zenerr.Conflict(fmt.Errorf("duplicate process definition %d exists", key))
 	}
 	definitionKey := node.idGen.Generate()
 	state := node.store.ClusterState()
@@ -408,19 +404,18 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 			Data:         data,
 			ResourceName: &resourceName,
 		})
-		if err != nil || resp.Error != nil {
-			e := fmt.Errorf("client call to deploy process definition failed")
-			if err != nil {
-				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, err))
-			} else if resp.Error != nil {
-				errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage())))
-			}
+		if err != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy process definition"), err))
+		}
+		if resp.Error != nil {
+			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy process definition"), errors.New(resp.Error.GetMessage())))
 		}
 	}
 	if errJoin != nil {
-		return DeployResult{definitionKey.Int64(), false}, zenerr.ClusterError(errJoin)
+		// for simplicity all joined errors under errJoin will be aggregated to TechnicalError
+		return definitionKey.Int64(), zenerr.TechnicalError(errJoin)
 	}
-	return DeployResult{definitionKey.Int64(), false}, nil
+	return definitionKey.Int64(), nil
 }
 
 func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {

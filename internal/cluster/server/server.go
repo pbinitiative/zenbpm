@@ -588,13 +588,8 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 	bpmnEngines := s.controller.Engines(ctx)
 
 	if len(bpmnEngines) == 0 {
-		err = fmt.Errorf("no engines available: %w", err)
-		return &proto.DeployDmnResourceDefinitionResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("no engines available: %w", err))
+		return &proto.DeployDmnResourceDefinitionResponse{Error: err.ToProtoError()}, nil
 	}
 
 	var definition *dmn.TDefinitions
@@ -602,18 +597,16 @@ func (s *Server) DeployDmnResourceDefinition(ctx context.Context, req *proto.Dep
 		if definition == nil {
 			definition, err = bpmnEngine.GetDmnEngine().ParseDmnFromBytes("", req.Data)
 			if err != nil {
-				return nil, err
+				return &proto.DeployDmnResourceDefinitionResponse{
+					Error: zenerr.TechnicalError(fmt.Errorf("failed to parse request data: %w", err)).ToProtoError(),
+				}, nil
 			}
 		}
 		_, _, err = bpmnEngine.GetDmnEngine().SaveDmnResourceDefinition(ctx, definition, req.GetData(), req.GetKey())
 		if err != nil {
-			err = fmt.Errorf("failed to deploy dmn resource definition: %w", err)
 			return &proto.DeployDmnResourceDefinitionResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy dmn resource definition: %w", err)).ToProtoError(),
+			}, nil
 		}
 	}
 	return &proto.DeployDmnResourceDefinitionResponse{}, nil

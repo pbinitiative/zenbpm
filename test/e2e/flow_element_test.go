@@ -1,10 +1,11 @@
 package e2e
 
 import (
-	"github.com/pbinitiative/zenbpm/pkg/zenclient"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetFlowElementInstanceHistory(t *testing.T) {
@@ -15,7 +16,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 
 	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
 	assert.NoError(t, err)
-	err = deployDefinition(t, "simple_task.bpmn")
+	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")

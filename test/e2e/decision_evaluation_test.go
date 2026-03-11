@@ -11,7 +11,7 @@ import (
 func TestRestApiEvaluateDecision(t *testing.T) {
 	var result *zenclient.EvaluatedDRDResult
 	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
-	err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+	_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)

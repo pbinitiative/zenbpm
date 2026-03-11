@@ -12,7 +12,7 @@ import (
 func TestRestApiUsertask(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "usertask-assignee-mapping.bpmn")
+	_, err := deployDefinition(t, "usertask-assignee-mapping.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)

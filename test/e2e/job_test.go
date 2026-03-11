@@ -13,7 +13,7 @@ import (
 func TestRestApiJob(t *testing.T) {
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "service-task-input-output.bpmn")
+	_, err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)

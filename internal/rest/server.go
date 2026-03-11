@@ -139,7 +139,32 @@ func (s *Server) TestStopPprofServer(ctx context.Context, request public.TestSto
 
 func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.GetDmnResourceDefinitionsRequestObject) (public.GetDmnResourceDefinitionsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+	var sortByDbColumn *string
+	if request.Params.SortBy != nil {
+		s := string(*request.Params.SortBy)
+		switch *request.Params.SortBy {
+		case public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
+			public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId:
+			sortByDbColumn = &s
+		default:
+			supportedSortBy := []public.GetDmnResourceDefinitionsParamsSortBy{public.GetDmnResourceDefinitionsParamsSortByKey, public.GetDmnResourceDefinitionsParamsSortByVersion,
+				public.GetDmnResourceDefinitionsParamsSortByDmnDefinitionName, public.GetDmnResourceDefinitionsParamsSortByDmnResourceDefinitionId}
+			return public.GetDmnResourceDefinitions400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
+			), nil
+		}
+	}
+	if request.Params.SortOrder != nil {
+		supportedSortOrder := []public.GetDmnResourceDefinitionsParamsSortOrder{public.GetDmnResourceDefinitionsParamsSortOrderAsc, public.GetDmnResourceDefinitionsParamsSortOrderDesc}
+		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
+			return public.GetDmnResourceDefinitions400JSONResponse(
+				zenerr.BadRequest(fmt.Errorf("unexpected GetDmnResourceDefinitionsRequest.SortOrder: %v, supported: %v", *request.Params.SortOrder, supportedSortOrder)).ToApiError(),
+			), nil
+		}
+	} else {
+		request.Params.SortOrder = ptr.To(public.GetDmnResourceDefinitionsParamsSortOrderDesc)
+	}
+	sortByOrder := sql.SortString(request.Params.SortOrder, sortByDbColumn)
 
 	dmnResourceDefinitionsPage, err := s.node.GetDmnResourceDefinitions(ctx, &proto.GetDmnResourceDefinitionsRequest{
 		Page:                    request.Params.Page,
@@ -147,13 +172,19 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		DmnDefinitionName:       request.Params.DmnDefinitionName,
 		OnlyLatest:              request.Params.OnlyLatest,
 		DmnResourceDefinitionId: request.Params.DmnResourceDefinitionId,
-		SortByOrder:             (*string)(sort),
+		SortByOrder:             (*string)(sortByOrder),
 	})
 	if err != nil {
-		return public.GetDmnResourceDefinitions502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetDmnResourceDefinitions502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetDmnResourceDefinitions500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetDmnResourceDefinitions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	items := make([]public.DmnResourceDefinitionSimple, 0)
@@ -182,10 +213,16 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.GetDmnResourceDefinitionRequestObject) (public.GetDmnResourceDefinitionResponseObject, error) {
 	definition, err := s.node.GetDmnResourceDefinition(ctx, request.DmnResourceDefinitionKey)
 	if err != nil {
-		return public.GetDmnResourceDefinition502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.GetDmnResourceDefinition404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetDmnResourceDefinition500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetDmnResourceDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.GetDmnResourceDefinition200JSONResponse{
 		DmnResourceDefinitionSimple: public.DmnResourceDefinitionSimple{
@@ -201,27 +238,25 @@ func (s *Server) GetDmnResourceDefinition(ctx context.Context, request public.Ge
 func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public.CreateDmnResourceDefinitionRequestObject) (public.CreateDmnResourceDefinitionResponseObject, error) {
 	data, err := io.ReadAll(request.Body)
 	if err != nil {
-		return public.CreateDmnResourceDefinition400JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		return public.CreateDmnResourceDefinition400JSONResponse(
+			zenerr.BadRequest(fmt.Errorf("failed to read the request body: %w", err)).ToApiError(),
+		), nil
 	}
-	deployResult, err := s.node.DeployDmnResourceDefinitionToAllPartitions(ctx, data)
+	key, err := s.node.DeployDmnResourceDefinitionToAllPartitions(ctx, data)
 	if err != nil {
-		return public.CreateDmnResourceDefinition502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ConflictCode:
+				return public.CreateDmnResourceDefinition409JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.CreateDmnResourceDefinition500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.CreateDmnResourceDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
-	if deployResult.IsDuplicate == true {
-		return public.CreateDmnResourceDefinition409JSONResponse{
-			Code:    "DUPLICATE",
-			Message: fmt.Sprintf("The same dmn resource definition already exists (key: %d)", deployResult.Key),
-		}, nil
-	}
-
 	return public.CreateDmnResourceDefinition201JSONResponse{
-		DmnResourceDefinitionKey: deployResult.Key,
+		DmnResourceDefinitionKey: key,
 	}, nil
 }
 
@@ -505,25 +540,21 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 	}
 
 	// Deploy with filename
-	deployResult, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
+	processDefinitionKey, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
-			case zenerr.ClusterErrorCode:
-				return public.CreateProcessDefinition502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ConflictCode:
+				return public.CreateProcessDefinition409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
 			}
 		}
 		return public.CreateProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
-	if deployResult.IsDuplicate {
-		return public.CreateProcessDefinition409JSONResponse(zenerr.Conflict(fmt.Errorf("a process definition with the same content already exists")).ToApiError()), nil
-	}
-
 	return public.CreateProcessDefinition201JSONResponse{
-		ProcessDefinitionKey: deployResult.Key,
+		ProcessDefinitionKey: processDefinitionKey,
 	}, nil
 }
 

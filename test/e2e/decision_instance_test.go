@@ -6,6 +6,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -170,5 +171,54 @@ func TestDecisionInstances(t *testing.T) {
 
 		// order by evaluatedAt desc check
 		assert.True(t, decisionInstancePartitionPage.Partitions[0].Items[0].EvaluatedAt.UnixMilli() > decisionInstancePartitionPage.Partitions[0].Items[1].EvaluatedAt.UnixMilli())
+	})
+}
+
+func TestGetDecisionInstancesErrorResponses(t *testing.T) {
+	t.Run("invalid sortBy returns 400 BAD_REQUEST", func(t *testing.T) {
+		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
+			SortBy: (*zenclient.GetDecisionInstancesParamsSortBy)(ptr.To("invalid-sort-by")),
+		})
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "unexpected GetDecisionInstancesRequest.SortBy")
+	})
+
+	t.Run("invalid sortOrder returns 400 BAD_REQUEST", func(t *testing.T) {
+		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
+			SortOrder: (*zenclient.GetDecisionInstancesParamsSortOrder)(ptr.To("invalid-sort-order")),
+		})
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "unexpected GetDecisionInstancesRequest.SortOrder")
+	})
+}
+
+func TestGetDecisionInstanceErrorResponses(t *testing.T) {
+	t.Run("key with non-existing partition returns 502 CLUSTER_ERROR", func(t *testing.T) {
+		// key -1 encodes partition 1023 which does not exist in the test environment
+		var nonExistingPartitionKey int64 = -1
+		resp, err := app.restClient.GetDecisionInstanceWithResponse(t.Context(), nonExistingPartitionKey)
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON502)
+		assert.Equal(t, "CLUSTER_ERROR", resp.JSON502.Code)
+		assert.NotEmpty(t, resp.JSON502.Message)
+	})
+
+	t.Run("valid partition key but non-existing instance returns 404 NOT_FOUND", func(t *testing.T) {
+		// key with partition ID 1 (exists in test env) but non-existing sequence → DB returns not found
+		// zenflake: partitionId = (key & nodeMask) >> nodeShift; key = 1 << StepBits = 1 << 12 = 4096 → partitionId = 1
+		nonExistingInstanceKey := int64(1) << int64(zenflake.StepBits)
+		resp, err := app.restClient.GetDecisionInstanceWithResponse(t.Context(), nonExistingInstanceKey)
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON404)
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Contains(t, resp.JSON404.Message, "not found")
 	})
 }

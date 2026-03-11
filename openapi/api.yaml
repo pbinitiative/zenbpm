@@ -276,13 +276,42 @@ paths:
                         inputExpression: "income"
                         inputValue: { "income": 50000 }
                 decisionOutput: { "approved": true }
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The request parameters are invalid"
+        404:
+          description: Not Found (e.g. decision definition was not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "No decision definition found for the given decisionId"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while evaluating the decision"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to redirect request to responsible node"
   /decision-instances:
     get:
       operationId: getDecisionInstances
@@ -384,18 +413,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The request parameters are invalid"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving decision instances"
         502:
           description: Failed to collect data from responsible nodes
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to collect data from responsible nodes"
 
   /decision-instances/{decisionInstanceKey}:
     get:
@@ -453,18 +491,31 @@ paths:
                   approved: true
         404:
           description: Decision instance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "No decision instance found for the given key"
         500:
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred while retrieving decision instance"
         502:
           description: Failed to collect data from responsible node
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_GATEWAY"
+                message: "Failed to collect data from responsible node"
 
   /process-definitions:
     post:

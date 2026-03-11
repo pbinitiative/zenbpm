@@ -74,19 +74,29 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 		assert.NotEmpty(t, result.EvaluatedDecisions)
 	})
 
-	t.Run("evaluate decision BindingType Deployment with DecisionDefinitionId", func(t *testing.T) {
-		result, err = evaluateDecision(
-			t,
-			zenclient.EvaluateDecisionJSONBodyBindingTypeDeployment,
-			&dmnResourceDefinition.DmnResourceDefinitionId,
-			"example_canAutoLiquidateRule",
-			nil,
-			map[string]any{
-				"claim.amountOfDamage": 1000,
-				"claim.insuranceType":  "MAJ",
-			},
-		)
-		assert.Error(t, err)
+}
+
+func TestEvaluateDecisionErrorResponses(t *testing.T) {
+	t.Run("deployment bindingType returns 400 BAD_REQUEST", func(t *testing.T) {
+		resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), "any-decision-id", zenclient.EvaluateDecisionJSONRequestBody{
+			BindingType: zenclient.EvaluateDecisionJSONBodyBindingTypeDeployment,
+		})
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Equal(t, "bindingType 'deployment' is not supported", resp.JSON400.Message)
+	})
+
+	t.Run("non-existing decisionId returns 404 NOT_FOUND", func(t *testing.T) {
+		resp, err := app.restClient.EvaluateDecisionWithResponse(t.Context(), "non-existing-decision-id", zenclient.EvaluateDecisionJSONRequestBody{
+			BindingType: zenclient.EvaluateDecisionJSONBodyBindingTypeLatest,
+		})
+		assert.NoError(t, err)
+		assert.Nil(t, resp.JSON200)
+		assert.NotNil(t, resp.JSON404)
+		assert.Equal(t, "NOT_FOUND", resp.JSON404.Code)
+		assert.Contains(t, resp.JSON404.Message, "non-existing-decision-id")
 	})
 }
 

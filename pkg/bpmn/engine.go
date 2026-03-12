@@ -145,16 +145,29 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch, omitTokenKeys ...int64,
 ) (terminatedTokens []runtime.ExecutionToken, err error) {
 	// Cancel all message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
+	messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	for _, sub := range subscriptions {
-		sub.State = runtime.ActivityStateTerminated
-		err = batch.SaveMessageSubscription(ctx, sub)
+	for _, messageSubscription := range messageSubscriptions {
+		messageSubscription.State = runtime.ActivityStateTerminated
+		err = batch.SaveMessageSubscription(ctx, messageSubscription)
 		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.GetKey(), err)
+		}
+	}
+
+	// Cancel all error subscriptions
+	errorSubscriptions, err := engine.persistence.FindProcessInstanceErrorSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ErrorStateCreated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	for _, errorSubscription := range errorSubscriptions {
+		errorSubscription.State = runtime.ErrorStateCancelled
+		err = batch.SaveErrorSubscription(ctx, errorSubscription)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to error subscription %d: %w", errorSubscription.Key, err)
 		}
 	}
 
@@ -258,6 +271,19 @@ func (engine *Engine) terminateExecutionTokens(
 					err = batch.SaveMessageSubscription(ctx, sub)
 					if err != nil {
 						return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+					}
+				}
+
+				// Cancel all error subscriptions
+				errorSubscriptions, err := engine.persistence.FindTokenErrorSubscriptions(ctx, activeToken.Key, runtime.ErrorStateCreated)
+				if err != nil {
+					return nil, fmt.Errorf("failed to find error subscriptions for execution token %d: %w", activeToken.Key, err)
+				}
+				for _, errorSubscription := range errorSubscriptions {
+					errorSubscription.State = runtime.ErrorStateCancelled
+					err = batch.SaveErrorSubscription(ctx, errorSubscription)
+					if err != nil {
+						return nil, fmt.Errorf("failed to save changes to error subscription %d: %w", errorSubscription.Key, err)
 					}
 				}
 
@@ -634,6 +660,11 @@ func (engine *Engine) createBoundaryEventSubscriptions(ctx context.Context, batc
 			}
 		case bpmn20.TTimerEventDefinition:
 			_, err := engine.createTimerCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TTimerEventDefinition), element, currentToken)
+			if err != nil {
+				return err
+			}
+		case bpmn20.TErrorEventDefinition:
+			_, err := engine.createErrorCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TErrorEventDefinition), element, currentToken)
 			if err != nil {
 				return err
 			}

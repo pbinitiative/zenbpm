@@ -30,6 +30,8 @@ type Storage interface {
 	FlowElementInstanceWriter
 	IncidentStorageReader
 	IncidentStorageWriter
+	ErrorSubscriptionStorageReader
+	ErrorSubscriptionStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -56,6 +58,7 @@ type Batch interface {
 	TokenStorageWriter
 	FlowElementInstanceWriter
 	IncidentStorageWriter
+	ErrorSubscriptionStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
@@ -217,4 +220,13 @@ type IncidentStorageReader interface {
 
 type IncidentStorageWriter interface {
 	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
+}
+
+type ErrorSubscriptionStorageReader interface {
+	FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error)
+	FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error)
+}
+
+type ErrorSubscriptionStorageWriter interface {
+	SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error
 }

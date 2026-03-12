@@ -788,6 +788,12 @@ type CompleteJobJSONBody struct {
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
+// FailJobJSONBody defines parameters for FailJob.
+type FailJobJSONBody struct {
+	ErrorCode *string                 `json:"errorCode,omitempty"`
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
 // PublishMessageJSONBody defines parameters for PublishMessage.
 type PublishMessageJSONBody struct {
 	CorrelationKey string                  `json:"correlationKey"`
@@ -1022,6 +1028,9 @@ type AssignJobJSONRequestBody AssignJobJSONBody
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
 
+// FailJobJSONRequestBody defines body for FailJob for application/json ContentType.
+type FailJobJSONRequestBody FailJobJSONBody
+
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
 
@@ -1151,6 +1160,11 @@ type ClientInterface interface {
 	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FailJobWithBody request with any body
+	FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1384,6 +1398,30 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, jobKey int64, contentT
 
 func (c *Client) CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCompleteJobRequest(c.Server, jobKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFailJobRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFailJobRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2476,6 +2514,53 @@ func NewCompleteJobRequestWithBody(server string, jobKey int64, contentType stri
 	}
 
 	operationPath := fmt.Sprintf("/jobs/%s/complete", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewFailJobRequest calls the generic FailJob builder with application/json body
+func NewFailJobRequest(server string, jobKey int64, body FailJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewFailJobRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewFailJobRequestWithBody generates requests for FailJob with any type of body
+func NewFailJobRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/fail", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3975,6 +4060,11 @@ type ClientWithResponsesInterface interface {
 
 	CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
+	// FailJobWithBodyWithResponse request with any body
+	FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
+
+	FailJobWithResponse(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
+
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
 
@@ -4323,6 +4413,31 @@ func (r CompleteJobResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CompleteJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type FailJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r FailJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r FailJobResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4982,6 +5097,23 @@ func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, jobKe
 		return nil, err
 	}
 	return ParseCompleteJobResponse(rsp)
+}
+
+// FailJobWithBodyWithResponse request with arbitrary body returning *FailJobResponse
+func (c *ClientWithResponses) FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error) {
+	rsp, err := c.FailJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFailJobResponse(rsp)
+}
+
+func (c *ClientWithResponses) FailJobWithResponse(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*FailJobResponse, error) {
+	rsp, err := c.FailJob(ctx, jobKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFailJobResponse(rsp)
 }
 
 // PublishMessageWithBodyWithResponse request with arbitrary body returning *PublishMessageResponse
@@ -5715,6 +5847,53 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 	}
 
 	response := &CompleteJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseFailJobResponse parses an HTTP response from a FailJobWithResponse call
+func ParseFailJobResponse(rsp *http.Response) (*FailJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &FailJobResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

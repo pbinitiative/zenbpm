@@ -1611,6 +1611,17 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 	}, nil
 }
 
+func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {
+	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ErrorCode, ""), ptr.Deref(request.Body.Variables, map[string]any{}))
+	if err != nil {
+		return public.FailJob502JSONResponse{
+			Code:    "TODO",
+			Message: err.Error(),
+		}, nil
+	}
+	return public.FailJob204Response{}, nil
+}
+
 func getRestJobState(state runtime.ActivityState) public.JobState {
 	switch state {
 	case runtime.ActivityStateActive:

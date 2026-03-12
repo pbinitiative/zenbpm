@@ -919,7 +919,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
 		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt:
+		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByBusinessKey:
 			sortByDbColumn = &s
 		default:
 			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}

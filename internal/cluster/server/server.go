@@ -1387,23 +1387,18 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 	partitionId := zenflake.GetPartitionId(req.GetIncidentKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
 	if engine == nil {
-		err := fmt.Errorf("engine with partition %d was not found", partitionId)
-		return &proto.ResolveIncidentResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+		return &proto.ResolveIncidentResponse{Error: err.ToProtoError()}, nil
 	}
 	err := engine.ResolveIncident(ctx, req.GetIncidentKey())
 	if err != nil {
-		err := fmt.Errorf("failed to resolve incident %d: %w", req.GetIncidentKey(), err)
-		return &proto.ResolveIncidentResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(err)
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to resolve incident %d: %w", req.GetIncidentKey(), err))
+		}
+		return &proto.ResolveIncidentResponse{Error: zerr.ToProtoError()}, nil
 	}
 	return &proto.ResolveIncidentResponse{}, err
 }

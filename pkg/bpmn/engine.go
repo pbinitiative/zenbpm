@@ -629,6 +629,11 @@ func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch
 			if err != nil {
 				return err
 			}
+		case bpmn20.TErrorEventDefinition:
+			err := engine.validateBoundaryErrorEvent(instance, be)
+			if err != nil {
+				return err
+			}
 		default:
 			panic(fmt.Sprintf("unsupported BoundaryEvent %+v", be))
 		}

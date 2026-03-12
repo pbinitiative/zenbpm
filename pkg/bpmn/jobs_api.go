@@ -8,6 +8,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -73,6 +74,25 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
 	)
 
+	if errorCode != nil {
+		boundaryEvent, err := engine.findMatchingBoundaryErrorEvent(instance, job.Token.ElementId, *errorCode)
+		if err != nil {
+			return err
+		}
+		if boundaryEvent != nil {
+			tokens, err := engine.handleBoundaryError(ctx, &batch, boundaryEvent, &job, instance, variables)
+			if err != nil {
+				return err
+			}
+			err = batch.Flush(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to fail job %+v by boundary error handling: %w", job, err)
+			}
+			engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
+			return engine.RunProcessInstance(ctx, instance, tokens)
+		}
+	}
+
 	job.State = runtime.ActivityStateFailed
 	job.Token.State = runtime.TokenStateFailed
 	instance.ProcessInstance().State = runtime.ActivityStateFailed
@@ -90,16 +110,11 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	if errorCode == nil {
-		err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s :"+message, ""), job.Token, engine))
-		if err != nil {
-			return err
-		}
-	} else {
-		err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s :"+message, *errorCode), job.Token, engine))
-		if err != nil {
-			return err
-		}
+	code := ptr.Deref(errorCode, "")
+	err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s: %s", message, code), job.Token, engine))
+
+	if err != nil {
+		return err
 	}
 
 	err = batch.Flush(ctx)
@@ -107,11 +122,6 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		return fmt.Errorf("failed to fail job %+v: %w", job, err)
 	}
 	engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
-
-	if errorCode != nil {
-		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow
-		return nil
-	}
 	return nil
 }
 

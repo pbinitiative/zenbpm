@@ -181,3 +181,7 @@ func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, histo
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	return b.b.SaveIncident(ctx, incident)
 }
+
+func (b *EngineBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
+	return b.b.SaveErrorSubscription(ctx, subscription)
+}

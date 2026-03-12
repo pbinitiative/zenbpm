@@ -229,6 +229,7 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		CancellActivity         bool                      `xml:"cancelActivity,attr"`
 		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
 		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
+		ErrorEventDefinition   TErrorEventDefinition   `xml:"errorEventDefinition"`
 		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
 		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{CancellActivity: true}
@@ -242,6 +243,8 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition.Id != "":
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
+	case tempStruct.ErrorEventDefinition.Id != "":
+		definitions.EventDefinition = tempStruct.ErrorEventDefinition
 	default:
 		for _, u := range tempStruct.UnknownEventDefinitions {
 			if isEventDefinitionElement(u.XMLName.Local) {
@@ -296,3 +299,11 @@ func (TLinkEventDefinition) eventDefinition() {}
 type TTimeDuration struct {
 	XMLText string `xml:",innerxml"`
 }
+
+type TErrorEventDefinition struct {
+	Id       string  `xml:"id,attr"`
+	Name     string  `xml:"name,attr"`
+	ErrorRef *string `xml:"errorRef,attr"`
+}
+
+func (TErrorEventDefinition) eventDefinition() {}

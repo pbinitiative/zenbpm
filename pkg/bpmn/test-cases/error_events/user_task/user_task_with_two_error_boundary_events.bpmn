@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_job_fail_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+  <bpmn:process id="job-fail-error-boundary" name="Job Fail Error Boundary" isExecutable="true">
+    <bpmn:sequenceFlow id="Flow_0olmgsp" />
+    <bpmn:startEvent id="Event_01fi7np">
+      <bpmn:outgoing>Flow_1h9qmb2</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="user-task-error-boundary" name="User task">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_1h9qmb2</bpmn:incoming>
+      <bpmn:outgoing>Flow_1rlv8ts</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_1h9qmb2" sourceRef="Event_01fi7np" targetRef="user-task-error-boundary" />
+    <bpmn:boundaryEvent id="Event_0445qni" attachedToRef="user-task-error-boundary">
+      <bpmn:outgoing>Flow_090ia1o</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0wcgd3n" errorRef="Error_fail_test_1" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="Event_1b1dcko" name="Handled end 1">
+      <bpmn:incoming>Flow_090ia1o</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_090ia1o" sourceRef="Event_0445qni" targetRef="Event_1b1dcko" />
+    <bpmn:endEvent id="Event_19dpay4" name="Should not happen">
+      <bpmn:incoming>Flow_1rlv8ts</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1rlv8ts" sourceRef="user-task-error-boundary" targetRef="Event_19dpay4" />
+    <bpmn:boundaryEvent id="Event_0vt01q4" attachedToRef="user-task-error-boundary">
+      <bpmn:outgoing>Flow_16npo15</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_10ew4gj" errorRef="Error_fail_test_2" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="Event_1utkxq4" name="Handled end 2">
+      <bpmn:incoming>Flow_16npo15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_16npo15" sourceRef="Event_0vt01q4" targetRef="Event_1utkxq4" />
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test_1" name="Fail test error first" errorCode="1" />
+  <bpmn:error id="Error_fail_test_2" name="Fail test error second" errorCode="2" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="job-fail-error-boundary">
+      <bpmndi:BPMNShape id="Event_01fi7np_di" bpmnElement="Event_01fi7np">
+        <dc:Bounds x="172" y="272" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="user-task-error-boundary_di" bpmnElement="user-task-error-boundary">
+        <dc:Bounds x="270" y="250" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1b1dcko_di" bpmnElement="Event_1b1dcko">
+        <dc:Bounds x="442" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="425" y="315" width="72" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_19dpay4_di" bpmnElement="Event_19dpay4">
+        <dc:Bounds x="302" y="392" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="294" y="435" width="53" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1utkxq4_di" bpmnElement="Event_1utkxq4">
+        <dc:Bounds x="302" y="112" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="284" y="82" width="72" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0445qni_di" bpmnElement="Event_0445qni">
+        <dc:Bounds x="352" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="338" y="145" width="65" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0vt01q4_di" bpmnElement="Event_0vt01q4">
+        <dc:Bounds x="302" y="232" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1h9qmb2_di" bpmnElement="Flow_1h9qmb2">
+        <di:waypoint x="208" y="290" />
+        <di:waypoint x="270" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_090ia1o_di" bpmnElement="Flow_090ia1o">
+        <di:waypoint x="388" y="290" />
+        <di:waypoint x="442" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1rlv8ts_di" bpmnElement="Flow_1rlv8ts">
+        <di:waypoint x="320" y="330" />
+        <di:waypoint x="320" y="392" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16npo15_di" bpmnElement="Flow_16npo15">
+        <di:waypoint x="320" y="232" />
+        <di:waypoint x="320" y="148" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

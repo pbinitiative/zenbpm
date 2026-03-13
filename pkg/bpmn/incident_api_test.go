@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
 )
@@ -81,4 +82,15 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incident.ResolvedAt)
 
+}
+
+func TestResolveIncidentReturnsErrNotFound(t *testing.T) {
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
+
+	var nonExistingKey int64 = -1
+	err := bpmnEngine.ResolveIncident(t.Context(), nonExistingKey)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
 }

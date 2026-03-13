@@ -484,18 +484,16 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
 	}
 	resp, err := client.ResolveIncident(ctx, &proto.ResolveIncidentRequest{
 		IncidentKey: &key,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("client call to resolve incident failed")
-		if err != nil {
-			return fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		return zenerr.TechnicalError(fmt.Errorf("client call to resolve incident failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to resolve incident failed"))
 	}
 	return nil
 }

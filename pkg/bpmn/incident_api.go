@@ -37,7 +37,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 
 	incident, err := engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
-		return newEngineErrorf("failed to find incident with key: %d", key)
+		return fmt.Errorf("%w: %w", newEngineErrorf("failed to find incident with key %d", key), err)
 	}
 
 	resoveIncidentSpan.SetAttributes(
@@ -52,7 +52,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, incident.ProcessInstanceKey)
 	if err != nil {
-		return newEngineErrorf("failed to find process instance with key: %d", incident.ProcessInstanceKey)
+		return fmt.Errorf("%w: %w", newEngineErrorf("failed to find process instance with key %d", incident.ProcessInstanceKey), err)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
@@ -68,7 +68,7 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	//refresh
 	incident, err = engine.persistence.FindIncidentByKey(ctx, key)
 	if err != nil {
-		return newEngineErrorf("failed to find incident with key: %d", key)
+		return fmt.Errorf("%w: %w", newEngineErrorf("failed to find incident with key %d", key), err)
 	}
 	if incident.ResolvedAt != nil {
 		return newEngineErrorf("incident with key %d was already resolved", key)

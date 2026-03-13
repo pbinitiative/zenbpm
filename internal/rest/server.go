@@ -1601,10 +1601,18 @@ func (s *Server) ResolveIncident(ctx context.Context, request public.ResolveInci
 	err := s.node.ResolveIncident(ctx, request.IncidentKey)
 
 	if err != nil {
-		return public.ResolveIncident502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.ResolveIncident502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.ResolveIncident404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.ResolveIncident500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.ResolveIncident500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
 	return public.ResolveIncident201Response{}, nil

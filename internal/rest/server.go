@@ -441,25 +441,44 @@ func (s *Server) GetDecisionInstances(ctx context.Context, request public.GetDec
 		},
 	}
 
+	partitionCounts := make([]int, len(partitionedInstances))
+	partitionTotalCounts := make([]int, len(partitionedInstances))
+
+	var wg sync.WaitGroup
+	for i, partitionInstance := range partitionedInstances {
+		wg.Add(1)
+		go func(idx int, partitionedDecisionInstance *proto.PartitionedDecisionInstances) {
+			defer wg.Done()
+
+			decisionInstances := partitionedDecisionInstance.GetDecisionInstances()
+
+			decisionInstancesPage.Partitions[idx] = public.PartitionDecisionInstances{
+				Items:     make([]public.DecisionInstanceSummary, len(decisionInstances)),
+				Partition: int(partitionedDecisionInstance.GetPartitionId()),
+				Count:     ptr.To(len(decisionInstances)),
+			}
+
+			partitionCounts[idx] = len(decisionInstances)
+			partitionTotalCounts[idx] = int(partitionedDecisionInstance.GetTotalCount())
+
+			for k, instance := range decisionInstances {
+				decisionInstancesPage.Partitions[idx].Items[k] = public.DecisionInstanceSummary{
+					Key:                      instance.GetKey(),
+					DmnResourceDefinitionKey: instance.GetDmnResourceDefinitionKey(),
+					EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
+					ProcessInstanceKey:       instance.ProcessInstanceKey,
+					FlowElementInstanceKey:   instance.FlowElementInstanceKey,
+				}
+			}
+		}(i, partitionInstance)
+	}
+	wg.Wait()
+
 	count := 0
 	totalCount := 0
-	for i, partitionInstances := range partitionedInstances {
-		decisionInstancesPage.Partitions[i] = public.PartitionDecisionInstances{
-			Items:     make([]public.DecisionInstanceSummary, len(partitionInstances.GetDecisionInstances())),
-			Partition: int(partitionInstances.GetPartitionId()),
-			Count:     ptr.To(len(partitionInstances.GetDecisionInstances())),
-		}
-		count += len(partitionInstances.GetDecisionInstances())
-		totalCount += int(partitionInstances.GetTotalCount())
-		for k, instance := range partitionInstances.GetDecisionInstances() {
-			decisionInstancesPage.Partitions[i].Items[k] = public.DecisionInstanceSummary{
-				Key:                      instance.GetKey(),
-				DmnResourceDefinitionKey: instance.GetDmnResourceDefinitionKey(),
-				EvaluatedAt:              time.UnixMilli(instance.GetEvaluatedAt()),
-				ProcessInstanceKey:       instance.ProcessInstanceKey,
-				FlowElementInstanceKey:   instance.FlowElementInstanceKey,
-			}
-		}
+	for i := range partitionedInstances {
+		count += partitionCounts[i]
+		totalCount += partitionTotalCounts[i]
 	}
 	decisionInstancesPage.Count = count
 	decisionInstancesPage.TotalCount = totalCount
@@ -1013,45 +1032,64 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 		},
 	}
 
+	partitionCounts := make([]int, len(partitionedInstances))
+	partitionTotalCounts := make([]int, len(partitionedInstances))
+	mappingErrors := make([]error, len(partitionedInstances))
+
+	var wg sync.WaitGroup
+	for i, partitionInstances := range partitionedInstances {
+		wg.Add(1)
+		go func(idx int, pi *proto.PartitionedProcessInstances) {
+			defer wg.Done()
+			instances := pi.GetInstances()
+			processInstancesPage.Partitions[idx] = public.PartitionProcessInstances{
+				Items:     make([]public.ProcessInstance, len(instances)),
+				Partition: int(pi.GetPartitionId()),
+			}
+			partitionCounts[idx] = len(instances)
+			partitionTotalCounts[idx] = int(pi.GetTotalCount())
+			for k, instance := range instances {
+				vars := map[string]any{}
+				if unmarshalErr := json.Unmarshal(instance.GetVariables(), &vars); unmarshalErr != nil {
+					mappingErrors[idx] = unmarshalErr
+					return
+				}
+				respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[idx].Items[k].ActiveElementInstances))
+				for _, elementInstance := range processInstancesPage.Partitions[idx].Items[k].ActiveElementInstances {
+					respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
+						CreatedAt:          elementInstance.CreatedAt,
+						ElementId:          elementInstance.ElementId,
+						ElementInstanceKey: elementInstance.ElementInstanceKey,
+						State:              elementInstance.State,
+					})
+				}
+				processInstancesPage.Partitions[idx].Items[k] = public.ProcessInstance{
+					ActiveElementInstances: respActiveElementInstances,
+					BpmnProcessId:          instance.ProcessId,
+					BusinessKey:            instance.BusinessKey,
+					CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
+					Key:                    instance.GetKey(),
+					ProcessDefinitionKey:   instance.GetDefinitionKey(),
+					ProcessType:            getRestProcessInstanceType(runtime.ProcessType(instance.GetType())),
+					State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
+					Variables:              vars,
+				}
+				if instance.GetParentInstanceKey() != 0 {
+					processInstancesPage.Partitions[idx].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
+				}
+			}
+		}(i, partitionInstances)
+	}
+	wg.Wait()
+
 	count := 0
 	totalCount := 0
-	for i, partitionInstances := range partitionedInstances {
-		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
-			Items:     make([]public.ProcessInstance, len(partitionInstances.GetInstances())),
-			Partition: int(partitionInstances.GetPartitionId()),
+	for i := range partitionedInstances {
+		if mappingErrors[i] != nil {
+			return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(mappingErrors[i]).ToApiError()), nil
 		}
-		count += len(partitionInstances.GetInstances())
-		totalCount += int(partitionInstances.GetTotalCount())
-		for k, instance := range partitionInstances.GetInstances() {
-			vars := map[string]any{}
-			err = json.Unmarshal(instance.GetVariables(), &vars)
-			if err != nil {
-				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
-			}
-			respActiveElementInstances := make([]public.ElementInstance, 0, len(processInstancesPage.Partitions[i].Items[k].ActiveElementInstances))
-			for _, elementInstance := range processInstancesPage.Partitions[i].Items[k].ActiveElementInstances {
-				respActiveElementInstances = append(respActiveElementInstances, public.ElementInstance{
-					CreatedAt:          elementInstance.CreatedAt,
-					ElementId:          elementInstance.ElementId,
-					ElementInstanceKey: elementInstance.ElementInstanceKey,
-					State:              elementInstance.State,
-				})
-			}
-			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstance{
-				ActiveElementInstances: respActiveElementInstances,
-				BpmnProcessId:          instance.ProcessId,
-				BusinessKey:            instance.BusinessKey,
-				CreatedAt:              time.UnixMilli(instance.GetCreatedAt()),
-				Key:                    instance.GetKey(),
-				ProcessDefinitionKey:   instance.GetDefinitionKey(),
-				ProcessType:            getRestProcessInstanceType(runtime.ProcessType(instance.GetType())),
-				State:                  getRestProcessInstanceState(runtime.ActivityState(instance.GetState())),
-				Variables:              vars,
-			}
-			if instance.GetParentInstanceKey() != 0 {
-				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
-			}
-		}
+		count += partitionCounts[i]
+		totalCount += partitionTotalCounts[i]
 	}
 	processInstancesPage.Count = count
 	processInstancesPage.TotalCount = totalCount

@@ -2082,12 +2082,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Invalid request payload"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "The requested resource was not found"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred while processing the request"
         502:
           description: Failed to redirect request to responsible node
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                code: "REDIRECT_FAILED"
+                message: "Failed to redirect request to responsible node"
 
   /incidents/{incidentKey}/resolve:
     post:

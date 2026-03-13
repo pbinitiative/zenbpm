@@ -605,12 +605,24 @@ func (s *Server) AssignJob(ctx context.Context, request public.AssignJobRequestO
 }
 
 func (s *Server) PublishMessage(ctx context.Context, request public.PublishMessageRequestObject) (public.PublishMessageResponseObject, error) {
-	err := s.node.PublishMessage(ctx, request.Body.MessageName, request.Body.CorrelationKey, *request.Body.Variables)
+	variables := map[string]any{}
+	if request.Body.Variables != nil {
+		variables = *request.Body.Variables
+	}
+	err := s.node.PublishMessage(ctx, request.Body.MessageName, request.Body.CorrelationKey, variables)
 	if err != nil {
-		return public.PublishMessage502JSONResponse{
-			Code:    "TODO",
-			Message: err.Error(),
-		}, nil
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.PublishMessage404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ClusterErrorCode:
+				return public.PublishMessage502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.PublishMessage500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.PublishMessage500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.PublishMessage201Response{}, nil
 }

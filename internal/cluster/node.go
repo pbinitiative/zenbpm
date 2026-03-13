@@ -493,7 +493,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	partitionId := node.store.ClusterState().GetPartitionIdFromString(correlationKey)
 	partitionNode := node.controller.GetPartition(ctx, partitionId)
 	if partitionNode == nil {
-		return fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey)
+		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey))
 	}
 	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
 		ctx,
@@ -501,31 +501,32 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 		correlationKey,
 	)
 	if err != nil {
-		return err
+		if errors.Is(err, storage.ErrNotFound) {
+			return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q and correlationKey %q", name, correlationKey))
+		}
+		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, correlationKey, err))
 	}
 
 	partitionId = zenflake.GetPartitionId(msPointer.MessageSubscriptionKey)
 	client, err := node.client.PartitionLeader(partitionId)
 	if err != nil {
-		return fmt.Errorf("failed to get partition leader: %w", err)
+		return zenerr.ClusterError(fmt.Errorf("failed to get partition leader: %w", err))
 	}
 
 	vars, err := json.Marshal(variables)
 	if err != nil {
-		return fmt.Errorf("failed marshal variables: %w", err)
+		return zenerr.TechnicalError(fmt.Errorf("failed to marshal variables: %w", err))
 	}
 
 	resp, err := client.PublishMessage(ctx, &proto.PublishMessageRequest{
 		Key:       &msPointer.MessageSubscriptionKey,
 		Variables: vars,
 	})
-	if err != nil || resp.Error != nil {
-		e := fmt.Errorf("client call to publish message failed")
-		if err != nil {
-			return fmt.Errorf("%w: %w", e, err)
-		} else if resp.Error != nil {
-			return fmt.Errorf("%w: %w", e, errors.New(resp.Error.GetMessage()))
-		}
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("client call to publish message failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to publish message failed"))
 	}
 
 	return nil

@@ -1400,7 +1400,7 @@ func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncident
 		}
 		return &proto.ResolveIncidentResponse{Error: zerr.ToProtoError()}, nil
 	}
-	return &proto.ResolveIncidentResponse{}, err
+	return &proto.ResolveIncidentResponse{}, nil
 }
 
 func (s *Server) SubscribeJob(stream grpc.BidiStreamingServer[proto.SubscribeJobRequest, proto.SubscribeJobResponse]) error {

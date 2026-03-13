@@ -329,8 +329,7 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 		})
 		if err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy dmn resource definition"), err))
-		}
-		if resp.Error != nil {
+		} else if resp.Error != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy dmn resource definition"), errors.New(resp.Error.GetMessage())))
 		}
 	}
@@ -405,8 +404,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		})
 		if err != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy process definition"), err))
-		}
-		if resp.Error != nil {
+		} else if resp.Error != nil {
 			errJoin = errors.Join(errJoin, fmt.Errorf("%w: %w", fmt.Errorf("failed to deploy process definition"), errors.New(resp.Error.GetMessage())))
 		}
 	}

@@ -1190,8 +1190,8 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 	processInstancesPage := public.GetChildProcessInstances200JSONResponse{
 		Partitions: make([]public.PartitionProcessInstances, len(partitionedInstances)),
 		PartitionedPageMetadata: public.PartitionedPageMetadata{
-			Page: int(*request.Params.Page),
-			Size: int(*request.Params.Size),
+			Page: int(page),
+			Size: int(size),
 		},
 	}
 

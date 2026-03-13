@@ -2101,7 +2101,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
               example:
-                code: "INTERNAL_ERROR"
+                code: "TECHNICAL_ERROR"
                 message: "An unexpected error occurred while processing the request"
         502:
           description: Failed to redirect request to responsible node
@@ -2110,7 +2110,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
               example:
-                code: "REDIRECT_FAILED"
+                code: "CLUSTER_ERROR"
                 message: "Failed to redirect request to responsible node"
 
   /incidents/{incidentKey}/resolve:

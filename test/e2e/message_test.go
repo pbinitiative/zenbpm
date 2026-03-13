@@ -247,8 +247,18 @@ func publishMessage(t testing.TB, name string, correlationKey string, vars *map[
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 	if response.StatusCode() != 201 {
-		if response.JSON404 != nil {
-			return fmt.Errorf("failed to publish message, expected status 201 got %d: %s", response.StatusCode(), response.JSON404.Message)
+		var errMsg string
+		if response.JSON400 != nil {
+			errMsg = response.JSON400.Message
+		} else if response.JSON404 != nil {
+			errMsg = response.JSON404.Message
+		} else if response.JSON500 != nil {
+			errMsg = response.JSON500.Message
+		} else if response.JSON502 != nil {
+			errMsg = response.JSON502.Message
+		}
+		if errMsg != "" {
+			return fmt.Errorf("failed to publish message, expected status 201 got %d: %s", response.StatusCode(), errMsg)
 		}
 		return fmt.Errorf("failed to publish message, expected status 201 got %d", response.StatusCode())
 	}

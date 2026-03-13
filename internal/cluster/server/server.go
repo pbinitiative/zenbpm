@@ -1207,7 +1207,12 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 	}
 
 	if err := engine.PublishMessage(ctx, req.GetKey(), vars); err != nil {
-		zerr := zenerr.TechnicalError(fmt.Errorf("failed to publish message event %d: %w", req.GetKey(), err))
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("message subscription for key %d not found", req.GetKey()))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to publish message event %d: %w", req.GetKey(), err))
+		}
 		return &proto.PublishMessageResponse{Error: zerr.ToProtoError()}, nil
 	}
 

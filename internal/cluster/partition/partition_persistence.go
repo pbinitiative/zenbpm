@@ -1997,6 +1997,9 @@ func (rq *DB) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Inc
 func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (bpmnruntime.Incident, error) {
 	incident, err := db.FindIncidentByKey(ctx, key)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return bpmnruntime.Incident{}, fmt.Errorf("incident with key %d not found: %w", key, fmt.Errorf("%w: %w", storage.ErrNotFound, err))
+		}
 		return bpmnruntime.Incident{}, err
 	}
 

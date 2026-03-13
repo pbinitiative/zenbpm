@@ -73,6 +73,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -149,6 +155,18 @@ paths:
                 size: 10
                 count: 2
                 totalCount: 2
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         502:
           description: Failed to redirect request to responsible node
           content:
@@ -191,6 +209,18 @@ paths:
                   </definitions>
         400:
           description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
           content:
             application/json:
               schema:

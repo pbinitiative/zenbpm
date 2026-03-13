@@ -3,11 +3,12 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"testing"
+
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // TODO: Test with multiple partitions/nodes
@@ -16,7 +17,7 @@ func TestRestApiMessage(t *testing.T) {
 
 	var instance public.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
+	_, err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)
@@ -94,7 +95,7 @@ func TestRestApiMessage(t *testing.T) {
 	t.Run("publish message call activity", func(t *testing.T) {
 		callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
 		assert.NoError(t, err)
-		err = deployDefinition(t, "simple_task.bpmn")
+		_, err = deployDefinition(t, "simple_task.bpmn")
 		assert.NoError(t, err)
 
 		instance, err = createProcessInstance(t, callActivityDefinition.Key, map[string]any{

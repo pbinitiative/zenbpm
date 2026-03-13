@@ -13,7 +13,7 @@ import (
 func TestDecisionInstance(t *testing.T) {
 	var result *zenclient.EvaluatedDRDResult
 	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
-	err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+	_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 	definitions, err := listDecisionDefinitions(t)
 	assert.NoError(t, err)
@@ -78,7 +78,7 @@ func TestDecisionInstances(t *testing.T) {
 	var resDefId1Key int64
 	var redDefId2Key int64
 	t.Run("deploy dmn resource definition", func(t *testing.T) {
-		err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 		assert.NoError(t, err)
 		resDefId1Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("resDefName1"), ptr.To("resDefId1"))
 		assert.NoError(t, err)

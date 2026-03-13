@@ -86,7 +86,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 	var instance public.ProcessInstance
 	definition, err := deployGetDefinition(t, "call-activity-simple.bpmn", "Simple_CallActivity_Process")
 	assert.NoError(t, err)
-	err = deployDefinition(t, "simple_task.bpmn")
+	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	t.Run("create process instance", func(t *testing.T) {
@@ -334,7 +334,7 @@ func TestIncludeChildProcesses(t *testing.T) {
 
 	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
 	assert.NoError(t, err)
-	err = deployDefinition(t, "simple_task.bpmn")
+	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
@@ -410,7 +410,7 @@ func TestFindChildProcesses(t *testing.T) {
 
 	callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
 	assert.NoError(t, err)
-	err = deployDefinition(t, "simple_task.bpmn")
+	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
@@ -706,7 +706,7 @@ func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, er
 
 func deployGetDefinition(t *testing.T, filename string, bpmnProcessId string) (zenclient.ProcessDefinitionSimple, error) {
 	var definition zenclient.ProcessDefinitionSimple
-	err := deployDefinition(t, filename)
+	_, err := deployDefinition(t, filename)
 	assert.NoError(t, err)
 	definitions, err := listProcessDefinitions(t)
 	assert.NoError(t, err)

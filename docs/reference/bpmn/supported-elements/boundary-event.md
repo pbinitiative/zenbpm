@@ -50,7 +50,8 @@ Boundary Events can be attached to the following activity types:
 Currently supported event types with boundary events:
 
 - Message,
-- Timer
+- Timer,
+- Error
 
 ![Boudary event usage example](./../../assets/bpmn/boundary_events.png)
 _Boundary event usage example_

@@ -150,7 +150,7 @@ ORDER BY
 
 LIMIT @size OFFSET @offset;
 
--- name: FindProcessByParentExecutionToken :many
+-- name: FindProcessesByParentExecutionToken :many
 SELECT
     *
 FROM

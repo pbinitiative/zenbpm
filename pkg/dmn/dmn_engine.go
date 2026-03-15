@@ -209,7 +209,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			}
 			dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 			if err != nil {
-				return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
+				return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d containing decisionDefinition %s : %w",
 					decisionDefinition.DmnResourceDefinitionId,
 					decisionDefinition.DmnResourceDefinitionKey,
 					decisionDefinition.Id,
@@ -221,7 +221,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		}
 	case "deployment":
 		//TODO: Implement binding type deployment
-		return nil, fmt.Errorf("failed to process decisionDefinition %s : bindingType \"deployment\" unsuported", decisionId)
+		return nil, fmt.Errorf("failed to process decisionDefinition %s : bindingType \"deployment\" unsupported", decisionId)
 	case "versionTag":
 		decisionDefinition, err = engine.persistence.GetLatestDecisionDefinitionByIdAndVersionTag(ctx, decisionId, versionTag)
 		if err != nil {
@@ -229,7 +229,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 		}
 		dmnResourceDefinition, err = engine.persistence.FindDmnResourceDefinitionByKey(ctx, decisionDefinition.DmnResourceDefinitionKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d contaning decisionDefinition %s : %w",
+			return nil, fmt.Errorf("failed to find dmnResourceDefinition %s:%d containing decisionDefinition %s : %w",
 				decisionDefinition.DmnResourceDefinitionId,
 				decisionDefinition.DmnResourceDefinitionKey,
 				decisionDefinition.Id,
@@ -237,7 +237,7 @@ func (engine *ZenDmnEngine) FindAndEvaluateDRD(
 			)
 		}
 	default:
-		return nil, fmt.Errorf("failed to process Decision %s: BindingType \"%s\" unsuported", decisionId, bindingType)
+		return nil, fmt.Errorf("failed to process Decision %s: BindingType \"%s\" unsupported", decisionId, bindingType)
 	}
 
 	result, err := engine.evaluateDRD(

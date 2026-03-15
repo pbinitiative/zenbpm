@@ -200,7 +200,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	for _, token := range tokens {
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		calledProcesses, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
 		}
@@ -295,7 +295,7 @@ func (engine *Engine) terminateExecutionTokens(
 				// Cancel called processes
 				// TODO: This can cause a deadlock
 				// TODO: Fix THIS
-				calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, activeToken.Key)
+				calledProcesses, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, activeToken.Key)
 				if err != nil {
 					return nil, fmt.Errorf("failed to find called process for token %d: %w", activeToken.Key, err)
 				}

@@ -613,7 +613,7 @@ func TestMessageEventMultiInstanceBusinessRule(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tokens))
 
-	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
 	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
@@ -657,7 +657,7 @@ func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tokens))
 
-	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
 	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
@@ -708,7 +708,7 @@ func TestMessageEventMultiInstance(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(tokens))
 
-			subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+			subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(subProcesses))
 			assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
@@ -753,7 +753,7 @@ func TestMessageEventMultiInstanceCallActivity(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tokens))
 
-	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
 	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())
@@ -797,7 +797,7 @@ func TestMessageEventMultiInstanceParallelCallActivity(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tokens))
 
-	subProcesses, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), tokens[0].Key)
+	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
 	assert.Equal(t, runtime.ActivityStateTerminated, subProcesses[0].ProcessInstance().GetState())

@@ -353,7 +353,7 @@ func (mem *Storage) FindProcessInstanceByKey(ctx context.Context, processInstanc
 	return res, nil
 }
 
-func (mem *Storage) FindProcessInstanceByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
+func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(ctx context.Context, parentExecutionTokenKey int64) ([]bpmnruntime.ProcessInstance, error) {
 	res := make([]bpmnruntime.ProcessInstance, 0)
 	for _, processInstance := range mem.ProcessInstances {
 		switch instance := processInstance.(type) {

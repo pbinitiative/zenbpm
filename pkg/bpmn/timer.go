@@ -105,7 +105,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			return nil, err
 		}
 		// cancel all called processes
-		calledProcesses, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		calledProcesses, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called processes for token %d: %w", token.Key, err)
 		}

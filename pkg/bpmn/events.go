@@ -99,7 +99,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 			}
 		}
 
-		childInstances, err := engine.persistence.FindProcessInstanceByParentExecutionTokenKey(ctx, token.Key)
+		childInstances, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
 		if !errors.Is(err, storage.ErrNotFound) || len(childInstances) > 0 {
 			if err != nil {
 				return nil, fmt.Errorf("failed to find child instances for token %d: %w", token.Key, err)

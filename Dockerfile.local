@@ -7,8 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-# CGO is automatically enabled in the standard golang image
-RUN go build -o zenbpm cmd/zenbpm/main.go
+RUN make build
 
 
 FROM ubuntu:24.04

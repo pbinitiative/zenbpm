@@ -34,3 +34,5 @@ dist/
 .gocache
 .cache/
 .gomodcache
+.claude/
+CLAUDE.md

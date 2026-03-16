@@ -16,6 +16,7 @@ node-*
 zen_bpm_node_*
 cover.out
 
+.claude
 docs/docusaurus/
 dist/
 .release-env

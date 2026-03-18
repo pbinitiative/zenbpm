@@ -1402,6 +1402,12 @@ paths:
             type: string
             enum: [ active, completed, terminated, failed ]
           description: Filter by state
+        - name: enableMultiInstanceSubprocesses
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: If true, returns also technical child process instances of multi-instance
       responses:
         200:
           description: List of child process instances

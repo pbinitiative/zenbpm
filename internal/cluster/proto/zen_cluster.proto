@@ -463,6 +463,7 @@ message GetChildProcessInstancesRequest{
   int64 parent_instance_key = 3;
   int64 state = 4;
   string sort_by_order = 5;
+  bool enable_multi_instance_subprocesses = 6;
 }
 
 message GetProcessInstancesRequest {

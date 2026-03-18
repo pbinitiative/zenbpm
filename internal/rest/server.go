@@ -1159,6 +1159,10 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 			}, nil
 		}
 	}
+	var enableMultiInstanceSubprocesses *bool
+	if request.Params.EnableMultiInstanceSubprocesses != nil {
+		enableMultiInstanceSubprocesses = request.Params.EnableMultiInstanceSubprocesses
+	}
 	if request.Params.SortOrder != nil {
 		supportedSortOrder := []public.GetChildProcessInstancesParamsSortOrder{public.GetChildProcessInstancesParamsSortOrderAsc, public.GetChildProcessInstancesParamsSortOrderDesc}
 		if !slices.Contains(supportedSortOrder, *request.Params.SortOrder) {
@@ -1185,11 +1189,12 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 	partitionedInstances, err := s.node.GetChildProcessInstances(
 		ctx,
 		&proto.GetChildProcessInstancesRequest{
-			Page:              &page,
-			Size:              &size,
-			ParentInstanceKey: &request.ProcessInstanceKey,
-			State:             state,
-			SortByOrder:       (*string)(sortByOrder),
+			Page:                            &page,
+			Size:                            &size,
+			ParentInstanceKey:               &request.ProcessInstanceKey,
+			State:                           state,
+			SortByOrder:                     (*string)(sortByOrder),
+			EnableMultiInstanceSubprocesses: enableMultiInstanceSubprocesses,
 		},
 	)
 	if err != nil {

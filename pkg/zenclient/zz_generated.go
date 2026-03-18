@@ -959,6 +959,9 @@ type GetChildProcessInstancesParams struct {
 
 	// State Filter by state
 	State *GetChildProcessInstancesParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// EnableMultiInstanceSubprocesses If true, returns also technical child process instances of multi-instance
+	EnableMultiInstanceSubprocesses *bool `form:"enableMultiInstanceSubprocesses,omitempty" json:"enableMultiInstanceSubprocesses,omitempty"`
 }
 
 // GetChildProcessInstancesParamsSortBy defines parameters for GetChildProcessInstances.
@@ -3427,6 +3430,22 @@ func NewGetChildProcessInstancesRequest(server string, processInstanceKey int64,
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.EnableMultiInstanceSubprocesses != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "enableMultiInstanceSubprocesses", runtime.ParamLocationQuery, *params.EnableMultiInstanceSubprocesses); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

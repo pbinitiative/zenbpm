@@ -411,7 +411,7 @@ func (rq *DB) GetLatestDecisionDefinitionById(ctx context.Context, decisionId st
 	decisionDefinition, err := rq.Queries.FindLatestDecisionDefinitionById(ctx, decisionId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest decision definition by id %s: %w", decisionId, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest decision definition by id %s: %w", decisionId, err)
 	}
@@ -458,7 +458,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, 
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest decision by id %s and version tag %s: %w", decisionId, versionTag, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest decision by id %s and version tag %s: %w", decisionId, versionTag, err)
 	}
@@ -485,7 +485,7 @@ func (rq *DB) GetLatestDecisionDefinitionByIdAndDmnResourceDefinitionId(ctx cont
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest decision by id %s and dmnResourceDefinitionId %s: %w", decisionId, dmnResourceDefinitionId, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest decision by id %s and dmnResourceDefinitionId %s: %w", decisionId, dmnResourceDefinitionId, err)
 	}
@@ -512,7 +512,7 @@ func (rq *DB) GetDecisionDefinitionByIdAndDmnResourceDefinitionKey(ctx context.C
 		})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find decision by decisionId %s and dmnResourceDefinitionKey %d: %w", decisionId, dmnResourceDefinitionKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find decision by decisionId %s and dmnResourceDefinitionKey %d: %w", decisionId, dmnResourceDefinitionKey, err)
 	}
@@ -578,7 +578,7 @@ func (rq *DB) FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResour
 	dbDefinition, err := rq.Queries.FindLatestDmnResourceDefinitionById(ctx, dmnResourceDefinitionId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest dmn resource definition by id %s: %w", dmnResourceDefinitionId, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest dmn resource definition by id %s: %w", dmnResourceDefinitionId, err)
 	}
@@ -619,7 +619,7 @@ func (rq *DB) FindDmnResourceDefinitionByKey(ctx context.Context, dmnResourceDef
 	drd, err := rq.Queries.FindDmnResourceDefinitionByKey(ctx, dmnResourceDefinitionKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest dmn resource definition by key %d: %w", dmnResourceDefinitionKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest dmn resource definition by key %d: %w", dmnResourceDefinitionKey, err)
 	}
@@ -704,7 +704,7 @@ func (rq *DB) FindDecisionInstanceByKey(ctx context.Context, key int64) (dmnrunt
 	result, err := rq.Queries.FindDecisionInstanceByKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision instance by key %d: %w", key, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return dmnruntime.DecisionInstance{}, fmt.Errorf("failed to find decision instance by key %d: %w", key, err)
 	}
@@ -731,7 +731,7 @@ func (rq *DB) FindLatestProcessDefinitionById(ctx context.Context, processDefini
 	dbDefinition, err := rq.Queries.FindLatestProcessDefinitionById(ctx, processDefinitionId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest process definition by id %s: %w", processDefinitionId, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest process definition by id %s: %w", processDefinitionId, err)
 	}
@@ -771,7 +771,7 @@ func (rq *DB) FindProcessDefinitionByKey(ctx context.Context, processDefinitionK
 	dbDefinition, err := rq.Queries.FindProcessDefinitionByKey(ctx, processDefinitionKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find latest process definition by key %d: %w", processDefinitionKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find latest process definition by key %d: %w", processDefinitionKey, err)
 	}
@@ -858,7 +858,7 @@ func (rq *DB) RefreshProcessInstance(ctx context.Context, processInstance bpmnru
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstance.ProcessInstance().Key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to find process instance by key %d: %w", processInstanceKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return fmt.Errorf("failed to find process instance by key %d: %w", processInstanceKey, err)
 	}
@@ -913,7 +913,7 @@ func (rq *DB) FindProcessInstanceByKey(ctx context.Context, processInstanceKey i
 	dbInstance, err := rq.Queries.GetProcessInstance(ctx, processInstanceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("failed to find process instance by key %d: %w", processInstanceKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to find process instance by key %d: %w", processInstanceKey, err)
 	}
@@ -1146,7 +1146,7 @@ func (rq *DB) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, 
 	sqlcTimer, err := rq.Queries.GetTimerByKey(ctx, timerKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return bpmnruntime.Timer{}, fmt.Errorf("failed to find timer by key %d: %w", timerKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return bpmnruntime.Timer{}, fmt.Errorf("failed to find timer by key %d: %w", timerKey, err)
 	}
@@ -1364,7 +1364,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 	job, err := rq.Queries.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find job with key %d: %w", jobKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find job with key %d: %w", jobKey, err)
 	}
@@ -1572,7 +1572,7 @@ func (rq *DB) FindActiveMessageSubscriptionPointer(ctx context.Context, name str
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return dbMessageSub, fmt.Errorf("failed to find ready message subscription pointer for name %s correlationKey %s: %w", name, correlationKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return dbMessageSub, fmt.Errorf("failed to find ready message subscription pointer for name %s correlationKey %s: %w", name, correlationKey, err)
 	}
@@ -1588,8 +1588,7 @@ func (rq *DB) FindActiveMessageSubscriptionKey(ctx context.Context, name string,
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("can't find active message subscription by name %s, correlationKey %s: %w",
-				name, correlationKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return 0, fmt.Errorf("can't find active message subscription by name %s, correlationKey %s: %w",
 			name, correlationKey, err)
@@ -1649,7 +1648,7 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return res, fmt.Errorf("failed to find active message subscription %d: %w", messageSubscriptionKey, err)
 	}
@@ -2050,7 +2049,7 @@ func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (bpmnrun
 	incident, err := db.FindIncidentByKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return bpmnruntime.Incident{}, fmt.Errorf("incident with key %d not found: %w", key, storage.ErrNotFound)
+			err = storage.ErrNotFound
 		}
 		return bpmnruntime.Incident{}, fmt.Errorf("incident with key %d not found: %w", key, err)
 	}

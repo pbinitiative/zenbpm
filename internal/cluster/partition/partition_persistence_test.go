@@ -24,7 +24,9 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	"github.com/stretchr/testify/assert"
@@ -641,6 +643,88 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, subProcesses)
 	assert.Equal(t, tok1.Key, subProcesses[0].ParentProcessExecutionToken.Int64)
+}
+
+func TestGetLatestDecisionDefinitionById(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t)
+	defer partition.Stop()
+
+	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-decision-def"), conf, clientMgr, tStore.ClusterState)
+	assert.NoError(t, err)
+
+	// Helper to create and save a DMN resource definition
+	saveDmnResource := func(t *testing.T, key int64) dmnruntime.DmnResourceDefinition {
+		def := dmnruntime.DmnResourceDefinition{
+			Id:                fmt.Sprintf("dmn-resource-%d", key),
+			Version:           1,
+			Key:               key,
+			DmnData:           []byte(fmt.Sprintf("dmn-data-%d", key)),
+			DmnChecksum:       [16]byte{1},
+			DmnDefinitionName: fmt.Sprintf("resource-%d", key),
+		}
+		err := db.SaveDmnResourceDefinition(t.Context(), def)
+		assert.NoError(t, err)
+		return def
+	}
+
+	// Helper to create and save a decision definition
+	saveDecision := func(t *testing.T, key int64, version int64, decisionId string, versionTag string, dmnResourceDef dmnruntime.DmnResourceDefinition) dmnruntime.DecisionDefinition {
+		dec := dmnruntime.DecisionDefinition{
+			Key:                      key,
+			Version:                  version,
+			Id:                       decisionId,
+			VersionTag:               versionTag,
+			DmnResourceDefinitionId:  dmnResourceDef.Id,
+			DmnResourceDefinitionKey: dmnResourceDef.Key,
+		}
+		err := db.SaveDecisionDefinition(t.Context(), dec)
+		assert.NoError(t, err)
+		return dec
+	}
+
+	t.Run("returns decision definition when found", func(t *testing.T) {
+		resourceKey := db.GenerateId()
+		dmnResource := saveDmnResource(t, resourceKey)
+
+		decKey := db.GenerateId()
+		decisionId := fmt.Sprintf("decision-%d", decKey)
+		saved := saveDecision(t, decKey, 1, decisionId, "v1", dmnResource)
+
+		result, err := db.GetLatestDecisionDefinitionById(t.Context(), decisionId)
+		assert.NoError(t, err)
+		assert.Equal(t, saved.Key, result.Key)
+		assert.Equal(t, saved.Version, result.Version)
+		assert.Equal(t, saved.Id, result.Id)
+		assert.Equal(t, saved.VersionTag, result.VersionTag)
+		assert.Equal(t, saved.DmnResourceDefinitionId, result.DmnResourceDefinitionId)
+		assert.Equal(t, saved.DmnResourceDefinitionKey, result.DmnResourceDefinitionKey)
+	})
+
+	t.Run("returns latest version when multiple versions exist", func(t *testing.T) {
+		resourceKey := db.GenerateId()
+		dmnResource := saveDmnResource(t, resourceKey)
+
+		decisionId := fmt.Sprintf("decision-multi-%d", resourceKey)
+
+		decKey1 := db.GenerateId()
+		saveDecision(t, decKey1, 1, decisionId, "v1", dmnResource)
+
+		decKey2 := db.GenerateId()
+		latestSaved := saveDecision(t, decKey2, 2, decisionId, "v2", dmnResource)
+
+		result, err := db.GetLatestDecisionDefinitionById(t.Context(), decisionId)
+		assert.NoError(t, err)
+		assert.Equal(t, latestSaved.Key, result.Key)
+		assert.Equal(t, int64(2), result.Version)
+		assert.Equal(t, decisionId, result.Id)
+		assert.Equal(t, "v2", result.VersionTag)
+	})
+
+	t.Run("returns ErrNotFound when decision id does not exist", func(t *testing.T) {
+		_, err := db.GetLatestDecisionDefinitionById(t.Context(), "non-existent-decision-id")
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrNotFound)
+	})
 }
 
 type testStore struct {

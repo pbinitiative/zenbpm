@@ -123,51 +123,6 @@ func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, arg FindIna
 	return items, nil
 }
 
-const findProcessByParentExecutionToken = `-- name: FindProcessByParentExecutionToken :many
-SELECT
-    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec
-FROM
-    process_instance
-WHERE
-    parent_process_execution_token = ?1
-`
-
-func (q *Queries) FindProcessByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error) {
-	rows, err := q.db.QueryContext(ctx, findProcessByParentExecutionToken, parentProcessExecutionToken)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ProcessInstance{}
-	for rows.Next() {
-		var i ProcessInstance
-		if err := rows.Scan(
-			&i.Key,
-			&i.ProcessDefinitionKey,
-			&i.BusinessKey,
-			&i.CreatedAt,
-			&i.State,
-			&i.Variables,
-			&i.ParentProcessExecutionToken,
-			&i.ParentProcessTargetElementID,
-			&i.ParentProcessTargetElementInstanceKey,
-			&i.ProcessType,
-			&i.HistoryTtlSec,
-			&i.HistoryDeleteSec,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
 SELECT
     pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pd.bpmn_process_id,
@@ -342,6 +297,51 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 			&i.HistoryDeleteSec,
 			&i.BpmnProcessID,
 			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findProcessesByParentExecutionToken = `-- name: FindProcessesByParentExecutionToken :many
+SELECT
+    "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec
+FROM
+    process_instance
+WHERE
+    parent_process_execution_token = ?1
+`
+
+func (q *Queries) FindProcessesByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessesByParentExecutionToken, parentProcessExecutionToken)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProcessInstance{}
+	for rows.Next() {
+		var i ProcessInstance
+		if err := rows.Scan(
+			&i.Key,
+			&i.ProcessDefinitionKey,
+			&i.BusinessKey,
+			&i.CreatedAt,
+			&i.State,
+			&i.Variables,
+			&i.ParentProcessExecutionToken,
+			&i.ParentProcessTargetElementID,
+			&i.ParentProcessTargetElementInstanceKey,
+			&i.ProcessType,
+			&i.HistoryTtlSec,
+			&i.HistoryDeleteSec,
 		); err != nil {
 			return nil, err
 		}

@@ -343,7 +343,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, token := range tokens {
-		cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), token.Key)
+		cps, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), token.Key)
 		assert.NoError(t, err)
 
 		for _, cp := range cps {
@@ -467,7 +467,7 @@ func TestModifyProcessInstance(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// All called processes should be terminated
-	cps, err := bpmnEngine.persistence.FindProcessInstanceByParentExecutionTokenKey(t.Context(), mainToken.Key)
+	cps, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), mainToken.Key)
 	assert.NoError(t, err)
 
 	for _, cp := range cps {

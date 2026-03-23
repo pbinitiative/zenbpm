@@ -1,18 +1,18 @@
 package e2e
 
 import (
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTerminateEndEvent(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	definition, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
 
 	t.Run("create process instance with parallel flow and terminate end task on 1 end", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{})
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
 	})
@@ -23,7 +23,7 @@ func TestTerminateEndEvent(t *testing.T) {
 	t.Run("the process instance state should be COMPLETED", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
-		assert.Equal(t, public.ProcessInstanceStateCompleted, fetchedInstance.State)
+		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
 	})
 
 }

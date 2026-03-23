@@ -1,17 +1,15 @@
 package e2e
 
 import (
-	"encoding/json"
-	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, "fork-uncontrolled-join.bpmn")
 	assert.NoError(t, err)
@@ -26,9 +24,15 @@ func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 
 	t.Run("start process instance on elements", func(t *testing.T) {
 		startingElementIds := []string{"id-a-1", "id-a-2"}
-		instance, err = startProcessInstanceOnElements(t, definition.Key, startingElementIds, map[string]any{
-			"order": map[string]any{"name": "test-order-name"},
+		resp, err := app.restClient.StartProcessInstanceOnElementsWithResponse(t.Context(), zenclient.StartProcessInstanceOnElementsJSONRequestBody{
+			ProcessDefinitionKey: definition.Key,
+			StartingElementIds:   startingElementIds,
+			Variables:            &map[string]any{"order": map[string]any{"name": "test-order-name"}},
 		})
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		instance = *resp.JSON201
+
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
 	})
@@ -55,7 +59,7 @@ func TestRestApiStartProcessInstanceOnElements(t *testing.T) {
 }
 
 func TestRestApiModifyProcessInstance(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
@@ -69,7 +73,7 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 	}
 
 	t.Run("create process instance", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -83,19 +87,26 @@ func TestRestApiModifyProcessInstance(t *testing.T) {
 		assert.Equal(t, 1, len(processInstance.ActiveElementInstances))
 		assert.NotEmpty(t, processInstance.ActiveElementInstances[0].ElementInstanceKey)
 
-		ElementInstancesToTerminate := make([]public.TerminateElementInstanceData, 0, 1)
-		ElementInstancesToTerminate = append(ElementInstancesToTerminate, public.TerminateElementInstanceData{
+		ElementInstancesToTerminate := make([]zenclient.TerminateElementInstanceData, 0, 1)
+		ElementInstancesToTerminate = append(ElementInstancesToTerminate, zenclient.TerminateElementInstanceData{
 			ElementInstanceKey: processInstance.ActiveElementInstances[0].ElementInstanceKey,
 		})
-		ElementInstancesToStart := make([]public.StartElementInstanceData, 0, 1)
-		ElementInstancesToStart = append(ElementInstancesToStart, public.StartElementInstanceData{
+		ElementInstancesToStart := make([]zenclient.StartElementInstanceData, 0, 1)
+		ElementInstancesToStart = append(ElementInstancesToStart, zenclient.StartElementInstanceData{
 			ElementId: "user-task-2",
 		})
 
-		instance, activeElementInstances, err := modifyProcessInstanceTokens(t, instance.Key, ElementInstancesToTerminate, ElementInstancesToStart, map[string]any{
-			"order": map[string]any{"name": "test-order-name"},
+		resp, err := app.restClient.ModifyProcessInstanceWithResponse(t.Context(), zenclient.ModifyProcessInstanceJSONRequestBody{
+			ElementInstancesToStart:     &ElementInstancesToStart,
+			ElementInstancesToTerminate: &ElementInstancesToTerminate,
+			ProcessInstanceKey:          instance.Key,
+			Variables:                   &map[string]any{"order": map[string]any{"name": "test-order-name"}},
 		})
 		assert.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		instance = *resp.JSON201.ProcessInstance
+		activeElementInstances := *resp.JSON201.ActiveElementInstances
+
 		assert.Equal(t, definition.Key, instance.ProcessDefinitionKey)
 		assert.Equal(t, map[string]any{"name": "test-order-name"}, instance.Variables["order"])
 		assert.Equal(t, float64(123), instance.Variables["testVar"])
@@ -135,51 +146,4 @@ func TestStartProcessInstanceOnElementsWithResponse404Response(t *testing.T) {
 		assert.Equal(t, "NOT_FOUND", response.JSON404.Code)
 		assert.Contains(t, response.JSON404.Message, "no process definition with key -1 was found (prior loaded into the engine)")
 	})
-}
-
-func startProcessInstanceOnElements(t testing.TB, processDefinitionKey int64, startingElementIds []string, variables map[string]any) (public.ProcessInstance, error) {
-	req := public.StartProcessInstanceOnElementsJSONBody{
-		ProcessDefinitionKey: processDefinitionKey,
-		StartingElementIds:   startingElementIds,
-		Variables:            &variables,
-	}
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/modify/start-process-instance").
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to start process instance: %w", err)
-	}
-	instance := public.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return instance, nil
-}
-
-func modifyProcessInstanceTokens(t testing.TB, processInstanceKey int64, ElementInstancesToTerminate []public.TerminateElementInstanceData, ElementInstancesToStart []public.StartElementInstanceData, variables map[string]any) (public.ProcessInstance, []public.ElementInstance, error) {
-	req := public.ModifyProcessInstanceJSONBody{
-		ElementInstancesToStart:     &ElementInstancesToStart,
-		ElementInstancesToTerminate: &ElementInstancesToTerminate,
-		ProcessInstanceKey:          processInstanceKey,
-		Variables:                   &variables,
-	}
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/modify/process-instance").
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
-	if err != nil {
-		return public.ProcessInstance{}, []public.ElementInstance{}, fmt.Errorf("failed to modify process instance: %w", err)
-	}
-	unmarshalledResp := public.ModifyProcessInstance201JSONResponse{}
-
-	err = json.Unmarshal(resp, &unmarshalledResp)
-	if err != nil {
-		return public.ProcessInstance{}, []public.ElementInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return *unmarshalledResp.ProcessInstance, *unmarshalledResp.ActiveElementInstances, nil
 }

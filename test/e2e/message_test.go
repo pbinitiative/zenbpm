@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,7 @@ import (
 func TestRestApiMessage(t *testing.T) {
 	cleanProcessInstances(t)
 
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, "message-intermediate-catch-event.bpmn")
 	assert.NoError(t, err)
@@ -26,17 +25,17 @@ func TestRestApiMessage(t *testing.T) {
 			break
 		}
 	}
-	instance, err = createProcessInstance(t, definition.Key, map[string]any{
+	instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 		"testVar": 123,
 	})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, instance.Key)
 
-	failedInstance, err := createProcessInstance(t, definition.Key, map[string]any{
+	failedInstance, err := createProcessInstance(t, &definition.Key, map[string]any{
 		"testVar": 123,
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, public.ProcessInstanceStateFailed, failedInstance.State)
+	assert.Equal(t, zenclient.ProcessInstanceStateFailed, failedInstance.State)
 
 	t.Run("publish message standard process", func(t *testing.T) {
 		err := publishMessage(t, "globalMsgRef", "correlation-key-one", &map[string]any{
@@ -55,7 +54,7 @@ func TestRestApiMessage(t *testing.T) {
 		})
 		assert.Error(t, err)
 
-		_, err = createProcessInstance(t, definition.Key, map[string]any{
+		_, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -64,7 +63,7 @@ func TestRestApiMessage(t *testing.T) {
 		multiInstanceDefinition, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
 		assert.NoError(t, err)
 
-		instance, err = createProcessInstance(t, multiInstanceDefinition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
@@ -85,7 +84,7 @@ func TestRestApiMessage(t *testing.T) {
 		})
 		assert.Error(t, err)
 
-		_, err = createProcessInstance(t, definition.Key, map[string]any{
+		_, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -97,7 +96,7 @@ func TestRestApiMessage(t *testing.T) {
 		_, err = deployDefinition(t, "simple_task.bpmn")
 		assert.NoError(t, err)
 
-		instance, err = createProcessInstance(t, callActivityDefinition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &callActivityDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -119,7 +118,7 @@ func TestRestApiMessage(t *testing.T) {
 		})
 		assert.Error(t, err)
 
-		_, err = createProcessInstance(t, definition.Key, map[string]any{
+		_, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -129,7 +128,7 @@ func TestRestApiMessage(t *testing.T) {
 		subprocessDefinition, err := deployGetUniqueDefinition(t, "simple_sub_process_task.bpmn")
 		assert.NoError(t, err)
 
-		instance, err = createProcessInstance(t, subprocessDefinition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &subprocessDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -151,7 +150,7 @@ func TestRestApiMessage(t *testing.T) {
 		})
 		assert.Error(t, err)
 
-		_, err = createProcessInstance(t, definition.Key, map[string]any{
+		_, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -161,7 +160,7 @@ func TestRestApiMessage(t *testing.T) {
 		def, err := deployGetUniqueDefinition(t, "message-boundary-task-loop.bpmn")
 		assert.NoError(t, err)
 
-		instance, err := createProcessInstance(t, def.Key, map[string]any{
+		instance, err := createProcessInstance(t, &def.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
@@ -229,7 +228,7 @@ func TestPublishMessageNotFound(t *testing.T) {
 				break
 			}
 		}
-		_, err = createProcessInstance(t, definitionKey, map[string]any{"testVar": 123})
+		_, err = createProcessInstance(t, &definitionKey, map[string]any{"testVar": 123})
 		assert.NoError(t, err)
 
 		response, err := publishMessageWithResponse(t, "nonExistingMessageName", "correlation-key-one", nil)

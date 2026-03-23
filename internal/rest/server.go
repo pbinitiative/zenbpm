@@ -865,7 +865,13 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 		ttl = &parsedTTL
 	}
 
-	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BusinessKey, variables, ttl)
+	if request.Body.ProcessDefinitionKey == nil && request.Body.BpmnProcessId == nil {
+		return public.CreateProcessInstance400JSONResponse(
+			zenerr.BadRequest(fmt.Errorf("failed to parse processDefinitionKey and bpmnProcessId")).ToApiError(),
+		), nil
+	}
+
+	process, err := s.node.CreateInstance(ctx, request.Body.ProcessDefinitionKey, request.Body.BpmnProcessId, request.Body.BusinessKey, variables, ttl)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {

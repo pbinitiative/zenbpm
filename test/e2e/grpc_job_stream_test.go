@@ -22,7 +22,7 @@ import (
 )
 
 func TestGrpcJobStream(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
 	completeType := fmt.Sprintf("%s-complete", randomID)
 	definition, err := deployDefinitionWithJobType(t, "long-task-chain.bpmn", randomID, map[string]string{
@@ -34,7 +34,7 @@ func TestGrpcJobStream(t *testing.T) {
 	instances := 10
 	startedInstances := make([]int64, 0, instances)
 	for range instances {
-		instance, err = createProcessInstance(t, definition.ProcessDefinitionKey, map[string]any{
+		instance, err = createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -88,13 +88,13 @@ func TestGrpcJobStream(t *testing.T) {
 }
 
 func TestGrpcJobStreamFailjob(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
 	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, map[string]string{
 		"TestType": randomID,
 	})
 	assert.NoError(t, err)
-	instance, err = createProcessInstance(t, definition.ProcessDefinitionKey, map[string]any{
+	instance, err = createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{
 		"testVar": 123,
 	})
 	assert.NoError(t, err)
@@ -183,7 +183,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		return instance.State == public.ProcessInstanceStateCompleted
+		return instance.State == zenclient.ProcessInstanceStateCompleted
 	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
 
 }

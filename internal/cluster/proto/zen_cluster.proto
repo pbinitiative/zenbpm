@@ -85,6 +85,7 @@ service ZenService {
   rpc AssignJobToAssignee(AssignJobToAssigneeRequest) returns (AssignJobToAssigneeResponse);
   rpc GetProcessDefinitionStatistics(GetProcessDefinitionStatisticsRequest) returns (GetProcessDefinitionStatisticsResponse);
   rpc GetProcessDefinitionElementStatistics(GetProcessDefinitionElementStatisticsRequest) returns (GetProcessDefinitionElementStatisticsResponse);
+  rpc GetProcessInstanceElementStatistics(GetProcessInstanceElementStatisticsRequest) returns (GetProcessInstanceElementStatisticsResponse);
 }
 
 // TODO: do we want to keep custom error struct or use the default error handling?
@@ -684,6 +685,16 @@ message PartitionedElementStatistics {
 }
 
 message GetProcessDefinitionElementStatisticsResponse {
+  ErrorResult error = 1;
+  repeated PartitionedElementStatistics partitions = 2;
+}
+
+message GetProcessInstanceElementStatisticsRequest {
+  int64 process_instance_key = 1;
+  repeated uint32 partitions = 2;
+}
+
+message GetProcessInstanceElementStatisticsResponse {
   ErrorResult error = 1;
   repeated PartitionedElementStatistics partitions = 2;
 }

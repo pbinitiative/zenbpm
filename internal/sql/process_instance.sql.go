@@ -356,6 +356,77 @@ func (q *Queries) FindProcessesByParentExecutionToken(ctx context.Context, paren
 	return items, nil
 }
 
+const getElementStatisticsByProcessInstanceKey = `-- name: GetElementStatisticsByProcessInstanceKey :many
+WITH active_tokens AS (
+    SELECT
+        et.element_id,
+        COUNT(*) AS active_count,
+        0         AS incident_count
+    FROM
+        execution_token AS et
+    WHERE
+        et.process_instance_key = ?1
+        AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+    GROUP BY
+        et.element_id
+),
+active_incidents AS (
+    SELECT
+        i.element_id,
+        0         AS active_count,
+        COUNT(*) AS incident_count
+    FROM
+        incident AS i
+    WHERE
+        i.process_instance_key = ?1
+        AND i.resolved_at IS NULL
+    GROUP BY
+        i.element_id
+),
+combined AS (
+    SELECT element_id, active_count, incident_count FROM active_tokens
+    UNION ALL
+    SELECT element_id, active_count, incident_count FROM active_incidents
+)
+SELECT
+    element_id,
+    CAST(SUM(active_count)   AS INTEGER) AS active_count,
+    CAST(SUM(incident_count) AS INTEGER) AS incident_count
+FROM
+    combined
+GROUP BY
+    element_id
+`
+
+type GetElementStatisticsByProcessInstanceKeyRow struct {
+	ElementID     string `json:"element_id"`
+	ActiveCount   int64  `json:"active_count"`
+	IncidentCount int64  `json:"incident_count"`
+}
+
+func (q *Queries) GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error) {
+	rows, err := q.db.QueryContext(ctx, getElementStatisticsByProcessInstanceKey, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetElementStatisticsByProcessInstanceKeyRow{}
+	for rows.Next() {
+		var i GetElementStatisticsByProcessInstanceKeyRow
+		if err := rows.Scan(&i.ElementID, &i.ActiveCount, &i.IncidentCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProcessInstance = `-- name: GetProcessInstance :one
 SELECT
     "key", process_definition_key, business_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, history_ttl_sec, history_delete_sec

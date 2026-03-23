@@ -173,3 +173,44 @@ FROM
     process_instance
 WHERE
     state = 1;
+
+-- name: GetElementStatisticsByProcessInstanceKey :many
+WITH active_tokens AS (
+    SELECT
+        et.element_id,
+        COUNT(*) AS active_count,
+        0         AS incident_count
+    FROM
+        execution_token AS et
+    WHERE
+        et.process_instance_key = @process_instance_key
+        AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+    GROUP BY
+        et.element_id
+),
+active_incidents AS (
+    SELECT
+        i.element_id,
+        0         AS active_count,
+        COUNT(*) AS incident_count
+    FROM
+        incident AS i
+    WHERE
+        i.process_instance_key = @process_instance_key
+        AND i.resolved_at IS NULL
+    GROUP BY
+        i.element_id
+),
+combined AS (
+    SELECT element_id, active_count, incident_count FROM active_tokens
+    UNION ALL
+    SELECT element_id, active_count, incident_count FROM active_incidents
+)
+SELECT
+    element_id,
+    CAST(SUM(active_count)   AS INTEGER) AS active_count,
+    CAST(SUM(incident_count) AS INTEGER) AS incident_count
+FROM
+    combined
+GROUP BY
+    element_id;

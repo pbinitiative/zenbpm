@@ -1258,6 +1258,9 @@ func (node *ZenNode) GetChildProcessInstances(
 ) ([]*proto.PartitionedProcessInstances, error) {
 	state := node.store.ClusterState()
 	result := make([]*proto.PartitionedProcessInstances, 0, len(state.Partitions))
+	if request.ParentInstanceKey == nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("parentInstanceKey is null"))
+	}
 	partitionId := zenflake.GetPartitionId(*request.ParentInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
 	if err != nil {

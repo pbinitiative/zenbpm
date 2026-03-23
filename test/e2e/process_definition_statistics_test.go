@@ -46,9 +46,9 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	})
 
 	// Create 2 active instances (service task will wait for completion)
-	_, err = createProcessInstance(t, definition.Key, map[string]any{"testVar": 1})
+	_, err = createProcessInstance(t, &definition.Key, map[string]any{"testVar": 1})
 	assert.NoError(t, err)
-	_, err = createProcessInstance(t, definition.Key, map[string]any{"testVar": 2})
+	_, err = createProcessInstance(t, &definition.Key, map[string]any{"testVar": 2})
 	assert.NoError(t, err)
 
 	t.Run("statistics with active instances", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create instance that causes an incident (price=0 causes no matching condition)
-	incidentInstance, err := createProcessInstance(t, incidentDef.Key, map[string]any{"price": 0})
+	incidentInstance, err := createProcessInstance(t, &incidentDef.Key, map[string]any{"price": 0})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, incidentInstance.Key)
 
@@ -258,9 +258,9 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 	})
 
 	// Create two instances that will block at the service task (waiting for job completion)
-	instance1, err := createProcessInstance(t, definition.Key, map[string]any{"testVar": 1})
+	instance1, err := createProcessInstance(t, &definition.Key, map[string]any{"testVar": 1})
 	require.NoError(t, err)
-	instance2, err := createProcessInstance(t, definition.Key, map[string]any{"testVar": 2})
+	instance2, err := createProcessInstance(t, &definition.Key, map[string]any{"testVar": 2})
 	require.NoError(t, err)
 
 	t.Run("returns active counts for blocked instances", func(t *testing.T) {
@@ -295,7 +295,7 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 		incidentDefinition, err := deployGetUniqueDefinition(t, "exclusive-gateway-with-condition.bpmn")
 		require.NoError(t, err)
 
-		_, err = createProcessInstance(t, incidentDefinition.Key, map[string]any{"price": 0})
+		_, err = createProcessInstance(t, &incidentDefinition.Key, map[string]any{"price": 0})
 		require.NoError(t, err)
 
 		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), incidentDefinition.Key)

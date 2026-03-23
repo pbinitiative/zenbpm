@@ -978,12 +978,14 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-                - processDefinitionKey
               properties:
                 processDefinitionKey:
                   type: integer
                   format: int64
+                  description: Start the process instance using bpmn process definition identified by processDefinitionKey. ( Takes priority )
+                bpmnProcessId:
+                  type: string
+                  description: Start the process instance using latest bpmn process definition identified by bpmnProcessId.
                 variables:
                   type: object
                 historyTimeToLive:
@@ -993,12 +995,12 @@ paths:
                 businessKey:
                   type: string
                   description: Business key of the process instance used mainly for correlating process instance to the business entity.
-            example:
-              processDefinitionKey: 4503599627370498
-              variables:
-                customerId: "customer-456"
-                amount: 1000
-                applicationDate: "2025-08-22"
+              example:
+                processDefinitionKey: 4503599627370498
+                variables:
+                  customerId: "customer-456"
+                  amount: 1000
+                  applicationDate: "2025-08-22"
       responses:
         201:
           description: Process instance created

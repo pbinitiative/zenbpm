@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiJob(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
@@ -23,14 +22,14 @@ func TestRestApiJob(t *testing.T) {
 			break
 		}
 	}
-	instance, err = createProcessInstance(t, definition.Key, map[string]any{
+	instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 		"testVar": 123,
 	})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, instance.Key)
 
 	var jobToComplete zenclient.Job
-	var jobsProcessInstance public.ProcessInstance
+	var jobsProcessInstance zenclient.ProcessInstance
 	t.Run("read waiting jobs", func(t *testing.T) {
 		jobsPartitionPage, err := readWaitingJobs(t, "input-task-1")
 		assert.NoError(t, err)
@@ -57,7 +56,7 @@ func TestRestApiJob(t *testing.T) {
 		assert.Equal(t, "test", jobsProcessInstance.Variables["dstcity"])
 	})
 
-	instance2, err := createProcessInstance(t, definition.Key, map[string]any{
+	instance2, err := createProcessInstance(t, &definition.Key, map[string]any{
 		"testVar": 124,
 	})
 	assert.NoError(t, err)

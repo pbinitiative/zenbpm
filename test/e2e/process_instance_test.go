@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"sort"
 	"testing"
 	"time"
@@ -16,15 +17,42 @@ import (
 )
 
 func TestRestApiProcessInstance(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	definition, err := deployGetDefinition(t, "service-task-input-output.bpmn", "service-task-input-output")
 
-	t.Run("create process instance", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+	t.Run("create process instance - by definition key", func(t *testing.T) {
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
+	})
+
+	t.Run("create process instance - by bpmn id", func(t *testing.T) {
+		bpmnProcessId := "usertask-assignee-mapping-process"
+		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", "usertask-assignee-mapping-process")
+		assert.NoError(t, err)
+		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+			BpmnProcessId:        &bpmnProcessId,
+			BusinessKey:          nil,
+			HistoryTimeToLive:    nil,
+			ProcessDefinitionKey: nil,
+			Variables:            nil,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		assert.NotNil(t, resp.JSON201)
+	})
+
+	t.Run("create process instance - with no identification", func(t *testing.T) {
+		resp, _ := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+			BpmnProcessId:        nil,
+			BusinessKey:          nil,
+			HistoryTimeToLive:    nil,
+			ProcessDefinitionKey: nil,
+			Variables:            nil,
+		})
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
 	})
 
 	t.Run("read instance state", func(t *testing.T) {
@@ -53,11 +81,11 @@ func TestRestApiProcessInstance(t *testing.T) {
 }
 
 func TestCancelProcessInstance(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	definition, err := deployGetDefinition(t, "service-task-input-output.bpmn", "service-task-input-output")
 
 	t.Run("create process instance", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -66,7 +94,7 @@ func TestCancelProcessInstance(t *testing.T) {
 	t.Run("read instance, state is active", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
-		assert.Equal(t, public.ProcessInstanceStateActive, fetchedInstance.State)
+		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
 	})
 	t.Run("cancel process instance", func(t *testing.T) {
 		cancelResponse, err := app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
@@ -76,21 +104,21 @@ func TestCancelProcessInstance(t *testing.T) {
 	t.Run("read instance, state is terminated", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
-		assert.Equal(t, public.ProcessInstanceStateTerminated, fetchedInstance.State)
+		assert.Equal(t, zenclient.ProcessInstanceStateTerminated, fetchedInstance.State)
 	})
 }
 
 func TestRestApiParentProcessInstance(t *testing.T) {
 	cleanProcessInstances(t)
 
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	definition, err := deployGetDefinition(t, "call-activity-simple.bpmn", "Simple_CallActivity_Process")
 	assert.NoError(t, err)
 	_, err = deployDefinition(t, "simple_task.bpmn")
 	assert.NoError(t, err)
 
 	t.Run("create process instance", func(t *testing.T) {
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"variable_name": 123,
 		})
 		assert.NoError(t, err)
@@ -119,7 +147,7 @@ func TestRestApiParentProcessInstance(t *testing.T) {
 }
 
 func TestBusinessKey(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	definition, err := deployGetDefinition(t, "service-task-input-output.bpmn", "service-task-input-output")
 	assert.NoError(t, err)
 
@@ -127,10 +155,18 @@ func TestBusinessKey(t *testing.T) {
 	bk := "testBusinessKey-" + randNum
 
 	t.Run("create process instance", func(t *testing.T) {
-		instance, err = createProcessInstanceWithBusinessKey(t, definition.Key, &bk, map[string]any{
-			"testVar": 123,
+		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+			BpmnProcessId:        nil,
+			BusinessKey:          &bk,
+			HistoryTimeToLive:    nil,
+			ProcessDefinitionKey: &definition.Key,
+			Variables: &map[string]any{
+				"testVar": 123,
+			},
 		})
 		assert.NoError(t, err)
+		assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		instance = *resp.JSON201
 		assert.NotEmpty(t, instance.Key)
 	})
 
@@ -155,19 +191,19 @@ func TestBusinessKey(t *testing.T) {
 }
 
 func TestCreatedAt(t *testing.T) {
-	var instance1, instance2 public.ProcessInstance
+	var instance1, instance2 zenclient.ProcessInstance
 	definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
 	assert.NoError(t, err)
 
 	t.Run("create process instance1", func(t *testing.T) {
-		instance1, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance1, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 	})
 	t.Run("create process instance2", func(t *testing.T) {
-		instance2, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance2, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -235,14 +271,14 @@ func TestBpmnProcessId(t *testing.T) {
 	simpleCountLoopDefinition, _ := deployGetUniqueDefinition(t, "simple-count-loop.bpmn")
 
 	t.Run("create process instance1 for service-task-input-output.bpmn", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, serviceTaskIODefinition.Key, map[string]any{
+		instance1, err := createProcessInstance(t, &serviceTaskIODefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 	})
 	t.Run("create process instance2 for simple-count-loop.bpmn", func(t *testing.T) {
-		instance2, err := createProcessInstance(t, simpleCountLoopDefinition.Key, map[string]any{
+		instance2, err := createProcessInstance(t, &simpleCountLoopDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
@@ -266,23 +302,23 @@ func TestState(t *testing.T) {
 	invalidDefinition, _ := deployGetUniqueDefinition(t, "service-task-invalid-input.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, validDefinition.Key, map[string]any{
+		instance1, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
-		instance2, err := createProcessInstance(t, validDefinition.Key, map[string]any{
+		instance2, err := createProcessInstance(t, &validDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance2.Key)
 	})
 	t.Run("create process instance for service-task-invalid-input.bpmn", func(t *testing.T) {
-		invalidInstance, err := createProcessInstance(t, invalidDefinition.Key, map[string]any{
+		invalidInstance, err := createProcessInstance(t, &invalidDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, public.ProcessInstanceStateFailed, invalidInstance.State)
+		assert.Equal(t, zenclient.ProcessInstanceStateFailed, invalidInstance.State)
 	})
 
 	t.Run("find process instances by state=failed", func(t *testing.T) {
@@ -341,19 +377,19 @@ func TestIncludeChildProcesses(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("create process instances", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, multiInstanceDefinition.Key, map[string]any{
+		instance1, err := createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 
-		instance2, err := createProcessInstance(t, callActivityDefinition.Key, map[string]any{
+		instance2, err := createProcessInstance(t, &callActivityDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance2.Key)
 
-		instance3, err := createProcessInstance(t, subprocessDefinition.Key, map[string]any{
+		instance3, err := createProcessInstance(t, &subprocessDefinition.Key, map[string]any{
 			"variable_name": 123,
 		})
 		assert.NoError(t, err)
@@ -420,21 +456,21 @@ func TestFindChildProcesses(t *testing.T) {
 	var instance2Key int64
 	var instance3Key int64
 	t.Run("create process instances", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, multiInstanceDefinition.Key, map[string]any{
+		instance1, err := createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 		instance1Key = instance1.Key
 
-		instance2, err := createProcessInstance(t, callActivityDefinition.Key, map[string]any{
+		instance2, err := createProcessInstance(t, &callActivityDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance2.Key)
 		instance2Key = instance2.Key
 
-		instance3, err := createProcessInstance(t, subprocessDefinition.Key, map[string]any{
+		instance3, err := createProcessInstance(t, &subprocessDefinition.Key, map[string]any{
 			"variable_name": 123,
 		})
 		assert.NoError(t, err)
@@ -478,7 +514,7 @@ func TestUpdateProcessInstanceVariables(t *testing.T) {
 	definition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
-		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+		instance, err := createProcessInstance(t, &definition.Key, map[string]any{
 			"var1": "var1 value",
 		})
 		assert.NoError(t, err)
@@ -505,7 +541,7 @@ func TestDeleteProcessInstanceVariable(t *testing.T) {
 	definition, _ := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
 
 	t.Run("create process instance for service-task-input-output.bpmn", func(t *testing.T) {
-		instance, err := createProcessInstance(t, definition.Key, map[string]any{
+		instance, err := createProcessInstance(t, &definition.Key, map[string]any{
 			"var1": "var1 value",
 			"var2": "var2 value",
 		})
@@ -546,7 +582,7 @@ func TestCreateProcessInstanceNotFoundResponse(t *testing.T) {
 		var nonExistingProcessDefinitionKey int64 = -1
 		var resp *zenclient.CreateProcessInstanceResponse
 		resp, _ = app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
-			ProcessDefinitionKey: nonExistingProcessDefinitionKey,
+			ProcessDefinitionKey: &nonExistingProcessDefinitionKey,
 		})
 
 		assert.Nil(t, resp.JSON201)
@@ -573,11 +609,11 @@ func TestGetProcessInstancesBadRequest(t *testing.T) {
 func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *testing.T) {
 	var instanceKey int64
 	t.Run("Create instance with completed state", func(t *testing.T) {
-		var instance public.ProcessInstance
+		var instance zenclient.ProcessInstance
 		definition, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
 		assert.NoError(t, err)
 
-		instance, err = createProcessInstance(t, definition.Key, map[string]any{
+		instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 			"var1": "var1 value",
 		})
 		instanceKey = instance.Key
@@ -613,61 +649,48 @@ func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *test
 	})
 }
 
-func createProcessInstance(t testing.TB, processDefinitionKey int64, variables map[string]any) (public.ProcessInstance, error) {
-	return createProcessInstanceWithBusinessKey(t, processDefinitionKey, nil, variables)
-}
-
-func createProcessInstanceWithBusinessKey(t testing.TB, processDefinitionKey int64, businessKey *string, variables map[string]any) (public.ProcessInstance, error) {
-	req := public.CreateProcessInstanceJSONBody{
+func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables map[string]any) (zenclient.ProcessInstance, error) {
+	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+		BpmnProcessId:        nil,
+		BusinessKey:          nil,
+		HistoryTimeToLive:    nil,
 		ProcessDefinitionKey: processDefinitionKey,
-		BusinessKey:          businessKey,
 		Variables:            &variables,
-	}
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/process-instances").
-		WithMethod("POST").
-		WithBody(req).
-		DoOk()
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to create process instance: %w", err)
-	}
-	instance := public.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return instance, nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	assert.NotNil(t, resp.JSON201)
+	return *resp.JSON201, nil
 }
 
-func getProcessInstance(t testing.TB, key int64) (public.ProcessInstance, error) {
+func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
 	resp, err := app.NewRequest(t).
 		WithPath(fmt.Sprintf("/v1/process-instances/%d", key)).
 		DoOk()
 	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to read process instance: %w", err)
+		return zenclient.ProcessInstance{}, fmt.Errorf("failed to read process instance: %w", err)
 	}
-	instance := public.ProcessInstance{}
+	instance := zenclient.ProcessInstance{}
 
 	err = json.Unmarshal(resp, &instance)
 	if err != nil {
-		return public.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
+		return zenclient.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
 	}
 	return instance, nil
 }
 
-func getChildInstances(t testing.TB, key int64) (public.ProcessInstancePage, error) {
+func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, error) {
 	resp, err := app.NewRequest(t).
 		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d&includeChildProcesses=true", key)).
 		DoOk()
 	if err != nil {
-		return public.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)
+		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)
 	}
-	page := public.ProcessInstancePage{}
+	page := zenclient.ProcessInstancePage{}
 
 	err = json.Unmarshal(resp, &page)
 	if err != nil {
-		return public.ProcessInstancePage{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
+		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
 	}
 	return page, nil
 }

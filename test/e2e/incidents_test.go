@@ -20,7 +20,7 @@ func TestIncidentStateFilter(t *testing.T) {
 	var resolvedIncidentProcessInstanceKey int64
 
 	// Create an instance with variables that will cause an incident
-	instance, err := createProcessInstance(t, definition.Key, map[string]any{
+	instance, err := createProcessInstance(t, &definition.Key, map[string]any{
 		"price": 0, // This should cause an incident due to exclusive gateway condition
 	})
 	assert.NoError(t, err)
@@ -28,7 +28,7 @@ func TestIncidentStateFilter(t *testing.T) {
 	unresolvedIncidentProcessInstanceKey = instance.Key
 
 	// Create another instance that will create an incident
-	instance, err = createProcessInstance(t, definition.Key, map[string]any{
+	instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 		"price": 0,
 	})
 	assert.NoError(t, err)

@@ -3,14 +3,13 @@ package e2e
 import (
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRestApiUsertask(t *testing.T) {
-	var instance public.ProcessInstance
+	var instance zenclient.ProcessInstance
 	var definition zenclient.ProcessDefinitionSimple
 	_, err := deployDefinition(t, "usertask-assignee-mapping.bpmn")
 	assert.NoError(t, err)
@@ -22,7 +21,7 @@ func TestRestApiUsertask(t *testing.T) {
 			break
 		}
 	}
-	instance, err = createProcessInstance(t, definition.Key, map[string]any{
+	instance, err = createProcessInstance(t, &definition.Key, map[string]any{
 		"assignee": "foo",
 	})
 	assert.NoError(t, err)

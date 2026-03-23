@@ -906,7 +906,8 @@ func (node *ZenNode) StopPprofServer(ctx context.Context, nodeId string) error {
 
 func (node *ZenNode) CreateInstance(
 	ctx context.Context,
-	processDefinitionKey int64,
+	processDefinitionKey *int64,
+	bpmnProcessId *string,
 	businessKey *string,
 	variables map[string]any,
 	timeToLive *types.TTL,
@@ -929,14 +930,30 @@ func (node *ZenNode) CreateInstance(
 			timeToLive = &node.controller.Config.Persistence.InstanceHistoryTTL
 		}
 	}
-	resp, err := client.CreateInstance(ctx, &proto.CreateInstanceRequest{
-		StartBy: &proto.CreateInstanceRequest_DefinitionKey{
-			DefinitionKey: processDefinitionKey,
-		},
-		Variables:   vars,
-		HistoryTTL:  (*int64)(timeToLive),
-		BusinessKey: businessKey,
-	})
+
+	var resp *proto.CreateInstanceResponse
+	switch {
+	case processDefinitionKey != nil:
+		resp, err = client.CreateInstance(ctx, &proto.CreateInstanceRequest{
+			StartBy: &proto.CreateInstanceRequest_DefinitionKey{
+				DefinitionKey: *processDefinitionKey,
+			},
+			Variables:   vars,
+			HistoryTTL:  (*int64)(timeToLive),
+			BusinessKey: businessKey,
+		})
+	case bpmnProcessId != nil:
+		resp, err = client.CreateInstance(ctx, &proto.CreateInstanceRequest{
+			StartBy: &proto.CreateInstanceRequest_LatestProcessId{
+				LatestProcessId: *bpmnProcessId,
+			},
+			Variables:   vars,
+			HistoryTTL:  (*int64)(timeToLive),
+			BusinessKey: businessKey,
+		})
+	default:
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to create process instance: processDefinitionKey and bpmnProcessId are both null"))
+	}
 	if err != nil {
 		return nil, zenerr.TechnicalError(fmt.Errorf("failed to create process instance %w", err))
 	}

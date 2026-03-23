@@ -26,21 +26,21 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 	var instance2Key int64
 	var instance3Key int64
 	t.Run("create process instances", func(t *testing.T) {
-		instance1, err := createProcessInstance(t, multiInstanceDefinition.Key, map[string]any{
+		instance1, err := createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance1.Key)
 		instance1Key = instance1.Key
 
-		instance2, err := createProcessInstance(t, callActivityDefinition.Key, map[string]any{
+		instance2, err := createProcessInstance(t, &callActivityDefinition.Key, map[string]any{
 			"testVar": 123,
 		})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance2.Key)
 		instance2Key = instance2.Key
 
-		instance3, err := createProcessInstance(t, subprocessDefinition.Key, map[string]any{
+		instance3, err := createProcessInstance(t, &subprocessDefinition.Key, map[string]any{
 			"variable_name": 123,
 		})
 		assert.NoError(t, err)

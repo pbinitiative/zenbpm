@@ -934,12 +934,17 @@ type GetProcessInstancesParamsState string
 
 // CreateProcessInstanceJSONBody defines parameters for CreateProcessInstance.
 type CreateProcessInstanceJSONBody struct {
+	// BpmnProcessId Start the process instance using latest bpmn process definition identified by bpmnProcessId.
+	BpmnProcessId *string `json:"bpmnProcessId,omitempty"`
+
 	// BusinessKey Business key of the process instance used mainly for correlating process instance to the business entity.
 	BusinessKey *string `json:"businessKey,omitempty"`
 
 	// HistoryTimeToLive Duration for which process instance data are kept in storage after the process instance ends. If omitted the default will be picked up from engine configuration. (1d8h, 1M5d8h)
-	HistoryTimeToLive    *string                 `json:"historyTimeToLive,omitempty"`
-	ProcessDefinitionKey int64                   `json:"processDefinitionKey"`
+	HistoryTimeToLive *string `json:"historyTimeToLive,omitempty"`
+
+	// ProcessDefinitionKey Start the process instance using bpmn process definition identified by processDefinitionKey. ( Takes priority )
+	ProcessDefinitionKey *int64                  `json:"processDefinitionKey,omitempty"`
 	Variables            *map[string]interface{} `json:"variables,omitempty"`
 }
 

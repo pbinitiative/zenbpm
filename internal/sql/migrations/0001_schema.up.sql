@@ -1,10 +1,5 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS migration(
-    name text NOT NULL,
-    ran_at integer NOT NULL
-);
-
 -- table that holds information about all the process instances
 CREATE TABLE IF NOT EXISTS process_instance(
     key INTEGER PRIMARY KEY, -- int64 snowflake id where node is partition id which handles the process instance
@@ -22,7 +17,7 @@ CREATE TABLE IF NOT EXISTS process_instance(
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- process definition that describes this process instance
 );
 
-CREATE INDEX idx_fk_process_instance_process_definition_key ON process_instance(process_definition_key);
+CREATE INDEX IF NOT EXISTS idx_fk_process_instance_process_definition_key ON process_instance(process_definition_key);
 
 -- table that holds information about all the process definitions
 CREATE TABLE IF NOT EXISTS process_definition(
@@ -45,7 +40,7 @@ CREATE TABLE IF NOT EXISTS message_subscription_pointer(
     PRIMARY KEY (name, correlation_key)
 );
 
-CREATE UNIQUE INDEX unique_name_correlation_key_waiting ON message_subscription_pointer(name, correlation_key)
+CREATE UNIQUE INDEX IF NOT EXISTS unique_name_correlation_key_waiting ON message_subscription_pointer(name, correlation_key)
 WHERE
     state = 1;
 
@@ -65,8 +60,8 @@ CREATE TABLE IF NOT EXISTS message_subscription(
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- reference to process definition
 );
 
-CREATE INDEX idx_fk_message_subscription_process_instance_key ON message_subscription(process_instance_key);
-CREATE INDEX idx_fk_message_subscription_process_definition_key ON message_subscription(process_definition_key);
+CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_instance_key ON message_subscription(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_definition_key ON message_subscription(process_definition_key);
 
 CREATE TABLE IF NOT EXISTS timer(
     key INTEGER PRIMARY KEY, -- int64 snowflake id of the timer where node is partition id which handles the process instance
@@ -82,8 +77,8 @@ CREATE TABLE IF NOT EXISTS timer(
     FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- reference to process definition
 );
 
-CREATE INDEX idx_fk_timer_process_instance_key ON timer(process_instance_key);
-CREATE INDEX idx_fk_timer_process_definition_key ON timer(process_definition_key);
+CREATE INDEX IF NOT EXISTS idx_fk_timer_process_instance_key ON timer(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_timer_process_definition_key ON timer(process_definition_key);
 
 
 CREATE TABLE IF NOT EXISTS job(
@@ -100,9 +95,9 @@ CREATE TABLE IF NOT EXISTS job(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
-CREATE INDEX idx_job_state_type_created_at ON job(state,type,created_at) where state = 1;
+CREATE INDEX IF NOT EXISTS idx_job_state_type_created_at ON job(state,type,created_at) where state = 1;
 
-CREATE INDEX idx_fk_job_process_instance_key ON job(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_job_process_instance_key ON job(process_instance_key);
 
 
 CREATE TABLE IF NOT EXISTS execution_token(
@@ -115,7 +110,7 @@ CREATE TABLE IF NOT EXISTS execution_token(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
-CREATE INDEX idx_fk_execution_token_process_instance_key ON execution_token(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_execution_token_process_instance_key ON execution_token(process_instance_key);
 
 -- table that holds information about all the process instance visited nodes and transitions
 CREATE TABLE IF NOT EXISTS flow_element_instance(
@@ -129,7 +124,7 @@ CREATE TABLE IF NOT EXISTS flow_element_instance(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key)
 );
 
-CREATE INDEX idx_fk_flow_element_instance_process_instance_key ON flow_element_instance(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_flow_element_instance_process_instance_key ON flow_element_instance(process_instance_key);
 
 CREATE TABLE IF NOT EXISTS incident(
     key INTEGER PRIMARY KEY, -- int64 snowflake id of the incident where node is partition id which handles the process instance
@@ -143,7 +138,7 @@ CREATE TABLE IF NOT EXISTS incident(
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key) -- reference to process instance
 );
 
-CREATE INDEX idx_fk_incident_process_instance_key ON incident(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_incident_process_instance_key ON incident(process_instance_key);
 
 -- table that holds information about all the dmn resource definitions
 CREATE TABLE IF NOT EXISTS dmn_resource_definition(

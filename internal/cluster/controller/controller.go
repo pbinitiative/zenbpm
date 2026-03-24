@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/script"
-	"github.com/pbinitiative/zenbpm/pkg/script/feel"
-	"github.com/pbinitiative/zenbpm/pkg/script/js"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/script"
+	"github.com/pbinitiative/zenbpm/pkg/script/feel"
+	"github.com/pbinitiative/zenbpm/pkg/script/js"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -22,7 +23,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	rqproto "github.com/rqlite/rqlite/v8/command/proto"
 	rstore "github.com/rqlite/rqlite/v8/store"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
@@ -371,22 +371,10 @@ func (c *Controller) handlePartitionStateInitialized(ctx context.Context, partit
 }
 
 func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRuntime script.FeelRuntime, jsRuntime script.JsRuntime) (*bpmn.Engine, error) {
-	// TODO: add check for migrations and apply only missing
-	migrations, err := sql.GetMigrations()
-	if err != nil {
-		c.logger.Error("Failed to read migrations", "err", err)
-		return nil, fmt.Errorf("failed to read migrations: %w", err)
-	}
-	statements := make([]*rqproto.Statement, len(migrations))
-	for i, migration := range migrations {
-		statements[i] = &rqproto.Statement{
-			Sql: migration.SQL,
-		}
-	}
-	_, err = db.ExecuteStatements(ctx, statements)
+	err := db.RunMigrations(ctx)
 	if err != nil {
 		c.logger.Error("Failed to execute migrations", "err", err)
-		return nil, fmt.Errorf("failed to execute migrations: %w", err)
+		return nil, err
 	}
 
 	engine := bpmn.NewEngine(bpmn.EngineWithStorageAndFeel(db, feelRuntime), bpmn.EngineWithJs(jsRuntime))

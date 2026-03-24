@@ -84,6 +84,11 @@ type Persistence struct {
 	DecDefCacheTTL     types.TTL `yaml:"decDefCacheTTL" env:"PERSISTENCE_DEC_DEF_CACHE_TTL_SECONDS" env-default:"24h"`
 	DecDefCacheSize    int       `yaml:"decDefCacheSize" env:"PERSISTENCE_DEC_DEF_CACHE_SIZE" env-default:"200"`
 	RqLite             *RqLite   `yaml:"rqlite" json:"rqlite"`
+	Migration          Migration `yaml:"migration" json:"migration"`
+}
+
+type Migration struct {
+	Dir string `yaml:"dir" json:"dir" env:"PERSISTENCE_MIGRATION_DIR" env-default:"internal/sql/migrations"`
 }
 
 type Script struct {

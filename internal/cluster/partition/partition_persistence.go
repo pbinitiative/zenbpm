@@ -50,6 +50,7 @@ type DB struct {
 	logger                 hclog.Logger
 	node                   *snowflake.Node
 	Partition              uint32
+	migrationDir           string
 	tracer                 trace.Tracer
 	pdCache                *expirable.LRU[int64, bpmnruntime.ProcessDefinition]
 	drdCache               *expirable.LRU[int64, dmnruntime.DmnResourceDefinition]
@@ -86,12 +87,17 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	if err != nil {
 		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
 	}
+	migrationDir := cfg.Migration.Dir
+	if migrationDir == "" {
+		migrationDir = sql.DefaultMigrationsDir
+	}
 	db := &DB{
 		Store:                  store,
 		logger:                 logger,
 		node:                   node,
 		tracer:                 otel.GetTracerProvider().Tracer(fmt.Sprintf("partition-%d-rqlite", partition)),
 		Partition:              partition,
+		migrationDir:           migrationDir,
 		pdCache:                expirable.NewLRU[int64, bpmnruntime.ProcessDefinition](cfg.ProcDefCacheSize, nil, time.Duration(cfg.ProcDefCacheTTL)),
 		drdCache:               expirable.NewLRU[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
 		client:                 client,

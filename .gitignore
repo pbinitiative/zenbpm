@@ -5,6 +5,7 @@
 .DS_Store
 site/
 temp.*.json
+.run
 _
 cmd/__debug*
 ./zenbpm

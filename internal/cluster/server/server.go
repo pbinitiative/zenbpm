@@ -1437,6 +1437,42 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req 
 	return &proto.GetProcessDefinitionElementStatisticsResponse{Partitions: resp}, nil
 }
 
+func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, req *proto.GetProcessInstanceElementStatisticsRequest) (*proto.GetProcessInstanceElementStatisticsResponse, error) {
+	resp := make([]*proto.PartitionedElementStatistics, 0, len(req.Partitions))
+	for _, partitionId := range req.Partitions {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+			return &proto.GetProcessInstanceElementStatisticsResponse{
+				Error: err.ToProtoError(),
+			}, nil
+		}
+
+		rows, err := queries.GetElementStatisticsByProcessInstanceKey(ctx, req.GetProcessInstanceKey())
+		if err != nil {
+			zenErr := zenerr.TechnicalError(fmt.Errorf("failed to get element statistics for process instance %d: %w", req.GetProcessInstanceKey(), err))
+			return &proto.GetProcessInstanceElementStatisticsResponse{
+				Error: zenErr.ToProtoError(),
+			}, nil
+		}
+
+		statistics := make([]*proto.ElementStatisticEntry, len(rows))
+		for i, row := range rows {
+			statistics[i] = &proto.ElementStatisticEntry{
+				ElementId:     ptr.To(row.ElementID),
+				ActiveCount:   ptr.To(int32(row.ActiveCount)),
+				IncidentCount: ptr.To(int32(row.IncidentCount)),
+			}
+		}
+
+		resp = append(resp, &proto.PartitionedElementStatistics{
+			PartitionId: &partitionId,
+			Statistics:  statistics,
+		})
+	}
+	return &proto.GetProcessInstanceElementStatisticsResponse{Partitions: resp}, nil
+}
+
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.GetProcessDefinitionStatisticsRequest) (*proto.GetProcessDefinitionStatisticsResponse, error) {
 	resp := make([]*proto.PartitionedProcessDefinitionStatistics, 0, len(req.Partitions))
 	for _, partitionId := range req.Partitions {

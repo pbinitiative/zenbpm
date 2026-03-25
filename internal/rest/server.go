@@ -762,6 +762,63 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, requ
 	return public.GetProcessDefinitionElementStatistics200JSONResponse(result), nil
 }
 
+func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, request public.GetProcessInstanceElementStatisticsRequestObject) (public.GetProcessInstanceElementStatisticsResponseObject, error) {
+	if request.ProcessInstanceKey <= 0 {
+		return public.GetProcessInstanceElementStatistics400JSONResponse(zenerr.BadRequest(fmt.Errorf("processInstanceKey must be > 0, got %d", request.ProcessInstanceKey)).ToApiError()), nil
+	}
+
+	if _, _, err := s.node.GetProcessInstance(ctx, request.ProcessInstanceKey); err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.NotFoundCode:
+				return public.GetProcessInstanceElementStatistics404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceElementStatistics502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceElementStatistics500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+
+	partitions, err := s.node.GetProcessInstanceElementStatistics(ctx, request.ProcessInstanceKey)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceElementStatistics502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.GetProcessInstanceElementStatistics400JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceElementStatistics500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceElementStatistics500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+
+	result := public.ElementStatisticsPartitions{
+		Partitions: make([]public.PartitionElementStatistics, len(partitions)),
+	}
+
+	for i, partition := range partitions {
+		items := make(public.ElementStatistic, len(partition.GetStatistics()))
+		for _, entry := range partition.GetStatistics() {
+			items[entry.GetElementId()] = public.ElementStatisticCounts{
+				ActiveCount:   int(entry.GetActiveCount()),
+				IncidentCount: int(entry.GetIncidentCount()),
+			}
+		}
+		result.Partitions[i] = public.PartitionElementStatistics{
+			Partition: int(partition.GetPartitionId()),
+			Items:     items,
+		}
+	}
+
+	return public.GetProcessInstanceElementStatistics200JSONResponse(result), nil
+}
+
 func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request public.GetProcessDefinitionStatisticsRequestObject) (public.GetProcessDefinitionStatisticsResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
 

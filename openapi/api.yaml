@@ -1762,6 +1762,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-instances/{processInstanceKey}/statistics:
+    get:
+      operationId: getProcessInstanceElementStatistics
+      summary: Get running and incident counts per BPMN element for a process instance
+      tags:
+        - process-instance
+      parameters:
+        - name: processInstanceKey
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int64
+          example: 4503599627370501
+      responses:
+        200:
+          description: Element statistics as a map of elementId to counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElementStatisticsPartitions"
+              example:
+                partitions:
+                  - partition: 1
+                    items:
+                      Task_CheckApplication:
+                        activeCount: 1
+                        incidentCount: 0
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "The provided processInstanceKey is invalid"
+        404:
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "No process instance found for the given key"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to collect data from responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /jobs:
     get:
       operationId: getJobs

@@ -720,6 +720,39 @@ func (node *ZenNode) GetProcessDefinitionElementStatistics(ctx context.Context, 
 	return slices.Concat(partitionResults...), nil
 }
 
+// GetProcessInstanceElementStatistics will contact follower nodes and return process instance element statistics from all partitions
+func (node *ZenNode) GetProcessInstanceElementStatistics(ctx context.Context, processInstanceKey int64) ([]*proto.PartitionedElementStatistics, error) {
+	clusterState := node.store.ClusterState()
+	partitionIds := sortedPartitionIds(clusterState)
+
+	partitionResults := make([][]*proto.PartitionedElementStatistics, len(partitionIds))
+	group, groupCtx := errgroup.WithContext(ctx)
+
+	for idx, partitionId := range partitionIds {
+
+		group.Go(func() error {
+			partitions, err := node.getProcessInstanceElementStatisticsForPartition(
+				groupCtx,
+				clusterState,
+				processInstanceKey,
+				partitionId,
+			)
+			if err != nil {
+				return err
+			}
+
+			partitionResults[idx] = partitions
+			return nil
+		})
+	}
+
+	if errWait := group.Wait(); errWait != nil {
+		return nil, errWait
+	}
+
+	return slices.Concat(partitionResults...), nil
+}
+
 func (node *ZenNode) getProcessDefinitionElementStatisticsForPartition(
 	ctx context.Context,
 	clusterState state.Cluster,
@@ -743,6 +776,42 @@ func (node *ZenNode) getProcessDefinitionElementStatisticsForPartition(
 
 	if err != nil {
 		return nil, zenerr.TechnicalError(fmt.Errorf("%w: %w", fmt.Errorf("failed to get element statistics from partition %d", partitionId), err))
+	}
+
+	if resp == nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get response from partition, response is nil %d", partitionId))
+	}
+
+	if resp.Error != nil {
+		return nil, zenerr.ToZenError(resp.Error, fmt.Errorf("failed to get element statistics from partition %d", partitionId))
+	}
+
+	return resp.Partitions, nil
+}
+
+func (node *ZenNode) getProcessInstanceElementStatisticsForPartition(
+	ctx context.Context,
+	clusterState state.Cluster,
+	processInstanceKey int64,
+	partitionId uint32,
+) ([]*proto.PartitionedElementStatistics, error) {
+	follower, err := clusterState.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to read follower node to get element statistics from partition %d: %w", partitionId, err))
+	}
+
+	zenNodeClient, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get element statistics from partition %d: %w", partitionId, err))
+	}
+
+	resp, err := zenNodeClient.GetProcessInstanceElementStatistics(ctx, &proto.GetProcessInstanceElementStatisticsRequest{
+		ProcessInstanceKey: &processInstanceKey,
+		Partitions:         []uint32{partitionId},
+	})
+
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get element statistics from partition %d: %w", partitionId, err))
 	}
 
 	if resp == nil {

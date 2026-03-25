@@ -1,0 +1,106 @@
+package e2e
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetProcessInstanceElementStatistics(t *testing.T) {
+	definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+	require.NoError(t, err)
+
+	t.Run("active token exists while blocked at service task at element `service-task-1`", func(t *testing.T) {
+		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, totalIncidents := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 1, totalActive, "blocked instance should have exactly one active token")
+		assert.Equal(t, 0, totalIncidents)
+
+		assert.Equal(t, 1, resp.JSON200.Partitions[0].Items["service-task-1"].ActiveCount)
+	})
+
+	t.Run("active tokens are zero for a completed process instance", func(t *testing.T) {
+		_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		require.NoError(t, err)
+
+		def, err := deployGetUniqueDefinition(t, "simple-business-rule-task-local.bpmn")
+		require.NoError(t, err)
+
+		instance, err := createProcessInstance(t, ptr.To(def.Key), map[string]any{})
+		require.NoError(t, err)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, totalIncidents := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 0, totalActive, "completed instance should have no active tokens")
+		assert.Equal(t, 0, totalIncidents)
+	})
+
+	t.Run("statistics are scoped to the given process instance", func(t *testing.T) {
+		instance1, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance1.Key)
+
+		instance2, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 2})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance1.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, _ := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 1, totalActive, "only instance1 token should appear")
+	})
+
+	t.Run("active count is zero after instance is cancelled", func(t *testing.T) {
+		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		require.NoError(t, err)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, _ := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 1, totalActive, "one active token before cancel")
+
+		_, err = app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+
+		resp, err = app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+
+		totalActive, _ = sumElementStatistics(resp.JSON200)
+		assert.Equal(t, 0, totalActive, "no active tokens after cancel")
+	})
+
+	t.Run("incident count appears for process instance with incident", func(t *testing.T) {
+		incidentDef, err := deployGetUniqueDefinition(t, "exclusive-gateway-with-condition.bpmn")
+		require.NoError(t, err)
+
+		instance, err := createProcessInstance(t, ptr.To(incidentDef.Key), map[string]any{"price": 0})
+		require.NoError(t, err)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+
+		_, totalIncidents := sumElementStatistics(resp.JSON200)
+		assert.Equal(t, totalIncidents, 1, "should have exact one incident")
+	})
+}

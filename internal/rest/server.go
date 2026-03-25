@@ -771,8 +771,10 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
-			case zenerr.NotFoundCode, zenerr.ClusterErrorCode:
+			case zenerr.NotFoundCode:
 				return public.GetProcessInstanceElementStatistics404JSONResponse(zerr.ToApiError()), nil
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceElementStatistics502JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.GetProcessInstanceElementStatistics500JSONResponse(zerr.ToApiError()), nil
 			}

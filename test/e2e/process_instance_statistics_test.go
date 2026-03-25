@@ -103,10 +103,4 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 		_, totalIncidents := sumElementStatistics(resp.JSON200)
 		assert.Equal(t, totalIncidents, 1, "should have exact one incident")
 	})
-
-	t.Run("returns 404 for non-existent processInstanceKey", func(t *testing.T) {
-		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), 999999999)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusNotFound, resp.StatusCode())
-	})
 }

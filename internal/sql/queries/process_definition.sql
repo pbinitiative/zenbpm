@@ -107,6 +107,12 @@ WITH active_tokens AS (
     WHERE
         pi.process_definition_key = @process_definition_key
         AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+        AND NOT EXISTS (
+            SELECT 1 FROM process_instance AS child
+            WHERE child.parent_process_execution_token = et.key
+              AND child.process_type = 4  -- MultiInstance
+              AND child.state = 1         -- Active
+        )
     GROUP BY
         et.element_id
 ),
@@ -190,6 +196,7 @@ instance_counts AS (
     SUM(CASE WHEN pi.state = 6 THEN 1 ELSE 0 END) AS failed_count
   FROM process_instance AS pi
   WHERE pi.process_definition_key IN (SELECT "key" FROM filtered_definitions)
+  AND pi.process_type not in (2, 4) -- except SubProcess and MultiInstance
   GROUP BY pi.process_definition_key
 )
 SELECT

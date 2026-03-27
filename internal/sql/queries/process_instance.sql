@@ -175,7 +175,19 @@ WHERE
     state = 1;
 
 -- name: GetElementStatisticsByProcessInstanceKey :many
-WITH active_tokens AS (
+WITH relevant_instances AS (
+    -- The given instance itself
+    SELECT @process_instance_key AS "key"
+    UNION ALL
+    -- Plus any active multi-instance child process instances
+    SELECT pi_child.key
+    FROM process_instance AS pi_child
+             JOIN execution_token AS et ON pi_child.parent_process_execution_token = et.key
+    WHERE et.process_instance_key = @process_instance_key
+      AND pi_child.process_type = 4  -- ProcessTypeMultiInstance
+      AND pi_child.state = 1         -- Active
+),
+active_tokens AS (
     SELECT
         et.element_id,
         COUNT(*) AS active_count,
@@ -183,8 +195,14 @@ WITH active_tokens AS (
     FROM
         execution_token AS et
     WHERE
-        et.process_instance_key = @process_instance_key
+        et.process_instance_key IN (SELECT "key" FROM relevant_instances)
         AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
+        AND NOT EXISTS (
+            SELECT 1 FROM process_instance AS child
+            WHERE child.parent_process_execution_token = et.key
+              AND child.process_type = 4
+              AND child.state = 1
+        )
     GROUP BY
         et.element_id
 ),
@@ -196,8 +214,14 @@ active_incidents AS (
     FROM
         incident AS i
     WHERE
-        i.process_instance_key = @process_instance_key
+        i.process_instance_key IN (SELECT "key" FROM relevant_instances)
         AND i.resolved_at IS NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM process_instance AS child
+            WHERE child.parent_process_execution_token = i.execution_token
+              AND child.process_type = 4
+              AND child.state = 1
+        )
     GROUP BY
         i.element_id
 ),

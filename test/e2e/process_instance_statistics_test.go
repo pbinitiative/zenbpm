@@ -104,3 +104,45 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 		assert.Equal(t, totalIncidents, 1, "should have exact one incident")
 	})
 }
+
+func TestGetProcessInstanceElementStatisticsMultiInstance(t *testing.T) {
+	definition, err := deployGetUniqueDefinition(t, "multi_instance_parallel_service_task.bpmn")
+	require.NoError(t, err)
+
+	t.Run("parallel multi-instance shows body tokens not scope token", func(t *testing.T) {
+		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{
+			"testInputCollection": []string{"a", "b"},
+		})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 2, activeByElement["Activity_0rae016"],
+			"should count child body tokens, not the parent scope token")
+	})
+
+	t.Run("sequential multi-instance shows body token not scope token", func(t *testing.T) {
+		seqDef, err := deployGetUniqueDefinition(t, "multi_instance_service_task.bpmn")
+		require.NoError(t, err)
+
+		instance, err := createProcessInstance(t, ptr.To(seqDef.Key), map[string]any{
+			"testInputCollection": []string{"a", "b", "c"},
+		})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 1, activeByElement["Activity_0rae016"],
+			"sequential multi-instance should show 1 active body token")
+	})
+}

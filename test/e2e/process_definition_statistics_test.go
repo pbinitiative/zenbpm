@@ -311,6 +311,40 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance2.Key) //nolint:errcheck
 }
 
+func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
+	definition, err := deployGetUniqueDefinition(t, "multi_instance_parallel_service_task.bpmn")
+	require.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.Key, map[string]any{
+		"testInputCollection": []string{"a", "b", "c"},
+	})
+	require.NoError(t, err)
+
+	t.Run("definition element statistics excludes multi-instance scope token", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 3, activeByElement["Activity_0rae016"],
+			"should count only body instance tokens, not the parent scope token")
+	})
+
+	t.Run("instance element statistics shows child body tokens", func(t *testing.T) {
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+
+		activeByElement := collectActiveByElement(resp.JSON200)
+		assert.Equal(t, 3, activeByElement["Activity_0rae016"],
+			"should count child body tokens, not the parent scope token")
+	})
+
+	app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+}
+
 func sumElementStatistics(stats *zenclient.ElementStatisticsPartitions) (totalActive, totalIncidents int) {
 	for _, partition := range stats.Partitions {
 		for _, counts := range partition.Items {

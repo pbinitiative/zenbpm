@@ -271,6 +271,12 @@ func (zpn *ZenPartitionNode) Stop() error {
 	if zpn.Engine != nil {
 		zpn.Engine.Stop()
 	}
+	if zpn.FeelRuntime != nil {
+		zpn.FeelRuntime.Stop()
+	}
+	if zpn.JsRuntime != nil {
+		zpn.JsRuntime.Stop()
+	}
 	zpn.clusterService.Close()
 	if zpn.config.RaftClusterRemoveOnShutdown {
 		remover := cluster.NewRemover(zpn.clusterClient, 1*time.Second, zpn.store)

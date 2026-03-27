@@ -15,6 +15,8 @@ type RunnerFactory interface {
 }
 
 type RunnerPool struct {
+	ctx                context.Context
+	cancel             context.CancelFunc
 	pool               chan Runner
 	runnerFactory      RunnerFactory
 	activeRunnersCount int
@@ -23,12 +25,16 @@ type RunnerPool struct {
 	minVmPoolSize      int // min amount of active runners
 }
 
-func NewRunnerPool(ctx context.Context, runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize int) *RunnerPool {
+func NewRunnerPool(runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize int) *RunnerPool {
 	if maxVmPoolSize < minVmPoolSize {
 		panic("vm pool min size is smaller than vm pool max size")
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	runtime := RunnerPool{
+		ctx:                ctx,
+		cancel:             cancel,
 		pool:               make(chan Runner, maxVmPoolSize),
 		runnerFactory:      runnerFactory,
 		activeRunnersCount: 0,
@@ -66,6 +72,10 @@ func NewRunnerPool(ctx context.Context, runnerFactory RunnerFactory, maxVmPoolSi
 		}
 	}()
 	return &runtime
+}
+
+func (r *RunnerPool) Stop() {
+	r.cancel()
 }
 
 func (r *RunnerPool) GetRunnerFromPool() Runner {

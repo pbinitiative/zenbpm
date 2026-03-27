@@ -41,7 +41,7 @@ func (c *RunningInstancesCache) tryLockInstance(ctx context.Context, instanceKey
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return fmt.Errorf("context canceled")
 		default:
 			locked := ri.mu.TryLock()
 			if locked {

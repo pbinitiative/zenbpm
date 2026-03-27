@@ -31,7 +31,7 @@ type EngineOption = func(*ZenDmnEngine)
 func NewEngine(options ...EngineOption) *ZenDmnEngine {
 	engine := ZenDmnEngine{
 		persistence: inmemory.NewStorage(),
-		feelRuntime: feel.NewFeelinRuntime(context.TODO(), 1, 1),
+		feelRuntime: feel.NewFeelinRuntime(1, 1),
 	}
 
 	for _, option := range options {

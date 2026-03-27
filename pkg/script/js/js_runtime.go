@@ -1,7 +1,6 @@
 package js
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"github.com/dop251/goja"
@@ -21,10 +20,14 @@ type JsRuntime struct {
 
 func (r *JsRuntime) ScriptRuntime() {}
 
-func NewJsRuntime(ctx context.Context, maxVmPoolSize int, minVmPoolSize int) *JsRuntime {
+func NewJsRuntime(maxVmPoolSize int, minVmPoolSize int) *JsRuntime {
 	return &JsRuntime{
-		pool: script.NewRunnerPool(ctx, JsRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
+		pool: script.NewRunnerPool(JsRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
 	}
+}
+
+func (r *JsRuntime) Stop() {
+	r.pool.Stop()
 }
 
 func (r *JsRuntime) RunScript(script string) (any, error) {

@@ -54,7 +54,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, calledProcessInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, calledProcessInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to run call activity instance %d: %s", calledProcessInstance.ProcessInstance().Key, err.Error()))
 			}
@@ -107,7 +107,7 @@ func (engine *Engine) createSubProcess(ctx context.Context, batch *EngineBatch, 
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, subProcessInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, subProcessInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to sub process instance %d: %s", subProcessInstance.ProcessInstance().Key, err.Error()))
 			}
@@ -286,7 +286,7 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, paralelMultiInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, paralelMultiInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to sub parallel multiInstance instance %d: %s", paralelMultiInstance.ProcessInstance().Key, err.Error()))
 			}
@@ -350,7 +350,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, sequentialMultiInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, sequentialMultiInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to start sequential multiInstance instance %d: %s", sequentialMultiInstance.ProcessInstance().Key, err.Error()))
 			}
@@ -443,7 +443,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for multi instance %d: %w", instance.Key, err)
 			}
@@ -531,7 +531,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for call activity %d: %w", instance.Key, err)
 			}
@@ -627,7 +627,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(ctx, parentInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for multi instance %d: %w", instance.Key, err)
 			}

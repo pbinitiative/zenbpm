@@ -13,7 +13,7 @@ import (
 func TestFindProcessInstanceComfortFunctionReturnsNilIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
-	_, err := bpmnEngine.FindProcessInstance(1234)
+	_, err := bpmnEngine.FindProcessInstance(t.Context(), 1234)
 
 	assert.NotNil(t, err)
 	assert.ErrorIs(t, err, storage.ErrNotFound, "expected ErrNotFound for not existing process")
@@ -22,7 +22,7 @@ func TestFindProcessInstanceComfortFunctionReturnsNilIfNoInstanceFound(t *testin
 func TestFindProcessesByIdComfortFunctionReturnsEmptyArrayIfNoInstanceFound(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
-	instanceInfos, err := bpmnEngine.FindProcessesById("unknown-id")
+	instanceInfos, err := bpmnEngine.FindProcessesById(t.Context(), "unknown-id")
 
 	assert.Empty(t, instanceInfos)
 	assert.Nil(t, err)
@@ -35,17 +35,17 @@ func TestFindProcessesByIdResultIsOrderedByVersion(t *testing.T) {
 	// setup
 	dataV1, err := os.ReadFile("./test-cases/simple_task.bpmn")
 	assert.Nil(t, err)
-	_, err = bpmnEngine.LoadFromBytes(dataV1, bpmnEngine.generateKey())
+	_, err = bpmnEngine.LoadFromBytes(t.Context(), dataV1, bpmnEngine.generateKey())
 	assert.Nil(t, err)
 
 	// given
 	dataV2 := strings.Replace(string(dataV1), "StartEvent_1", "StartEvent_2", -1)
 	assert.NotEqual(t, dataV2, string(dataV1))
-	_, err = bpmnEngine.LoadFromBytes([]byte(dataV2), bpmnEngine.generateKey())
+	_, err = bpmnEngine.LoadFromBytes(t.Context(), []byte(dataV2), bpmnEngine.generateKey())
 	assert.Nil(t, err)
 
 	// when
-	infos, err := bpmnEngine.FindProcessesById("Simple_Task_Process")
+	infos, err := bpmnEngine.FindProcessesById(t.Context(), "Simple_Task_Process")
 	assert.Nil(t, err)
 
 	// then

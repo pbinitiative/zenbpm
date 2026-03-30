@@ -17,8 +17,7 @@ import (
 
 // Start will start the process engine instance.ProcessInstance().
 // Engine will start to pull process instances with execution tokens that need to be processed
-func (engine *Engine) Start() error {
-	ctx := context.Background()
+func (engine *Engine) Start(ctx context.Context) error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
@@ -236,6 +235,34 @@ mainLoop:
 			continue
 		}
 		tokenSpan.End()
+	}
+
+	// If the main loop exhausted all running tokens but the instance is still active,
+	// check whether there are any pending async activities: waiting tokens (user tasks, jobs),
+	// active message subscriptions, or pending timers.
+	// If none exist, the process has nowhere left to go and should be marked as completed.
+	if instance.ProcessInstance().State == runtime.ActivityStateActive {
+		activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+		if err != nil {
+			return fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
+
+		subs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
+		if err != nil {
+			return fmt.Errorf("failed to find message subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
+
+		timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
+		if err != nil {
+			return fmt.Errorf("failed to find timers for process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
+		
+		if len(activeTokens) == 0 && len(subs) == 0 && len(timers) == 0 {
+			instance.ProcessInstance().State = runtime.ActivityStateCompleted
+			if err := engine.persistence.SaveProcessInstance(ctx, instance); err != nil {
+				return fmt.Errorf("failed to save completed state for process instance %d: %w", instance.ProcessInstance().Key, err)
+			}
+		}
 	}
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
@@ -502,12 +529,12 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 // FindProcessInstance searches for a given processInstanceKey
 // and returns the corresponding processInstanceInfo, or otherwise nil
-func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
-	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
+func (engine *Engine) FindProcessInstance(ctx context.Context, processInstanceKey int64) (runtime.ProcessInstance, error) {
+	return engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 }
 
 // FindProcessesById returns all registered processes with given ID
 // result array is ordered by version number, from 1 (first) and largest version (last)
-func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
-	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
+func (engine *Engine) FindProcessesById(ctx context.Context, id string) ([]runtime.ProcessDefinition, error) {
+	return engine.persistence.FindProcessDefinitionsById(ctx, id)
 }

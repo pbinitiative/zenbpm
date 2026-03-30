@@ -8,6 +8,24 @@ import (
 )
 
 func (definitions *TDefinitions) ResolveReferences() error {
+	unsupportedTaskTypes := []struct {
+		name  string
+		tasks []TTask
+	}{
+		{"task", definitions.Process.Tasks},
+		{"scriptTask", definitions.Process.ScriptTasks},
+		{"manualTask", definitions.Process.ManualTasks},
+		{"receiveTask", definitions.Process.ReceiveTasks},
+	}
+	for _, entry := range unsupportedTaskTypes {
+		if len(entry.tasks) > 0 {
+			ids := make([]string, 0, len(entry.tasks))
+			for _, t := range entry.tasks {
+				ids = append(ids, t.GetId())
+			}
+			return fmt.Errorf("unsupported element type '%s' (ids: %v): use a specific task type such as serviceTask, userTask, businessRuleTask or sendTask", entry.name, ids)
+		}
+	}
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)
 	resolvables := make([]resolvableFunc, 0)
@@ -162,7 +180,7 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 				return nil
 			})
 		default:
-			panic(fmt.Sprintf("Error in structure [%s]: field is not of a slice or interface type", fieldVal.Type().Name()))
+			return fmt.Errorf("error in structure [%s]: field is not of a slice or interface type", fieldVal.Type().Name())
 		}
 		return nil
 	}

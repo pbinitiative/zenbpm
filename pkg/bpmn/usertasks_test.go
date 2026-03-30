@@ -14,7 +14,7 @@ import (
 func TestUserTasksCanBeHandled(t *testing.T) {
 
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-user-task.bpmn")
 	assert.NoError(t, err)
 	cp := CallPath{}
 	h := bpmnEngine.NewTaskHandler().Id("user-task").Handler(cp.TaskHandler)
@@ -29,7 +29,7 @@ func TestUserTasksCanBeHandled(t *testing.T) {
 func TestUserTasksCanBeContinue(t *testing.T) {
 	t.Skip("runtime modification of handlers is not supported yet")
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/simple-user-task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-user-task.bpmn")
 	assert.NoError(t, err)
 	cp := CallPath{}
 
@@ -68,7 +68,7 @@ func TestUserTasksCanBeContinue(t *testing.T) {
 
 func TestUserTaskAssigneeMapping(t *testing.T) {
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/usertask-assignee-mapping.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/usertask-assignee-mapping.bpmn")
 	assert.NoError(t, err)
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))

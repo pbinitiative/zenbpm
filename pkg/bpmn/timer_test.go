@@ -14,7 +14,7 @@ func TestEventBasedGatewaySelectsPathWhereTimerOccurs(t *testing.T) {
 	engineStorage.Timers = make(map[int64]runtime.Timer)
 	cp := CallPath{}
 
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-timer-event.bpmn")
 	mH := bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
@@ -32,7 +32,7 @@ func TestEventBasedGatewaySelectsPathWhereTimerOccurs(t *testing.T) {
 func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
 	cp := CallPath{}
 
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-invalid-timer-event.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-invalid-timer-event.bpmn")
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
@@ -47,7 +47,7 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	cp := CallPath{}
 
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-timer-event.bpmn")
 	mH := bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
@@ -95,7 +95,7 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	//    - flow outgoing from the boundary should be taken
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/timer-boundary-event-interrupting.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-interrupting.bpmn")
 	// when
 	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
 	assert.NoError(t, err)

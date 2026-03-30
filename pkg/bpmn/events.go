@@ -333,7 +333,7 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *E
 			}
 			return tokens, nil
 		default:
-			panic(fmt.Sprintf("unexpected activity state in handling MessageThrowEvent %s", activityResult))
+			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("unexpected activity state in handling MessageThrowEvent %s", activityResult)
 		}
 
 	case bpmn20.TLinkEventDefinition:
@@ -342,7 +342,9 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *E
 			return nil, fmt.Errorf("failed to handle IntermediateThrowLinkEvent: %w", err)
 		}
 		return []runtime.ExecutionToken{token}, nil
+	case nil:
+		return nil, fmt.Errorf("unsupported element: intermediateThrowEvent '%s' has no event definition (none intermediate throw event is not supported)", ite.GetId())
 	default:
-		panic(fmt.Sprintf("unhandled type for IntermediateThrowEvent EventDefinition: %T", ed))
+		panic(fmt.Sprintf("[invariant check] unhandled type for IntermediateThrowEvent EventDefinition: %T", ed))
 	}
 }

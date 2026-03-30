@@ -24,7 +24,7 @@ func TestTracer(t *testing.T) {
 
 	ctx, parent := tracerprovider.Tracer("test-tracer").Start(t.Context(), "parent-test-span")
 
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple-link-event-output-variables.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-event-output-variables.bpmn")
 	h := bpmnEngine.NewTaskHandler().Type("task").Handler(func(job ActivatedJob) {
 		job.Complete()
 	})

@@ -15,7 +15,7 @@ func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -40,7 +40,7 @@ func TestExclusiveGatewayWithExpressionsFailsNoDefault(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -65,7 +65,7 @@ func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -91,7 +91,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -117,7 +117,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks-no-default.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks-no-default.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -177,7 +177,7 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 
 	// when
 	// don't provide variables, for execution to get an evaluation error
@@ -196,7 +196,7 @@ func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-with-condition.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-with-condition.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -221,7 +221,7 @@ func TestInclusiveGatewayWithExpressionsSelectsDefault(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-with-condition-and-default.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-with-condition-and-default.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -244,7 +244,7 @@ func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-multiple-tasks.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-multiple-tasks.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)

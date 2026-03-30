@@ -10,7 +10,7 @@ func TestForkUncontrolledJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-uncontrolled-join.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-uncontrolled-join.bpmn")
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)
@@ -31,7 +31,7 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-parallel-join.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-controlled-parallel-join.bpmn")
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)
@@ -51,7 +51,7 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-exclusive-join.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-controlled-exclusive-join.bpmn")
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)

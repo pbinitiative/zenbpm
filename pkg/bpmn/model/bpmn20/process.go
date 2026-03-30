@@ -4,6 +4,10 @@ type TFlowElementsContainer struct {
 	StartEvents            []TStartEvent             `xml:"startEvent"`
 	EndEvents              []TEndEvent               `xml:"endEvent"`
 	SequenceFlows          []TSequenceFlow           `xml:"sequenceFlow"`
+	Tasks                  []TTask                   `xml:"task"`
+	ScriptTasks            []TTask                   `xml:"scriptTask"`
+	ManualTasks            []TTask                   `xml:"manualTask"`
+	ReceiveTasks           []TTask                   `xml:"receiveTask"`
 	ServiceTasks           []TServiceTask            `xml:"serviceTask"`
 	UserTasks              []TUserTask               `xml:"userTask"`
 	BusinessRuleTask       []TBusinessRuleTask       `xml:"businessRuleTask"`

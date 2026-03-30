@@ -16,7 +16,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -49,7 +49,7 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)

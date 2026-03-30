@@ -588,7 +588,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	case *bpmn20.TBusinessRuleTask:
 		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
 	default:
-		return nil, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
+		return nil, fmt.Errorf("unsupported element type '%T' with id '%s': element is not supported by the engine", activity.Element(), activity.Element().GetId())
 	}
 
 	// Now check whether the activity ended right away and the process can move on or it needs to wait for external event

@@ -188,6 +188,50 @@ func TestBusinessKey(t *testing.T) {
 			assert.NotEmpty(t, pi.Key)
 		}
 	})
+
+	t.Run("complete service task", func(t *testing.T) {
+		jobs, err := getJobs(t, zenclient.GetJobsParams{
+			ProcessInstanceKey: &instance.Key,
+			State:              ptr.To(zenclient.JobStateActive),
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, jobs.Partitions)
+		assert.NotEmpty(t, jobs.Partitions[0].Items)
+		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{
+			"city": "test",
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("complete user task", func(t *testing.T) {
+		jobs, err := getJobs(t, zenclient.GetJobsParams{
+			ProcessInstanceKey: &instance.Key,
+			State:              ptr.To(zenclient.JobStateActive),
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, jobs.Partitions)
+		assert.NotEmpty(t, jobs.Partitions[0].Items)
+		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{})
+		assert.NoError(t, err)
+	})
+
+	t.Run("business key present after process completes", func(t *testing.T) {
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+		assert.Equal(t, bk, ptr.Deref(fetchedInstance.BusinessKey, ""))
+	})
+
+	t.Run("find completed process instances by business key", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BusinessKey: &bk,
+		})
+		assert.NoError(t, err)
+		assert.True(t, processInstances.JSON200.TotalCount > 0)
+		for _, pi := range processInstances.JSON200.Partitions[0].Items {
+			assert.Equal(t, bk, ptr.Deref(pi.BusinessKey, ""))
+		}
+	})
 }
 
 func TestCreatedAt(t *testing.T) {

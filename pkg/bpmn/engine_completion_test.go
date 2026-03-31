@@ -16,9 +16,9 @@ func TestProcessWithOnlyStartEventCompletes(t *testing.T) {
 	require.NoError(t, err)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
-	require.NoError(t, err)
+	require.Error(t, err)
 
-	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
+	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 }
 
 // TestLinearProcessStillCompletes is a regression test ensuring that the normal

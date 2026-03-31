@@ -929,6 +929,9 @@ func (engine *Engine) handleDefaultElementTransition(
 
 	// No outgoing associations
 	if len(element.GetOutgoingAssociation()) == 0 {
+		if element.GetType() != bpmn20.ElementTypeEndEvent {
+			return nil, fmt.Errorf("flow node %s of type %s does not have outgoing associations but is not an end event", element.GetId(), element.GetType())
+		}
 		resTokens[0].State = runtime.TokenStateCompleted
 	}
 

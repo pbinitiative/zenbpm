@@ -238,34 +238,6 @@ mainLoop:
 		tokenSpan.End()
 	}
 
-	// If the main loop exhausted all running tokens but the instance is still active,
-	// check whether there are any pending async activities: waiting tokens (user tasks, jobs),
-	// active message subscriptions, or pending timers.
-	// If none exist, the process has nowhere left to go and should be marked as completed.
-	if instance.ProcessInstance().State == runtime.ActivityStateActive {
-		activeTokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
-		if err != nil {
-			return fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
-		}
-
-		subs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
-		if err != nil {
-			return fmt.Errorf("failed to find message subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
-		}
-
-		timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
-		if err != nil {
-			return fmt.Errorf("failed to find timers for process instance %d: %w", instance.ProcessInstance().Key, err)
-		}
-		
-		if len(activeTokens) == 0 && len(subs) == 0 && len(timers) == 0 {
-			instance.ProcessInstance().State = runtime.ActivityStateCompleted
-			if err := engine.persistence.SaveProcessInstance(ctx, instance); err != nil {
-				return fmt.Errorf("failed to save completed state for process instance %d: %w", instance.ProcessInstance().Key, err)
-			}
-		}
-	}
-
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		engine.exportEndProcessEvent(*process, instance)
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(

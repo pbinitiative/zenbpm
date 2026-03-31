@@ -1,13 +1,13 @@
 package e2e
 
 import (
-	"net/http"
-	"testing"
-
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"net/http"
+	"testing"
+	"time"
 )
 
 // allStatsItems collects all ProcessDefinitionStatistics items from all partitions.
@@ -312,6 +312,7 @@ func TestGetProcessDefinitionElementStatistics(t *testing.T) {
 }
 
 func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
+	cleanProcessInstances(t)
 	definition, err := deployGetUniqueDefinition(t, "multi_instance_parallel_service_task.bpmn")
 	require.NoError(t, err)
 
@@ -321,14 +322,20 @@ func TestGetProcessDefinitionElementStatisticsMultiInstance(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("definition element statistics excludes multi-instance scope token", func(t *testing.T) {
-		resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		require.NotNil(t, resp.JSON200)
+		assert.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessDefinitionElementStatisticsWithResponse(t.Context(), definition.Key)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode())
+			require.NotNil(t, resp.JSON200)
 
-		activeByElement := collectActiveByElement(resp.JSON200)
-		assert.Equal(t, 3, activeByElement["Activity_0rae016"],
-			"should count only body instance tokens, not the parent scope token")
+			activeByElement := collectActiveByElement(resp.JSON200)
+			if 3 == activeByElement["Activity_0rae016"] {
+				return true
+			}
+
+			return false
+		}, 2*time.Second, 100*time.Millisecond, "activeByElement[\"Activity_0rae016\"] should be equal to 3")
+
 	})
 
 	t.Run("instance element statistics shows child body tokens", func(t *testing.T) {

@@ -134,7 +134,7 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
 
-		err = publishMessage(t, "Message_1tfendh", "testMessage", &map[string]any{
+		err = publishMessage(t, "OuterTestMessage", "testMessage", &map[string]any{
 			"test-var": "test",
 		})
 		assert.NoError(t, err)

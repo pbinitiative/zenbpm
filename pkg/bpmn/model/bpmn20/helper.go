@@ -184,30 +184,19 @@ func makeResolvable(fieldVal reflect.Value, idField reflect.Value) func(refs *ma
 	}
 }
 
-// FindFirstSequenceFlow returns the first flow definition for any given source and target element ID
-func FindFirstSequenceFlow(source FlowNode, target FlowNode) (result SequenceFlow) {
-	for _, flow := range source.GetOutgoingAssociation() {
-		if flow.GetTargetRef().GetId() == target.GetId() {
-			result = flow
-			break
-		}
-	}
-	return result
-}
-
-func FindFlowNodesById(definitions *TDefinitions, id string) (element FlowNode) {
-	if baseElement, ok := definitions.baseElements[id]; ok {
-		if flowNode, ok := baseElement.(FlowNode); ok {
-			element = flowNode
-		}
-	}
-	return element
-}
-
-func FindBoundaryEventsForActivity(definitions *TDefinitions, activity FlowNode) (result []TBoundaryEvent) {
-	for _, boundaryEvent := range definitions.Process.BoundaryEvent {
-		if boundaryEvent.AttachedToRef == activity.GetId() {
+func FindBoundaryEventsForActivity(processContainer *TFlowElementsContainer, activityId string) (result []TBoundaryEvent) {
+	for _, boundaryEvent := range processContainer.BoundaryEvent {
+		if boundaryEvent.AttachedToRef == activityId {
 			result = append(result, boundaryEvent)
+		}
+	}
+	if len(result) != 0 {
+		return result
+	}
+	for _, subProcess := range processContainer.SubProcess {
+		if res := FindBoundaryEventsForActivity(&subProcess.TFlowElementsContainer, activityId); res != nil {
+			result = append(result, res...)
+			return result
 		}
 	}
 	return result

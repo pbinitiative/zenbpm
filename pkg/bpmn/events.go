@@ -68,6 +68,21 @@ func (engine *Engine) handleBoundaryMessage(ctx context.Context, batch *EngineBa
 
 func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batch *EngineBatch, listener *bpmn20.TBoundaryEvent, message *runtime.MessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	token := message.Token
+	message.State = runtime.ActivityStateCompleted
+	err := batch.SaveMessageSubscription(ctx, *message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
+	}
+
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	outputVariables, err := variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
 
 	if listener.CancellActivity {
 		// cancel job
@@ -107,27 +122,40 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 		if err != nil {
 			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
 		}
+
+		token = runtime.ExecutionToken{
+			Key:                engine.generateKey(),
+			ElementInstanceKey: engine.generateKey(),
+			ElementId:          listener.GetId(),
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			State:              runtime.TokenStateRunning,
+		}
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	message.State = runtime.ActivityStateCompleted
-	err := batch.SaveMessageSubscription(ctx, *message)
+	err = batch.SaveFlowElementInstance(ctx,
+		runtime.FlowElementInstance{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          listener.GetId(),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  token.Key,
+			InputVariables:     nil,
+			OutputVariables:    outputVariables,
+		},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
-	}
-
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if _, err = variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression); err != nil {
-		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	err = batch.SaveProcessInstance(ctx, instance)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+		return nil, err
 	}
 
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process MessageSubscription flow transition %s: %w", listener.GetId(), err)
 	}
+
 	return tokens, nil
 }
 

@@ -539,6 +539,14 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
 	assert.NoError(t, err)
 
+	variables = map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	assert.NoError(t, err)
+
+	variables = map[string]interface{}{"payload": "message payload"}
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	assert.NoError(t, err)
+
 	// then
 	subscriptions, err = bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
 	assert.NoError(t, err)
@@ -551,6 +559,14 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	jobs = findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
+
+	countCompletedTokens := 0
+	for _, token := range engineStorage.ExecutionTokens {
+		if token.ProcessInstanceKey == instance.ProcessInstance().Key && token.State == runtime.TokenStateCompleted {
+			countCompletedTokens++
+		}
+	}
+	assert.Equal(t, 3, countCompletedTokens)
 
 }
 

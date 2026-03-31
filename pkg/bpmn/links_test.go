@@ -12,7 +12,8 @@ func TestLinkEventsAreThrownAndCaughtAndFlowContinued(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-events.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-events.bpmn")
+	assert.NoError(t, err)
 	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
@@ -28,7 +29,8 @@ func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-event-broken.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-event-broken.bpmn")
+	assert.NoError(t, err)
 	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
@@ -49,7 +51,8 @@ func TestMissingIntermediateLinkVariablesMapped(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-event-output-variables.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-link-event-output-variables.bpmn")
+	assert.NoError(t, err)
 	h := bpmnEngine.NewTaskHandler().Type("task").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(h)
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)

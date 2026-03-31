@@ -345,6 +345,6 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *E
 	case nil:
 		return nil, fmt.Errorf("unsupported element: intermediateThrowEvent '%s' has no event definition (none intermediate throw event is not supported)", ite.GetId())
 	default:
-		panic(fmt.Sprintf("[invariant check] unhandled type for IntermediateThrowEvent EventDefinition: %T", ed))
+		return nil, fmt.Errorf("[invariant check] unhandled type for IntermediateThrowEvent EventDefinition: %T", ed)
 	}
 }

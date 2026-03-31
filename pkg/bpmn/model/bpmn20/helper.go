@@ -9,11 +9,7 @@ import (
 
 func (definitions *TDefinitions) ResolveReferences() error {
 	byType := make(map[string][]string)
-	for _, e := range definitions.Process.UnknownElements {
-		if len(e.Incoming) > 0 || len(e.Outgoing) > 0 {
-			byType[e.XMLName.Local] = append(byType[e.XMLName.Local], e.Id)
-		}
-	}
+	collectUnknownElements(&definitions.Process.TFlowElementsContainer, byType)
 	for name, ids := range byType {
 		return fmt.Errorf("unsupported element type '%s' (ids: %v): use supported elements only", name, ids)
 	}
@@ -33,6 +29,17 @@ func (definitions *TDefinitions) ResolveReferences() error {
 		}
 	}
 	return nil
+}
+
+func collectUnknownElements(container *TFlowElementsContainer, byType map[string][]string) {
+	for _, e := range container.UnknownElements {
+		if len(e.Incoming) > 0 || len(e.Outgoing) > 0 {
+			byType[e.XMLName.Local] = append(byType[e.XMLName.Local], e.Id)
+		}
+	}
+	for i := range container.SubProcess {
+		collectUnknownElements(&container.SubProcess[i].TFlowElementsContainer, byType)
+	}
 }
 
 func (definitions *TDefinitions) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {

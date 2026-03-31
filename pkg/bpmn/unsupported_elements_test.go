@@ -8,7 +8,7 @@ import (
 )
 
 func TestScriptTaskDeploymentReturnsUnsupportedError(t *testing.T) {
-	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/script-task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-script-task.bpmn")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "scriptTask")
@@ -16,7 +16,7 @@ func TestScriptTaskDeploymentReturnsUnsupportedError(t *testing.T) {
 }
 
 func TestManualTaskDeploymentReturnsUnsupportedError(t *testing.T) {
-	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/manual-task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-manual-task.bpmn")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "manualTask")
@@ -24,7 +24,7 @@ func TestManualTaskDeploymentReturnsUnsupportedError(t *testing.T) {
 }
 
 func TestReceiveTaskDeploymentReturnsUnsupportedError(t *testing.T) {
-	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/receive-task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-receive-task.bpmn")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "receiveTask")
@@ -32,7 +32,7 @@ func TestReceiveTaskDeploymentReturnsUnsupportedError(t *testing.T) {
 }
 
 func TestPlainTaskDeploymentReturnsUnsupportedError(t *testing.T) {
-	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/plain-task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-plain-task.bpmn")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "task")

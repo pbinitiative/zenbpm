@@ -1044,6 +1044,10 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	}
 
 	businessKey, bkFound := appcontext.BusinessKeyFromContext(ctx)
+	if !bkFound && processInstance.ProcessInstance().BusinessKey != nil {
+		businessKey = *processInstance.ProcessInstance().BusinessKey
+		bkFound = true
+	}
 
 	var parentProcessExecutionToken ssql.NullInt64
 	var parentProcessTargetElementID ssql.NullString

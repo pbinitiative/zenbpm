@@ -34,6 +34,8 @@ import (
 // Engine holds the state of the bpmn engine.
 // It interacts with the outside world using persistence storage interface and outside world interacts with it using public methods (message correlations, job updates, ...).
 type Engine struct {
+	context        context.Context
+	contextCancel  context.CancelFunc
 	taskhandlersMu *sync.RWMutex // we can probably remove this once we fix tests reuse same handler matchers
 	taskHandlers   []*taskHandler
 	exporters      []exporter.EventExporter
@@ -55,6 +57,7 @@ type EngineOption = func(*Engine)
 
 // NewEngine creates a new instance of the BPMN Engine;
 func NewEngine(options ...EngineOption) Engine {
+	ctx, cancel := context.WithCancel(context.Background())
 	logger := hclog.Default()
 	meter := otel.GetMeterProvider().Meter("bpmn-engine")
 	tracer := otel.GetTracerProvider().Tracer("bpmn-engine")
@@ -63,9 +66,12 @@ func NewEngine(options ...EngineOption) Engine {
 		logger.Error("Failed to initialize metrics for the engine", "err", err)
 	}
 	persistence := inmemory.NewStorage()
-	feelRuntime := feel.NewFeelinRuntime(context.TODO(), 1, 1)
-	jsRuntime := js.NewJsRuntime(context.TODO(), 1, 1)
+	feelRuntime := feel.NewFeelinRuntime(1, 1)
+	jsRuntime := js.NewJsRuntime(1, 1)
+
 	engine := Engine{
+		context:          ctx,
+		contextCancel:    cancel,
 		taskhandlersMu:   &sync.RWMutex{},
 		taskHandlers:     []*taskHandler{},
 		exporters:        []exporter.EventExporter{},
@@ -101,6 +107,7 @@ func EngineWithStorage(persistence storage.Storage) EngineOption {
 func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.FeelRuntime) EngineOption {
 	return func(engine *Engine) {
 		engine.persistence = persistence
+		engine.feelRuntime.Stop()
 		engine.feelRuntime = feelRuntime
 		engine.dmnEngine = dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime))
 	}
@@ -108,6 +115,7 @@ func EngineWithStorageAndFeel(persistence storage.Storage, feelRuntime script.Fe
 
 func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 	return func(engine *Engine) {
+		engine.jsRuntime.Stop()
 		engine.jsRuntime = jsRuntime
 	}
 }

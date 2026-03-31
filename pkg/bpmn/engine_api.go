@@ -23,7 +23,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 	}
 	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, 10*time.Second)
 	engine.timerManager.start()
-	tokens, err := engine.persistence.GetRunningTokens(ctx)
+	tokens, err := engine.persistence.GetRunningTokens(engine.context)
 	if err != nil {
 		return fmt.Errorf("failed to load running tokens: %w", err)
 	}
@@ -37,7 +37,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 			val.tokens = append(val.tokens, token)
 			instancesToStart[token.ProcessInstanceKey] = val
 		} else {
-			instance, err := engine.persistence.FindProcessInstanceByKey(ctx, token.ProcessInstanceKey)
+			instance, err := engine.persistence.FindProcessInstanceByKey(engine.context, token.ProcessInstanceKey)
 			if err != nil {
 				return fmt.Errorf("failed to load instance %d for token %d: %w", token.ProcessInstanceKey, token.Key, err)
 			}
@@ -48,7 +48,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 		}
 	}
 	for _, instance := range instancesToStart {
-		err := engine.RunProcessInstance(ctx, instance.instance, instance.tokens)
+		err := engine.RunProcessInstance(engine.context, instance.instance, instance.tokens)
 		if err != nil {
 			engine.logger.Error(fmt.Sprintf("failed to run process instance %d: %s", instance.instance.ProcessInstance().Key, err.Error()))
 		}
@@ -59,6 +59,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 
 func (engine *Engine) Stop() {
 	engine.timerManager.stop()
+	engine.contextCancel()
 }
 
 // RunProcessInstance will run the process instance with supplied tokens.

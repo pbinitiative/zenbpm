@@ -1,7 +1,6 @@
 package feel
 
 import (
-	"context"
 	_ "embed"
 	"github.com/dop251/goja"
 	"github.com/pbinitiative/zenbpm/pkg/script"
@@ -18,10 +17,14 @@ type FeelinRuntime struct {
 	pool *script.RunnerPool
 }
 
-func NewFeelinRuntime(ctx context.Context, maxVmPoolSize int, minVmPoolSize int) script.FeelRuntime {
+func NewFeelinRuntime(maxVmPoolSize int, minVmPoolSize int) script.FeelRuntime {
 	return &FeelinRuntime{
-		pool: script.NewRunnerPool(ctx, FeelinRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
+		pool: script.NewRunnerPool(FeelinRunnerFactory{}, maxVmPoolSize, minVmPoolSize),
 	}
+}
+
+func (r *FeelinRuntime) Stop() {
+	r.pool.Stop()
 }
 
 func (r *FeelinRuntime) UnaryTest(expression string, variableContext map[string]any) (bool, error) {

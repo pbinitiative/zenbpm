@@ -8,23 +8,14 @@ import (
 )
 
 func (definitions *TDefinitions) ResolveReferences() error {
-	unsupportedTaskTypes := []struct {
-		name  string
-		tasks []TTask
-	}{
-		{"task", definitions.Process.Tasks},
-		{"scriptTask", definitions.Process.ScriptTasks},
-		{"manualTask", definitions.Process.ManualTasks},
-		{"receiveTask", definitions.Process.ReceiveTasks},
-	}
-	for _, entry := range unsupportedTaskTypes {
-		if len(entry.tasks) > 0 {
-			ids := make([]string, 0, len(entry.tasks))
-			for _, t := range entry.tasks {
-				ids = append(ids, t.GetId())
-			}
-			return fmt.Errorf("unsupported element type '%s' (ids: %v): use a specific task type such as serviceTask, userTask, businessRuleTask or sendTask", entry.name, ids)
+	byType := make(map[string][]string)
+	for _, e := range definitions.Process.UnknownElements {
+		if len(e.Incoming) > 0 || len(e.Outgoing) > 0 {
+			byType[e.XMLName.Local] = append(byType[e.XMLName.Local], e.Id)
 		}
+	}
+	for name, ids := range byType {
+		return fmt.Errorf("unsupported element type '%s' (ids: %v): use supported elements only", name, ids)
 	}
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)

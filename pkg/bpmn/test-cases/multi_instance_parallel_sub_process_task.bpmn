@@ -64,7 +64,7 @@
       <zeebe:subscription correlationKey="=&#34;1324&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
-  <bpmn:message id="Message_2ctgblk" name="Event_15f0ox7Message">
+  <bpmn:message id="Message_2ctgblk" name="boundary message">
     <bpmn:extensionElements>
       <zeebe:subscription correlationKey="=&#34;1324&#34;" />
     </bpmn:extensionElements>
@@ -76,9 +76,6 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1j4mcqg_di" bpmnElement="Event_1j4mcqg">
         <dc:Bounds x="742" y="349" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_1vd6rls_di" bpmnElement="Event_1vd6rls">
-        <dc:Bounds x="450" y="82" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1f5yxes_di" bpmnElement="Activity_1f5yxes" isExpanded="true">
         <dc:Bounds x="300" y="187" width="350" height="280" />
@@ -110,6 +107,9 @@
         <di:waypoint x="470" y="332" />
         <di:waypoint x="470" y="288" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Event_1vd6rls_di" bpmnElement="Event_1vd6rls">
+        <dc:Bounds x="450" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_029hfjp_di" bpmnElement="Event_15f0ox7">
         <dc:Bounds x="450" y="169" width="36" height="36" />
       </bpmndi:BPMNShape>

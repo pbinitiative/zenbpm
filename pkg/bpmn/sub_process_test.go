@@ -1358,6 +1358,7 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 }
 
 func TestMultiInstanceParallelSubProcessCorrelateBoundaryEventFailsToCreateParallelInstancesWithSameMessage(t *testing.T) {
+	engineStorage.Incidents = make(map[int64]runtime.Incident)
 	// setup
 	process, err := bpmnEngine.LoadFromFile("./test-cases/multi_instance_parallel_sub_process_task.bpmn")
 	assert.NoError(t, err)

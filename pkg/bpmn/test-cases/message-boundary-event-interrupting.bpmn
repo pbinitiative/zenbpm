@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0apy591" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
-  <bpmn:process id="message-boundary-event-noninterrupting" name="Test noninterrupting boundary event " isExecutable="true">
+  <bpmn:process id="message-boundary-event-interrupting" name="Test interrupting boundary event " isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_17cg00h</bpmn:outgoing>
     </bpmn:startEvent>
@@ -32,11 +32,11 @@
   </bpmn:process>
   <bpmn:message id="simple-boundary-id" name="simple-boundary">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zeebe:subscription correlationKey="=&#34;message-boundary-event-interruptingCorrelationKey&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="message-boundary-event-noninterrupting">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="message-boundary-event-interrupting">
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
         <dc:Bounds x="182" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>

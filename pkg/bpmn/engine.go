@@ -604,7 +604,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	case runtime.ActivityStateActive:
 		currentToken.State = runtime.TokenStateWaiting
 		// TODO: we are in waiting state so we instantiate boundary event subscriptions
-		err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+		err := engine.createBoundaryEventSubscriptions(ctx, batch, currentToken, instance, activity.Element())
 		if err != nil {
 			return nil, fmt.Errorf("failed to process boundary events for %s %d: %w", element.GetType(), activity.GetKey(), err)
 		}
@@ -623,8 +623,8 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	}
 }
 
-func createBoundaryEventSubscriptions(ctx context.Context, engine *Engine, batch *EngineBatch, currentToken runtime.ExecutionToken, instance runtime.ProcessInstance, element bpmn20.FlowNode) error {
-	bes := bpmn20.FindBoundaryEventsForActivity(&instance.ProcessInstance().Definition.Definitions, element)
+func (engine *Engine) createBoundaryEventSubscriptions(ctx context.Context, batch *EngineBatch, currentToken runtime.ExecutionToken, instance runtime.ProcessInstance, element bpmn20.FlowNode) error {
+	bes := bpmn20.FindBoundaryEventsForActivity(&instance.ProcessInstance().Definition.Definitions.Process.TFlowElementsContainer, element.GetId())
 	for _, be := range bes {
 		switch be.EventDefinition.(type) {
 		case bpmn20.TMessageEventDefinition:

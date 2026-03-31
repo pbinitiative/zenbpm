@@ -136,7 +136,7 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 
 		switch activityState {
 		case runtime.ActivityStateActive:
-			err := createBoundaryEventSubscriptions(ctx, engine, batch, currentToken, instance, activity.Element())
+			err := engine.createBoundaryEventSubscriptions(ctx, batch, currentToken, instance, activity.Element())
 			if err != nil {
 				return nil, fmt.Errorf("failed to process boundary events for %s %d: %w", element.GetType(), activity.GetKey(), err)
 			}

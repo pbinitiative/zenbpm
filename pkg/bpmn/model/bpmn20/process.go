@@ -59,6 +59,12 @@ func (p *TProcess) GetInternalTaskById(id string) InternalTask {
 			return &e
 		}
 	}
+	for _, e := range p.SubProcess {
+		if res := e.GetInternalTaskById(id); res != nil {
+			return res
+		}
+	}
+
 	return nil
 }
 
@@ -131,6 +137,11 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 	for _, e := range p.SubProcess {
 		if e.GetId() == id {
 			return &e
+		}
+	}
+	for _, e := range p.SubProcess {
+		if res := e.GetFlowNodeById(id); res != nil {
+			return res
 		}
 	}
 

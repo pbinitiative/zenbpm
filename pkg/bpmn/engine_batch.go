@@ -20,30 +20,30 @@ type EngineBatch struct {
 
 // NewEngineBatch TODO: optimize usage of FindProcessInstanceByKey
 // NewEngineBatch - Use this method only in public engine methods in _api files
-func (e *Engine) NewEngineBatch(ctx context.Context, instance bpmnruntime.ProcessInstance) (EngineBatch, error) {
-	e.runningInstances.lockInstance(instance.ProcessInstance().Key)
-	err := e.persistence.RefreshProcessInstance(ctx, instance)
+func (engine *Engine) NewEngineBatch(ctx context.Context, instance bpmnruntime.ProcessInstance) (EngineBatch, error) {
+	engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
+	err := engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
-		e.runningInstances.unlockInstance(instance.ProcessInstance().Key)
+		engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 		return EngineBatch{}, fmt.Errorf("failed refresh process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	if instance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted || instance.ProcessInstance().State == bpmnruntime.ActivityStateTerminated {
-		e.runningInstances.unlockInstance(instance.ProcessInstance().Key)
+		engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
 		return EngineBatch{}, fmt.Errorf("process instance %d is already completed", instance.ProcessInstance().Key)
 	}
 	return EngineBatch{
-		b:                e.persistence.NewBatch(),
-		engine:           e,
+		b:                engine.persistence.NewBatch(),
+		engine:           engine,
 		touchedInstances: []int64{instance.ProcessInstance().Key},
 		postFlushActions: []func(){},
 		preFlushActions:  []func() error{},
 	}, nil
 }
 
-func (e *Engine) NewEngineBatchClean() (EngineBatch, error) {
+func (engine *Engine) NewEngineBatchClean() (EngineBatch, error) {
 	return EngineBatch{
-		b:                e.persistence.NewBatch(),
-		engine:           e,
+		b:                engine.persistence.NewBatch(),
+		engine:           engine,
 		touchedInstances: []int64{},
 		postFlushActions: []func(){},
 		preFlushActions:  []func() error{},

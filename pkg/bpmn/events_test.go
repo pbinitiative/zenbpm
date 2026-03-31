@@ -463,8 +463,7 @@ func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	// given
 	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-boundary-event-interrupting.bpmn")
 	variableContext := make(map[string]interface{}, 1)
-	randomCorellationKey := rand.Int63()
-	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+	randomCorellationKey := "message-boundary-event-interruptingCorrelationKey"
 	// when
 	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
 	assert.NoError(t, err)

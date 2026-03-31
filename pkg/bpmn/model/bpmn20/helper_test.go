@@ -345,3 +345,35 @@ func TestResolveReferencesFailWrongType(t *testing.T) {
 	err := ts.ResolveReferences()
 	assert.ErrorContains(t, err, "[one_to_two] is not assignable to FlowNode")
 }
+
+func TestFindBoundaryEventsForActivity(t *testing.T) {
+	xmlData, err := os.ReadFile("./test-cases/nested_sub_process.bpmn")
+	assert.NoError(t, err)
+	var definitions TDefinitions
+	err = xml.Unmarshal(xmlData, &definitions)
+	assert.NoError(t, err)
+
+	res := FindBoundaryEventsForActivity(&definitions.Process.TFlowElementsContainer, "Activity_1f5yxes")
+	assert.Len(t, res, 1)
+	event, ok := res[0].EventDefinition.(TMessageEventDefinition)
+	assert.True(t, ok)
+	m, err := definitions.GetMessageByRef(event.MessageRef)
+	assert.NoError(t, err)
+	assert.Equal(t, "OuterTestMessage", m.Name)
+}
+
+func TestFindBoundaryEventsForActivityRecursive(t *testing.T) {
+	xmlData, err := os.ReadFile("./test-cases/nested_sub_process.bpmn")
+	assert.NoError(t, err)
+	var definitions TDefinitions
+	err = xml.Unmarshal(xmlData, &definitions)
+	assert.NoError(t, err)
+
+	res := FindBoundaryEventsForActivity(&definitions.Process.TFlowElementsContainer, "Activity_1gbwlgl")
+	assert.Len(t, res, 1)
+	event, ok := res[0].EventDefinition.(TMessageEventDefinition)
+	assert.True(t, ok)
+	m, err := definitions.GetMessageByRef(event.MessageRef)
+	assert.NoError(t, err)
+	assert.Equal(t, "InnerInnerTestMessage", m.Name)
+}

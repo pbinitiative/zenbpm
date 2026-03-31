@@ -616,7 +616,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	engines := s.controller.Engines(ctx)
 	var err error
 	for _, engine := range engines {
-		_, err = engine.LoadFromBytes(req.GetData(), req.GetKey())
+		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
 		if err != nil {
 			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{
@@ -637,7 +637,7 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
-	instance, err := engine.FindProcessInstance(req.GetProcessInstanceKey())
+	instance, err := engine.FindProcessInstance(ctx, req.GetProcessInstanceKey())
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {

@@ -335,7 +335,7 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 			// TODO: do something when this fails
 		}
 		partitionNode.Engine = engine
-		err = partitionNode.Engine.Start()
+		err = partitionNode.Engine.Start(ctx)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("failed to start engine for partition %d", partitionId), "err", err.Error())
 			// TODO: do something when this fails

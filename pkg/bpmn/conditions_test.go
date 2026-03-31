@@ -15,7 +15,8 @@ func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -25,7 +26,7 @@ func TestExclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -40,7 +41,8 @@ func TestExclusiveGatewayWithExpressionsFailsNoDefault(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -51,7 +53,7 @@ func TestExclusiveGatewayWithExpressionsFailsNoDefault(t *testing.T) {
 
 	// when
 	// Run the engine and check that Gateway haven't triggered any task
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.ErrorContains(t, err, "No default flow, nor matching expressions found, for flow elements")
 
 	// no tasks called
@@ -65,7 +67,8 @@ func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -77,7 +80,7 @@ func TestExclusiveGatewayExecutesJustOneMatchingPath(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -91,7 +94,8 @@ func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -103,7 +107,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingPathDefaultIsUsed(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -117,7 +121,8 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-multiple-tasks-no-default.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-multiple-tasks-no-default.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -129,7 +134,7 @@ func TestExclusiveGatewayExecutesJustNoMatchingNoDefaultErrorThrown(t *testing.T
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 
 	// then
 	assert.NotNil(t, err)
@@ -177,7 +182,8 @@ func TestEvaluationErrorPercolatesUp(t *testing.T) {
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
+	assert.NoError(t, err)
 
 	// when
 	// don't provide variables, for execution to get an evaluation error
@@ -196,7 +202,8 @@ func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-with-condition.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-with-condition.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -206,7 +213,7 @@ func TestInclusiveGatewayWithExpressionsSelectsOneAndNotTheOther(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -221,7 +228,8 @@ func TestInclusiveGatewayWithExpressionsSelectsDefault(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-with-condition-and-default.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-with-condition-and-default.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -231,7 +239,8 @@ func TestInclusiveGatewayWithExpressionsSelectsDefault(t *testing.T) {
 	}
 
 	// when
-	bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	assert.Error(t, err)
 
 	// process stuck with no further advance after inclusive gateway
 	assert.Equal(t, cp.CallPath, "")
@@ -244,7 +253,8 @@ func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/inclusive-gateway-multiple-tasks.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/inclusive-gateway-multiple-tasks.bpmn")
+	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(aH)
 	bH := bpmnEngine.NewTaskHandler().Id("task-b").Handler(cp.TaskHandler)
@@ -256,7 +266,7 @@ func TestInclusiveGatewayExecutesAllPositiveResolvedNoDefaults(t *testing.T) {
 	}
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.NoError(t, err)
 
 	// then

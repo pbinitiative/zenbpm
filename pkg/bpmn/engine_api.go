@@ -17,7 +17,7 @@ import (
 
 // Start will start the process engine instance.ProcessInstance().
 // Engine will start to pull process instances with execution tokens that need to be processed
-func (engine *Engine) Start() error {
+func (engine *Engine) Start(ctx context.Context) error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
@@ -502,12 +502,12 @@ func (engine *Engine) DeleteInstanceVariable(ctx context.Context, processInstanc
 
 // FindProcessInstance searches for a given processInstanceKey
 // and returns the corresponding processInstanceInfo, or otherwise nil
-func (engine *Engine) FindProcessInstance(processInstanceKey int64) (runtime.ProcessInstance, error) {
-	return engine.persistence.FindProcessInstanceByKey(context.TODO(), processInstanceKey)
+func (engine *Engine) FindProcessInstance(ctx context.Context, processInstanceKey int64) (runtime.ProcessInstance, error) {
+	return engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
 }
 
 // FindProcessesById returns all registered processes with given ID
 // result array is ordered by version number, from 1 (first) and largest version (last)
-func (engine *Engine) FindProcessesById(id string) ([]runtime.ProcessDefinition, error) {
-	return engine.persistence.FindProcessDefinitionsById(context.TODO(), id)
+func (engine *Engine) FindProcessesById(ctx context.Context, id string) ([]runtime.ProcessDefinition, error) {
+	return engine.persistence.FindProcessDefinitionsById(ctx, id)
 }

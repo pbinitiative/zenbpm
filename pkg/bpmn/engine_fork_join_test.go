@@ -1,8 +1,9 @@
 package bpmn
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestForkUncontrolledJoin(t *testing.T) {
@@ -10,7 +11,8 @@ func TestForkUncontrolledJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-uncontrolled-join.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-uncontrolled-join.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)
@@ -19,7 +21,7 @@ func TestForkUncontrolledJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then
@@ -31,7 +33,8 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-parallel-join.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-controlled-parallel-join.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)
@@ -40,7 +43,7 @@ func TestForkControlledParallelJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 	// then
 	assert.Equal(t, "id-a-1,id-a-2,id-b-1", cp.CallPath)
@@ -51,7 +54,8 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/fork-controlled-exclusive-join.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/fork-controlled-exclusive-join.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	a2H := bpmnEngine.NewTaskHandler().Id("id-a-2").Handler(cp.TaskHandler)
@@ -60,7 +64,7 @@ func TestForkControlledExclusiveJoin(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b1H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Nil(t, err)
 
 	// then

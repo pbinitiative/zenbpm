@@ -1,6 +1,7 @@
 package bpmn
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -40,7 +41,7 @@ func TestMain(m *testing.M) {
 	}()
 
 	bpmnEngine = NewEngine(EngineWithStorage(engineStorage))
-	bpmnEngine.Start()
+	bpmnEngine.Start(context.Background())
 
 	// Run the tests
 	exitCode = m.Run()
@@ -48,7 +49,8 @@ func TestMain(m *testing.M) {
 
 func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	// setup
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 	wasCalled := false
 	handler := func(job ActivatedJob) {
 		wasCalled = true
@@ -60,7 +62,7 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(idH)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -70,7 +72,8 @@ func TestRegisterHandlerByTaskIdGetsCalled(t *testing.T) {
 func TestRegisterHandlerByTaskIdGetsCalledAfterLateRegister(t *testing.T) {
 	t.Skip("runtime modification of handlers is not supported yet")
 	// setup
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 	wasCalled := false
 	handler := func(job ActivatedJob) {
 		wasCalled = true
@@ -97,7 +100,8 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 	// setup
 	variableName := "variable_name"
 	taskId := "id"
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 	variableContext := make(map[string]interface{}, 1)
 	variableContext[variableName] = "oldVal"
 
@@ -124,7 +128,8 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 
 func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 	// setup
-	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	metadata, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 
 	assert.Equal(t, int32(1), metadata.Version)
 	assert.Greater(t, metadata.Key, int64(1))
@@ -133,11 +138,13 @@ func TestMetadataIsGivenFromLoadedXmlFile(t *testing.T) {
 
 func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *testing.T) {
 	// setup
-	metadata, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	metadata, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 	keyOne := metadata.Key
 	assert.Equal(t, int32(1), metadata.Version)
 
-	metadata, _ = bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	metadata, err = bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 	keyTwo := metadata.Key
 	assert.Equal(t, int32(1), metadata.Version)
 	assert.Equal(t, keyTwo, keyOne)
@@ -145,9 +152,12 @@ func TestLoadingTheSameFileWillNotIncreaseTheVersionNorChangeTheProcessKey(t *te
 
 func TestLoadingTheSameProcessWithModificationWillCreateNewVersion(t *testing.T) {
 	// setup
-	process1, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
-	process2, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task_modified_taskId.bpmn")
-	process3, _ := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	process1, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
+	process2, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task_modified_taskId.bpmn")
+	assert.NoError(t, err)
+	process3, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
 
 	assert.Equal(t, process1.BpmnProcessId, process2.BpmnProcessId, "both prepared files should have equal IDs")
 	assert.Equal(t, int32(1), process1.Version)
@@ -161,7 +171,8 @@ func TestInstanceCanStartAtChosenFlowNode(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/forked-flow.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/forked-flow.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
@@ -170,7 +181,7 @@ func TestInstanceCanStartAtChosenFlowNode(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2H)
 
 	startingElementIds := []string{"id-b-1", "id-b-2"}
-	_, err := bpmnEngine.CreateInstanceWithStartingElements(t.Context(), process.Key, startingElementIds, nil, nil)
+	_, err = bpmnEngine.CreateInstanceWithStartingElements(t.Context(), process.Key, startingElementIds, nil, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "id-b-1,id-b-2", cp.CallPath)
@@ -181,7 +192,7 @@ func TestMultipleInstancesCanBeCreated(t *testing.T) {
 	beforeCreation := time.Now()
 
 	// given
-	process, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
 
 	// when
@@ -200,7 +211,8 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/forked-flow.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/forked-flow.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
@@ -209,7 +221,7 @@ func TestSimpleAndUncontrolledForkingTwoTasks(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -221,7 +233,8 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/parallel-gateway-flow.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/parallel-gateway-flow.bpmn")
+	assert.NoError(t, err)
 	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(a1H)
 	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(cp.TaskHandler)
@@ -230,7 +243,7 @@ func TestParallelGateWayTwoTasks(t *testing.T) {
 	defer bpmnEngine.RemoveHandler(b2H)
 
 	// when
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
 	// then
@@ -245,9 +258,9 @@ func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 	bpmnEngine2 := NewEngine(EngineWithStorage(store2))
 
 	// when
-	process1, err := bpmnEngine1.LoadFromFile("./test-cases/simple_task.bpmn")
+	process1, err := bpmnEngine1.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	process2, err := bpmnEngine2.LoadFromFile("./test-cases/simple_task.bpmn")
+	process2, err := bpmnEngine2.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
 
 	// then
@@ -256,11 +269,11 @@ func TestMultipleEnginesCreateUniqueIds(t *testing.T) {
 
 func TestCreateInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	// when
-	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	v1, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v1.Definitions.Process.Name)
 	// when
-	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
+	v2, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task_v2.bpmn")
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
@@ -272,11 +285,11 @@ func TestCreateInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 
 func TestCreateAndRunInstanceByIdUsesLatestProcessVersion(t *testing.T) {
 	// when
-	v1, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	v1, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v1.Definitions.Process.Name)
 	// when
-	v2, err := bpmnEngine.LoadFromFile("./test-cases/simple_task_v2.bpmn")
+	v2, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task_v2.bpmn")
 	assert.NoError(t, err)
 	assert.Equal(t, "aName", v2.Definitions.Process.Name)
 
@@ -300,9 +313,9 @@ func TestCreateInstanceByIdReturnErrorWhenNoIDFound(t *testing.T) {
 
 func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 	// setup
-	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	process, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-multiple-boundary.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity-with-multiple-boundary.bpmn")
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)
@@ -360,7 +373,7 @@ func TestCancelInstanceShouldCancelInstance(t *testing.T) {
 
 func TestProcessInstanceMustBeInActiveStateForCreateInstanceByKey(t *testing.T) {
 	// setup
-	process, err := bpmnEngine.LoadFromFile("./test-cases/parallel_flow_with_terminate_end_task.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/parallel_flow_with_terminate_end_task.bpmn")
 	assert.NoError(t, err)
 
 	// when
@@ -374,9 +387,9 @@ func TestProcessInstanceMustBeInActiveStateForCreateInstanceByKey(t *testing.T) 
 
 func TestModifyProcessInstance(t *testing.T) {
 	// setup
-	_, err := bpmnEngine.LoadFromFile("./test-cases/simple_task.bpmn")
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
 	assert.NoError(t, err)
-	definition, err := bpmnEngine.LoadFromFile("./test-cases/call-activity-with-multiple-boundary-user-task-end.bpmn")
+	definition, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/call-activity-with-multiple-boundary-user-task-end.bpmn")
 	assert.NoError(t, err)
 
 	variableContext := make(map[string]interface{}, 1)
@@ -480,12 +493,13 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 	cp := CallPath{}
 
 	// given
-	process, _ := bpmnEngine.LoadFromFile("./test-cases/message-intermediate-timer-event.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-timer-event.bpmn")
+	assert.NoError(t, err)
 	mH := bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(mH)
 	tH := bpmnEngine.NewTaskHandler().Id("task-for-timer").Handler(cp.TaskHandler)
 	defer bpmnEngine.RemoveHandler(tH)
-	_, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	_, err = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.NoError(t, err)
 
 	// when
@@ -504,7 +518,8 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 // TODO: Fix this test after implementing support for nested variables
 func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	//setup
-	process, _ := bpmnEngine.LoadFromFile(filepath.Join(".", "test-cases", "simple-business-rule-task-local.bpmn"))
+	process, err := bpmnEngine.LoadFromFile(t.Context(), filepath.Join(".", "test-cases", "simple-business-rule-task-local.bpmn"))
+	assert.NoError(t, err)
 
 	definition, xmldata, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))
 	assert.NoError(t, err)
@@ -537,7 +552,7 @@ func TestExclusiveGatewaySequenceFlowSavedInHistory(t *testing.T) {
 	// This caused the flow to be missing from the process instance history.
 
 	// setup - load a process with exclusive gateway
-	process, err := bpmnEngine.LoadFromFile("./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition-and-default.bpmn")
 	assert.NoError(t, err)
 
 	// Register handlers for the tasks

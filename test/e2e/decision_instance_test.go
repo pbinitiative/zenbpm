@@ -174,6 +174,34 @@ func TestDecisionInstances(t *testing.T) {
 	})
 }
 
+func TestDecisionInstanceLinkedToProcessInstance(t *testing.T) {
+	_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+	assert.NoError(t, err)
+
+	definition, err := deployGetDefinition(t, "simple-business-rule-task-local.bpmn", "SimpleDMNTest")
+	assert.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.Key, map[string]any{})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, instance.Key)
+
+	t.Run("GetDecisionInstances filtered by processInstanceKey returns 3 linked decision instances", func(t *testing.T) {
+		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{
+			ProcessInstanceKey: &instance.Key,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, resp.JSON200)
+		assert.Equal(t, 1, len(resp.JSON200.Partitions))
+		items := resp.JSON200.Partitions[0].Items
+		assert.Equal(t, 3, len(items))
+		for _, item := range items {
+			assert.Equal(t, instance.Key, *item.ProcessInstanceKey)
+			assert.NotNil(t, item.FlowElementInstanceKey)
+			assert.NotEmpty(t, *item.FlowElementInstanceKey)
+		}
+	})
+}
+
 func TestGetDecisionInstancesErrorResponses(t *testing.T) {
 	t.Run("invalid sortBy returns 400 BAD_REQUEST", func(t *testing.T) {
 		resp, err := app.restClient.GetDecisionInstancesWithResponse(t.Context(), &zenclient.GetDecisionInstancesParams{

@@ -1,16 +1,23 @@
 package sql
 
 import (
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
 
 const DefaultMigrationsDir = "internal/sql/migrations"
+const embeddedMigrationsDir = "migrations"
 const migrationsInitFilename = "0000_init.up.sql"
+
+//go:embed migrations/*.sql
+var defaultMigrations embed.FS
 
 type Migrations []MigrationData
 
@@ -69,6 +76,14 @@ func GetMigrationInitSql(migrationDir string) (*string, error) {
 }
 
 func readMigrationDir(migrationDir string) ([]os.DirEntry, error) {
+	if shouldUseEmbeddedMigrations(migrationDir) {
+		entries, err := fs.ReadDir(defaultMigrations, embeddedMigrationsDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read embedded migration directory %s: %w", embeddedMigrationsDir, err)
+		}
+		return entries, nil
+	}
+
 	filesystemDir, err := filesystemMigrationDir(migrationDir)
 	if err != nil {
 		return nil, err
@@ -89,6 +104,19 @@ func readMigrationDir(migrationDir string) ([]os.DirEntry, error) {
 }
 
 func readMigrationFile(migrationDir string, filename string) ([]byte, error) {
+	if shouldUseEmbeddedMigrations(migrationDir) {
+		filePath := path.Join(embeddedMigrationsDir, filename)
+		content, err := defaultMigrations.ReadFile(filePath)
+		if err == nil {
+			return content, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("failed to read embedded migration file %s: %w", filePath, err)
+		}
+
+		return nil, nil
+	}
+
 	filesystemDir, err := filesystemMigrationDir(migrationDir)
 	if err != nil {
 		return nil, err
@@ -107,6 +135,14 @@ func readMigrationFile(migrationDir string, filename string) ([]byte, error) {
 	}
 
 	return nil, nil
+}
+
+func shouldUseEmbeddedMigrations(migrationDir string) bool {
+	if migrationDir == "" {
+		return false
+	}
+
+	return filepath.Clean(migrationDir) == filepath.Clean(DefaultMigrationsDir)
 }
 
 func filesystemMigrationDir(migrationDir string) (string, error) {

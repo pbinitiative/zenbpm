@@ -25,8 +25,8 @@ func HistoryTTLFromContext(ctx context.Context) (types.TTL, bool) {
 	return ttl, ok
 }
 
-func WithBusinessKey(ctx context.Context, businessKey string) context.Context {
-	return context.WithValue(ctx, businessKeyKey, businessKey)
+func WithBusinessKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, businessKeyKey, key)
 }
 
 func BusinessKeyFromContext(ctx context.Context) (string, bool) {
@@ -34,20 +34,20 @@ func BusinessKeyFromContext(ctx context.Context) (string, bool) {
 	return businessKey, ok
 }
 
-func WithProcessInstanceKey(ctx context.Context, processInstanceKey int64) context.Context {
-	return context.WithValue(ctx, processInstanceKey, processInstanceKey)
+func WithProcessInstanceKey(ctx context.Context, key int64) context.Context {
+	return context.WithValue(ctx, processInstanceKey, key)
 }
 
 func ProcessInstanceKeyFromContext(ctx context.Context) (int64, bool) {
-	processInstanceKey, ok := ctx.Value(processInstanceKey).(int64)
-	return processInstanceKey, ok
+	key, ok := ctx.Value(processInstanceKey).(int64)
+	return key, ok
 }
 
-func WithElementInstanceKey(ctx context.Context, elementInstanceKey int64) context.Context {
-	return context.WithValue(ctx, elementInstanceKey, elementInstanceKey)
+func WithElementInstanceKey(ctx context.Context, key int64) context.Context {
+	return context.WithValue(ctx, elementInstanceKey, key)
 }
 
 func ElementInstanceKeyFromContext(ctx context.Context) (int64, bool) {
-	elementInstanceKey, ok := ctx.Value(elementInstanceKey).(int64)
-	return elementInstanceKey, ok
+	key, ok := ctx.Value(elementInstanceKey).(int64)
+	return key, ok
 }

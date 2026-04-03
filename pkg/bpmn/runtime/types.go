@@ -211,13 +211,13 @@ const (
 type MessageSubscription struct {
 	Key                  int64
 	ElementId            string
-	ProcessDefinitionKey int64
-	ProcessInstanceKey   int64
+	ProcessDefinitionKey *int64
+	ProcessInstanceKey   *int64
 	Name                 string
-	CorrelationKey       string
+	CorrelationKey       *string
 	State                ActivityState
 	CreatedAt            time.Time
-	Token                ExecutionToken
+	Token                *ExecutionToken
 }
 
 func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {

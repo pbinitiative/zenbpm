@@ -141,21 +141,21 @@ func (rq *DB) dataCleanup(currTime time.Time) (bool, error) {
 		},
 		Limit: int64(rq.historyDeleteThreshold),
 	})
-	processesNullInt64 := make([]ssql.NullInt64, 0)
-	for _, processId := range processes {
-		processesNullInt64 = append(processesNullInt64, ssql.NullInt64{
-			Int64: processId,
-			Valid: true,
-		})
-	}
 	var err error
 	if len(processes) == rq.historyDeleteThreshold {
+		processesNullInt64 := make([]ssql.NullInt64, len(processes))
+		for i := range processes {
+			processesNullInt64[i] = ssql.NullInt64{
+				Int64: processes[i],
+				Valid: true,
+			}
+		}
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
 		return true, nil
@@ -1498,7 +1498,7 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 	ptrPartitionId := zenState.GetPartitionIdFromString(pointer.CorrelationKey)
 	upsertPointer := func() error {
 		err := rq.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
-			State:                  int64(pointer.State),
+			State:                  pointer.State,
 			CreatedAt:              pointer.CreatedAt,
 			Name:                   pointer.Name,
 			CorrelationKey:         pointer.CorrelationKey,
@@ -1532,9 +1532,9 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 			return fmt.Errorf("failed to get partition %d leader client: %w", msgPartitionId, err)
 		}
 		foundMessage, err := messageLeader.FindActiveMessage(ctx, &zenproto.FindActiveMessageRequest{
-			Name:              &oldPointer.Name,
-			CorrelationKey:    &oldPointer.CorrelationKey,
-			ExecutionTokenKey: &oldPointer.ExecutionTokenKey,
+			Name:                   &oldPointer.Name,
+			CorrelationKey:         &oldPointer.CorrelationKey,
+			MessageSubscriptionKey: &oldPointer.MessageSubscriptionKey,
 		})
 		if grpccode.NotFound == status.Code(err) {
 			// if message is not active
@@ -1560,7 +1560,8 @@ func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.Me
 		Name:                   &pointer.Name,
 		CorrelationKey:         &pointer.CorrelationKey,
 		MessageSubscriptionKey: &pointer.MessageSubscriptionKey,
-		ExecutionTokenKey:      &pointer.ExecutionTokenKey,
+		ExecutionTokenKey:      sql.FromNullInt64(pointer.ExecutionTokenKey),
+		ProcessInstanceKey:     sql.FromNullInt64(pointer.ProcessInstanceKey),
 		PartitionId:            &ptrPartitionId,
 	})
 	if err != nil || resp.Error != nil {
@@ -1593,7 +1594,7 @@ func (rq *DB) FindActiveMessageSubscriptionPointer(ctx context.Context, name str
 func (rq *DB) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
 	dbMessageSub, err := rq.Queries.FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx, sql.FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams{
 		Name:           name,
-		CorrelationKey: correlationKey,
+		CorrelationKey: sql.ToNullString(&correlationKey),
 		State:          int64(bpmnruntime.ActivityStateActive),
 	})
 	if err != nil {
@@ -1612,7 +1613,7 @@ var _ storage.MessageStorageReader = &DB{}
 func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 
 	dbMessages, err := rq.Queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
-		ExecutionToken: tokenKey,
+		ExecutionToken: sql.ToNullInt64(&tokenKey),
 		State:          int64(state),
 	})
 	if err != nil {
@@ -1637,22 +1638,21 @@ func (rq *DB) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64,
 		res[i] = bpmnruntime.MessageSubscription{
 			Key:                  mes.Key,
 			ElementId:            mes.ElementID,
-			ProcessDefinitionKey: mes.ProcessDefinitionKey,
-			ProcessInstanceKey:   mes.ProcessInstanceKey,
+			ProcessDefinitionKey: sql.FromNullInt64(mes.ProcessDefinitionKey),
+			ProcessInstanceKey:   sql.FromNullInt64(mes.ProcessInstanceKey),
 			Name:                 mes.Name,
-			CorrelationKey:       mes.CorrelationKey,
+			CorrelationKey:       sql.FromNullString(mes.CorrelationKey),
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			Token:                token,
+			Token:                &token,
 		}
 	}
 	return res, nil
 }
 
-// TODO rename Id to Key
-func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscriptionKey int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (rq *DB) FindMessageSubscriptionByKey(ctx context.Context, messageSubscriptionKey int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	var res bpmnruntime.MessageSubscription
-	dbMessage, err := rq.Queries.GetMessageSubscriptionById(ctx, sql.GetMessageSubscriptionByIdParams{
+	dbMessage, err := rq.Queries.GetMessageSubscriptionByKey(ctx, sql.GetMessageSubscriptionByKeyParams{
 		Key:   messageSubscriptionKey,
 		State: int64(state),
 	})
@@ -1665,28 +1665,36 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 	res = bpmnruntime.MessageSubscription{
 		Key:                  dbMessage.Key,
 		ElementId:            dbMessage.ElementID,
-		ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
-		ProcessInstanceKey:   dbMessage.ProcessInstanceKey,
+		ProcessDefinitionKey: nil,
+		ProcessInstanceKey:   nil,
 		Name:                 dbMessage.Name,
-		CorrelationKey:       dbMessage.CorrelationKey,
+		CorrelationKey:       nil,
 		State:                bpmnruntime.ActivityState(dbMessage.State),
 		CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
-		Token: bpmnruntime.ExecutionToken{
-			Key: dbMessage.ExecutionToken,
-		},
+		Token:                nil,
 	}
-
-	loadedTokens, err := rq.Queries.GetTokens(ctx, []int64{dbMessage.ExecutionToken})
-	if err != nil || len(loadedTokens) != 1 {
-		return res, fmt.Errorf("failed to load message subscription token: %w", err)
+	if dbMessage.ProcessDefinitionKey.Valid {
+		res.ProcessDefinitionKey = &dbMessage.ProcessDefinitionKey.Int64
 	}
+	if dbMessage.ProcessInstanceKey.Valid {
+		res.ProcessInstanceKey = &dbMessage.ProcessInstanceKey.Int64
+	}
+	if dbMessage.CorrelationKey.Valid {
+		res.CorrelationKey = &dbMessage.CorrelationKey.String
+	}
+	if dbMessage.ExecutionToken.Valid {
+		loadedTokens, err := rq.Queries.GetTokens(ctx, []int64{dbMessage.ExecutionToken.Int64})
+		if err != nil || len(loadedTokens) != 1 {
+			return res, fmt.Errorf("failed to load message subscription token: %w", err)
+		}
 
-	res.Token = bpmnruntime.ExecutionToken{
-		Key:                loadedTokens[0].Key,
-		ElementInstanceKey: loadedTokens[0].ElementInstanceKey,
-		ElementId:          loadedTokens[0].ElementID,
-		ProcessInstanceKey: loadedTokens[0].ProcessInstanceKey,
-		State:              bpmnruntime.TokenState(loadedTokens[0].State),
+		res.Token = &bpmnruntime.ExecutionToken{
+			Key:                loadedTokens[0].Key,
+			ElementInstanceKey: loadedTokens[0].ElementInstanceKey,
+			ElementId:          loadedTokens[0].ElementID,
+			ProcessInstanceKey: loadedTokens[0].ProcessInstanceKey,
+			State:              bpmnruntime.TokenState(loadedTokens[0].State),
+		}
 	}
 
 	return res, nil
@@ -1694,7 +1702,7 @@ func (rq *DB) FindMessageSubscriptionById(ctx context.Context, messageSubscripti
 
 func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	dbMessages, err := rq.Queries.FindProcessInstanceMessageSubscriptions(ctx, sql.FindProcessInstanceMessageSubscriptionsParams{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: sql.ToNullInt64(&processInstanceKey),
 		State:              int64(state),
 	})
 	if err != nil {
@@ -1706,17 +1714,20 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 		res[i] = bpmnruntime.MessageSubscription{
 			Key:                  mes.Key,
 			ElementId:            mes.ElementID,
-			ProcessDefinitionKey: mes.ProcessDefinitionKey,
-			ProcessInstanceKey:   mes.ProcessInstanceKey,
+			ProcessDefinitionKey: sql.FromNullInt64(mes.ProcessDefinitionKey),
+			ProcessInstanceKey:   sql.FromNullInt64(mes.ProcessInstanceKey),
 			Name:                 mes.Name,
-			CorrelationKey:       mes.CorrelationKey,
+			CorrelationKey:       sql.FromNullString(mes.CorrelationKey),
 			State:                bpmnruntime.ActivityState(mes.State),
 			CreatedAt:            time.UnixMilli(mes.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key: mes.ExecutionToken,
-			},
+			Token:                nil,
 		}
-		tokensToLoad[i] = mes.ExecutionToken
+		if mes.ExecutionToken.Valid {
+			res[i].Token = &bpmnruntime.ExecutionToken{
+				Key: mes.ExecutionToken.Int64,
+			}
+			tokensToLoad[i] = mes.ExecutionToken.Int64
+		}
 	}
 	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
 	if err != nil {
@@ -1725,8 +1736,11 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 	for _, token := range loadedTokens {
 		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
 		for i := range res {
+			if res[i].Token == nil {
+				continue
+			}
 			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
+				res[i].Token = &bpmnruntime.ExecutionToken{
 					Key:                token.Key,
 					ElementInstanceKey: token.ElementInstanceKey,
 					ElementId:          token.ElementID,
@@ -1742,16 +1756,18 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 var _ storage.MessageStorageWriter = &DB{}
 
 func (rq *DB) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
-	err := rq.SaveMessageSubscriptionPointer(ctx, sql.MessageSubscriptionPointer{
-		State:                  int64(subscription.State),
-		CreatedAt:              subscription.CreatedAt.UnixMilli(),
-		Name:                   subscription.Name,
-		CorrelationKey:         subscription.CorrelationKey,
-		MessageSubscriptionKey: subscription.Key,
-		ExecutionTokenKey:      subscription.Token.Key,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update message pointer: %w", err)
+	if subscription.CorrelationKey != nil {
+		err := rq.SaveMessageSubscriptionPointer(ctx, sql.MessageSubscriptionPointer{
+			State:                  int64(subscription.State),
+			CreatedAt:              subscription.CreatedAt.UnixMilli(),
+			Name:                   subscription.Name,
+			CorrelationKey:         *subscription.CorrelationKey,
+			MessageSubscriptionKey: subscription.Key,
+			ExecutionTokenKey:      KeyFromTokenToNullInt64(subscription.Token),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update message pointer: %w", err)
+		}
 	}
 	return SaveMessageSubscriptionWith(ctx, rq.Queries, subscription)
 }
@@ -1760,13 +1776,13 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.GetKey(),
 		ElementID:            subscription.ElementId,
-		ProcessDefinitionKey: subscription.ProcessDefinitionKey,
-		ProcessInstanceKey:   subscription.ProcessInstanceKey,
+		ProcessDefinitionKey: sql.ToNullInt64(subscription.ProcessDefinitionKey),
+		ProcessInstanceKey:   sql.ToNullInt64(subscription.ProcessInstanceKey),
 		Name:                 subscription.Name,
 		State:                int64(subscription.GetState()),
 		CreatedAt:            subscription.CreatedAt.UnixMilli(),
-		ExecutionToken:       subscription.Token.Key,
-		CorrelationKey:       subscription.CorrelationKey,
+		ExecutionToken:       KeyFromTokenToNullInt64(subscription.Token),
+		CorrelationKey:       sql.ToNullString(subscription.CorrelationKey),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save message subscription %d: %w", subscription.GetKey(), err)
@@ -2274,21 +2290,34 @@ func (b *DBBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 var _ storage.MessageStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
-	b.AddPreFlushAction(ctx, func() error {
-		err := b.db.SaveMessageSubscriptionPointer(ctx, sql.MessageSubscriptionPointer{
-			State:                  int64(subscription.State),
-			CreatedAt:              subscription.CreatedAt.UnixMilli(),
-			Name:                   subscription.Name,
-			CorrelationKey:         subscription.CorrelationKey,
-			MessageSubscriptionKey: subscription.Key,
-			ExecutionTokenKey:      subscription.Token.Key,
+	if subscription.CorrelationKey != nil {
+		b.AddPreFlushAction(ctx, func() error {
+			err := b.db.SaveMessageSubscriptionPointer(ctx, sql.MessageSubscriptionPointer{
+				State:                  int64(subscription.State),
+				CreatedAt:              subscription.CreatedAt.UnixMilli(),
+				Name:                   subscription.Name,
+				CorrelationKey:         *subscription.CorrelationKey,
+				MessageSubscriptionKey: subscription.Key,
+				ExecutionTokenKey:      KeyFromTokenToNullInt64(subscription.Token),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to update message %d pointer: %w", subscription.Key, err)
+			}
+			return nil
 		})
-		if err != nil {
-			return fmt.Errorf("failed to update message %d pointer: %w", subscription.Key, err)
-		}
-		return nil
-	})
+	}
 	return SaveMessageSubscriptionWith(ctx, b.queries, subscription)
+}
+
+func KeyFromTokenToNullInt64(t *bpmnruntime.ExecutionToken) ssql.NullInt64 {
+	if t == nil {
+		return ssql.NullInt64{Valid: false}
+	}
+
+	return ssql.NullInt64{
+		Int64: t.Key,
+		Valid: true,
+	}
 }
 
 var _ storage.TokenStorageWriter = &DBBatch{}

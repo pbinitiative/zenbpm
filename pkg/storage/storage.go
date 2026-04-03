@@ -170,7 +170,7 @@ type JobStorageWriter interface {
 }
 
 type MessageStorageReader interface {
-	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+	FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
 	FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
 

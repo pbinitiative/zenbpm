@@ -244,7 +244,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return err
 	}
 
-	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance, &job.Token)
+	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance, job.Token)
 	if err != nil {
 		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
 	}

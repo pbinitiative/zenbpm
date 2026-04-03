@@ -503,7 +503,7 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
-func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	var res bpmnruntime.MessageSubscription
 	res, ok := mem.MessageSubscriptions[key]
 	if !ok {

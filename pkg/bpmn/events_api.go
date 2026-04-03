@@ -20,9 +20,16 @@ func (engine *Engine) PublishMessageByName(ctx context.Context, name string, cor
 
 // PublishMessage publishes a message given by subscription key and also adds variables to the process instance, which fetches this event
 func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64, variables map[string]interface{}) (retErr error) {
-	message, err := engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
+	message, err := engine.persistence.FindMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
+	}
+	if message.CorrelationKey == nil && message.ProcessDefinitionKey != nil {
+		//TODO: Publish on process start message event
+		engine.publishMessageOnStartEvent()
+	}
+	if message.ProcessInstanceKey != nil {
+		message.ProcessInstanceKey = message.Token.ProcessInstanceKey
 	}
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
@@ -41,7 +48,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	}()
 
 	//refresh
-	message, err = engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
+	message, err = engine.persistence.FindMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
 	}

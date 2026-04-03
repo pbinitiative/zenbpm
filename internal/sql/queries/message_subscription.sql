@@ -49,7 +49,7 @@ WHERE
     AND name = @name
     AND state = @state;
 
--- name: GetMessageSubscriptionById :one
+-- name: GetMessageSubscriptionByKey :one
 SELECT
     *
 FROM

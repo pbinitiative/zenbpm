@@ -367,7 +367,8 @@ message SetMessageSubscriptionPointerRequest {
   string correlationKey = 4;
   int64 messageSubscriptionKey = 5;
   int64 executionTokenKey = 6;
-  uint32 partitionId = 7;
+  int64 processInstanceKey = 7;
+  uint32 partitionId = 8;
 }
 
 message SetMessageSubscriptionPointerResponse {
@@ -377,7 +378,7 @@ message SetMessageSubscriptionPointerResponse {
 message FindActiveMessageRequest {
   string name = 1;
   string correlationKey = 2;
-  int64 executionTokenKey = 3;
+  int64 messageSubscriptionKey = 3;
 }
 
 message FindActiveMessageResponse {

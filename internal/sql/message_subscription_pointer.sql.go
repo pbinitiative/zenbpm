@@ -7,11 +7,12 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 )
 
 const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
 SELECT
-    name, correlation_key, state, created_at, message_subscription_key, execution_token_key
+    name, correlation_key, state, created_at, message_subscription_key, execution_token_key, process_instance_key
 FROM
     message_subscription_pointer
 WHERE
@@ -36,6 +37,7 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 		&i.CreatedAt,
 		&i.MessageSubscriptionKey,
 		&i.ExecutionTokenKey,
+		&i.ProcessInstanceKey,
 	)
 	return i, err
 }
@@ -52,12 +54,12 @@ INSERT INTO message_subscription_pointer(state, created_at, name, correlation_ke
 `
 
 type SaveMessageSubscriptionPointerParams struct {
-	State                  int64  `json:"state"`
-	CreatedAt              int64  `json:"created_at"`
-	Name                   string `json:"name"`
-	CorrelationKey         string `json:"correlation_key"`
-	MessageSubscriptionKey int64  `json:"message_subscription_key"`
-	ExecutionTokenKey      int64  `json:"execution_token_key"`
+	State                  int64         `json:"state"`
+	CreatedAt              int64         `json:"created_at"`
+	Name                   string        `json:"name"`
+	CorrelationKey         string        `json:"correlation_key"`
+	MessageSubscriptionKey int64         `json:"message_subscription_key"`
+	ExecutionTokenKey      sql.NullInt64 `json:"execution_token_key"`
 }
 
 func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error {

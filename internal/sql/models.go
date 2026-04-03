@@ -82,24 +82,25 @@ type Job struct {
 }
 
 type MessageSubscription struct {
-	Key                  int64  `json:"key"`
-	ElementID            string `json:"element_id"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	Name                 string `json:"name"`
-	State                int64  `json:"state"`
-	CreatedAt            int64  `json:"created_at"`
-	CorrelationKey       string `json:"correlation_key"`
-	ExecutionToken       int64  `json:"execution_token"`
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ProcessDefinitionKey sql.NullInt64  `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
+	Name                 string         `json:"name"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	CorrelationKey       sql.NullString `json:"correlation_key"`
+	ExecutionToken       sql.NullInt64  `json:"execution_token"`
 }
 
 type MessageSubscriptionPointer struct {
-	Name                   string `json:"name"`
-	CorrelationKey         string `json:"correlation_key"`
-	State                  int64  `json:"state"`
-	CreatedAt              int64  `json:"created_at"`
-	MessageSubscriptionKey int64  `json:"message_subscription_key"`
-	ExecutionTokenKey      int64  `json:"execution_token_key"`
+	Name                   string        `json:"name"`
+	CorrelationKey         string        `json:"correlation_key"`
+	State                  int64         `json:"state"`
+	CreatedAt              int64         `json:"created_at"`
+	MessageSubscriptionKey int64         `json:"message_subscription_key"`
+	ExecutionTokenKey      sql.NullInt64 `json:"execution_token_key"`
+	ProcessInstanceKey     sql.NullInt64 `json:"process_instance_key"`
 }
 
 type Migration struct {

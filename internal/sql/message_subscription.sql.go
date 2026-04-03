@@ -16,7 +16,7 @@ DELETE FROM message_subscription
 WHERE process_instance_key IN (/*SLICE:keys*/?)
 `
 
-func (q *Queries) DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error {
+func (q *Queries) DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []sql.NullInt64) error {
 	query := deleteProcessInstancesMessageSubscriptions
 	var queryParams []interface{}
 	if len(keys) > 0 {
@@ -43,9 +43,9 @@ WHERE
 `
 
 type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
-	CorrelationKey string `json:"correlation_key"`
-	Name           string `json:"name"`
-	State          int64  `json:"state"`
+	CorrelationKey sql.NullString `json:"correlation_key"`
+	Name           string         `json:"name"`
+	State          int64          `json:"state"`
 }
 
 func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
@@ -141,8 +141,8 @@ WHERE
 `
 
 type FindProcessInstanceMessageSubscriptionsParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int64 `json:"state"`
+	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
+	State              int64         `json:"state"`
 }
 
 func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error) {
@@ -189,8 +189,8 @@ WHERE
 `
 
 type FindTokenMessageSubscriptionsParams struct {
-	ExecutionToken int64 `json:"execution_token"`
-	State          int64 `json:"state"`
+	ExecutionToken sql.NullInt64 `json:"execution_token"`
+	State          int64         `json:"state"`
 }
 
 func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error) {
@@ -226,7 +226,7 @@ func (q *Queries) FindTokenMessageSubscriptions(ctx context.Context, arg FindTok
 	return items, nil
 }
 
-const getMessageSubscriptionById = `-- name: GetMessageSubscriptionById :one
+const getMessageSubscriptionByKey = `-- name: GetMessageSubscriptionByKey :one
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token
 FROM
@@ -236,13 +236,13 @@ WHERE
     AND state = ?2
 `
 
-type GetMessageSubscriptionByIdParams struct {
+type GetMessageSubscriptionByKeyParams struct {
 	Key   int64 `json:"key"`
 	State int64 `json:"state"`
 }
 
-func (q *Queries) GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error) {
-	row := q.db.QueryRowContext(ctx, getMessageSubscriptionById, arg.Key, arg.State)
+func (q *Queries) GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, getMessageSubscriptionByKey, arg.Key, arg.State)
 	var i MessageSubscription
 	err := row.Scan(
 		&i.Key,
@@ -268,15 +268,15 @@ ON CONFLICT
 `
 
 type SaveMessageSubscriptionParams struct {
-	Key                  int64  `json:"key"`
-	ElementID            string `json:"element_id"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	Name                 string `json:"name"`
-	State                int64  `json:"state"`
-	CreatedAt            int64  `json:"created_at"`
-	CorrelationKey       string `json:"correlation_key"`
-	ExecutionToken       int64  `json:"execution_token"`
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ProcessDefinitionKey sql.NullInt64  `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
+	Name                 string         `json:"name"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	CorrelationKey       sql.NullString `json:"correlation_key"`
+	ExecutionToken       sql.NullInt64  `json:"execution_token"`
 }
 
 func (q *Queries) SaveMessageSubscription(ctx context.Context, arg SaveMessageSubscriptionParams) error {

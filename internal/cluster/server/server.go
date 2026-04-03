@@ -1263,7 +1263,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 }
 
 func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.GetExecutionTokenKey())
+	partitionId := zenflake.GetPartitionId(req.GetMessageSubscriptionKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
 		err := fmt.Errorf("failed to find partition %d", partitionId)

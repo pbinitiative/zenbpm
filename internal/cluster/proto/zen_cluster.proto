@@ -313,6 +313,7 @@ message DeployProcessDefinitionRequest {
   int64 key = 1;
   bytes data = 2;
   string resource_name = 3;
+  bool registerForPotentialTimerStartEvents = 4;
 }
 
 message DeployProcessDefinitionResponse {

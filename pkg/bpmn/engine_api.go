@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -21,7 +23,22 @@ func (engine *Engine) Start(ctx context.Context) error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
-	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, 10*time.Second)
+	pollTimerDelay := engine.pollTimerDelay
+	if pollTimerDelay == 0 {
+		pollTimerDelaySecondsStr := os.Getenv("POLL_TIMER_DELAY_SECONDS")
+		if pollTimerDelaySecondsStr == "" {
+			pollTimerDelay = 10 * time.Second
+		} else {
+			seconds, err := strconv.Atoi(pollTimerDelaySecondsStr)
+			if err != nil {
+				engine.logger.Warn(fmt.Sprintf("failed to parse POLL_TIMER_DELAY_SECONDS env variable, using default value of 10 seconds: %s", err))
+				pollTimerDelay = 10 * time.Second
+			} else {
+				pollTimerDelay = time.Duration(seconds) * time.Second
+			}
+		}
+	}
+	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
 	engine.timerManager.start()
 	tokens, err := engine.persistence.GetRunningTokens(engine.context)
 	if err != nil {
@@ -236,7 +253,7 @@ mainLoop:
 			continue
 		}
 		tokenSpan.End()
-	}
+	} // end of main loop
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		engine.exportEndProcessEvent(*process, instance)

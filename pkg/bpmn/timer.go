@@ -6,16 +6,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/navsmb/datetime"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/senseyeio/duration"
 )
 
 func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, timerDef bpmn20.TTimerEventDefinition, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
-	timer, err := engine.createTimer(ctx, batch, instance, timerDef, element, currentToken)
+	timer, err := engine.createDurationTimer(instance, timerDef, element.GetId(), &currentToken)
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to create timer %+v: %w", timer, err)
+	}
+	err = batch.SaveTimer(ctx, *timer)
+	if err != nil {
+		return currentToken, fmt.Errorf("failed to save timer: %w", err)
 	}
 
 	// TODO: add timer into engine timer registry
@@ -25,46 +30,66 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 	return currentToken, err
 }
 
-func (engine *Engine) createTimer(
-	ctx context.Context,
-	batch *EngineBatch,
+func (engine *Engine) createDurationTimer(
 	instance runtime.ProcessInstance,
 	timerDef bpmn20.TTimerEventDefinition,
-	element bpmn20.FlowNode,
-	token runtime.ExecutionToken,
+	elementId string,
+	token *runtime.ExecutionToken,
 ) (*runtime.Timer, error) {
 	durationVal, err := findDurationValue(timerDef)
 	if err != nil {
 		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDuration' value "+
-			"from Activity with ID=%s. Error:%s", element.GetId(), err.Error())}
+			"from Activity with ID=%s. Error:%s", elementId, err.Error())}
 	}
 	now := time.Now()
+	var elementInstanceKey *int64
+	if token != nil {
+		elementInstanceKey = &token.ElementInstanceKey
+	}
 	t := runtime.Timer{
-		ElementId:            element.GetId(),
+		ElementId:            elementId,
 		Key:                  engine.generateKey(),
-		ElementInstanceKey:   token.ElementInstanceKey,
+		ElementInstanceKey:   elementInstanceKey,
 		ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
-		ProcessInstanceKey:   instance.ProcessInstance().Key,
+		ProcessInstanceKey:   &instance.ProcessInstance().Key,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            now,
 		DueAt:                durationVal.Shift(now),
 		Duration:             time.Duration(durationVal.TS) * time.Second,
 		Token:                token,
 	}
-	err = batch.SaveTimer(ctx, t)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save timer: %w", err)
-	}
 	engine.timerManager.registerTimer(t)
 	return &t, nil
 }
 
 func findDurationValue(timerDef bpmn20.TTimerEventDefinition) (duration.Duration, error) {
+	if timerDef.TimeDuration == nil {
+		return duration.Duration{}, fmt.Errorf("timerDef.TimeDuration is nil")
+	}
 	durationStr := timerDef.TimeDuration.XMLText
 	if len(strings.TrimSpace(durationStr)) == 0 {
-		return duration.Duration{}, newEngineErrorf("Can't find 'timeDuration' value for INTERMEDIATE_CATCH_EVENT with id=%s", timerDef.Id)
+		id := "<unknown>"
+		if timerDef.Id != nil {
+			id = *timerDef.Id
+		}
+		return duration.Duration{}, newEngineErrorf("Can't find 'timeDuration' value for element with id=%s", id)
 	}
 	return duration.ParseISO8601(durationStr)
+}
+
+func findStartTime(timerDef bpmn20.TTimerEventDefinition) (time.Time, error) {
+	if timerDef.TimeDate == nil {
+		return time.Time{}, fmt.Errorf("timerDef.TimeDate is nil")
+	}
+	timeDateStr := timerDef.TimeDate.XMLText
+	if len(strings.TrimSpace(timeDateStr)) == 0 {
+		id := "<unknown>"
+		if timerDef.Id != nil {
+			id = *timerDef.Id
+		}
+		return time.Time{}, newEngineErrorf("Can't find 'timeDate' value for %s with id=%s", bpmn20.ElementTypeStartEvent, id)
+	}
+	return datetime.ParseLocal(timeDateStr)
 }
 
 func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatch, timer runtime.Timer, instance runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
@@ -123,7 +148,10 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
 		}
 	}
-	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, timer.Token)
+	if timer.Token == nil {
+		return nil, fmt.Errorf("boundary timer event must have token assigned, timerKey=%d", timer.GetKey())
+	}
+	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, *timer.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to handle boundary timer transition %+v: %w", timer, err)
 	}

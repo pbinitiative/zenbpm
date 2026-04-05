@@ -69,7 +69,7 @@ $(PROTOC): $(LOCALBIN)
 		chmod +x $(LOCALBIN)/protoc; \
 		rm protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip; \
 	fi
-	
+
 
 ##@ General
 
@@ -147,7 +147,7 @@ test: ## Run tests
 bench: ## Run benchmarks
 	LOG_LEVEL=ERROR go test ./... -bench=.
 
-.PHONY: test-e2e 
+.PHONY: test-e2e
 test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
@@ -194,4 +194,4 @@ release:
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--verbose \
-		release --clean 
+		release --clean

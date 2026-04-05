@@ -30,8 +30,8 @@ func (engine *Engine) Start(ctx context.Context) error {
 			pollTimerDelay = 10 * time.Second
 		} else {
 			seconds, err := strconv.Atoi(pollTimerDelaySecondsStr)
-			if err != nil {
-				engine.logger.Warn(fmt.Sprintf("failed to parse POLL_TIMER_DELAY_SECONDS env variable, using default value of 10 seconds: %s", err))
+			if err != nil || seconds < 0 {
+				engine.logger.Warn(fmt.Sprintf("failed to parse POLL_TIMER_DELAY_SECONDS env variable or value is negative, using default value of 10 seconds: %s", err))
 				pollTimerDelay = 10 * time.Second
 			} else {
 				pollTimerDelay = time.Duration(seconds) * time.Second
@@ -290,7 +290,7 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 	return instance, nil
 }
 
-// CreateInstanceByKey creates a new instance for a process with given process definition key
+// CreateInstanceByKey creates a new instance for a process with given process definition key and runs it
 // Might return BpmnEngineError, when no process with given ID was found
 func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)

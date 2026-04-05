@@ -50,7 +50,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", timer.ProcessInstanceKey), err)
+		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey), err)
 	}
 
 	currentToken := timer.Token

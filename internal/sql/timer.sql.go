@@ -13,19 +13,19 @@ import (
 
 const deleteProcessInstancesTimers = `-- name: DeleteProcessInstancesTimers :exec
 DELETE FROM timer
-WHERE process_instance_key IN (/*SLICE:keys*/?)
+WHERE process_instance_key IN (/*SLICE:processInstanceKeys*/?)
 `
 
-func (q *Queries) DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error {
+func (q *Queries) DeleteProcessInstancesTimers(ctx context.Context, processinstancekeys []sql.NullInt64) error {
 	query := deleteProcessInstancesTimers
 	var queryParams []interface{}
-	if len(keys) > 0 {
-		for _, v := range keys {
+	if len(processinstancekeys) > 0 {
+		for _, v := range processinstancekeys {
 			queryParams = append(queryParams, v)
 		}
-		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(keys))[1:], 1)
+		query = strings.Replace(query, "/*SLICE:processInstanceKeys*/?", strings.Repeat(",?", len(processinstancekeys))[1:], 1)
 	} else {
-		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+		query = strings.Replace(query, "/*SLICE:processInstanceKeys*/?", "NULL", 1)
 	}
 	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
@@ -42,8 +42,8 @@ WHERE
 `
 
 type FindElementTimersParams struct {
-	ElementInstanceKey int64 `json:"element_instance_key"`
-	State              int64 `json:"state"`
+	ElementInstanceKey sql.NullInt64 `json:"element_instance_key"`
+	State              int64         `json:"state"`
 }
 
 func (q *Queries) FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error) {
@@ -90,8 +90,8 @@ WHERE
 `
 
 type FindProcessInstanceTimersInStateParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	State              int64 `json:"state"`
+	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
+	State              int64         `json:"state"`
 }
 
 func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error) {
@@ -248,8 +248,8 @@ WHERE
 `
 
 type FindTokenTimersParams struct {
-	ExecutionToken int64 `json:"execution_token"`
-	State          int64 `json:"state"`
+	ExecutionToken sql.NullInt64 `json:"execution_token"`
+	State          int64         `json:"state"`
 }
 
 func (q *Queries) FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error) {
@@ -320,15 +320,15 @@ ON CONFLICT
 `
 
 type SaveTimerParams struct {
-	Key                  int64  `json:"key"`
-	ElementID            string `json:"element_id"`
-	ElementInstanceKey   int64  `json:"element_instance_key"`
-	ProcessDefinitionKey int64  `json:"process_definition_key"`
-	ProcessInstanceKey   int64  `json:"process_instance_key"`
-	State                int64  `json:"state"`
-	CreatedAt            int64  `json:"created_at"`
-	DueAt                int64  `json:"due_at"`
-	ExecutionToken       int64  `json:"execution_token"`
+	Key                  int64         `json:"key"`
+	ElementID            string        `json:"element_id"`
+	ElementInstanceKey   sql.NullInt64 `json:"element_instance_key"`
+	ProcessDefinitionKey int64         `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64 `json:"process_instance_key"`
+	State                int64         `json:"state"`
+	CreatedAt            int64         `json:"created_at"`
+	DueAt                int64         `json:"due_at"`
+	ExecutionToken       sql.NullInt64 `json:"execution_token"`
 }
 
 func (q *Queries) SaveTimer(ctx context.Context, arg SaveTimerParams) error {

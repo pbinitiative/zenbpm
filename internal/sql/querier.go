@@ -19,7 +19,7 @@ type Querier interface {
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
-	DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesTimers(ctx context.Context, processinstancekeys []sql.NullInt64) error
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)

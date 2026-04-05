@@ -76,7 +76,7 @@ func TestTimerManagerLoadsAndFiresTimers(t *testing.T) {
 		return true
 	}, 2*time.Second, 100*time.Millisecond, "processed timers did not contain timer that should be fired")
 
-	// verify that timers that should have fired fired
+	// verify that timers that should have fired
 	assert.NotEmpty(t, tester.generatedTimers)
 	assert.NotEmpty(t, tester.processedTimers)
 	for _, timerToFire := range tester.generatedTimers {
@@ -99,16 +99,17 @@ func TestTimerManagerIgnoresDuplicateTimers(t *testing.T) {
 	)
 	tm.start()
 	defer tm.stop()
+	piKey := rand.Int63()
 	duplicate := runtime.Timer{
 		ElementId:            "1",
 		Key:                  rand.Int63(),
 		ProcessDefinitionKey: rand.Int63(),
-		ProcessInstanceKey:   rand.Int63(),
+		ProcessInstanceKey:   &piKey,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            time.Now().Add(-1 * time.Second),
 		DueAt:                time.Now(),
 		Duration:             2 * time.Second,
-		Token: runtime.ExecutionToken{
+		Token: &runtime.ExecutionToken{
 			Key: rand.Int63(),
 		},
 	}
@@ -140,16 +141,17 @@ func TestTimerManagerFiresHistoricTimers(t *testing.T) {
 	)
 	tm.start()
 	defer tm.stop()
+	piKey := rand.Int63()
 	timer := runtime.Timer{
 		ElementId:            "1",
 		Key:                  rand.Int63(),
 		ProcessDefinitionKey: rand.Int63(),
-		ProcessInstanceKey:   rand.Int63(),
+		ProcessInstanceKey:   &piKey,
 		TimerState:           runtime.TimerStateCreated,
 		CreatedAt:            time.Now().Add(-24 * time.Hour),
 		DueAt:                time.Now().Add(-12 * time.Hour),
 		Duration:             2 * time.Second,
-		Token: runtime.ExecutionToken{
+		Token: &runtime.ExecutionToken{
 			Key: rand.Int63(),
 		},
 	}

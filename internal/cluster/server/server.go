@@ -1456,9 +1456,11 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, req *p
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
 		for i, row := range rows {
 			statistics[i] = &proto.ElementStatisticEntry{
-				ElementId:     ptr.To(row.ElementID),
-				ActiveCount:   ptr.To(int32(row.ActiveCount)),
-				IncidentCount: ptr.To(int32(row.IncidentCount)),
+				ElementId:       ptr.To(row.ElementID),
+				ActiveCount:     ptr.To(int32(row.ActiveCount)),
+				IncidentCount:   ptr.To(int32(row.IncidentCount)),
+				CompletedCount:  ptr.To(int32(row.CompletedCount)),
+				TerminatedCount: ptr.To(int32(row.TerminatedCount)),
 			}
 		}
 

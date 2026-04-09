@@ -569,7 +569,6 @@ paths:
             encoding:
               resource:
                 contentType: application/octet-stream
-
       responses:
         201:
           description: Process definition deployed
@@ -2836,6 +2835,12 @@ components:
         incidentCount:
           type: integer
           description: Number of incidents on this element
+        completedCount:
+          type: integer
+          description: Number of completed element instances
+        terminatedCount:
+          type: integer
+          description: Number of terminated (canceled) element instances
     ElementStatistic:
       type: object
       description: Map of elementId to active/incident counts

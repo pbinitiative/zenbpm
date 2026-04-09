@@ -48,17 +48,11 @@ func (q *Queries) DeleteFlowElementInstance(ctx context.Context, keys []int64) e
 
 const findFlowElementInstances = `-- name: FindFlowElementInstances :many
 SELECT
-    fei."key", fei.element_id, fei.process_instance_key, fei.execution_token_key, fei.created_at, fei.input_variables, fei.output_variables,
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables,
     COUNT(*) OVER() AS total_count
-FROM execution_token AS et
-JOIN process_instance AS pi
-    ON (pi.parent_process_execution_token = et.key
-    OR pi.key = ?1)
-    AND process_type != 3
-JOIN flow_element_instance AS fei
-    ON fei.process_instance_key = pi.key
+FROM flow_element_instance
 WHERE
-    et.process_instance_key = ?1
+    process_instance_key = ?1
 LIMIT ?3 OFFSET ?2
 `
 

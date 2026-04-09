@@ -17,11 +17,10 @@ func TestTimerStartEventParsesFromBpmn(t *testing.T) {
 	err = xml.Unmarshal(xmlData, &definitions)
 	require.NoError(t, err)
 
-	// The main process should have one plain start event
+	// The main process should have one plain start event (no event definitions)
 	assert.Equal(t, 1, len(definitions.Process.StartEvents))
 	mainStart := definitions.Process.StartEvents[0]
-	_, isPlain := mainStart.Implementation.(*TPlainStartEvent)
-	assert.True(t, isPlain, "main process start event should be plain")
+	assert.Equal(t, 0, len(mainStart.EventDefinitions), "main process start event should be plain (no event definitions)")
 
 	// The process should have one event subprocess
 	assert.Equal(t, 1, len(definitions.Process.SubProcess))
@@ -31,11 +30,12 @@ func TestTimerStartEventParsesFromBpmn(t *testing.T) {
 	// The event subprocess should have one timer start event
 	assert.Equal(t, 1, len(eventSubProcess.TProcess.StartEvents))
 	subStart := eventSubProcess.TProcess.StartEvents[0]
-	timerImpl, isTimer := subStart.Implementation.(*TTimerStartEvent)
-	assert.True(t, isTimer, "event subprocess start event should be a timer start event")
-	assert.NotNil(t, timerImpl.TimerEventDefinition.Id)
-	assert.NotNil(t, timerImpl.TimerEventDefinition.TimeDuration)
-	assert.Equal(t, "PT1S", timerImpl.TimerEventDefinition.TimeDuration.XMLText)
+	require.Equal(t, 1, len(subStart.EventDefinitions), "event subprocess start event should have one event definition")
+	timerDef, isTimer := subStart.EventDefinitions[0].(TTimerEventDefinition)
+	assert.True(t, isTimer, "event subprocess start event should be a timer event definition")
+	assert.NotNil(t, timerDef.Id)
+	assert.NotNil(t, timerDef.TimeDuration)
+	assert.Equal(t, "PT1S", timerDef.TimeDuration.XMLText)
 }
 
 func TestStartEventIsInterruptingDefaultsToTrue(t *testing.T) {
@@ -68,10 +68,11 @@ func TestStartEventTimerWithTimeDate(t *testing.T) {
 	err := xml.Unmarshal([]byte(xmlStr), &startEvent)
 	require.NoError(t, err)
 
-	timerImpl, ok := startEvent.Implementation.(*TTimerStartEvent)
+	require.Equal(t, 1, len(startEvent.EventDefinitions))
+	timerDef, ok := startEvent.EventDefinitions[0].(TTimerEventDefinition)
 	require.True(t, ok)
-	assert.NotNil(t, timerImpl.TimerEventDefinition.TimeDate)
-	assert.Equal(t, "2026-01-01T00:00:00Z", timerImpl.TimerEventDefinition.TimeDate.XMLText)
+	assert.NotNil(t, timerDef.TimeDate)
+	assert.Equal(t, "2026-01-01T00:00:00Z", timerDef.TimeDate.XMLText)
 }
 
 func TestFindEventSubProcesses(t *testing.T) {

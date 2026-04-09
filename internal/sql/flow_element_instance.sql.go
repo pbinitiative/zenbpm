@@ -59,6 +59,7 @@ JOIN flow_element_instance AS fei
     ON fei.process_instance_key = pi.key
 WHERE
     et.process_instance_key = ?1
+GROUP BY fei.key
 LIMIT ?3 OFFSET ?2
 `
 

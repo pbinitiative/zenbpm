@@ -29,6 +29,7 @@ JOIN flow_element_instance AS fei
     ON fei.process_instance_key = pi.key
 WHERE
     et.process_instance_key = @process_instance_key
+GROUP BY fei.key
 LIMIT @limit OFFSET @offset;
 
 -- name: GetFlowElementInstances :many

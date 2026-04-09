@@ -24,41 +24,20 @@ type TStartEvent struct {
 	TEvent
 	IsInterrupting   bool `xml:"isInterrupting,attr"`
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
-	Implementation   TStartEventImplementation
+	EventDefinitions []EventDefinition
 }
 
 func (startEvent TStartEvent) GetType() ElementType {
 	return ElementTypeStartEvent
 }
 
-type TStartEventImplementation interface {
-	startEventImplementation()
-}
-
-type TPlainStartEvent struct{}
-
-func (d TPlainStartEvent) startEventImplementation() {}
-
-type TMessageStartEvent struct {
-	TMessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
-}
-
-func (d TMessageStartEvent) startEventImplementation() {}
-
-type TTimerStartEvent struct {
-	TimerEventDefinition TTimerEventDefinition `xml:"timerEventDefinition"`
-}
-
-func (d TTimerStartEvent) startEventImplementation() {}
-
 func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
-		TPlainStartEvent
-		TMessageStartEvent
-		TTimerStartEvent
 		TEvent
-		IsInterrupting   *bool `xml:"isInterrupting,attr"`
-		ParallelMultiple bool  `xml:"parallelMultiple,attr"`
+		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
+		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
+		IsInterrupting         *bool                   `xml:"isInterrupting,attr"`
+		ParallelMultiple       bool                    `xml:"parallelMultiple,attr"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -69,23 +48,22 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 		startEvent.IsInterrupting = true
 	}
 	startEvent.ParallelMultiple = tempStruct.ParallelMultiple
-	switch {
-	case tempStruct.TMessageEventDefinition.Id != nil:
-		startEvent.Implementation = &tempStruct.TMessageStartEvent
-	case tempStruct.TimerEventDefinition.Id != nil:
-		startEvent.Implementation = &tempStruct.TTimerStartEvent
-	default:
-		startEvent.Implementation = &tempStruct.TPlainStartEvent
+	startEvent.EventDefinitions = make([]EventDefinition, 0)
+	if tempStruct.TimerEventDefinition.Id != nil {
+		startEvent.EventDefinitions = append(startEvent.EventDefinitions, tempStruct.TimerEventDefinition)
+	}
+	if tempStruct.MessageEventDefinition.Id != nil {
+		startEvent.EventDefinitions = append(startEvent.EventDefinitions, tempStruct.MessageEventDefinition)
 	}
 	return nil
 }
 
 type TEndEvent struct {
 	TEvent
-	EvenDefinitions []EventDefinition
-	TaskDefinition  extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-	Input           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
-	Output          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+	EventDefinitions []EventDefinition
+	TaskDefinition   extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Input            []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
 type TTerminateEventDefinition struct {
@@ -98,7 +76,7 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 	tempStruct := struct {
 		TEvent
 		TerminateEventDefinition TTerminateEventDefinition  `xml:"terminateEventDefinition"`
-		TMessageEventDefinition  TMessageEventDefinition    `xml:"messageEventDefinition"`
+		MessageEventDefinition   TMessageEventDefinition    `xml:"messageEventDefinition"`
 		TaskDefinition           extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 		Input                    []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
 		Output                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
@@ -108,12 +86,12 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 		return err
 	}
 	endEvent.TEvent = tempStruct.TEvent
-	endEvent.EvenDefinitions = make([]EventDefinition, 0)
+	endEvent.EventDefinitions = make([]EventDefinition, 0)
 	if tempStruct.TerminateEventDefinition.Id != nil {
-		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEventDefinition)
+		endEvent.EventDefinitions = append(endEvent.EventDefinitions, tempStruct.TerminateEventDefinition)
 	}
-	if tempStruct.TMessageEventDefinition.Id != nil {
-		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TMessageEventDefinition)
+	if tempStruct.MessageEventDefinition.Id != nil {
+		endEvent.EventDefinitions = append(endEvent.EventDefinitions, tempStruct.MessageEventDefinition)
 		endEvent.TaskDefinition = tempStruct.TaskDefinition
 		endEvent.Input = tempStruct.Input
 		endEvent.Output = tempStruct.Output

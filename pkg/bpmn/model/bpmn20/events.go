@@ -22,6 +22,7 @@ type TEvent struct {
 
 type TStartEvent struct {
 	TEvent
+	EventDefinitions []EventDefinition
 	IsInterrupting   bool `xml:"isInterrupting,attr"`
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 }
@@ -32,10 +33,10 @@ func (startEvent TStartEvent) GetType() ElementType {
 
 type TEndEvent struct {
 	TEvent
-	EvenDefinitions []EventDefinition
-	TaskDefinition  extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-	Input           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
-	Output          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+	EventDefinitions []EventDefinition
+	TaskDefinition   extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+	Input            []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+	Output           []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
 }
 
 type TTerminateEventDefinition struct {
@@ -58,12 +59,12 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 		return err
 	}
 	endEvent.TEvent = tempStruct.TEvent
-	endEvent.EvenDefinitions = make([]EventDefinition, 0)
+	endEvent.EventDefinitions = make([]EventDefinition, 0)
 	if tempStruct.TerminateEventDefinition.Id != nil {
-		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TerminateEventDefinition)
+		endEvent.EventDefinitions = append(endEvent.EventDefinitions, tempStruct.TerminateEventDefinition)
 	}
 	if tempStruct.TMessageEventDefinition.Id != nil {
-		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TMessageEventDefinition)
+		endEvent.EventDefinitions = append(endEvent.EventDefinitions, tempStruct.TMessageEventDefinition)
 		endEvent.TaskDefinition = tempStruct.TaskDefinition
 		endEvent.Input = tempStruct.Input
 		endEvent.Output = tempStruct.Output

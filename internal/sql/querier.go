@@ -18,7 +18,7 @@ type Querier interface {
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
-	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
@@ -82,7 +82,7 @@ type Querier interface {
 	GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error)
 	// https://github.com/sqlc-dev/sqlc/issues/2452
 	GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInStateByTokenKeyParams) ([]Job, error)
-	GetMessageSubscriptionById(ctx context.Context, arg GetMessageSubscriptionByIdParams) (MessageSubscription, error)
+	GetMessageSubscriptionByKey(ctx context.Context, arg GetMessageSubscriptionByKeyParams) (MessageSubscription, error)
 	GetMigrations(ctx context.Context) ([]Migration, error)
 	GetProcessInstance(ctx context.Context, key int64) (ProcessInstance, error)
 	GetTimerByKey(ctx context.Context, timerKey int64) (Timer, error)

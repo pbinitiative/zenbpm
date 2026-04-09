@@ -42,6 +42,11 @@ type ProcessInstance interface {
 	GetParentProcessInstanceKey() *int64
 }
 
+type EventSubProcessInstance struct {
+	ParentProcessTargetElementId string
+	ProcessInstanceData
+}
+
 type SubProcessInstance struct {
 	ParentProcessExecutionToken           ExecutionToken
 	ParentProcessTargetElementInstanceKey int64
@@ -208,41 +213,89 @@ const (
 	ActivityStateWithdrawn
 )
 
-type MessageSubscription struct {
-	Key                  int64
-	ElementId            string
-	ProcessDefinitionKey int64
-	ProcessInstanceKey   int64
-	Name                 string
-	CorrelationKey       string
-	State                ActivityState
-	CreatedAt            time.Time
-	Token                ExecutionToken
+type MessageSubscriptionType int
+
+//go:generate go tool stringer -type=MessageSubscriptionType
+
+const (
+	_ MessageSubscriptionType = iota
+	MessageSubscriptionTypeToken
+	MessageSubscriptionTypeInstance
+	MessageSubscriptionTypeDefinition
+)
+
+type MessageSubscription interface {
+	Type() MessageSubscriptionType
+	MessageSubscription() *MessageSubscriptionData
 }
 
-func (m MessageSubscription) EqualTo(m2 MessageSubscription) bool {
-	if m.ElementId == m2.ElementId &&
-		m.Key == m2.Key &&
-		m.ProcessDefinitionKey == m2.ProcessDefinitionKey &&
-		m.ProcessInstanceKey == m2.ProcessInstanceKey &&
-		m.Name == m2.Name &&
-		m.State == m2.State &&
-		m.CreatedAt.Truncate(time.Millisecond).Equal(m2.CreatedAt.Truncate(time.Millisecond)) {
+type MessageSubscriptionData struct {
+	Key       int64
+	ElementId string
+	Name      string
+	State     ActivityState
+	CreatedAt time.Time
+}
+
+type TokenMessageSubscription struct {
+	Token              ExecutionToken
+	ProcessInstanceKey int64
+	CorrelationKey     string
+	MessageSubscriptionData
+}
+
+func (t *TokenMessageSubscription) Type() MessageSubscriptionType {
+	return MessageSubscriptionTypeToken
+}
+func (t *TokenMessageSubscription) MessageSubscription() *MessageSubscriptionData {
+	return &t.MessageSubscriptionData
+}
+
+func (t *TokenMessageSubscription) GetId() string {
+	return t.ElementId
+}
+func (t *TokenMessageSubscription) GetKey() int64 {
+	return t.Key
+}
+func (t *TokenMessageSubscription) GatewayEvent() {}
+
+type InstanceMessageSubscription struct {
+	ProcessInstanceKey int64
+	CorrelationKey     string
+	MessageSubscriptionData
+}
+
+func (t *InstanceMessageSubscription) Type() MessageSubscriptionType {
+	return MessageSubscriptionTypeInstance
+}
+
+func (t *InstanceMessageSubscription) MessageSubscription() *MessageSubscriptionData {
+	return &t.MessageSubscriptionData
+}
+
+type DefinitionMessageSubscription struct {
+	ProcessDefinitionKey int64
+	MessageSubscriptionData
+}
+
+func (t *DefinitionMessageSubscription) Type() MessageSubscriptionType {
+	return MessageSubscriptionTypeDefinition
+}
+
+func (t *DefinitionMessageSubscription) MessageSubscription() *MessageSubscriptionData {
+	return &t.MessageSubscriptionData
+}
+
+func EqualTo(m MessageSubscription, m2 MessageSubscription) bool {
+	if m.Type() == m2.Type() &&
+		m.MessageSubscription().ElementId == m2.MessageSubscription().ElementId &&
+		m.MessageSubscription().Key == m2.MessageSubscription().Key &&
+		m.MessageSubscription().Name == m2.MessageSubscription().Name &&
+		m.MessageSubscription().State == m2.MessageSubscription().State &&
+		m.MessageSubscription().CreatedAt.Truncate(time.Millisecond).Equal(m2.MessageSubscription().CreatedAt.Truncate(time.Millisecond)) {
 		return true
 	}
 	return false
-}
-
-func (m MessageSubscription) GetId() string {
-	return m.ElementId
-}
-func (m MessageSubscription) GatewayEvent() {}
-func (m MessageSubscription) GetKey() int64 {
-	return m.Key
-}
-
-func (m MessageSubscription) GetState() ActivityState {
-	return m.State
 }
 
 //go:generate go tool stringer -type=TimerState

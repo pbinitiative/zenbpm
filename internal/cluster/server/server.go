@@ -1192,6 +1192,37 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 	}, nil
 }
 
+func (s *Server) PublishMessageStartProcessInstance(ctx context.Context, req *proto.PublishMessageStartProcessInstanceRequest) (*proto.PublishMessageStartProcessInstanceResponse, error) {
+	engine := s.GetRandomEngine(ctx)
+	if engine == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("no engine available on this node"))
+		return &proto.PublishMessageStartProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	}
+
+	vars := map[string]any{}
+	err := json.Unmarshal(req.Variables, &vars)
+	if err != nil {
+		err := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal input variables: %w", err))
+		return &proto.PublishMessageStartProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	}
+
+	if req.HistoryTTL != nil {
+		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
+	}
+
+	if err := engine.PublishMessageByName(ctx, req.GetMessageName(), nil, vars); err != nil {
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("message subscription with messageName %s not found", req.GetMessageName()))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to publish message event with messageName %s: %w", req.GetMessageName(), err))
+		}
+		return &proto.PublishMessageStartProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+	}
+
+	return &proto.PublishMessageStartProcessInstanceResponse{}, nil
+}
+
 func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRequest) (*proto.PublishMessageResponse, error) {
 	partitionId := zenflake.GetPartitionId(req.GetKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
@@ -1206,7 +1237,7 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 		return &proto.PublishMessageResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	if err := engine.PublishMessage(ctx, req.GetKey(), vars); err != nil {
+	if err := engine.PublishMessageByKey(ctx, req.GetKey(), vars); err != nil {
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
 			zerr = zenerr.NotFound(fmt.Errorf("message subscription for key %d not found", req.GetKey()))
@@ -1234,12 +1265,11 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 	partitionId := s.store.ClusterState().GetPartitionIdFromString(req.GetCorrelationKey())
 	if partition.PartitionId == partitionId && partition.IsLeader(ctx) {
 		err := partition.DB.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
-			State:                  int64(req.GetState()),
+			State:                  req.GetState(),
 			CreatedAt:              req.GetCreatedAt(),
 			Name:                   req.GetName(),
 			CorrelationKey:         req.GetCorrelationKey(),
 			MessageSubscriptionKey: req.GetMessageSubscriptionKey(),
-			ExecutionTokenKey:      req.GetExecutionTokenKey(),
 		})
 		if err != nil {
 			err := fmt.Errorf("failed to save message subscription pointer for message subscription name:%s correlationId:%s : %w", req.GetName(), req.GetCorrelationKey(), err)
@@ -1263,7 +1293,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 }
 
 func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMessageRequest) (*proto.FindActiveMessageResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.GetExecutionTokenKey())
+	partitionId := zenflake.GetPartitionId(req.GetMessageSubscriptionKey())
 	queries := s.controller.PartitionQueries(ctx, partitionId)
 	if queries == nil {
 		err := fmt.Errorf("failed to find partition %d", partitionId)
@@ -1274,11 +1304,21 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 			},
 		}, err
 	}
-	subs, err := queries.FindTokenMessageSubscriptions(ctx, sql.FindTokenMessageSubscriptionsParams{
-		ExecutionToken: req.GetExecutionTokenKey(),
-		State:          int64(runtime.ActivityStateActive),
+
+	messageSub, err := queries.GetMessageSubscriptionByKey(ctx, sql.GetMessageSubscriptionByKeyParams{
+		Key:   req.GetMessageSubscriptionKey(),
+		State: int64(runtime.ActivityStateActive),
 	})
-	if err != nil && !isErrNotFound(err) {
+	if err != nil {
+		if isErrNotFound(err) {
+			err = fmt.Errorf("message subscription %s %s was not found in partition %d", req.GetName(), req.GetCorrelationKey(), partitionId)
+			return &proto.FindActiveMessageResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(err.Error()),
+				},
+			}, status.Error(codes.NotFound, err.Error())
+		}
 		err := fmt.Errorf("failed to find message subscriptions %d", partitionId)
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
@@ -1287,29 +1327,16 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 			},
 		}, err
 	}
-	// if len(subs) == 0{
-	// }
-	for _, message := range subs {
-		if message.CorrelationKey == req.GetCorrelationKey() && message.Name == req.GetName() {
-			return &proto.FindActiveMessageResponse{
-				Key:                  &message.Key,
-				ElementId:            &message.ElementID,
-				ProcessDefinitionKey: &message.ProcessDefinitionKey,
-				ProcessInstanceKey:   &message.ProcessInstanceKey,
-				Name:                 &message.Name,
-				State:                &message.State,
-				CorrelationKey:       &message.CorrelationKey,
-				ExecutionToken:       &message.ExecutionToken,
-			}, nil
-		}
-	}
-	err = fmt.Errorf("message subscription %s %s was not found in partition %d", req.GetName(), req.GetCorrelationKey(), partitionId)
 	return &proto.FindActiveMessageResponse{
-		Error: &proto.ErrorResult{
-			Code:    nil,
-			Message: ptr.To(err.Error()),
-		},
-	}, status.Error(codes.NotFound, err.Error())
+		Key:                  &messageSub.Key,
+		ElementId:            &messageSub.ElementID,
+		ProcessDefinitionKey: sql.FromNullInt64(messageSub.ProcessDefinitionKey),
+		ProcessInstanceKey:   sql.FromNullInt64(messageSub.ProcessInstanceKey),
+		Name:                 &messageSub.Name,
+		State:                &messageSub.State,
+		CorrelationKey:       sql.FromNullString(messageSub.CorrelationKey),
+		ExecutionToken:       sql.FromNullInt64(messageSub.ExecutionToken),
+	}, nil
 }
 
 func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsRequest) (*proto.GetIncidentsResponse, error) {

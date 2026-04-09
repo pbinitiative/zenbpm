@@ -11,23 +11,23 @@ import (
 
 const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
 SELECT
-    name, correlation_key, state, created_at, message_subscription_key, execution_token_key
+    name, correlation_key, state, created_at, message_subscription_key
 FROM
     message_subscription_pointer
 WHERE
-    correlation_key = ?1
-    AND name = ?2
-    AND state = ?3
+    state = ?1
+    AND correlation_key = ?2
+    AND name = ?3
 `
 
 type FindMessageSubscriptionPointerParams struct {
+	FilterState    int64  `json:"filter_state"`
 	CorrelationKey string `json:"correlation_key"`
 	Name           string `json:"name"`
-	FilterState    int64  `json:"filter_state"`
 }
 
 func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error) {
-	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.CorrelationKey, arg.Name, arg.FilterState)
+	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.FilterState, arg.CorrelationKey, arg.Name)
 	var i MessageSubscriptionPointer
 	err := row.Scan(
 		&i.Name,
@@ -35,20 +35,18 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 		&i.State,
 		&i.CreatedAt,
 		&i.MessageSubscriptionKey,
-		&i.ExecutionTokenKey,
 	)
 	return i, err
 }
 
 const saveMessageSubscriptionPointer = `-- name: SaveMessageSubscriptionPointer :exec
-INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(name,correlation_key)
         DO UPDATE SET
             state = excluded.state,
 						created_at = excluded.created_at,
-						message_subscription_key = excluded.message_subscription_key,
-						execution_token_key = excluded.execution_token_key
+						message_subscription_key = excluded.message_subscription_key
 `
 
 type SaveMessageSubscriptionPointerParams struct {
@@ -57,7 +55,6 @@ type SaveMessageSubscriptionPointerParams struct {
 	Name                   string `json:"name"`
 	CorrelationKey         string `json:"correlation_key"`
 	MessageSubscriptionKey int64  `json:"message_subscription_key"`
-	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }
 
 func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error {
@@ -67,7 +64,6 @@ func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMe
 		arg.Name,
 		arg.CorrelationKey,
 		arg.MessageSubscriptionKey,
-		arg.ExecutionTokenKey,
 	)
 	return err
 }

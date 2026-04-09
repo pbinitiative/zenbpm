@@ -559,8 +559,47 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	return nil
 }
 
-func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
-	partitionId := node.store.ClusterState().GetPartitionIdFromString(correlationKey)
+func (node *ZenNode) PublishMessageStartProcessInstance(ctx context.Context, name string, variables map[string]any) error {
+	state := node.store.ClusterState()
+	candidateNode, err := state.GetLeastStressedPartitionLeader()
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("failed to get node to publish message to create process instance: %w", err))
+	}
+	client, err := node.client.For(candidateNode.Addr)
+	if err != nil {
+		return zenerr.TechnicalError(fmt.Errorf("failed to get to publish message to  client to create process instance: %w", err))
+	}
+	vars, err := json.Marshal(variables)
+	if err != nil {
+		return zenerr.BadRequest(fmt.Errorf("failed to marshal variables to create process instance: %w", err))
+	}
+	var timeToLive *types.TTL
+	if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
+		timeToLive = &node.controller.Config.Persistence.InstanceHistoryTTL
+	}
+
+	resp, err := client.PublishMessageStartProcessInstance(ctx, &proto.PublishMessageStartProcessInstanceRequest{
+		MessageName: &name,
+		Variables:   vars,
+		HistoryTTL:  (*int64)(timeToLive),
+	})
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("client call to publish message failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to publish message failed"))
+	}
+
+	return nil
+}
+
+func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
+	if correlationKey == nil {
+		err := node.PublishMessageStartProcessInstance(ctx, name, variables)
+		return err
+	}
+
+	partitionId := node.store.ClusterState().GetPartitionIdFromString(*correlationKey)
 	partitionNode := node.controller.GetPartition(ctx, partitionId)
 	if partitionNode == nil {
 		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey))
@@ -568,7 +607,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
 		ctx,
 		name,
-		correlationKey,
+		*correlationKey,
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

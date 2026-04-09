@@ -266,7 +266,7 @@ func publishMessage(t testing.TB, name string, correlationKey string, vars *map[
 
 func publishMessageWithResponse(t testing.TB, name string, correlationKey string, vars *map[string]any) (*zenclient.PublishMessageResponse, error) {
 	return app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
-		CorrelationKey: correlationKey,
+		CorrelationKey: &correlationKey,
 		MessageName:    name,
 		Variables:      vars,
 	})

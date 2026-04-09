@@ -4,27 +4,60 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
-// PublishMessageByName publishes a message by name and correlationKey and also adds variables to the process instance
-func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
-	subscriptionKey, err := engine.persistence.FindActiveMessageSubscriptionKey(ctx, name, correlationKey)
+func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
+	message, err := engine.persistence.FindMessageSubscriptionByName(ctx, name, correlationKey, runtime.ActivityStateActive)
 	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find active message subscription: %s", name), err)
+		return errors.Join(newEngineErrorf("failed to find active message subscription with name: %s", name), err)
 	}
-	return engine.PublishMessage(ctx, subscriptionKey, variables)
+	return engine.PublishMessage(ctx, message, variables)
+}
+
+func (engine *Engine) PublishMessageByKey(ctx context.Context, subscriptionKey int64, variables map[string]any) error {
+	message, err := engine.persistence.FindMessageSubscriptionByKey(ctx, subscriptionKey, runtime.ActivityStateActive)
+	if err != nil {
+		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", subscriptionKey), err)
+	}
+	return engine.PublishMessage(ctx, message, variables)
 }
 
 // PublishMessage publishes a message given by subscription key and also adds variables to the process instance, which fetches this event
-func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64, variables map[string]interface{}) (retErr error) {
-	message, err := engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
-	if err != nil {
-		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
+func (engine *Engine) PublishMessage(ctx context.Context, message runtime.MessageSubscription, variables map[string]interface{}) (retErr error) {
+	switch message := message.(type) {
+	case *runtime.DefinitionMessageSubscription:
+		_, err := engine.CreateInstanceWithStartingElements(
+			ctx,
+			message.ProcessDefinitionKey,
+			[]string{message.ElementId},
+			variables,
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to process DefinitionMessageSubscription %+v: %w", message, err)
+		}
+	case *runtime.InstanceMessageSubscription:
+		err := engine.PublishMessageOnEventSubprocess()
+		if err != nil {
+			return fmt.Errorf("failed to process InstanceMessageSubscription %+v: %w", message, err)
+		}
+	case *runtime.TokenMessageSubscription:
+		err := engine.PublishMessageOnToken(ctx, message, variables)
+		if err != nil {
+			return fmt.Errorf("failed to process TokenMessageSubscription %+v: %w", message, err)
+		}
+	default:
+		return fmt.Errorf("message type not supported")
 	}
+	return nil
+	// TODO: create something for processing events from API, needs to be able to add tokens to currently running instances or add instance to queue for processing with token updated by API
+	// we need to check if token has any more events waiting
+	// if so we need to handle interrupting/non interrupting boundary events
+}
 
+func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtime.TokenMessageSubscription, variables map[string]any) (retErr error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
 	if err != nil {
 		return errors.Join(newEngineErrorf("no process instance with key: %d", message.ProcessInstanceKey), err)
@@ -41,9 +74,13 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 	}()
 
 	//refresh
-	message, err = engine.persistence.FindMessageSubscriptionById(ctx, subscriptionKey, runtime.ActivityStateActive)
+	messageSub, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
+	}
+	message, ok := messageSub.(*runtime.TokenMessageSubscription)
+	if !ok {
+		return fmt.Errorf("message type after refresh not supported")
 	}
 	switch message.State {
 	case runtime.ActivityStateCompleted:
@@ -69,7 +106,7 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 		}
 		return engine.RunProcessInstance(ctx, instance, tokens)
 	case *bpmn20.TIntermediateCatchEvent:
-		tokens, err := engine.publishMessageOnListener(ctx, &batch, nodeT, &message, instance, variables)
+		tokens, err := engine.publishMessageOnListener(ctx, &batch, nodeT, message, instance, variables)
 		if err != nil {
 			message.State = runtime.ActivityStateFailed
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
@@ -107,7 +144,8 @@ func (engine *Engine) PublishMessage(ctx context.Context, subscriptionKey int64,
 		engine.logger.Error(msg)
 		return &BpmnEngineError{Msg: msg}
 	}
-	// TODO: create something for processing events from API, needs to be able to add tokens to currently running instances or add instance to queue for processing with token updated by API
-	// we need to check if token has any more events waiting
-	// if so we need to handle interrupting/non interrupting boundary events
+}
+
+func (engine *Engine) PublishMessageOnEventSubprocess() {
+
 }

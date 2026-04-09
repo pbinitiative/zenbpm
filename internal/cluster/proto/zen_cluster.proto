@@ -58,6 +58,7 @@ service ZenService {
   rpc ActivateJob(ActivateJobRequest) returns (stream ActivateJobResponse);
   // PublishMessage requests a message publish on the engine running on a leader node of partition
   rpc PublishMessage(PublishMessageRequest) returns (PublishMessageResponse);
+  rpc PublishMessageStartProcessInstance(PublishMessageStartProcessInstanceRequest) returns (PublishMessageStartProcessInstanceResponse);
   rpc SetMessageSubscriptionPointer(SetMessageSubscriptionPointerRequest) returns (SetMessageSubscriptionPointerResponse);
   rpc FindActiveMessage(FindActiveMessageRequest) returns (FindActiveMessageResponse);
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
@@ -366,8 +367,7 @@ message SetMessageSubscriptionPointerRequest {
   string name = 3;
   string correlationKey = 4;
   int64 messageSubscriptionKey = 5;
-  int64 executionTokenKey = 6;
-  uint32 partitionId = 7;
+  uint32 partitionId = 6;
 }
 
 message SetMessageSubscriptionPointerResponse {
@@ -377,7 +377,7 @@ message SetMessageSubscriptionPointerResponse {
 message FindActiveMessageRequest {
   string name = 1;
   string correlationKey = 2;
-  int64 executionTokenKey = 3;
+  int64 messageSubscriptionKey = 3;
 }
 
 message FindActiveMessageResponse {
@@ -390,6 +390,16 @@ message FindActiveMessageResponse {
   int64 state = 7;
   string correlationKey = 8;
   int64 executionToken = 9;
+}
+
+message PublishMessageStartProcessInstanceResponse {
+  ErrorResult error = 1;
+}
+
+message PublishMessageStartProcessInstanceRequest {
+  string message_name = 1;
+  bytes variables = 2;
+  int64 historyTTL = 3;
 }
 
 message PublishMessageRequest {

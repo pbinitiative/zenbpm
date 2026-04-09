@@ -504,8 +504,8 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}

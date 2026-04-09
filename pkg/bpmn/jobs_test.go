@@ -97,15 +97,15 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg" {
+			err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg" && message.State == runtime.ActivityStateActive {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg" && message.MessageSubscription().State == runtime.ActivityStateActive {
+			err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -120,14 +120,14 @@ func TestSimpleCountLoopWithMessage(t *testing.T) {
 	// internal State expected
 	messages := make([]runtime.MessageSubscription, int64(0))
 	for _, mes := range engineStorage.MessageSubscriptions {
-		if mes.ProcessInstanceKey == instance.ProcessInstance().Key {
+		if mes, ok := mes.(*runtime.TokenMessageSubscription); ok && mes.ProcessInstanceKey == instance.ProcessInstance().Key {
 			messages = append(messages, mes)
 		}
 
 	}
 	assert.Len(t, messages, 2)
-	assert.Equal(t, runtime.ActivityStateCompleted, messages[0].State)
-	assert.Equal(t, runtime.ActivityStateCompleted, messages[1].State)
+	assert.Equal(t, runtime.ActivityStateCompleted, messages[0].MessageSubscription().State)
+	assert.Equal(t, runtime.ActivityStateCompleted, messages[1].MessageSubscription().State)
 }
 
 func TestActivatedJobData(t *testing.T) {

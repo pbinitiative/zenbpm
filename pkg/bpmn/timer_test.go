@@ -58,7 +58,7 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	_, _ = bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 	time.Sleep((2 * time.Second) + (1 * time.Millisecond))
@@ -77,10 +77,10 @@ func TestEventBasedGatewaySelectsJustOnePath(t *testing.T) {
 	}, (5*time.Second)+(1*time.Millisecond), 500*time.Millisecond)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.State != runtime.ActivityStateActive {
+		if message.MessageSubscription().State != runtime.ActivityStateActive {
 			continue
 		}
-		err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 

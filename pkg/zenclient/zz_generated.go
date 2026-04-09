@@ -790,7 +790,7 @@ type CompleteJobJSONBody struct {
 
 // PublishMessageJSONBody defines parameters for PublishMessage.
 type PublishMessageJSONBody struct {
-	CorrelationKey string                  `json:"correlationKey"`
+	CorrelationKey *string                 `json:"correlationKey,omitempty"`
 	MessageName    string                  `json:"messageName"`
 	Variables      *map[string]interface{} `json:"variables,omitempty"`
 }

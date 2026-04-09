@@ -151,10 +151,10 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	for _, sub := range subscriptions {
-		sub.State = runtime.ActivityStateTerminated
+		sub.MessageSubscription().State = runtime.ActivityStateTerminated
 		err = batch.SaveMessageSubscription(ctx, sub)
 		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.MessageSubscription().Key, err)
 		}
 	}
 
@@ -254,10 +254,10 @@ func (engine *Engine) terminateExecutionTokens(
 					return nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", activeToken.Key, err)
 				}
 				for _, sub := range subscriptions {
-					sub.State = runtime.ActivityStateTerminated
+					sub.MessageSubscription().State = runtime.ActivityStateTerminated
 					err = batch.SaveMessageSubscription(ctx, sub)
 					if err != nil {
-						return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+						return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.MessageSubscription().Key, err)
 					}
 				}
 
@@ -986,8 +986,8 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	updatedTokens := make([]runtime.ExecutionToken, 0)
 	processPlainEvent := true
-	if len(endEvent.EvenDefinitions) > 0 {
-		for _, endEventDefinition := range endEvent.EvenDefinitions {
+	if len(endEvent.EventDefinitions) > 0 {
+		for _, endEventDefinition := range endEvent.EventDefinitions {
 			switch endEventDefinition.(type) {
 			case bpmn20.TTerminateEventDefinition:
 				currentToken.State = runtime.TokenStateCompleted
@@ -1102,7 +1102,7 @@ func (engine *Engine) handleMessageEndEvent(
 func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
 ) (updatedTokens []runtime.ExecutionToken, err error) {
-	for _, endEventDefinition := range endEvent.EvenDefinitions {
+	for _, endEventDefinition := range endEvent.EventDefinitions {
 		switch endEventDefinition.(type) {
 		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
 		// end event definitions completions twice on continuation

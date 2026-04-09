@@ -503,13 +503,13 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
-func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	var res bpmnruntime.MessageSubscription
 	res, ok := mem.MessageSubscriptions[key]
 	if !ok {
 		return res, storage.ErrNotFound
 	}
-	if res.State == state {
+	if res.MessageSubscription().State == state {
 		return res, nil
 	}
 	return res, storage.ErrNotFound
@@ -519,7 +519,7 @@ func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, 
 func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error) {
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.Token.Key == tokenKey && sub.State == state {
+		if sub.Token.Key == tokenKey && sub.MessageSubscription().State == state {
 			res = append(res, sub)
 		}
 	}
@@ -532,7 +532,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 		if sub.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if sub.GetState() != state {
+		if sub.MessageSubscription().State != state {
 			continue
 		}
 		res = append(res, sub)
@@ -540,20 +540,17 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
-func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
-	res := make([]bpmnruntime.MessageSubscription, 0)
+func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	var res bpmnruntime.MessageSubscription
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.GetState() != bpmnruntime.ActivityStateActive {
+		if sub.MessageSubscription().State != state {
 			continue
 		}
-		if sub.Name == name && sub.CorrelationKey == correlationKey {
-			res = append(res, sub)
+		if sub.MessageSubscription().Name == name && sub.CorrelationKey == correlationKey {
+			res = sub
 		}
 	}
-	if len(res) == 0 {
-		return 0, storage.ErrNotFound
-	}
-	return res[0].Key, nil
+	return res, nil
 }
 
 func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
@@ -591,14 +588,16 @@ var _ storage.MessageStorageWriter = &Storage{}
 
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	for _, message := range mem.MessageSubscriptions {
-		if subscription.Key == message.Key {
+		if subscription.MessageSubscription().Key == message.MessageSubscription().Key {
 			break
 		}
-		if message.State == bpmnruntime.ActivityStateActive && message.Name == subscription.Name && message.CorrelationKey == subscription.CorrelationKey {
+		if message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+			message.MessageSubscription().Name == subscription.MessageSubscription().Name &&
+			message.CorrelationKey == subscription.CorrelationKey {
 			return fmt.Errorf("active message with the same correlationKey and name already exists")
 		}
 	}
-	mem.MessageSubscriptions[subscription.GetKey()] = subscription
+	mem.MessageSubscriptions[subscription.MessageSubscription().Key] = subscription
 	return nil
 }
 

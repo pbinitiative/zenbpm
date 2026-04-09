@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 
@@ -66,9 +67,41 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		}
 		processInfo.Version = latest.Version + 1
 	}
-	err = engine.persistence.SaveProcessDefinition(ctx, processInfo)
+
+	batch := engine.persistence.NewBatch()
+
+	err = batch.SaveProcessDefinition(ctx, processInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save process definition: %w", err)
+	}
+
+	for _, startEvent := range processInfo.Definitions.Process.StartEvents {
+		for _, event := range startEvent.EventDefinitions {
+			switch event := event.(type) {
+			case bpmn20.TMessageEventDefinition:
+				ms := &runtime.DefinitionMessageSubscription{
+					MessageSubscriptionData: runtime.MessageSubscriptionData{
+						Key:       engine.generateKey(),
+						ElementId: startEvent.GetId(),
+						Name:      event.Name,
+						State:     runtime.ActivityStateActive,
+						CreatedAt: time.Now(),
+					},
+					ProcessDefinitionKey: processInfo.Key,
+				}
+				err = batch.SaveMessageSubscription(ctx, ms)
+				if err != nil {
+					return nil, fmt.Errorf("start type cannot be processed, failed to save new message subscription %+v: %w", ms, err)
+				}
+			default:
+				return nil, fmt.Errorf("start type cannot be processed, unknown event type: %T", event)
+			}
+		}
+	}
+
+	err = batch.Flush(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to flush batch: %w", err)
 	}
 
 	engine.exportNewProcessEvent(processInfo, xmlData, hex.EncodeToString(md5sum[:]))

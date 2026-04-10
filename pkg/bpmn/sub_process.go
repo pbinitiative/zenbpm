@@ -299,8 +299,8 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, element bpmn20.Activity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	startingFlowNodes := []bpmn20.FlowNode{activity.Element()}
 
-	tmpVariableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, tmpVariableHolder.LocalVariables())
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, variableHolder.LocalVariables())
 	if err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate inputCollection expression %T: %w", element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, err)
 	}
@@ -337,7 +337,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		batch,
 		instance.ProcessInstance().Definition,
 		startingFlowNodes,
-		runtime.NewVariableHolder(nil, map[string]any{}),
+		variableHolder,
 		&runtime.MultiInstanceInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,

@@ -122,7 +122,7 @@ func TestRegisteredHandlerCanMutateVariableContext(t *testing.T) {
 
 	v := engineStorage.ProcessInstances[instance.ProcessInstance().Key]
 	// then
-	assert.NotNil(t, v, "Process isntance needs to be present")
+	assert.NotNil(t, v, "Process instance needs to be present")
 	assert.Equal(t, "newVal", v.ProcessInstance().VariableHolder.GetLocalVariable(variableName))
 }
 

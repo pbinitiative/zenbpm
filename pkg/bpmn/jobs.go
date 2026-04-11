@@ -15,9 +15,16 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 )
 
-func (engine *Engine) createInternalTask(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (state runtime.ActivityState, retErr error) {
-	jobVarHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+func (engine *Engine) createInternalTask(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.InternalTask,
+	currentToken runtime.ExecutionToken,
+	jobVarHolder runtime.VariableHolder,
+	multiInstanceVariableContext map[string]interface{},
+) (state runtime.ActivityState, retErr error) {
+	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
 	job := runtime.Job{

@@ -1327,12 +1327,20 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
+	multiInstanceSubprocess := subProcesses[0]
+	assert.Equal(t, runtime.ProcessTypeMultiInstance, multiInstanceSubprocess.Type())
+	// verify that the multi instance subprocess contains all mapped input variables in its scope.
+	assert.ElementsMatch(t, []string{"test1", "test2", "test3"}, multiInstanceSubprocess.ProcessInstance().VariableHolder.GetLocalVariable("testInputCollection"))
+	// verify that the multi instance subprocess does not contain multi instance "item" variable
+	assert.Nil(t, multiInstanceSubprocess.ProcessInstance().VariableHolder.GetLocalVariable("item"))
+	// verify that the root process instance also does not contain the multi instance "item" variable
+	assert.Nil(t, instance.ProcessInstance().VariableHolder.GetLocalVariable("item"))
 
 	counter := 0
 	assert.Eventually(t, func() bool {
-		subprocess, testErr := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), subProcesses[0].ProcessInstance().Key)
+		multiInstanceSubprocessLoaded, testErr := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), multiInstanceSubprocess.ProcessInstance().Key)
 		assert.NoError(t, testErr)
-		if subprocess.ProcessInstance().State == runtime.ActivityStateCompleted {
+		if multiInstanceSubprocessLoaded.ProcessInstance().State == runtime.ActivityStateCompleted {
 			return true
 		}
 		//Logging the flaky tests
@@ -1354,7 +1362,7 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 	}, 5000*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
-	assert.Equal(t, runtime.ActivityStateCompleted, subProcesses[0].ProcessInstance().State)
+	assert.Equal(t, runtime.ActivityStateCompleted, multiInstanceSubprocess.ProcessInstance().State)
 }
 
 func TestMultiInstanceParallelSubProcessCorrelateBoundaryEventFailsToCreateParallelInstancesWithSameMessage(t *testing.T) {

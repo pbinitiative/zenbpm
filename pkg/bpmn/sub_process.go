@@ -16,10 +16,17 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TCallActivity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+func (engine *Engine) createCallActivity(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TCallActivity,
+	currentToken runtime.ExecutionToken,
+	callActivityVarHolder runtime.VariableHolder,
+	multiInstanceVariableContext map[string]interface{},
+) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
-	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
 	batch.SaveFlowElementInstance(ctx,
@@ -29,7 +36,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch
 			ElementId:          element.GetId(),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     variableHolder.LocalVariables(),
+			InputVariables:     callActivityVarHolder.LocalVariables(),
 			OutputVariables:    nil,
 		},
 	)
@@ -43,7 +50,7 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch
 		ctx,
 		batch,
 		&processDefinition,
-		variableHolder,
+		callActivityVarHolder,
 		&runtime.CallActivityInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
@@ -64,9 +71,16 @@ func (engine *Engine) createCallActivity(ctx context.Context, batch *EngineBatch
 	return runtime.ActivityStateActive, nil
 }
 
-func (engine *Engine) createSubProcess(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TSubProcess, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
-	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+func (engine *Engine) createSubProcess(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TSubProcess,
+	currentToken runtime.ExecutionToken,
+	subProcessVariableHolder runtime.VariableHolder,
+	multiInstanceVariableContext map[string]interface{},
+) (runtime.ActivityState, error) {
+	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
 	}
@@ -78,7 +92,7 @@ func (engine *Engine) createSubProcess(ctx context.Context, batch *EngineBatch, 
 			ElementId:          element.GetId(),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     variableHolder.LocalVariables(),
+			InputVariables:     subProcessVariableHolder.LocalVariables(),
 			OutputVariables:    nil,
 		},
 	)
@@ -94,7 +108,7 @@ func (engine *Engine) createSubProcess(ctx context.Context, batch *EngineBatch, 
 		batch,
 		instance.ProcessInstance().Definition,
 		startingFlowNodes,
-		variableHolder,
+		subProcessVariableHolder,
 		&runtime.SubProcessInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
@@ -186,24 +200,31 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		currentToken.State = runtime.TokenStateCompleted
 		return []runtime.ExecutionToken{currentToken}, err
 	}
-	instance.ProcessInstance().VariableHolder.SetLocalVariable(element.GetMultiInstance().LoopCharacteristics.InputElementName, inputCollection[multiInstancesAlreadyStarted])
+	multiInstanceVariableContext := make(map[string]interface{})
+	multiInstanceVariableContext[element.GetMultiInstance().LoopCharacteristics.InputElementName] = inputCollection[multiInstancesAlreadyStarted]
 
 	var activityResult runtime.ActivityState
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
 	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
 	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
 	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TSubProcess:
-		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
+		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
 	default:
 		return []runtime.ExecutionToken{}, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
 	}
@@ -228,8 +249,8 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 }
 
 func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, element bpmn20.Activity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
-	tmpVariableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, tmpVariableHolder.LocalVariables())
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, variableHolder.LocalVariables())
 	if err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate inputCollection expression %T: %w", element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, err)
 	}
@@ -268,12 +289,12 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 		startingFlowNodes = append(startingFlowNodes, activity.Element())
 	}
 
-	paralelMultiInstance, tokens, err := engine.createInstanceWithStartingElements(
+	parallelMultiInstance, tokens, err := engine.createInstanceWithStartingElements(
 		ctx,
 		batch,
 		instance.ProcessInstance().Definition,
 		startingFlowNodes,
-		runtime.NewVariableHolder(nil, map[string]interface{}{}),
+		variableHolder,
 		&runtime.MultiInstanceInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
@@ -286,9 +307,9 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 
 	batch.AddPostFlushAction(ctx, func() {
 		go func() {
-			err := engine.RunProcessInstance(engine.context, paralelMultiInstance, tokens)
+			err := engine.RunProcessInstance(engine.context, parallelMultiInstance, tokens)
 			if err != nil {
-				engine.logger.Error(fmt.Sprintf("failed to sub parallel multiInstance instance %d: %s", paralelMultiInstance.ProcessInstance().Key, err.Error()))
+				engine.logger.Error(fmt.Sprintf("failed to sub parallel multiInstance instance %d: %s", parallelMultiInstance.ProcessInstance().Key, err.Error()))
 			}
 		}()
 	})
@@ -299,8 +320,8 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, element bpmn20.Activity, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
 	startingFlowNodes := []bpmn20.FlowNode{activity.Element()}
 
-	tmpVariableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, tmpVariableHolder.LocalVariables())
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	evaluatedInputCollection, err := engine.evaluateExpression(element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, variableHolder.LocalVariables())
 	if err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate inputCollection expression %T: %w", element.GetMultiInstance().LoopCharacteristics.InputCollectionExpression, err)
 	}
@@ -337,7 +358,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		batch,
 		instance.ProcessInstance().Definition,
 		startingFlowNodes,
-		runtime.NewVariableHolder(nil, map[string]any{}),
+		variableHolder,
 		&runtime.MultiInstanceInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,

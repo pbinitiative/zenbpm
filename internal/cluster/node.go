@@ -428,8 +428,13 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	partitionIds := sortedPartitionIds(clusterState)
 	group, groupCtx := errgroup.WithContext(ctx)
 
+	// Use the first sorted partition deterministically for timer start event registration.
+	// This ensures that retried deployments always pick the same partition, avoiding
+	// duplicate timers across partitions.
+	timerStartEventPartitionId := partitionIds[0]
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
+		registerForPotentialTimerStartEvents := timerStartEventPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
@@ -439,6 +444,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 				definitionKey.Int64(),
 				data,
 				resourceName,
+				registerForPotentialTimerStartEvents,
 			)
 		})
 	}
@@ -456,6 +462,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	definitionKey int64,
 	data []byte,
 	resourceName string,
+	registerForPotentialTimerStartEvents bool,
 ) error {
 
 	partitionLeader := clusterState.Nodes[partitionLeaderId]
@@ -465,9 +472,10 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:          ptr.To(definitionKey),
-		Data:         data,
-		ResourceName: &resourceName,
+		Key:                                  ptr.To(definitionKey),
+		Data:                                 data,
+		ResourceName:                         &resourceName,
+		RegisterForPotentialTimerStartEvents: &registerForPotentialTimerStartEvents,
 	})
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to deploy process definition failed: %w", err))

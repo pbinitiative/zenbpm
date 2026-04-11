@@ -49,6 +49,10 @@ type Engine struct {
 	feelRuntime    script.FeelRuntime
 	jsRuntime      script.JsRuntime
 
+	// pollTimerDelay is the interval between timer polling cycles.
+	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
+	pollTimerDelay time.Duration
+
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
 }
@@ -123,6 +127,15 @@ func EngineWithJs(jsRuntime script.JsRuntime) EngineOption {
 func EngineWithLogger(logger hclog.Logger) EngineOption {
 	return func(engine *Engine) {
 		engine.logger = logger
+	}
+}
+
+// EngineWithPollTimerDelay sets the interval between timer polling cycles.
+// If not set, it defaults to 10 seconds. The value can also be overridden via the
+// POLL_TIMER_DELAY_SECONDS environment variable.
+func EngineWithPollTimerDelay(d time.Duration) EngineOption {
+	return func(engine *Engine) {
+		engine.pollTimerDelay = d
 	}
 }
 
@@ -394,6 +407,13 @@ func (engine *Engine) createInstance(
 		executionTokens = append(executionTokens, token)
 		batch.SaveToken(ctx, token)
 	}
+
+	// Create event sub process triggers for event subprocesses of the process instance
+	err = engine.createEventSubProcessTriggers(ctx, batch, instance, &process.Definitions.Process.TFlowElementsContainer)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create event subprocess subscriptions: %w", err)
+	}
+
 	return instance, executionTokens, nil
 }
 
@@ -447,6 +467,115 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 
 	return instance, executionTokens, nil
+}
+
+// createEventSubProcessTriggers scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
+// For each event subprocess that has only 1 StartEvent it creates a trigger to start that event sub process
+func (engine *Engine) createEventSubProcessTriggers(
+	ctx context.Context,
+	batch storage.Batch,
+	instance runtime.ProcessInstance,
+	container *bpmn20.TFlowElementsContainer,
+) error {
+	eventSubProcesses := bpmn20.FindEventSubProcesses(container)
+	for _, eventSubProcess := range eventSubProcesses {
+		if len(eventSubProcess.StartEvents) != 1 { // event sub process must have exactly one start event according the bpmn 2.0 spec
+			continue
+		}
+		startEvent := eventSubProcess.StartEvents[0]
+		for _, startEventDefinition := range startEvent.EventDefinitions {
+			switch startEventDefinition.(type) {
+			case bpmn20.TTimerEventDefinition:
+				err := engine.createTimerStartEventsTimers(
+					ctx,
+					batch,
+					eventSubProcess.TProcess,
+					instance.ProcessInstance().GetProcessInfo().Key,
+					&instance,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to create timers for timer start event %s of event subprocess %s: %w",
+						startEvent.GetId(), eventSubProcess.GetId(), err)
+				}
+			case bpmn20.TMessageEventDefinition:
+				// ... handle message start event
+			default:
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+/*
+Creates timers for:
+
+  - TimerStartEvents of the main process definition. Those timers are created when the process definition is deployed or
+    when the engine starts up, and they are responsible for creation and starting process instances when they fire.
+
+  - TimerStartEvents of event sub processes. Those timers are created when a process instance is created, and
+    they are responsible for starting an event sub process instance when they fire.
+*/
+func (engine *Engine) createTimerStartEventsTimers(
+	ctx context.Context,
+	batch storage.Batch,
+	process bpmn20.TProcess,
+	processDefinitionKey int64,
+	processInstance *runtime.ProcessInstance,
+) error {
+	for _, startEvent := range process.StartEvents {
+		for _, startEventDefinition := range startEvent.EventDefinitions {
+			if timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition); ok {
+				switch {
+				case timerStartEventDefinition.TimeDate != nil:
+					startTime, err := findStartTime(timerStartEventDefinition)
+					if err != nil {
+						return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					now := time.Now()
+					var processInstanceKey *int64
+					if processInstance != nil {
+						processInstanceKey = &(*processInstance).ProcessInstance().Key
+					}
+					timer := runtime.Timer{
+						ElementId:            startEvent.GetId(),
+						Key:                  engine.generateKey(),
+						ElementInstanceKey:   nil,
+						ProcessDefinitionKey: processDefinitionKey,
+						ProcessInstanceKey:   processInstanceKey,
+						TimerState:           runtime.TimerStateCreated,
+						CreatedAt:            now,
+						DueAt:                startTime,
+						Duration:             startTime.Sub(now),
+						Token:                nil,
+					}
+					err = batch.SaveTimer(ctx, timer)
+					if err != nil {
+						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					engine.timerManager.registerTimer(timer)
+				case timerStartEventDefinition.TimeDuration != nil:
+					if processInstance == nil {
+						return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
+							processDefinitionKey, startEvent.GetId())
+					}
+					timer, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
+					if err != nil {
+						return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					err = batch.SaveTimer(ctx, *timer)
+					if err != nil {
+						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (engine *Engine) getExecutionTokenActivity(
@@ -986,8 +1115,8 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	updatedTokens := make([]runtime.ExecutionToken, 0)
 	processPlainEvent := true
-	if len(endEvent.EvenDefinitions) > 0 {
-		for _, endEventDefinition := range endEvent.EvenDefinitions {
+	if len(endEvent.EventDefinitions) > 0 {
+		for _, endEventDefinition := range endEvent.EventDefinitions {
 			switch endEventDefinition.(type) {
 			case bpmn20.TTerminateEventDefinition:
 				currentToken.State = runtime.TokenStateCompleted
@@ -1102,7 +1231,7 @@ func (engine *Engine) handleMessageEndEvent(
 func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
 ) (updatedTokens []runtime.ExecutionToken, err error) {
-	for _, endEventDefinition := range endEvent.EvenDefinitions {
+	for _, endEventDefinition := range endEvent.EventDefinitions {
 		switch endEventDefinition.(type) {
 		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
 		// end event definitions completions twice on continuation

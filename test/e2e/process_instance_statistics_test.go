@@ -1,8 +1,10 @@
 package e2e
 
 import (
+	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
@@ -110,20 +112,38 @@ func TestGetProcessInstanceElementStatisticsMultiInstance(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("parallel multi-instance shows body tokens not scope token", func(t *testing.T) {
+		testInputCollection := []string{"a", "b", "c"}
+		testInputCollectionLen := len(testInputCollection)
 		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{
-			"testInputCollection": []string{"a", "b"},
+			"testInputCollection": testInputCollection,
 		})
 		require.NoError(t, err)
 		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+		var lastError error
+		var activeByElement map[string]int
 
-		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		require.NotNil(t, resp.JSON200)
+		ok := assert.Eventually(t, func() bool {
+			lastError = nil
+			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+			if err != nil {
+				lastError = err
+				return false
+			}
+			if resp.JSON200 == nil {
+				lastError = errors.New("JSON200 is nil")
+				return false
+			}
 
-		activeByElement := collectActiveByElement(resp.JSON200)
-		assert.Equal(t, 2, activeByElement["Activity_0rae016"],
-			"should count child body tokens, not the parent scope token")
+			result := collectActiveByElement(resp.JSON200)
+			activeByElement = result
+			return result["Activity_0rae016"] == testInputCollectionLen
+		}, 5*time.Second, 100*time.Millisecond, "should count child body tokens, not the parent scope token")
+		if !ok {
+			t.Logf("lastError=%v, activeTokenCount=%d, expectedTokenCount=%d",
+				lastError,
+				activeByElement["Activity_0rae016"],
+				testInputCollectionLen)
+		}
 	})
 
 	t.Run("sequential multi-instance shows body token not scope token", func(t *testing.T) {

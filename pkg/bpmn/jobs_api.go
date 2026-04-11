@@ -147,7 +147,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 		if task == nil {
 			return nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
 		}
-		if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression); err != nil {
+		if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression, nil); err != nil {
 			job.State = runtime.ActivityStateFailed
 			perr := engine.persistence.SaveJob(ctx, job)
 			if perr != nil {

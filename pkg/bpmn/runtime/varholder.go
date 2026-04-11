@@ -54,12 +54,22 @@ func (vh *VariableHolder) SetLocalVariables(variables map[string]interface{}) {
 
 // EvaluateAndSetMappingsToLocalVariables sets local variables according to mappings
 // uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
+// supports the usage of additionalVariableContext for cases when it is not and can't be the part of vh.parent.LocalVariables() context
+func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(
+	mappings []extensions.TIoMapping,
+	evaluateExpression func(expression string, variableContext ...map[string]interface{}) (interface{}, error),
+	additionalVariableContext *map[string]interface{},
+) error {
 	if vh.parent == nil {
 		return nil
 	}
 	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, vh.parent.LocalVariables())
+		var additionalContext map[string]interface{}
+		if additionalVariableContext != nil {
+			additionalContext = *additionalVariableContext
+		}
+		mergedContext := mergeLocalVariablesWithOutputVariables(vh.parent.LocalVariables(), additionalContext)
+		evalResult, err := evaluateExpression(mapping.Source, mergedContext)
 		if err != nil {
 			return err
 		}
@@ -86,7 +96,7 @@ func (vh *VariableHolder) PropagateVariables(variables map[string]interface{}) {
 
 // PropagateOutputVariablesToParent propagates local variables to the parent VariableHolder according to mappings
 // uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-func (vh *VariableHolder) PropagateOutputVariablesToParent(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) (map[string]any, error) {
+func (vh *VariableHolder) PropagateOutputVariablesToParent(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext ...map[string]interface{}) (interface{}, error)) (map[string]any, error) {
 	if vh.parent == nil {
 		return nil, nil
 	}

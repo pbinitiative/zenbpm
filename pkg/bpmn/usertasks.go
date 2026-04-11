@@ -7,7 +7,15 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
-func (engine *Engine) createUserTask(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element bpmn20.InternalTask, currentToken runtime.ExecutionToken) (runtime.ActivityState, error) {
+func (engine *Engine) createUserTask(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.InternalTask,
+	currentToken runtime.ExecutionToken,
+	userTaskVarHolder runtime.VariableHolder,
+	multiInstanceVariableContext map[string]interface{},
+) (runtime.ActivityState, error) {
 	// TODO consider different handlers, since Service Tasks are different in their definition than user tasks
-	return engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	return engine.createInternalTask(ctx, batch, instance, element, currentToken, userTaskVarHolder, multiInstanceVariableContext)
 }

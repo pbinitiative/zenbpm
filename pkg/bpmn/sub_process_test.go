@@ -1327,6 +1327,11 @@ func TestMultiInstanceParallelSubProcessStartsAndCompletes(t *testing.T) {
 	subProcesses, err := bpmnEngine.persistence.FindProcessInstancesByParentExecutionTokenKey(t.Context(), tokens[0].Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(subProcesses))
+	assert.Equal(t, runtime.ProcessTypeMultiInstance, subProcesses[0].Type())
+	// verify that the multi instance subprocess contains all mapped input variables in its scope.
+	assert.Equal(t, []string{"test1", "test2", "test3"}, subProcesses[0].ProcessInstance().VariableHolder.GetLocalVariable("testInputCollection"))
+	// verify that the multi instance subprocess does not contain multi instance "item" variable
+	assert.Nil(t, subProcesses[0].ProcessInstance().VariableHolder.GetLocalVariable("item"))
 
 	counter := 0
 	assert.Eventually(t, func() bool {

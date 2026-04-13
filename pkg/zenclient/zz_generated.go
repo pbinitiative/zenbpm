@@ -269,8 +269,14 @@ type ElementStatisticCounts struct {
 	// ActiveCount Number of active element instances
 	ActiveCount int `json:"activeCount"`
 
+	// CompletedCount Number of completed element instances
+	CompletedCount int `json:"completedCount"`
+
 	// IncidentCount Number of incidents on this element
 	IncidentCount int `json:"incidentCount"`
+
+	// TerminatedCount Number of terminated (canceled) element instances
+	TerminatedCount int `json:"terminatedCount"`
 }
 
 // ElementStatisticsPartitions defines model for ElementStatisticsPartitions.

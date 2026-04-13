@@ -358,74 +358,111 @@ func (q *Queries) FindProcessesByParentExecutionToken(ctx context.Context, paren
 
 const getElementStatisticsByProcessInstanceKey = `-- name: GetElementStatisticsByProcessInstanceKey :many
 WITH relevant_instances AS (
-    -- The given instance itself
     SELECT ?1 AS "key"
     UNION ALL
-    -- Plus any active multi-instance child process instances
+    -- Multi-instance child processes (all states: active, completed, terminated)
+    -- so that completed iteration tokens remain visible for completedCount
     SELECT pi_child.key
     FROM process_instance AS pi_child
-             JOIN execution_token AS et ON pi_child.parent_process_execution_token = et.key
+    JOIN execution_token AS et ON pi_child.parent_process_execution_token = et.key
     WHERE et.process_instance_key = ?1
-      AND pi_child.process_type = 4  -- ProcessTypeMultiInstance
-      AND pi_child.state = 1         -- Active
+      AND pi_child.process_type = 4
 ),
 active_tokens AS (
     SELECT
         et.element_id,
         COUNT(*) AS active_count,
-        0         AS incident_count
-    FROM
-        execution_token AS et
-    WHERE
-        et.process_instance_key IN (SELECT "key" FROM relevant_instances)
-        AND et.state IN (1, 2) -- TokenStateRunning, TokenStateWaiting
-        AND NOT EXISTS (
-            SELECT 1 FROM process_instance AS child
-            WHERE child.parent_process_execution_token = et.key
-              AND child.process_type = 4
-              AND child.state = 1
-        )
-    GROUP BY
-        et.element_id
+        0         AS incident_count,
+        0         AS completed_count,
+        0         AS terminated_count
+    FROM execution_token AS et
+    WHERE et.process_instance_key IN (SELECT "key" FROM relevant_instances)
+      AND et.state IN (1, 2)
+      AND NOT EXISTS (
+          SELECT 1 FROM process_instance AS child
+          WHERE child.parent_process_execution_token = et.key
+            AND child.process_type = 4
+            AND child.state = 1
+      )
+    GROUP BY et.element_id
 ),
 active_incidents AS (
     SELECT
         i.element_id,
         0         AS active_count,
-        COUNT(*) AS incident_count
-    FROM
-        incident AS i
-    WHERE
-        i.process_instance_key IN (SELECT "key" FROM relevant_instances)
-        AND i.resolved_at IS NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM process_instance AS child
-            WHERE child.parent_process_execution_token = i.execution_token
-              AND child.process_type = 4
-              AND child.state = 1
-        )
-    GROUP BY
-        i.element_id
+        COUNT(*) AS incident_count,
+        0         AS completed_count,
+        0         AS terminated_count
+    FROM incident AS i
+    WHERE i.process_instance_key IN (SELECT "key" FROM relevant_instances)
+      AND i.resolved_at IS NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM process_instance AS child
+          WHERE child.parent_process_execution_token = i.execution_token
+            AND child.process_type = 4
+            AND child.state = 1
+      )
+    GROUP BY i.element_id
+),
+completed_tokens AS (
+    -- Counts tokens that completed in-place (state=3).
+    -- This covers: multi-instance body iterations (token stays at the activity when done)
+    -- and end events (token stays at the end event when the process finishes).
+    -- Scope tokens (those that spawned child processes) are excluded to avoid
+    -- double-counting alongside the body iteration tokens.
+    SELECT
+        et.element_id,
+        0         AS active_count,
+        0         AS incident_count,
+        COUNT(*) AS completed_count,
+        0         AS terminated_count
+    FROM execution_token AS et
+    WHERE et.process_instance_key IN (SELECT "key" FROM relevant_instances)
+      AND et.state = 3
+      AND NOT EXISTS (
+          SELECT 1 FROM process_instance AS child
+          WHERE child.parent_process_execution_token = et.key
+            AND child.process_type = 4
+      )
+    GROUP BY et.element_id
+),
+terminated_tokens AS (
+    SELECT
+        et.element_id,
+        0         AS active_count,
+        0         AS incident_count,
+        0         AS completed_count,
+        COUNT(*) AS terminated_count
+    FROM execution_token AS et
+    WHERE et.process_instance_key IN (SELECT "key" FROM relevant_instances)
+      AND et.state = 4
+    GROUP BY et.element_id
 ),
 combined AS (
-    SELECT element_id, active_count, incident_count FROM active_tokens
+    SELECT element_id, active_count, incident_count, completed_count, terminated_count FROM active_tokens
     UNION ALL
-    SELECT element_id, active_count, incident_count FROM active_incidents
+    SELECT element_id, active_count, incident_count, completed_count, terminated_count FROM active_incidents
+    UNION ALL
+    SELECT element_id, active_count, incident_count, completed_count, terminated_count FROM completed_tokens
+    UNION ALL
+    SELECT element_id, active_count, incident_count, completed_count, terminated_count FROM terminated_tokens
 )
 SELECT
     element_id,
-    CAST(SUM(active_count)   AS INTEGER) AS active_count,
-    CAST(SUM(incident_count) AS INTEGER) AS incident_count
-FROM
-    combined
-GROUP BY
-    element_id
+    CAST(SUM(active_count)     AS INTEGER) AS active_count,
+    CAST(SUM(incident_count)   AS INTEGER) AS incident_count,
+    CAST(SUM(completed_count)  AS INTEGER) AS completed_count,
+    CAST(SUM(terminated_count) AS INTEGER) AS terminated_count
+FROM combined
+GROUP BY element_id
 `
 
 type GetElementStatisticsByProcessInstanceKeyRow struct {
-	ElementID     string `json:"element_id"`
-	ActiveCount   int64  `json:"active_count"`
-	IncidentCount int64  `json:"incident_count"`
+	ElementID       string `json:"element_id"`
+	ActiveCount     int64  `json:"active_count"`
+	IncidentCount   int64  `json:"incident_count"`
+	CompletedCount  int64  `json:"completed_count"`
+	TerminatedCount int64  `json:"terminated_count"`
 }
 
 func (q *Queries) GetElementStatisticsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]GetElementStatisticsByProcessInstanceKeyRow, error) {
@@ -437,7 +474,13 @@ func (q *Queries) GetElementStatisticsByProcessInstanceKey(ctx context.Context, 
 	items := []GetElementStatisticsByProcessInstanceKeyRow{}
 	for rows.Next() {
 		var i GetElementStatisticsByProcessInstanceKeyRow
-		if err := rows.Scan(&i.ElementID, &i.ActiveCount, &i.IncidentCount); err != nil {
+		if err := rows.Scan(
+			&i.ElementID,
+			&i.ActiveCount,
+			&i.IncidentCount,
+			&i.CompletedCount,
+			&i.TerminatedCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

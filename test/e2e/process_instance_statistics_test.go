@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,6 +103,96 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 
 		_, totalIncidents := sumElementStatistics(resp.JSON200)
 		assert.Equal(t, totalIncidents, 1, "should have exact one incident")
+	})
+}
+
+func TestGetProcessInstanceElementStatisticsCompletedAndTerminated(t *testing.T) {
+	t.Run("completedCount equals number of finished parallel multi-instance iterations", func(t *testing.T) {
+		definition, err := deployGetUniqueDefinition(t, "multi_instance_parallel_service_task.bpmn")
+		require.NoError(t, err)
+
+		testInputCollection := []string{"a", "b", "c"}
+		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{
+			"testInputCollection": testInputCollection,
+		})
+		require.NoError(t, err)
+		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
+
+		// wait until all 3 body tokens are active
+		require.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+			return err == nil && resp.JSON200 != nil &&
+				resp.JSON200.Partitions[0].Items["Activity_0rae016"].ActiveCount == len(testInputCollection)
+		}, 5*time.Second, 50*time.Millisecond)
+
+		// complete all 3 jobs one by one
+		for range testInputCollection {
+			jobs, err := readWaitingJobs(t, "TestType")
+			require.NoError(t, err)
+			require.NotEmpty(t, jobs.Partitions[0].Items)
+			err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{})
+			require.NoError(t, err)
+		}
+
+		// after all iterations complete, completedCount should equal the collection length
+		var stats *zenclient.ElementStatisticsPartitions
+		require.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+			if err != nil || resp.JSON200 == nil {
+				return false
+			}
+			stats = resp.JSON200
+			return stats.Partitions[0].Items["Activity_0rae016"].CompletedCount == len(testInputCollection)
+		}, 5*time.Second, 50*time.Millisecond,
+			"Activity_0rae016 completedCount should equal the number of iterations")
+
+		assert.Equal(t, 0, stats.Partitions[0].Items["Activity_0rae016"].ActiveCount)
+		assert.Equal(t, 0, stats.Partitions[0].Items["Activity_0rae016"].TerminatedCount)
+	})
+
+	t.Run("terminatedCount increases after instance is cancelled", func(t *testing.T) {
+		definition, err := deployGetUniqueDefinition(t, "service-task-input-output.bpmn")
+		require.NoError(t, err)
+
+		instance, err := createProcessInstance(t, ptr.To(definition.Key), map[string]any{"testVar": 1})
+		require.NoError(t, err)
+
+		// verify service-task-1 is active before cancel
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+		assert.Equal(t, 1, resp.JSON200.Partitions[0].Items["service-task-1"].ActiveCount)
+		assert.Equal(t, 0, resp.JSON200.Partitions[0].Items["service-task-1"].TerminatedCount)
+
+		_, err = app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+
+		// after cancellation the token should be counted as terminated
+		resp, err = app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+		assert.Equal(t, 0, resp.JSON200.Partitions[0].Items["service-task-1"].ActiveCount)
+		assert.Equal(t, 1, resp.JSON200.Partitions[0].Items["service-task-1"].TerminatedCount)
+		assert.Equal(t, 0, resp.JSON200.Partitions[0].Items["service-task-1"].CompletedCount)
+	})
+
+	t.Run("terminatedCount appears for token cancelled by terminate end event", func(t *testing.T) {
+		termDef, err := deployGetDefinition(t, "parallel_flow_with_terminate_end_task.bpmn", "parallel_flow_with_terminate_end_task")
+		require.NoError(t, err)
+
+		// process completes synchronously: the terminate end event fires immediately and
+		// cancels the parallel service task token before any job worker can pick it up
+		instance, err := createProcessInstance(t, ptr.To(termDef.Key), map[string]any{})
+		require.NoError(t, err)
+
+		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+		require.NoError(t, err)
+		require.NotNil(t, resp.JSON200)
+
+		// task-id was cancelled by the terminate end event
+		assert.Equal(t, 0, resp.JSON200.Partitions[0].Items["task-id"].ActiveCount)
+		assert.Equal(t, 1, resp.JSON200.Partitions[0].Items["task-id"].TerminatedCount,
+			"task-id token should be counted as terminated because the terminate end event cancelled it")
 	})
 }
 

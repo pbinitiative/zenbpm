@@ -1611,6 +1611,28 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 	}, nil
 }
 
+func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {
+	err := s.node.FailJob(ctx, request.JobKey, ptr.Deref(request.Body.ErrorCode, ""), ptr.Deref(request.Body.Variables, map[string]any{}))
+
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.FailJob502JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.FailJob400JSONResponse(zerr.ToApiError()), nil
+			case zenerr.NotFoundCode:
+				return public.FailJob404JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.FailJob500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.FailJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	return public.FailJob204Response{}, nil
+}
+
 func getRestJobState(state runtime.ActivityState) public.JobState {
 	switch state {
 	case runtime.ActivityStateActive:

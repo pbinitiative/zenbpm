@@ -806,8 +806,10 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 		items := make(public.ElementStatistic, len(partition.GetStatistics()))
 		for _, entry := range partition.GetStatistics() {
 			items[entry.GetElementId()] = public.ElementStatisticCounts{
-				ActiveCount:   int(entry.GetActiveCount()),
-				IncidentCount: int(entry.GetIncidentCount()),
+				ActiveCount:     int(entry.GetActiveCount()),
+				IncidentCount:   int(entry.GetIncidentCount()),
+				CompletedCount:  int(entry.GetCompletedCount()),
+				TerminatedCount: int(entry.GetTerminatedCount()),
 			}
 		}
 		result.Partitions[i] = public.PartitionElementStatistics{

@@ -56,7 +56,10 @@ func walkForUnsupportedEventDefinitions(element any) error {
 			if !fieldVal.IsNil() {
 				if u, ok := fieldVal.Interface().(TUnsupportedEventDefinition); ok {
 					elementName := bpmnElementName(val.Type().Name())
-					id := val.FieldByName("Id").String()
+					var id string
+					if idField := val.FieldByName("Id"); idField.IsValid() {
+						id = idField.String()
+					}
 					return fmt.Errorf("unsupported element configuration: %s id=%q has unsupported event definition '%s'",
 						elementName, id, u.Name)
 				}

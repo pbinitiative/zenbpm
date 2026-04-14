@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 func (definitions *TDefinitions) ResolveReferences() error {
@@ -12,6 +13,9 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	collectUnknownElements(&definitions.Process.TFlowElementsContainer, byType)
 	for name, ids := range byType {
 		return fmt.Errorf("unsupported element type '%s' (ids: %v): use supported elements only", name, ids)
+	}
+	if err := walkForUnsupportedEventDefinitions(&definitions.Process); err != nil {
+		return err
 	}
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)
@@ -26,6 +30,81 @@ func (definitions *TDefinitions) ResolveReferences() error {
 		// Check if the baseElement implements ResolvableReferences
 		if err = resolvable(&baseElementMap); err != nil {
 			return fmt.Errorf("failed to resolve references: %w", err)
+		}
+	}
+	if err := validateEventBasedGateways(&definitions.Process.TFlowElementsContainer); err != nil {
+		return err
+	}
+	return nil
+}
+
+var eventDefinitionIfaceType = reflect.TypeOf((*EventDefinition)(nil)).Elem()
+
+func walkForUnsupportedEventDefinitions(element any) error {
+	val := reflect.ValueOf(element)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if !val.IsValid() || val.Kind() != reflect.Struct {
+		return nil
+	}
+	for i := range val.NumField() {
+		fieldVal := val.Field(i)
+		fieldType := val.Type().Field(i)
+
+		if fieldVal.Kind() == reflect.Interface && fieldType.Type.Implements(eventDefinitionIfaceType) {
+			if !fieldVal.IsNil() {
+				if u, ok := fieldVal.Interface().(TUnsupportedEventDefinition); ok {
+					elementName := bpmnElementName(val.Type().Name())
+					id := val.FieldByName("Id").String()
+					return fmt.Errorf("unsupported element configuration: %s id=%q has unsupported event definition '%s'",
+						elementName, id, u.Name)
+				}
+			}
+			continue
+		}
+		if fieldVal.Kind() == reflect.Slice {
+			for j := range fieldVal.Len() {
+				el := fieldVal.Index(j)
+				if el.Kind() == reflect.Struct {
+					if err := walkForUnsupportedEventDefinitions(el.Addr().Interface()); err != nil {
+						return err
+					}
+				}
+			}
+		} else if fieldVal.Kind() == reflect.Struct {
+			if err := walkForUnsupportedEventDefinitions(fieldVal.Addr().Interface()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func bpmnElementName(typeName string) string {
+	if len(typeName) > 1 && typeName[0] == 'T' {
+		typeName = typeName[1:]
+	}
+	if len(typeName) == 0 {
+		return typeName
+	}
+	return strings.ToLower(typeName[:1]) + typeName[1:]
+}
+
+func validateEventBasedGateways(container *TFlowElementsContainer) error {
+	for _, gw := range container.EventBasedGateway {
+		for _, flow := range gw.GetOutgoingAssociation() {
+			if flow == nil {
+				continue
+			}
+			if _, ok := flow.GetTargetRef().(*TIntermediateCatchEvent); !ok {
+				return fmt.Errorf("unsupported element configuration: eventBasedGateway id=%q has non-IntermediateCatchEvent target '%s'", gw.GetId(), flow.GetTargetRef().GetId())
+			}
+		}
+	}
+	for i := range container.SubProcess {
+		if err := validateEventBasedGateways(&container.SubProcess[i].TFlowElementsContainer); err != nil {
+			return err
 		}
 	}
 	return nil

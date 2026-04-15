@@ -20,9 +20,9 @@ const _NodePartitionState_name = "NodePartitionStateErrorNodePartitionStateJoini
 var _NodePartitionState_index = [...]uint8{0, 23, 48, 73, 103, 132}
 
 func (i NodePartitionState) String() string {
-	i -= 1
-	if i < 0 || i >= NodePartitionState(len(_NodePartitionState_index)-1) {
-		return "NodePartitionState(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_NodePartitionState_index)-1 {
+		return "NodePartitionState(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _NodePartitionState_name[_NodePartitionState_index[i]:_NodePartitionState_index[i+1]]
+	return _NodePartitionState_name[_NodePartitionState_index[idx]:_NodePartitionState_index[idx+1]]
 }

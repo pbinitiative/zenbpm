@@ -638,7 +638,7 @@ func (engine *Engine) createBoundaryEventSubscriptions(ctx context.Context, batc
 				return err
 			}
 		default:
-			panic(fmt.Sprintf("unsupported BoundaryEvent %+v", be))
+			return fmt.Errorf("unsupported boundary event definition type %T for boundary event %q attached to element %q", be.EventDefinition, be.GetId(), be.AttachedToRef)
 		}
 	}
 
@@ -834,7 +834,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch *Engine
 				return resTokens, fmt.Errorf("failed to handle IntermediateCatchEvent: %w", err)
 			}
 		default:
-			panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", flow.GetTargetRef().GetId(), flow.GetTargetRef().GetType()))
+			return resTokens, fmt.Errorf("unsupported element after EventBasedGateway: id=%q, type=%T", flow.GetTargetRef().GetId(), flow.GetTargetRef())
 		}
 	}
 	return resTokens, nil
@@ -979,7 +979,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
-		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))
+		return nil, fmt.Errorf("unsupported IntermediateCatchEvent definition type %T for element %q", ice.EventDefinition, ice.GetId())
 	}
 }
 

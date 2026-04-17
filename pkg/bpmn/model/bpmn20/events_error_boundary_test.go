@@ -45,7 +45,7 @@ func TestParse_BusinessRuleTaskWithCatchallErrorBoundaryEvent(t *testing.T) {
 		assert.Fail(t, "Expected TErrorEventDefinition")
 	}
 
-	assert.Equal(t, "catch-all-errors", errorEventDefinition.Id)
+	assert.Equal(t, "catch-all-errors", ptr.Deref(errorEventDefinition.Id, ""))
 	assert.Nil(t, errorEventDefinition.ErrorRef)
 	assert.Equal(t, "", errorEventDefinition.Name)
 }

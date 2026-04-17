@@ -49,6 +49,7 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 		TEvent
 		TerminateEventDefinition TTerminateEventDefinition  `xml:"terminateEventDefinition"`
 		TMessageEventDefinition  TMessageEventDefinition    `xml:"messageEventDefinition"`
+		TErrorEventDefinition    TErrorEventDefinition      `xml:"errorEventDefinition"`
 		TaskDefinition           extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 		Input                    []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
 		Output                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
@@ -65,6 +66,11 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 	if tempStruct.TMessageEventDefinition.Id != nil {
 		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TMessageEventDefinition)
 		endEvent.TaskDefinition = tempStruct.TaskDefinition
+		endEvent.Input = tempStruct.Input
+		endEvent.Output = tempStruct.Output
+	}
+	if tempStruct.TErrorEventDefinition.Id != nil {
+		endEvent.EvenDefinitions = append(endEvent.EvenDefinitions, tempStruct.TErrorEventDefinition)
 		endEvent.Input = tempStruct.Input
 		endEvent.Output = tempStruct.Output
 	}
@@ -96,7 +102,7 @@ type TUnknownEventDefinition struct {
 
 type TUnsupportedEventDefinition struct {
 	Name string
-	Id string
+	Id   string
 }
 
 func (TUnsupportedEventDefinition) eventDefinition() {}
@@ -174,13 +180,13 @@ func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.
 func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
-		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
-		LinkEventDefinition     TLinkEventDefinition      `xml:"linkEventDefinition"`
+		MessageEventDefinition  TMessageEventDefinition    `xml:"messageEventDefinition"`
+		TimerEventDefinition    TTimerEventDefinition      `xml:"timerEventDefinition"`
+		LinkEventDefinition     TLinkEventDefinition       `xml:"linkEventDefinition"`
 		TaskDefinition          extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-		Input                   []extensions.TIoMapping   `xml:"extensionElements>ioMapping>input"`
-		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
-		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
+		Input                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+		Output                  []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+		UnknownEventDefinitions []TUnknownEventDefinition  `xml:",any"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -229,7 +235,7 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		CancellActivity         bool                      `xml:"cancelActivity,attr"`
 		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
 		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
-		ErrorEventDefinition   TErrorEventDefinition   `xml:"errorEventDefinition"`
+		ErrorEventDefinition    TErrorEventDefinition     `xml:"errorEventDefinition"`
 		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
 		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{CancellActivity: true}
@@ -243,7 +249,7 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition.Id != "":
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
-	case tempStruct.ErrorEventDefinition.Id != "":
+	case tempStruct.ErrorEventDefinition.Id != nil:
 		definitions.EventDefinition = tempStruct.ErrorEventDefinition
 	default:
 		for _, u := range tempStruct.UnknownEventDefinitions {
@@ -301,7 +307,7 @@ type TTimeDuration struct {
 }
 
 type TErrorEventDefinition struct {
-	Id       string  `xml:"id,attr"`
+	Id       *string `xml:"id,attr"`
 	Name     string  `xml:"name,attr"`
 	ErrorRef *string `xml:"errorRef,attr"`
 }

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_Process_a56e2ce9" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.0.0">
+  <bpmn:process id="nested_call_activity_error_end_event_root_catch_all" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_02zurb9</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:callActivity id="Activity_01fl3mz">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="nested_call_activity_error_end_event_middle" propagateAllChildVariables="false" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_02zurb9</bpmn:incoming>
+      <bpmn:outgoing>Flow_1j0dp8o</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:sequenceFlow id="Flow_02zurb9" sourceRef="StartEvent_1" targetRef="Activity_01fl3mz" />
+    <bpmn:endEvent id="root-should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_1j0dp8o</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1j0dp8o" sourceRef="Activity_01fl3mz" targetRef="root-should-not-happen-end" />
+    <bpmn:boundaryEvent id="Event_01dci9j" attachedToRef="Activity_01fl3mz">
+      <bpmn:outgoing>Flow_054m4do</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_1s15aua" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="root-handled-end" name="Handled end">
+      <bpmn:incoming>Flow_054m4do</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_054m4do" sourceRef="Event_01dci9j" targetRef="root-handled-end" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="nested_call_activity_error_end_event_root">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_1" bpmnElement="StartEvent_1">
+        <dc:Bounds x="173" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1ckpnss_di" bpmnElement="Activity_01fl3mz">
+        <dc:Bounds x="280" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0tnkfe4_di" bpmnElement="root-should-not-happen-end">
+        <dc:Bounds x="452" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="441" y="145" width="59" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1u2dz4x_di" bpmnElement="root-handled-end">
+        <dc:Bounds x="452" y="212" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="439" y="255" width="63" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_01dci9j_di" bpmnElement="Event_01dci9j">
+        <dc:Bounds x="362" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_02zurb9_di" bpmnElement="Flow_02zurb9">
+        <di:waypoint x="209" y="120" />
+        <di:waypoint x="280" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1j0dp8o_di" bpmnElement="Flow_1j0dp8o">
+        <di:waypoint x="380" y="120" />
+        <di:waypoint x="452" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_054m4do_di" bpmnElement="Flow_054m4do">
+        <di:waypoint x="380" y="178" />
+        <di:waypoint x="380" y="230" />
+        <di:waypoint x="452" y="230" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

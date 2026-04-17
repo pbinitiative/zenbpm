@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -31,13 +32,13 @@ func deployProcessDefinitionKey(t *testing.T, filename string, processId string)
 	return definition.Key
 }
 
-func createErrorBoundaryProcessInstanceWithDefaultVariables(t testing.TB, definitionKey int64) zenclient.ProcessInstance {
-	return createErrorBoundaryProcessInstanceWithVariables(t, definitionKey, map[string]any{
+func createProcessInstanceWithDefaultVariables(t testing.TB, definitionKey int64) zenclient.ProcessInstance {
+	return createProcessInstanceWithVariables(t, definitionKey, map[string]any{
 		"variable_name": "test-value",
 	})
 }
 
-func createErrorBoundaryProcessInstanceWithVariables(t testing.TB, definitionKey int64, variables map[string]any) zenclient.ProcessInstance {
+func createProcessInstanceWithVariables(t testing.TB, definitionKey int64, variables map[string]any) zenclient.ProcessInstance {
 	t.Helper()
 
 	instance, err := createProcessInstance(t, &definitionKey, variables)
@@ -170,24 +171,47 @@ func callFailActiveJobViaGrpc(t testing.TB, job public.Job, message string, erro
 func assertProcessInstanceIncidentsLength(t testing.TB, processInstanceKey int64, expectedLen int) {
 	t.Helper()
 
-	incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
-	assert.NoError(t, err)
-	assert.Len(t, incidents, expectedLen)
+	assert.Eventually(t, func() bool {
+		incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
+
+		if err != nil {
+			return false
+		}
+
+		if len(incidents) == expectedLen {
+			return true
+		}
+
+		return false
+
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should have %d incidents",
+		processInstanceKey, expectedLen)
 }
 
 func assertProcessInstanceErrorSubscriptionCount(t testing.TB, processInstanceKey int64, expectedCreatedCount int, expectedCancelledCount int) {
 	t.Helper()
 
-	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if err != nil {
+			return false
+		}
 
-	subscriptions, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCreated)
-	require.NoError(t, err)
-	assert.Len(t, subscriptions, expectedCreatedCount)
+		createdSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCreated)
+		if err != nil || len(createdSubs) != expectedCreatedCount {
+			return false
+		}
 
-	subscriptions, err = store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCancelled)
-	require.NoError(t, err)
-	assert.Len(t, subscriptions, expectedCancelledCount)
+		cancelledSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCancelled)
+		if err != nil || len(cancelledSubs) != expectedCancelledCount {
+			return false
+		}
+
+		return true
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should have %d created and %d cancelled error subscriptions",
+		processInstanceKey, expectedCreatedCount, expectedCancelledCount)
 }
 
 func assertProcessInstanceErrorSubscriptionsCountIsZero(t testing.TB, processInstanceKey int64) {
@@ -199,23 +223,37 @@ func assertProcessInstanceErrorSubscriptionsCountIsZero(t testing.TB, processIns
 func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, contains []string, notContains []string) {
 	t.Helper()
 
-	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if err != nil {
+			return false
+		}
 
-	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
-	require.NoError(t, err)
+		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+		if err != nil {
+			return false
+		}
 
-	elementIds := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		elementIds = append(elementIds, token.ElementId)
-	}
+		elementIds := make([]string, 0, len(tokens))
+		for _, token := range tokens {
+			elementIds = append(elementIds, token.ElementId)
+		}
 
-	for _, elementId := range contains {
-		assert.Contains(t, elementIds, elementId)
-	}
-	for _, elementId := range notContains {
-		assert.NotContains(t, elementIds, elementId)
-	}
+		for _, elementId := range contains {
+			if !slices.Contains(elementIds, elementId) {
+				return false
+			}
+		}
+		for _, elementId := range notContains {
+			if slices.Contains(elementIds, elementId) {
+				return false
+			}
+		}
+
+		return true
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should contain %v and not contain %v",
+		processInstanceKey, contains, notContains)
 }
 
 func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState) {

@@ -111,7 +111,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 			}
 		}
 
-		err = engine.cancelBoundarySubscriptions(ctx, batch, instance, &token)
+		err = engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, &token)
 		if err != nil {
 			return nil, fmt.Errorf("failed to cancel boundary subscriptions: %w", err)
 		}
@@ -159,30 +159,43 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	return tokens, nil
 }
 
-func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, token *runtime.ExecutionToken) error {
+func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, processInstanceKey int64, token *runtime.ExecutionToken) error {
 	// cancel other message subscriptions
-	subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
+	messageSubscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {
-		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
+		return fmt.Errorf("failed to find message subscriptions for instance %d: %w", processInstanceKey, err)
 	}
-	for _, sub := range subscriptions {
-		sub.State = runtime.ActivityStateTerminated
-		err = batch.SaveMessageSubscription(ctx, sub)
+	for _, messageSubscription := range messageSubscriptions {
+		messageSubscription.State = runtime.ActivityStateTerminated
+		err = batch.SaveMessageSubscription(ctx, messageSubscription)
 		if err != nil {
-			return fmt.Errorf("failed to save changes to message subscription %d: %w", sub.GetKey(), err)
+			return fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.GetKey(), err)
 		}
 	}
 
 	// cancel other timer subscriptions
-	timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
+	timerSubscriptions, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, token.Key)
 	if err != nil {
-		return fmt.Errorf("failed to find timers for instance %d: %w", instance.ProcessInstance().Key, err)
+		return fmt.Errorf("failed to find timer subscriptions for instance %d: %w", processInstanceKey, err)
 	}
-	for _, timer := range timers {
-		timer.TimerState = runtime.TimerStateCancelled
-		err = batch.SaveTimer(ctx, timer)
+	for _, timerSubscription := range timerSubscriptions {
+		timerSubscription.TimerState = runtime.TimerStateCancelled
+		err = batch.SaveTimer(ctx, timerSubscription)
 		if err != nil {
-			return fmt.Errorf("failed to save changes to timer %d: %w", timer.Key, err)
+			return fmt.Errorf("failed to save changes to timer subscription %d: %w", timerSubscription.Key, err)
+		}
+	}
+
+	// cancel error subscriptions
+	errorSubscriptions, err := engine.persistence.FindTokenErrorSubscriptions(ctx, token.Key, runtime.ErrorStateCreated)
+	if err != nil {
+		return fmt.Errorf("failed to find error subscriptions for instance %d: %w", processInstanceKey, err)
+	}
+	for _, errorSubscription := range errorSubscriptions {
+		errorSubscription.State = runtime.ErrorStateCancelled
+		err = batch.SaveErrorSubscription(ctx, errorSubscription)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to error subscription %d: %w", errorSubscription.Key, err)
 		}
 	}
 	return nil

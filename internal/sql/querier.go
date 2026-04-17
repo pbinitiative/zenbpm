@@ -61,6 +61,7 @@ type Querier interface {
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)
 	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
 	FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error)
+	FindProcessInstanceErrorSubscriptions(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsParams) ([]ErrorSubscription, error)
 	FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error)
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
@@ -70,6 +71,7 @@ type Querier interface {
 	FindProcessesByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)
 	FindTimers(ctx context.Context, arg FindTimersParams) ([]Timer, error)
 	FindTimersInStateTillDueAt(ctx context.Context, arg FindTimersInStateTillDueAtParams) ([]Timer, error)
+	FindTokenErrorSubscriptions(ctx context.Context, arg FindTokenErrorSubscriptionsParams) ([]ErrorSubscription, error)
 	FindTokenMessageSubscriptions(ctx context.Context, arg FindTokenMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindTokenTimers(ctx context.Context, arg FindTokenTimersParams) ([]Timer, error)
 	GetAllTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]ExecutionToken, error)
@@ -93,6 +95,7 @@ type Querier interface {
 	SaveDecisionDefinition(ctx context.Context, arg SaveDecisionDefinitionParams) error
 	SaveDecisionInstance(ctx context.Context, arg SaveDecisionInstanceParams) error
 	SaveDmnResourceDefinition(ctx context.Context, arg SaveDmnResourceDefinitionParams) error
+	SaveErrorSubscription(ctx context.Context, arg SaveErrorSubscriptionParams) error
 	SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error
 	SaveIncident(ctx context.Context, arg SaveIncidentParams) error
 	SaveJob(ctx context.Context, arg SaveJobParams) error

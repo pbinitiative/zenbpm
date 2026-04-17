@@ -245,6 +245,51 @@ func (m MessageSubscription) GetState() ActivityState {
 	return m.State
 }
 
+//go:generate go tool stringer -type=ErrorState
+
+type ErrorState int
+
+const (
+	_ ErrorState = iota
+	ErrorStateCreated
+	ErrorStateCancelled
+)
+
+type ErrorSubscription struct {
+	ElementId            string
+	Key                  int64
+	ElementInstanceKey   int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	ErrorCode            *string
+	State                ErrorState
+	CreatedAt            time.Time
+	Token                ExecutionToken
+}
+
+func (errorSubscription ErrorSubscription) EqualTo(e2 ErrorSubscription) bool {
+	if errorSubscription.ElementId == e2.ElementId &&
+		errorSubscription.Key == e2.Key &&
+		errorSubscription.ProcessDefinitionKey == e2.ProcessDefinitionKey &&
+		errorSubscription.ProcessInstanceKey == e2.ProcessInstanceKey &&
+		errorSubscription.ErrorCode == e2.ErrorCode &&
+		errorSubscription.State == e2.State &&
+		errorSubscription.CreatedAt.Truncate(time.Millisecond).Equal(e2.CreatedAt.Truncate(time.Millisecond)) {
+		return true
+	}
+	return false
+}
+
+func (errorSubscription ErrorSubscription) GetId() string {
+	return errorSubscription.ElementId
+}
+func (errorSubscription ErrorSubscription) GetKey() int64 {
+	return errorSubscription.Key
+}
+func (errorSubscription ErrorSubscription) GetState() ErrorState {
+	return errorSubscription.State
+}
+
 //go:generate go tool stringer -type=TimerState
 type TimerState int
 

@@ -108,8 +108,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		}
 		switch req := clientReq.Request.(type) {
 		case *proto.JobStreamRequest_Complete:
-			vars := map[string]any{}
-			err := json.Unmarshal(req.Complete.Variables, &vars)
+			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
 				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
@@ -136,10 +135,9 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 		case *proto.JobStreamRequest_Fail:
-			vars := map[string]any{}
-			err := json.Unmarshal(req.Fail.Variables, &vars)
+			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
@@ -152,7 +150,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
@@ -218,4 +216,18 @@ func getClientID(ctx context.Context) jobmanager.ClientID {
 		}
 	}
 	return clientID
+}
+
+func decodeVariables(raw []byte) (map[string]any, error) {
+	vars := map[string]any{}
+	if len(raw) == 0 {
+		return vars, nil
+	}
+	if err := json.Unmarshal(raw, &vars); err != nil {
+		return nil, err
+	}
+	if vars == nil {
+		return map[string]any{}, nil
+	}
+	return vars, nil
 }

@@ -55,12 +55,3 @@ func TestUnsupportedEventBasedGatewayNonICETargetFailsDeployment(t *testing.T) {
 	assert.ErrorContains(t, err, "eventBasedGateway")
 	assert.ErrorContains(t, err, "EventBasedGateway_1")
 }
-
-func TestUnsupportedErrorBoundaryEventFailsDeployment(t *testing.T) {
-	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-error-boundary-event.bpmn")
-
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "unsupported element configuration")
-	assert.ErrorContains(t, err, "boundaryEvent")
-	assert.ErrorContains(t, err, "Event_1c2tp7t")
-}

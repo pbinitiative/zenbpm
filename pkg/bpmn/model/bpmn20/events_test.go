@@ -54,9 +54,9 @@ func readBpnmFile(t testing.TB, filename string) (result TDefinitions, err error
 	}
 
 	var definitions TDefinitions
-	err1 := xml.Unmarshal(xmlData, &definitions)
-	if err1 != nil {
-		t.Fatalf("failed to unmarshal XML: %v", err)
+	unmarshalError := xml.Unmarshal(xmlData, &definitions)
+	if unmarshalError != nil {
+		t.Fatalf("failed to unmarshal XML: %v", unmarshalError)
 	}
 
 	return definitions, nil

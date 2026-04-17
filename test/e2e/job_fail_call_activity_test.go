@@ -26,7 +26,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_catch_all_error_boundary_event.bpmn", "call-activity-with-catch-all-error-boundary-event")
 
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -54,7 +54,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_error_boundary_event.bpmn", "call-activity-with-error-boundary-event")
 
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -81,7 +81,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_error_boundary_event.bpmn", "call-activity-with-error-boundary-event")
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -111,7 +111,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 	t.Run("catch_all", func(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_catch_all_error_boundary_event.bpmn", "call-activity-with-catch-all-error-boundary-event")
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -138,7 +138,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_error_boundary_event.bpmn", "call-activity-with-error-boundary-event")
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -167,7 +167,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		deployMultiInstanceCallActivityLeaf(t, "nested_call_activity_error_parent_1", jobType)
 
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_nested_with_error_boundary_parent_2.bpmn", "nested_call_activity_error_parent_2")
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -199,7 +199,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		parentDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_with_error_boundary_event.bpmn", "call-activity-with-error-boundary-event")
 
 		deployCallActivityChildProcessDefinition(t)
-		parentInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
+		parentInstance := createProcessInstanceWithDefaultVariables(t, parentDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, parentInstance.Key)
 		})
@@ -229,20 +229,20 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_nested_with_error_boundary_parent_2.bpmn", "nested_call_activity_error_parent_2")
 		rootDefinitionKey := deployProcessDefinitionKey(t, "error_events/call_activity/call_activity_nested_with_error_boundary_parent_root.bpmn", "nested_call_activity_error_root")
 
-		rootProcessInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, rootDefinitionKey)
+		rootProcessInstance := createProcessInstanceWithDefaultVariables(t, rootDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, rootProcessInstance.Key)
 		})
-		assertProcessInstanceErrorSubscriptionCount(t, rootProcessInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, rootProcessInstance.Key)
 
 		parentTwoInstance := waitForChildProcessInstance(t, rootProcessInstance.Key)
 		assertProcessInstanceErrorSubscriptionCount(t, parentTwoInstance.Key, 1, 0)
 
 		parentOneInstance := waitForChildProcessInstance(t, parentTwoInstance.Key)
-		assertProcessInstanceErrorSubscriptionCount(t, parentOneInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, parentOneInstance.Key)
 
 		leafInstance := waitForChildProcessInstance(t, parentOneInstance.Key)
-		assertProcessInstanceErrorSubscriptionCount(t, leafInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, leafInstance.Key)
 
 		job := waitForProcessInstanceJobByElementId(t, leafInstance.Key, "id")
 		callFailJobViaRest(t, job.Key, ptr.To("42"))
@@ -250,11 +250,11 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		waitForProcessInstanceState(t, leafInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, leafInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, leafInstance.Key, 0)
-		assertProcessInstanceErrorSubscriptionCount(t, leafInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, leafInstance.Key)
 
 		waitForProcessInstanceState(t, parentOneInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceIncidentsLength(t, parentOneInstance.Key, 0)
-		assertProcessInstanceErrorSubscriptionCount(t, parentOneInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, parentOneInstance.Key)
 
 		waitForProcessInstanceState(t, parentTwoInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, parentTwoInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -265,7 +265,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		waitForProcessInstanceState(t, rootProcessInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, rootProcessInstance.Key, "End", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceIncidentsLength(t, rootProcessInstance.Key, 0)
-		assertProcessInstanceErrorSubscriptionCount(t, rootProcessInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionsCountIsZero(t, rootProcessInstance.Key)
 		assertProcessInstanceTokenElements(t, rootProcessInstance.Key, []string{"End"}, nil)
 	})
 }

@@ -197,7 +197,7 @@ func TestBusinessKey(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobs.Partitions)
 		assert.NotEmpty(t, jobs.Partitions[0].Items)
-		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{
+		err = completeJob(t, jobs.Partitions[0].Items[0].Key, map[string]any{
 			"city": "test",
 		})
 		assert.NoError(t, err)
@@ -211,7 +211,7 @@ func TestBusinessKey(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, jobs.Partitions)
 		assert.NotEmpty(t, jobs.Partitions[0].Items)
-		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{})
+		err = completeJob(t, jobs.Partitions[0].Items[0].Key, map[string]any{})
 		assert.NoError(t, err)
 	})
 

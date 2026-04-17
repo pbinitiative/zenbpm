@@ -15,7 +15,7 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotZero(t, definition.Key)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.Key)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.Key)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -35,7 +35,7 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn", "user-task-with-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -54,7 +54,7 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn", "user-task-with-error-boundary")
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -78,7 +78,7 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotZero(t, definition.Key)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.Key)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.Key)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -98,7 +98,7 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn", "user-task-with-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -118,7 +118,7 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn", "user-task-with-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})

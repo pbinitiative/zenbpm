@@ -97,7 +97,7 @@ func completeJobsSequentially(t *testing.T, instanceKey int64, jobsToComplete in
 			return false
 		}, 5*time.Second, 100*time.Millisecond, "job %d should become active", i+1)
 
-		err := completeJob(t, *activeJob, map[string]any{})
+		err := completeJob(t, activeJob.Key, map[string]any{})
 		require.NoError(t, err)
 	}
 }

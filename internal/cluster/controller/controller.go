@@ -103,7 +103,7 @@ func (c *Controller) Start(s ControlledStore, clientMgr *client.ClientManager) e
 	persistenceConfig := c.Config.Persistence
 
 	if c.Config.Persistence.RqLite == nil {
-		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses)
+		defaultConfig := partition.GetRqLiteDefaultConfig(c.store.ID(), c.store.Addr(), c.store.ID(), c.Config.Raft.JoinAddresses, c.Config.Raft.BootstrapExpect)
 		persistenceConfig.RqLite = &defaultConfig
 	}
 	if err := c.Config.ValidateCDC(); err != nil {

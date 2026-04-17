@@ -7,7 +7,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/config"
 )
 
-func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joinAddresses []string) config.RqLite {
+func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joinAddresses []string, bootstrapExpect int) config.RqLite {
 
 	return config.RqLite{
 		DataPath:                    dataPath,
@@ -31,7 +31,7 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		JoinAttempts:                5,
 		JoinInterval:                3 * time.Second,
 		JoinAs:                      "",
-		BootstrapExpect:             1,
+		BootstrapExpect:             bootstrapExpect,
 		BootstrapExpectTimeout:      120 * time.Second,
 		FKConstraints:               true,
 		AutoVacInterval:             12 * time.Hour,

@@ -185,6 +185,7 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool, configureRqLi
 		muxLn.Addr().String(),
 		t.TempDir(),
 		[]string{muxLn.Addr().String()},
+		1, // single-node test
 	)
 	for _, configure := range configureRqLite {
 		configure(&c)

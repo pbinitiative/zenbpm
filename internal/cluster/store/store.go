@@ -360,6 +360,10 @@ func (s *Store) shutdownNode(nodeId raft.ServerID) error {
 	if !s.IsLeader() {
 		return nil
 	}
+	cs := s.ClusterState()
+	if n, ok := cs.Nodes[string(nodeId)]; ok && n.State == state.NodeStateShutdown {
+		return nil
+	}
 	nodeChange := &proto.NodeChange{
 		NodeId: new(string(nodeId)),
 		State:  proto.NodeState_NODE_STATE_SHUTDOWN.Enum(),
@@ -369,13 +373,33 @@ func (s *Store) shutdownNode(nodeId raft.ServerID) error {
 	if err != nil {
 		return fmt.Errorf("failed to write shutdown NodeChange for %s: %w", nodeId, err)
 	}
+
+	// Clear the shutdown node's partition roles so read selectors and leader
+	// lookups won't route traffic to a dead address.
+	if n, ok := cs.Nodes[string(nodeId)]; ok {
+		for partitionId := range n.Partitions {
+			change := &proto.NodePartitionChange{
+				NodeId:      new(string(nodeId)),
+				PartitionId: new(partitionId),
+				State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+				Role:        proto.Role_ROLE_TYPE_UNKNOWN.Enum(),
+			}
+			if err := s.WritePartitionChange(change); err != nil {
+				return fmt.Errorf("failed to clear partition %d role for shutdown node %s: %w",
+					partitionId, nodeId, err)
+			}
+		}
+	}
 	return nil
 }
 
 // resumeNode is called when leader observes that a node resumed its heartbeat
 func (s *Store) resumeNode(nodeId raft.ServerID) error {
-	// skip if node is not a leader
 	if !s.IsLeader() {
+		return nil
+	}
+	cs := s.ClusterState()
+	if n, ok := cs.Nodes[string(nodeId)]; ok && n.State == state.NodeStateStarted {
 		return nil
 	}
 	nodeChange := &proto.NodeChange{

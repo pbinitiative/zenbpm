@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
@@ -165,6 +166,161 @@ func TestStoreRestartSingleNode(t *testing.T) {
 		}
 		return testNode.State == state.NodeState(proto.NodeState_NODE_STATE_ERROR)
 	}, 5*time.Second, 100*time.Millisecond, "expected testNode to be found in the store in error state")
+}
+
+// TestShutdownNodeIsIdempotent verifies that calling shutdownNode twice on
+// a node that is already in NodeStateShutdown does not produce a second
+// Raft log entry.
+//
+// Regression: the raft observer fires FailedHeartbeatObservation every
+// heartbeat interval for a dead peer. shutdownNode was writing a fresh
+// NodeChange on every call, producing unbounded Raft log growth and a
+// runaway cluster-state-change notification loop on all nodes.
+func TestShutdownNodeIsIdempotent(t *testing.T) {
+	c := config.Cluster{
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
+		NodeId: random.String(),
+	}
+
+	s, ln := newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err := s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err)
+	}
+
+	if err := s.Bootstrap(&state.Node{
+		Id:         s.raftID,
+		Addr:       s.Addr(),
+		Partitions: map[uint32]state.NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err)
+	}
+	if _, err := s.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("failed to wait for leader: %s", err)
+	}
+
+	// Seed a peer in the SHUTDOWN state by writing the NodeChange directly,
+	// which is the same path shutdownNode itself takes. This ensures the
+	// precondition (node already marked Shutdown) is established via the FSM.
+	peerId := "peer-1"
+	if err := s.WriteNodeChange(&proto.NodeChange{
+		NodeId: &peerId,
+		State:  proto.NodeState_NODE_STATE_SHUTDOWN.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}); err != nil {
+		t.Fatalf("failed to seed peer as Shutdown: %s", err)
+	}
+	testPoll(t, func() bool {
+		n, ok := s.state.Nodes[peerId]
+		return ok && n.State == state.NodeStateShutdown
+	}, 50*time.Millisecond, 5*time.Second)
+
+	indexBefore := s.raft.LastIndex()
+
+	// A fresh shutdownNode call for an already-shutdown node must be a no-op.
+	if err := s.shutdownNode(raft.ServerID(peerId)); err != nil {
+		t.Fatalf("shutdownNode returned error on idempotent call: %s", err)
+	}
+
+	// Small grace period so any (unwanted) new log entry would be committed and
+	// visible to LastIndex. 100ms is well beyond the single-node apply window.
+	time.Sleep(100 * time.Millisecond)
+	indexAfter := s.raft.LastIndex()
+
+	if indexAfter != indexBefore {
+		t.Fatalf("shutdownNode on already-shutdown node produced new log entries: before=%d after=%d",
+			indexBefore, indexAfter)
+	}
+}
+
+// TestShutdownNodeClearsPartitionRoles verifies that when a node is marked
+// as Shutdown its NodePartition entries are no longer advertised as
+// RoleFollower — otherwise GetPartitionFollower could still route reads to
+// a dead address.
+//
+// The test asserts the end-state of cluster state after shutdownNode; the
+// exact mechanism (extra NodePartitionChange writes vs. FSM-level clearing)
+// is an implementation choice.
+func TestShutdownNodeClearsPartitionRoles(t *testing.T) {
+	c := config.Cluster{
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
+		NodeId: random.String(),
+	}
+
+	s, ln := newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err := s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err)
+	}
+
+	if err := s.Bootstrap(&state.Node{
+		Id:         s.raftID,
+		Addr:       s.Addr(),
+		Partitions: map[uint32]state.NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err)
+	}
+	if _, err := s.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("failed to wait for leader: %s", err)
+	}
+
+	peerId := "peer-1"
+
+	// Register the peer as a Started Follower on partition 1. This mirrors
+	// the pre-crash state of a live partition follower.
+	if err := s.WriteNodeChange(&proto.NodeChange{
+		NodeId: &peerId,
+		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}); err != nil {
+		t.Fatalf("failed to register peer: %s", err)
+	}
+	if err := s.WritePartitionChange(&proto.NodePartitionChange{
+		NodeId:      &peerId,
+		PartitionId: new(uint32(1)),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+		Role:        proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}); err != nil {
+		t.Fatalf("failed to set peer partition role: %s", err)
+	}
+	testPoll(t, func() bool {
+		n, ok := s.state.Nodes[peerId]
+		if !ok {
+			return false
+		}
+		p, ok := n.Partitions[1]
+		return ok && p.Role == state.RoleFollower
+	}, 50*time.Millisecond, 5*time.Second)
+
+	// Now mark the peer as shutdown.
+	if err := s.shutdownNode(raft.ServerID(peerId)); err != nil {
+		t.Fatalf("shutdownNode returned error: %s", err)
+	}
+
+	// After shutdown, the node's partition role must not be Follower —
+	// otherwise a stale Follower entry keeps the dead node eligible for
+	// follower-routed reads.
+	testPoll(t, func() bool {
+		n, ok := s.state.Nodes[peerId]
+		if !ok {
+			return false
+		}
+		if n.State != state.NodeStateShutdown {
+			return false
+		}
+		p, ok := n.Partitions[1]
+		if !ok {
+			// acceptable: partition entry removed entirely
+			return true
+		}
+		return p.Role != state.RoleFollower
+	}, 50*time.Millisecond, 5*time.Second)
 }
 
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot

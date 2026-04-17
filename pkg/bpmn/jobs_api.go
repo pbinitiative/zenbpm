@@ -104,7 +104,7 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 	}()
 
 	if errorCode != nil {
-		boundaryMatch, err := engine.findMatchingBoundaryErrorEvent(ctx, instance, job.Token, errorCode)
+		boundaryMatch, err := engine.findMatchingBoundaryErrorEvent(ctx, &batch, instance, job.Token, errorCode)
 		if err != nil {
 			return err
 		}
@@ -139,25 +139,9 @@ func (engine *Engine) processBoundaryErrorEvent(
 		return false, err
 	}
 
-	boundaryInstance, tokens, err := engine.handleBoundaryError(ctx, batch, instance, boundaryMatch)
+	boundaryInstance, tokens, err := engine.prepareBoundaryErrorTransition(ctx, batch, instance, boundaryMatch, variables, true)
 	if err != nil {
 		return false, err
-	}
-
-	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
-	_, err = variableHolder.PropagateOutputVariablesToParent(boundaryMatch.event.GetOutputMapping(), variables, engine.evaluateExpression)
-	if err != nil {
-		return false, fmt.Errorf("failed to propagate boundary error variables to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
-	}
-	if err := batch.SaveProcessInstance(ctx, boundaryInstance); err != nil {
-		return false, fmt.Errorf("failed to save process instance %d after boundary error handling: %w", boundaryInstance.ProcessInstance().Key, err)
-	}
-
-	for _, token := range tokens {
-		err = batch.SaveToken(ctx, token)
-		if err != nil {
-			return false, err
-		}
 	}
 
 	if err := batch.Flush(ctx); err != nil {
@@ -181,22 +165,8 @@ func (engine *Engine) failJobWithIncident(
 		return err
 	}
 
-	job.Token.State = runtime.TokenStateFailed
-	err = batch.SaveToken(ctx, job.Token)
-	if err != nil {
-		return err
-	}
-
-	instance.ProcessInstance().State = runtime.ActivityStateFailed
-	err = batch.SaveProcessInstance(ctx, instance)
-	if err != nil {
-		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-
 	code := ptr.Deref(errorCode, "")
-	err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s: %s", message, code), job.Token, engine))
-
-	if err != nil {
+	if err := engine.markTokenAndInstanceFailed(ctx, batch, instance, &job.Token, fmt.Errorf("%s: %s", message, code)); err != nil {
 		return err
 	}
 

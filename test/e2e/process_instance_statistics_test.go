@@ -134,7 +134,7 @@ func TestGetProcessInstanceElementStatisticsCompletedAndTerminated(t *testing.T)
 		}, 5*time.Second, 50*time.Millisecond)
 
 		for _, job := range jobs.Partitions[0].Items {
-			err = completeJob(t, job, map[string]any{})
+			err = completeJob(t, job.Key, map[string]any{})
 			require.NoError(t, err)
 		}
 
@@ -243,13 +243,16 @@ func TestGetProcessInstanceElementStatisticsMultiInstance(t *testing.T) {
 		require.NoError(t, err)
 		defer app.restClient.CancelProcessInstanceWithResponse(t.Context(), instance.Key) //nolint:errcheck
 
-		resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		require.NotNil(t, resp.JSON200)
+		require.Eventually(t, func() bool {
+			resp, err := app.restClient.GetProcessInstanceElementStatisticsWithResponse(t.Context(), instance.Key)
+			if err != nil || resp.JSON200 == nil {
+				return false
+			}
 
-		activeByElement := collectActiveByElement(resp.JSON200)
-		assert.Equal(t, 1, activeByElement["Activity_0rae016"],
+			activeByElement := collectActiveByElement(resp.JSON200)
+
+			return activeByElement["Activity_0rae016"] == 1
+		}, 5*time.Second, 50*time.Millisecond,
 			"sequential multi-instance should show 1 active body token")
 	})
 }

@@ -234,6 +234,10 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	for _, token := range tokens {
+		if slices.Contains(omitTokenKeys, token.Key) {
+			continue
+		}
+
 		calledProcesses, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find called process for token %d: %w", token.Key, err)
@@ -244,9 +248,6 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 			if err != nil {
 				return nil, fmt.Errorf("failed to cancel called process for token %d: %w", token.Key, err)
 			}
-		}
-		if slices.Contains(omitTokenKeys, token.Key) {
-			continue
 		}
 		token.State = runtime.TokenStateCanceled
 		err = batch.SaveToken(ctx, token)
@@ -1137,6 +1138,13 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 				tokens, err := engine.handleMessageEndEvent(ctx, batch, instance, endEvent, currentToken)
 				if err != nil {
 					return nil, fmt.Errorf("failed to process messageEndEvent: %w", err)
+				}
+				updatedTokens = append(updatedTokens, tokens...)
+				processPlainEvent = false
+			case bpmn20.TErrorEventDefinition:
+				tokens, err := engine.handleEndErrorEvent(ctx, batch, instance, endEvent, currentToken)
+				if err != nil {
+					return nil, fmt.Errorf("failed to process errorEndEvent: %w", err)
 				}
 				updatedTokens = append(updatedTokens, tokens...)
 				processPlainEvent = false

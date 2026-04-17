@@ -10,44 +10,39 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
-type boundaryErrorContext struct {
-	instance      runtime.ProcessInstance
-	token         runtime.ExecutionToken
-	attachedToRef string
-}
-
 type boundaryErrorMatch struct {
-	context *boundaryErrorContext
-	event   *bpmn20.TBoundaryEvent
+	scope *errorEventContext
+	event *bpmn20.TBoundaryEvent
 }
 
 func (engine *Engine) findMatchingBoundaryErrorEvent(
 	ctx context.Context,
+	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	token runtime.ExecutionToken,
 	errorCode *string,
 ) (*boundaryErrorMatch, error) {
-	currentBoundaryErrorContext := &boundaryErrorContext{
+	currentErrorEventContext := &errorEventContext{
 		instance:      instance,
 		token:         token,
 		attachedToRef: token.ElementId,
 	}
 
-	for currentBoundaryErrorContext != nil {
-		event := engine.findMatchingBoundaryErrorEventInCurrentProcessInstance(currentBoundaryErrorContext.instance, currentBoundaryErrorContext.attachedToRef, errorCode)
+	for currentErrorEventContext != nil {
+		event := engine.findMatchingBoundaryErrorEventInCurrentProcessInstance(currentErrorEventContext.instance, currentErrorEventContext.attachedToRef, errorCode)
 		if event != nil {
 			return &boundaryErrorMatch{
-				context: currentBoundaryErrorContext,
-				event:   event,
+				scope: currentErrorEventContext,
+				event: event,
 			}, nil
 		}
 
-		parentContext, err := engine.getParentBoundaryErrorContext(ctx, currentBoundaryErrorContext.instance)
+		parentScope, err := engine.loadParentErrorEventContext(ctx, batch, currentErrorEventContext.instance, false)
 		if err != nil {
 			return nil, err
 		}
 
-		currentBoundaryErrorContext = parentContext
+		currentErrorEventContext = parentScope
 	}
 
 	return nil, nil
@@ -157,89 +152,72 @@ func containsDirectBoundaryTarget(process *bpmn20.TProcess, elementId string) bo
 	return false
 }
 
-func (engine *Engine) getParentBoundaryErrorContext(ctx context.Context, instance runtime.ProcessInstance) (*boundaryErrorContext, error) {
-	parentProcessInstanceKey := instance.GetParentProcessInstanceKey()
-	if parentProcessInstanceKey == nil {
-		return nil, nil
-	}
-
-	parentInstance, err := engine.persistence.FindProcessInstanceByKey(ctx, *parentProcessInstanceKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find parent process instance %d: %w", *parentProcessInstanceKey, err)
-	}
-	if parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted || parentInstance.ProcessInstance().State == runtime.ActivityStateTerminated {
-		return nil, nil
-	}
-
-	var (
-		parentTokenKey             int64
-		parentAttachedToRef        string
-		expectedElementInstanceKey int64
-	)
-
-	switch inst := instance.(type) {
-	case *runtime.CallActivityInstance:
-		parentTokenKey = inst.ParentProcessExecutionToken.Key
-		parentAttachedToRef = inst.ParentProcessExecutionToken.ElementId
-		expectedElementInstanceKey = inst.ParentProcessTargetElementInstanceKey
-	case *runtime.SubProcessInstance:
-		parentTokenKey = inst.ParentProcessExecutionToken.Key
-		parentAttachedToRef = inst.ParentProcessTargetElementId
-		expectedElementInstanceKey = inst.ParentProcessTargetElementInstanceKey
-	case *runtime.MultiInstanceInstance:
-		parentTokenKey = inst.ParentProcessExecutionToken.Key
-		parentAttachedToRef = inst.ParentProcessTargetElementId
-		expectedElementInstanceKey = inst.ParentProcessTargetElementInstanceKey
-	default:
-		return nil, nil
-	}
-
-	parentToken, err := engine.persistence.GetTokenByKey(ctx, parentTokenKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get parent token by key %d: %w", parentTokenKey, err)
-	}
-	if parentToken.ElementInstanceKey != expectedElementInstanceKey {
-		return nil, nil
-	}
-
-	return &boundaryErrorContext{
-		instance:      parentInstance,
-		token:         parentToken,
-		attachedToRef: parentAttachedToRef,
-	}, nil
-}
-
 func (engine *Engine) handleBoundaryError(
 	ctx context.Context,
 	batch *EngineBatch,
 	currentInstance runtime.ProcessInstance,
 	match *boundaryErrorMatch,
+	cancelChildInstances bool,
 ) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	if match == nil || match.context == nil || match.event == nil {
+	if match == nil || match.scope == nil || match.event == nil {
 		return nil, nil, fmt.Errorf("boundary error match is required")
 	}
 
-	contextToHandle := match.context
+	scope := match.scope
 
-	if contextToHandle.instance.ProcessInstance().Key != currentInstance.ProcessInstance().Key {
-		if err := batch.AddParentLockedInstance(ctx, contextToHandle.instance); err != nil {
+	if scope.instance.ProcessInstance().Key != currentInstance.ProcessInstance().Key {
+		if err := batch.AddParentLockedInstance(ctx, scope.instance); err != nil {
 			return nil, nil, err
 		}
 	}
 
-	if err := engine.cancelBoundarySubscriptions(ctx, batch, contextToHandle.instance.ProcessInstance().Key, &contextToHandle.token); err != nil {
-		return nil, nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", contextToHandle.instance.ProcessInstance().Key, err)
+	if err := engine.cancelBoundarySubscriptions(ctx, batch, scope.instance.ProcessInstance().Key, &scope.token); err != nil {
+		return nil, nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", scope.instance.ProcessInstance().Key, err)
 	}
 
-	if err := engine.cancelChildProcessInstancesForToken(ctx, batch, contextToHandle.token); err != nil {
-		return nil, nil, err
+	if cancelChildInstances {
+		if err := engine.cancelChildProcessInstancesForToken(ctx, batch, scope.token); err != nil {
+			return nil, nil, err
+		}
 	}
 
-	tokens, err := engine.handleElementTransition(ctx, batch, contextToHandle.instance, match.event, contextToHandle.token)
+	tokens, err := engine.handleElementTransition(ctx, batch, scope.instance, match.event, scope.token)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to process boundary error transition %s: %w", match.event.GetId(), err)
 	}
-	return contextToHandle.instance, tokens, nil
+	return scope.instance, tokens, nil
+}
+
+func (engine *Engine) prepareBoundaryErrorTransition(
+	ctx context.Context,
+	batch *EngineBatch,
+	currentInstance runtime.ProcessInstance,
+	match *boundaryErrorMatch,
+	variables map[string]interface{},
+	cancelChildInstances bool,
+) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	boundaryInstance, tokens, err := engine.handleBoundaryError(ctx, batch, currentInstance, match, cancelChildInstances)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
+	_, err = variableHolder.PropagateOutputVariablesToParent(match.event.GetOutputMapping(), variables, engine.evaluateExpression)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to propagate boundary error variables to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
+	}
+
+	if err := batch.SaveProcessInstance(ctx, boundaryInstance); err != nil {
+		return nil, nil, fmt.Errorf("failed to save process instance %d after boundary error handling: %w", boundaryInstance.ProcessInstance().Key, err)
+	}
+
+	for _, token := range tokens {
+		if err := batch.SaveToken(ctx, token); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return boundaryInstance, tokens, nil
 }
 
 func (engine *Engine) cancelChildProcessInstancesForToken(

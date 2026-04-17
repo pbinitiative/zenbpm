@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -650,12 +652,53 @@ func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 	// TODO: verify that partition leader removes the node from the state after it gets removed from the cluster
 }
 
+func parsePartitionServerID(serverID raft.ServerID) (nodeID string, partitionID uint32, err error) {
+	s := string(serverID)
+	const prefix = "zen-"
+	const sep = "-partition-"
+
+	if !strings.HasPrefix(s, prefix) {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: missing %q prefix", s, prefix)
+	}
+
+	sepIdx := strings.LastIndex(s, sep)
+	if sepIdx < 0 {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: missing %q separator", s, sep)
+	}
+
+	nodeID = s[len(prefix):sepIdx]
+	if nodeID == "" {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: empty node ID", s)
+	}
+
+	partNum, err := strconv.ParseUint(s[sepIdx+len(sep):], 10, 32)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid partition server ID %q: %w", s, err)
+	}
+
+	return nodeID, uint32(partNum), nil
+}
+
 func (c *Controller) partitionResumeNode(id string, partitionId uint32) error {
-	return fmt.Errorf("partitionResumeNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(raft.ServerID(id))
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: resume-node observation had unparseable server ID %q: %s", partitionId, id, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s resumed", partitionId, nodeId))
+	// TODO(phase 4): re-mark node partition as active after heartbeat resumed.
+	return nil
 }
 
 func (c *Controller) partitionRemoveNode(id string, partitionId uint32) error {
-	return fmt.Errorf("partitionRemoveNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(raft.ServerID(id))
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: remove-node observation had unparseable server ID %q: %s", partitionId, id, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s removed (reap timeout)", partitionId, nodeId))
+	// TODO(phase 4): write NodePartitionChange{State=LEAVING} to base cluster leader.
+	return nil
 }
 
 func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
@@ -687,11 +730,26 @@ func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) 
 }
 
 func (c *Controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
-	return fmt.Errorf("partitionShutdownNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(s)
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("partition %d: shutdown-node observation had unparseable server ID %q: %s", partitionId, s, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s shutdown detected", partitionId, nodeId))
+	// TODO(phase 4): mark partition slot as unavailable, trigger reassignment if quorum affected.
+	return nil
 }
 
 func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) error {
-	return fmt.Errorf("partitionAddNewNode is not implemented")
+	nodeId, _, err := parsePartitionServerID(s.ID)
+	if err != nil {
+		// Log and continue — the observer goroutine discards errors and there's no upstream retry path.
+		c.logger.Warn(fmt.Sprintf("partition %d: add-node observation had unparseable server ID %q: %s", partitionId, s.ID, err))
+		return nil
+	}
+	c.logger.Info(fmt.Sprintf("Partition %d: node %s joined", partitionId, nodeId))
+	// TODO(phase 4): propagate NodePartitionChange{State=JOINING} to base cluster leader.
+	return nil
 }
 
 func (c *Controller) Stop() error {

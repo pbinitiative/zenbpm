@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestHighThroughputMultiNode(t *testing.T) {
 			defer wg.Done()
 			n := nodes[idx%len(nodes)]
 			body := zenclient.CreateProcessInstanceJSONRequestBody{
-				ProcessDefinitionKey: defKey,
+				ProcessDefinitionKey: ptr.To(defKey),
 			}
 			_, err := n.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)
 			if err != nil {
@@ -127,7 +128,7 @@ func TestConcurrentInstanceCreation(t *testing.T) {
 			defer wg.Done()
 			n := nodes[idx%len(nodes)]
 			body := zenclient.CreateProcessInstanceJSONRequestBody{
-				ProcessDefinitionKey: defKey,
+				ProcessDefinitionKey: ptr.To(defKey),
 			}
 			_, err := n.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)
 			if err == nil {
@@ -173,7 +174,7 @@ func TestChaosMonkey(t *testing.T) {
 			default:
 				for _, n := range tc.RunningNodes() {
 					body := zenclient.CreateProcessInstanceJSONRequestBody{
-						ProcessDefinitionKey: defKey,
+						ProcessDefinitionKey: ptr.To(defKey),
 					}
 					_, err := n.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)
 					if err == nil {
@@ -298,7 +299,7 @@ func TestMixedWorkload(t *testing.T) {
 			defer wg.Done()
 			n := nodes[idx%len(nodes)]
 			body := zenclient.CreateProcessInstanceJSONRequestBody{
-				ProcessDefinitionKey: defKey,
+				ProcessDefinitionKey: ptr.To(defKey),
 			}
 			n.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)
 		}(i)

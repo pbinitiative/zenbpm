@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -297,7 +298,7 @@ func DeployDefinitionOnNode(t *testing.T, n *TestNode, filename string) *zenclie
 func CreateInstanceOnNode(t *testing.T, n *TestNode, definitionKey int64, variables map[string]interface{}) int64 {
 	t.Helper()
 	body := zenclient.CreateProcessInstanceJSONRequestBody{
-		ProcessDefinitionKey: definitionKey,
+		ProcessDefinitionKey: ptr.To(definitionKey),
 		Variables:            &variables,
 	}
 	resp, err := n.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)

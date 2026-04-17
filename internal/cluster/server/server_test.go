@@ -134,11 +134,120 @@ func TestServerTCPHeaderMux(t *testing.T) {
 	}
 }
 
+func TestPartitionNodeLeaderChange_WritesLeaderAndDemotesOldLeader(t *testing.T) {
+	ctx := t.Context()
+	tStore := &testStore{
+		clusterState: state.Cluster{
+			Partitions: map[uint32]state.Partition{
+				1: {Id: 1, LeaderId: "old-node"},
+			},
+			Nodes: map[string]state.Node{},
+		},
+	}
+	srv := &Server{store: tStore}
+
+	resp, err := srv.PartitionNodeLeaderChange(ctx, &proto.PartitionNodeLeaderChangeRequest{
+		Id:        new("new-node"),
+		Partition: new(uint32(1)),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	if len(tStore.partitionChangeWrites) != 2 {
+		t.Fatalf("expected 2 writes, got %d", len(tStore.partitionChangeWrites))
+	}
+
+	// First write: demote old leader
+	demote := tStore.partitionChangeWrites[0]
+	if demote.GetNodeId() != "old-node" {
+		t.Errorf("first write should demote old-node, got %s", demote.GetNodeId())
+	}
+	if demote.GetRole() != protoc.Role_ROLE_TYPE_FOLLOWER {
+		t.Errorf("first write should be FOLLOWER, got %s", demote.GetRole())
+	}
+	if demote.GetPartitionId() != 1 {
+		t.Errorf("first write should be partition 1, got %d", demote.GetPartitionId())
+	}
+
+	// Second write: promote new leader
+	promote := tStore.partitionChangeWrites[1]
+	if promote.GetNodeId() != "new-node" {
+		t.Errorf("second write should promote new-node, got %s", promote.GetNodeId())
+	}
+	if promote.GetRole() != protoc.Role_ROLE_TYPE_LEADER {
+		t.Errorf("second write should be LEADER, got %s", promote.GetRole())
+	}
+}
+
+func TestPartitionNodeLeaderChange_SameLeaderIsNoOp(t *testing.T) {
+	ctx := t.Context()
+	tStore := &testStore{
+		clusterState: state.Cluster{
+			Partitions: map[uint32]state.Partition{
+				1: {Id: 1, LeaderId: "same-node"},
+			},
+			Nodes: map[string]state.Node{},
+		},
+	}
+	srv := &Server{store: tStore}
+
+	_, err := srv.PartitionNodeLeaderChange(ctx, &proto.PartitionNodeLeaderChangeRequest{
+		Id:        new("same-node"),
+		Partition: new(uint32(1)),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// Only one write — the leader re-confirmation. No demotion of itself.
+	if len(tStore.partitionChangeWrites) != 1 {
+		t.Fatalf("expected 1 write, got %d", len(tStore.partitionChangeWrites))
+	}
+	w := tStore.partitionChangeWrites[0]
+	if w.GetNodeId() != "same-node" || w.GetRole() != protoc.Role_ROLE_TYPE_LEADER {
+		t.Errorf("expected same-node/LEADER write, got %s/%s", w.GetNodeId(), w.GetRole())
+	}
+}
+
+func TestPartitionNodeLeaderChange_FirstElection(t *testing.T) {
+	ctx := t.Context()
+	// Partition not yet tracked — this is the first election after partition creation.
+	tStore := &testStore{
+		clusterState: state.Cluster{
+			Partitions: map[uint32]state.Partition{},
+			Nodes:      map[string]state.Node{},
+		},
+	}
+	srv := &Server{store: tStore}
+
+	_, err := srv.PartitionNodeLeaderChange(ctx, &proto.PartitionNodeLeaderChangeRequest{
+		Id:        new("node-a"),
+		Partition: new(uint32(1)),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// Only one write — promotion. Nothing to demote.
+	if len(tStore.partitionChangeWrites) != 1 {
+		t.Fatalf("expected 1 write, got %d", len(tStore.partitionChangeWrites))
+	}
+	w := tStore.partitionChangeWrites[0]
+	if w.GetNodeId() != "node-a" || w.GetRole() != protoc.Role_ROLE_TYPE_LEADER {
+		t.Errorf("expected node-a/LEADER write, got %s/%s", w.GetNodeId(), w.GetRole())
+	}
+}
+
 type testStore struct {
-	notify               *proto.NotifyRequest
-	join                 *proto.JoinRequest
-	writeNodeChange      *protoc.NodeChange
-	writePartitionChange *protoc.NodePartitionChange
+	notify                *proto.NotifyRequest
+	join                  *proto.JoinRequest
+	writeNodeChange       *protoc.NodeChange
+	partitionChangeWrites []*protoc.NodePartitionChange
+	clusterState          state.Cluster
 }
 
 var _ StoreService = &testStore{}
@@ -156,11 +265,11 @@ func (s *testStore) WriteNodeChange(change *protoc.NodeChange) error {
 	return nil
 }
 func (s *testStore) WritePartitionChange(change *protoc.NodePartitionChange) error {
-	s.writePartitionChange = change
+	s.partitionChangeWrites = append(s.partitionChangeWrites, change)
 	return nil
 }
 func (s *testStore) ClusterState() state.Cluster {
-	return state.Cluster{}
+	return s.clusterState
 }
 
 func TestTimerStateToActivityState(t *testing.T) {

@@ -120,11 +120,7 @@ func TestPartitionLeaderFailoverDuringProcessExecution(t *testing.T) {
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
 	// Create a process instance (it will be waiting at a user task)
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	instanceKey := CreateInstanceOnNode(t, leader, defKey, nil)
 	require.NotZero(t, instanceKey)
@@ -231,11 +227,7 @@ func TestFailoverPreservesInFlightJobs(t *testing.T) {
 	// Deploy and create instance with a service task that creates a job
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	instanceKey := CreateInstanceOnNode(t, leader, defKey, nil)
 	require.NotZero(t, instanceKey)

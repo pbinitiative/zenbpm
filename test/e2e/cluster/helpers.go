@@ -323,13 +323,13 @@ func GetFirstDefinitionKey(t *testing.T, n *TestNode) int64 {
 }
 
 // DeployDMNDefinitionOnNode deploys a DMN definition file via a specific node.
-// filename is the DMN file name relative to pkg/dmn/test-data/.
+// filename is the DMN file name relative to pkg/dmn/test-data/bulk-evaluation-test/.
 func DeployDMNDefinitionOnNode(t *testing.T, n *TestNode, filename string) {
 	t.Helper()
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	root := strings.ReplaceAll(wd, "/test/e2e/cluster", "")
-	loc := filepath.Join(root, "pkg", "dmn", "test-data", filename)
+	loc := filepath.Join(root, "pkg", "dmn", "test-data", "bulk-evaluation-test", filename)
 	fileContent, err := os.ReadFile(loc)
 	require.NoError(t, err, "failed to read DMN file: %s", loc)
 

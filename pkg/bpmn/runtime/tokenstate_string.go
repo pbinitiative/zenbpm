@@ -20,9 +20,9 @@ const _TokenState_name = "TokenStateRunningTokenStateWaitingTokenStateCompletedT
 var _TokenState_index = [...]uint8{0, 17, 34, 53, 71, 87}
 
 func (i TokenState) String() string {
-	i -= 1
-	if i < 0 || i >= TokenState(len(_TokenState_index)-1) {
-		return "TokenState(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_TokenState_index)-1 {
+		return "TokenState(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _TokenState_name[_TokenState_index[i]:_TokenState_index[i+1]]
+	return _TokenState_name[_TokenState_index[idx]:_TokenState_index[idx+1]]
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -18,6 +20,9 @@ import (
 func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee *string) error {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
 		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
 	job.Assignee = assignee
@@ -31,7 +36,10 @@ func (engine *Engine) JobAssignByKey(ctx context.Context, jobKey int64, assignee
 func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message string, errorCode *string, variables map[string]interface{}) (retErr error) {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
-		return newEngineErrorf("failed to find job with key: %d", jobKey)
+		if errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+		return newEngineErrorf("failed to find job with key: %d, err: %s", jobKey, err)
 	}
 
 	ctx, failJobSpan := engine.tracer.Start(ctx, fmt.Sprintf("job:%s", job.Type), trace.WithAttributes(
@@ -86,46 +94,113 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		attribute.Int64(otelPkg.AttributeToken, job.Token.Key),
 	)
 
-	job.State = runtime.ActivityStateFailed
-	job.Token.State = runtime.TokenStateFailed
-	instance.ProcessInstance().State = runtime.ActivityStateFailed
+	defer func() {
+		if retErr == nil {
+			engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("type", job.Type),
+				attribute.Bool("internal", false),
+			))
+		}
+	}()
 
-	err = batch.SaveJob(ctx, job)
+	if errorCode != nil {
+		boundaryMatch, err := engine.findMatchingBoundaryErrorEvent(ctx, instance, job.Token, errorCode)
+		if err != nil {
+			return err
+		}
+
+		if boundaryMatch != nil {
+			if handled, err := engine.processBoundaryErrorEvent(ctx, &batch, job, instance, boundaryMatch, variables); err != nil {
+				return err
+			} else if handled {
+				return nil
+			}
+		}
+	}
+
+	err = engine.failJobWithIncident(ctx, &batch, job, instance, message, errorCode)
+	if err != nil {
+		return fmt.Errorf("failed to fail job %+v: %w", job, err)
+	}
+	return nil
+}
+
+func (engine *Engine) processBoundaryErrorEvent(
+	ctx context.Context,
+	batch *EngineBatch,
+	job runtime.Job,
+	instance runtime.ProcessInstance,
+	boundaryMatch *boundaryErrorMatch,
+	variables map[string]interface{},
+) (bool, error) {
+
+	job.State = runtime.ActivityStateTerminated
+	if err := batch.SaveJob(ctx, job); err != nil {
+		return false, err
+	}
+
+	boundaryInstance, tokens, err := engine.handleBoundaryError(ctx, batch, instance, boundaryMatch)
+	if err != nil {
+		return false, err
+	}
+
+	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
+	_, err = variableHolder.PropagateOutputVariablesToParent(boundaryMatch.event.GetOutputMapping(), variables, engine.evaluateExpression)
+	if err != nil {
+		return false, fmt.Errorf("failed to propagate boundary error variables to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
+	}
+	if err := batch.SaveProcessInstance(ctx, boundaryInstance); err != nil {
+		return false, fmt.Errorf("failed to save process instance %d after boundary error handling: %w", boundaryInstance.ProcessInstance().Key, err)
+	}
+
+	for _, token := range tokens {
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	if err := batch.Flush(ctx); err != nil {
+		return false, fmt.Errorf("failed to fail job %+v by boundary error handling: %w", job, err)
+	}
+
+	return true, engine.RunProcessInstance(ctx, boundaryInstance, tokens)
+}
+
+func (engine *Engine) failJobWithIncident(
+	ctx context.Context,
+	batch *EngineBatch,
+	job runtime.Job,
+	instance runtime.ProcessInstance,
+	message string, errorCode *string,
+) error {
+
+	job.State = runtime.ActivityStateFailed
+	err := batch.SaveJob(ctx, job)
 	if err != nil {
 		return err
 	}
+
+	job.Token.State = runtime.TokenStateFailed
 	err = batch.SaveToken(ctx, job.Token)
 	if err != nil {
 		return err
 	}
+
+	instance.ProcessInstance().State = runtime.ActivityStateFailed
 	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	if errorCode == nil {
-		err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s :"+message, ""), job.Token, engine))
-		if err != nil {
-			return err
-		}
-	} else {
-		err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s :"+message, *errorCode), job.Token, engine))
-		if err != nil {
-			return err
-		}
-	}
+	code := ptr.Deref(errorCode, "")
+	err = batch.SaveIncident(ctx, createNewIncidentFromToken(fmt.Errorf("%s: %s", message, code), job.Token, engine))
 
-	err = batch.Flush(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fail job %+v: %w", job, err)
+		return err
 	}
-	engine.metrics.JobsFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("type", job.Type), attribute.Bool("internal", false)))
 
-	if errorCode != nil {
-		// TODO: we should check wheter the BPMN element has error boundary event on it and if it has map varaibles and follow its flow
-		return nil
-	}
-	return nil
+	return batch.Flush(ctx)
 }
 
 func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]ActivatedJob, error) {
@@ -172,6 +247,9 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variables map[string]interface{}) (retErr error) {
 	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
 		return newEngineErrorf("failed to find job with key: %d", jobKey)
 	}
 
@@ -244,7 +322,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return err
 	}
 
-	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance, &job.Token)
+	err = engine.cancelBoundarySubscriptions(ctx, &batch, instance.ProcessInstance().Key, &job.Token)
 	if err != nil {
 		return fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
 	}

@@ -59,13 +59,32 @@ GET {{host}}/v1/process-instances/{{instance_key}}/jobs
 @job_type=input-task-1
 POST {{host}}/v1/jobs/{{job_type}}/activate
 
-### CompleteJob
+### GetJobs
 POST {{host}}/v1/jobs
 Content-Type: application/json
 
 {
   "jobKey": {{ActivateJob.response.body.$[0].key}},
 	"variables": {}
+}
+
+### CompleteJob
+@complete_job_key=2037761979933790209
+POST {{host}}/v1/jobs/{{complete_job_key}}/complete
+Content-Type: application/json
+
+{
+  "variables": {}
+}
+
+### FailJob
+@fail_job_key=2042161509118775297
+POST {{host}}/v1/jobs/{{fail_job_key}}/fail
+Content-Type: application/json
+
+{
+  "errorCode": "422",
+  "variables": {}
 }
 
 ### DeployDmnResourceDefinition

@@ -22,11 +22,7 @@ func (engine *Engine) createInternalTask(
 	element bpmn20.InternalTask,
 	currentToken runtime.ExecutionToken,
 	jobVarHolder runtime.VariableHolder,
-	multiInstanceVariableContext map[string]interface{},
 ) (state runtime.ActivityState, retErr error) {
-	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
-		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
-	}
 	job := runtime.Job{
 		ElementId:          currentToken.ElementId,
 		ElementInstanceKey: currentToken.ElementInstanceKey,

@@ -14,8 +14,7 @@ func (engine *Engine) createUserTask(
 	element bpmn20.InternalTask,
 	currentToken runtime.ExecutionToken,
 	userTaskVarHolder runtime.VariableHolder,
-	multiInstanceVariableContext map[string]interface{},
 ) (runtime.ActivityState, error) {
 	// TODO consider different handlers, since Service Tasks are different in their definition than user tasks
-	return engine.createInternalTask(ctx, batch, instance, element, currentToken, userTaskVarHolder, multiInstanceVariableContext)
+	return engine.createInternalTask(ctx, batch, instance, element, currentToken, userTaskVarHolder)
 }

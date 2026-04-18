@@ -581,7 +581,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 		err = variables.EvaluateAndSetMappingsToLocalVariables(mappable.GetInputMapping(), engine.evaluateExpression, nil)
 		if err != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
-			return engine.getActivityResult(ctx, batch, instance, activity, currentToken, element, runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err))
+			return engine.getActivityResult(ctx, batch, instance, activity, currentToken, activity.Element().(bpmn20.FlowNode), runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err))
 		}
 	}
 	switch element := activity.Element().(type) {

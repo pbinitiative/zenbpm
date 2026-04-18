@@ -102,9 +102,14 @@ func WaitForHealthy(t *testing.T, tc *TestCluster, timeout time.Duration) {
 	}, timeout, 100*time.Millisecond, "cluster did not become healthy within %s", timeout)
 }
 
-// WaitForPartitions waits until the expected number of partitions exist and have leaders.
+// WaitForPartitions waits until the expected number of partitions exist, have leaders,
+// and every partition member on every running node reports NodePartitionStateInitialized (5).
+// This guarantees all partition Raft groups have caught up before the caller performs
+// failover operations — without it, killing the partition leader shortly after formation
+// can leave the surviving members with stale logs and block re-election.
 func WaitForPartitions(t *testing.T, tc *TestCluster, count int, timeout time.Duration) {
 	t.Helper()
+	const nodePartitionStateInitialized = 5
 	require.Eventually(t, func() bool {
 		running := tc.RunningNodes()
 		if len(running) == 0 {
@@ -122,8 +127,27 @@ func WaitForPartitions(t *testing.T, tc *TestCluster, count int, timeout time.Du
 				return false
 			}
 		}
+		// Every running node must have the partition in Initialized state from its own view.
+		for _, n := range running {
+			ns, err := getStatus(n)
+			if err != nil {
+				return false
+			}
+			nodeEntry, ok := ns.Nodes[n.ID]
+			if !ok {
+				return false
+			}
+			if len(nodeEntry.Partitions) != count {
+				return false
+			}
+			for _, np := range nodeEntry.Partitions {
+				if np.State != nodePartitionStateInitialized {
+					return false
+				}
+			}
+		}
 		return true
-	}, timeout, 100*time.Millisecond, "expected %d partitions with leaders within %s", count, timeout)
+	}, timeout, 100*time.Millisecond, "expected %d partitions initialized on all running nodes within %s", count, timeout)
 }
 
 // WaitForLeader waits until a base cluster leader is elected.

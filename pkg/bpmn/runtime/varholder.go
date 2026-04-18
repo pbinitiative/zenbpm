@@ -64,10 +64,7 @@ func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(
 		return nil
 	}
 	vh.SetLocalVariables(additionalVariableContext)
-	mergedContext := vh.parent.LocalVariables()
-	if len(additionalVariableContext) > 0 {
-		mergedContext = mergeLocalVariablesWithOutputVariables(mergedContext, additionalVariableContext)
-	}
+	mergedContext := vh.LocalVariables()
 	for _, mapping := range mappings {
 		evalResult, err := evaluateExpression(mapping.Source, mergedContext)
 		if err != nil {

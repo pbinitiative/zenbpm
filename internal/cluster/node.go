@@ -94,7 +94,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		idGen:  idGen,
 	}
 
-	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr)
+	mux, muxLn, err := network.NewNodeMux(conf.Cluster.Addr, network.WithAdvertise(conf.Cluster.Adv))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ZenNode mux on %s: %w", conf.Cluster.Addr, err)
 	}

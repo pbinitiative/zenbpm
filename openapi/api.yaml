@@ -2103,6 +2103,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}/fail:
+    post:
+      operationId: failJob
+      tags:
+        - job
+      summary: Fail a job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          description: The key of the job to fail.
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                errorCode:
+                  type: string
+                  description: The error code against which an error catch event is matched.
+                variables:
+                  type: object
+            example:
+              errorCode: "123-456-789"
+              variables:
+                transactionId: "tx-789-xyz"
+      responses:
+        204:
+          description: The job is failed.
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /messages:
     post:

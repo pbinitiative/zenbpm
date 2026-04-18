@@ -117,6 +117,23 @@ type EventDefinition interface {
 	eventDefinition()
 }
 
+type TUnknownEventDefinition struct {
+	XMLName xml.Name
+	Id      string `xml:"id,attr"`
+}
+
+type TUnsupportedEventDefinition struct {
+	Name string
+	Id string
+}
+
+func (TUnsupportedEventDefinition) eventDefinition() {}
+
+func isEventDefinitionElement(localName string) bool {
+	const suffix = "EventDefinition"
+	return len(localName) > len(suffix) && localName[len(localName)-len(suffix):] == suffix
+}
+
 type TIntermediateCatchEvent struct {
 	TEvent
 	EventDefinition  EventDefinition
@@ -129,12 +146,13 @@ type TIntermediateCatchEvent struct {
 func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
-		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
-		LinkEventDefinition    TLinkEventDefinition    `xml:"linkEventDefinition"`
-		ParallelMultiple       bool                    `xml:"parallelMultiple"`
-		Input                  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
-		Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
+		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
+		LinkEventDefinition     TLinkEventDefinition      `xml:"linkEventDefinition"`
+		ParallelMultiple        bool                      `xml:"parallelMultiple"`
+		Input                   []extensions.TIoMapping   `xml:"extensionElements>ioMapping>input"`
+		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
+		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -150,6 +168,13 @@ func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start x
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
 	case tempStruct.LinkEventDefinition.Id != "":
 		definitions.EventDefinition = tempStruct.LinkEventDefinition
+	default:
+		for _, u := range tempStruct.UnknownEventDefinitions {
+			if isEventDefinitionElement(u.XMLName.Local) {
+				definitions.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
+				break
+			}
+		}
 	}
 	definitions.ParallelMultiple = tempStruct.ParallelMultiple
 	definitions.Output = tempStruct.Output
@@ -177,12 +202,13 @@ func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.
 func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition TMessageEventDefinition    `xml:"messageEventDefinition"`
-		TimerEventDefinition   TTimerEventDefinition      `xml:"timerEventDefinition"`
-		LinkEventDefinition    TLinkEventDefinition       `xml:"linkEventDefinition"`
-		TaskDefinition         extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-		Input                  []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
-		Output                 []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
+		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
+		LinkEventDefinition     TLinkEventDefinition      `xml:"linkEventDefinition"`
+		TaskDefinition          extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
+		Input                   []extensions.TIoMapping   `xml:"extensionElements>ioMapping>input"`
+		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
+		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -198,6 +224,13 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
 	case tempStruct.LinkEventDefinition.Id != "":
 		definitions.EventDefinition = tempStruct.LinkEventDefinition
+	default:
+		for _, u := range tempStruct.UnknownEventDefinitions {
+			if isEventDefinitionElement(u.XMLName.Local) {
+				definitions.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
+				break
+			}
+		}
 	}
 	definitions.Output = tempStruct.Output
 	definitions.TaskDefinition = tempStruct.TaskDefinition
@@ -220,11 +253,13 @@ type TBoundaryEvent struct {
 func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		AttachedToRef          string                  `xml:"attachedToRef,attr"`
-		CancellActivity        bool                    `xml:"cancelActivity,attr"`
-		MessageEventDefinition TMessageEventDefinition `xml:"messageEventDefinition"`
-		TimerEventDefinition   TTimerEventDefinition   `xml:"timerEventDefinition"`
-		Output                 []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
+		AttachedToRef           string                    `xml:"attachedToRef,attr"`
+		CancellActivity         bool                      `xml:"cancelActivity,attr"`
+		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
+		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
+		ErrorEventDefinition   TErrorEventDefinition   `xml:"errorEventDefinition"`
+		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
+		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{CancellActivity: true}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -236,6 +271,15 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		definitions.EventDefinition = tempStruct.MessageEventDefinition
 	case tempStruct.TimerEventDefinition.Id != nil:
 		definitions.EventDefinition = tempStruct.TimerEventDefinition
+	case tempStruct.ErrorEventDefinition.Id != "":
+		definitions.EventDefinition = tempStruct.ErrorEventDefinition
+	default:
+		for _, u := range tempStruct.UnknownEventDefinitions {
+			if isEventDefinitionElement(u.XMLName.Local) {
+				definitions.EventDefinition = TUnsupportedEventDefinition{Name: u.XMLName.Local, Id: u.Id}
+				break
+			}
+		}
 	}
 	definitions.Output = tempStruct.Output
 	definitions.AttachedToRef = tempStruct.AttachedToRef
@@ -285,3 +329,11 @@ func (TLinkEventDefinition) eventDefinition() {}
 type TTimeInfo struct {
 	XMLText string `xml:",innerxml"`
 }
+
+type TErrorEventDefinition struct {
+	Id       string  `xml:"id,attr"`
+	Name     string  `xml:"name,attr"`
+	ErrorRef *string `xml:"errorRef,attr"`
+}
+
+func (TErrorEventDefinition) eventDefinition() {}

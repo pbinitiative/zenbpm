@@ -549,6 +549,34 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 	return nil
 }
 
+func (node *ZenNode) FailJob(ctx context.Context, key int64, errorCode string, variables map[string]any) error {
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+	}
+	vars, err := json.Marshal(variables)
+
+	if err != nil {
+		return zenerr.BadRequest(fmt.Errorf("failed marshal variables: %w", err))
+	}
+	resp, err := client.FailJob(ctx, &proto.FailJobRequest{
+		Key:       &key,
+		ErrorCode: &errorCode,
+		Variables: vars,
+	})
+
+	if err != nil {
+		return zenerr.TechnicalError(fmt.Errorf("client call to fail job failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to fail job failed"))
+	}
+
+	return nil
+}
+
 func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	partition := zenflake.GetPartitionId(key)
 	client, err := node.client.PartitionLeader(partition)

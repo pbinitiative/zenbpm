@@ -9,9 +9,8 @@ import (
 	"sort"
 	"time"
 
-	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
-
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	dmnruntime "github.com/pbinitiative/zenbpm/pkg/dmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
@@ -29,6 +28,7 @@ type Storage struct {
 	ExecutionTokens        map[int64]bpmnruntime.ExecutionToken
 	FlowElementInstance    map[int64]bpmnruntime.FlowElementInstance
 	Incidents              map[int64]bpmnruntime.Incident
+	ErrorSubscriptions     map[int64]bpmnruntime.ErrorSubscription
 }
 
 func (mem *Storage) GenerateId() int64 {
@@ -48,6 +48,7 @@ func NewStorage() *Storage {
 		ExecutionTokens:        make(map[int64]bpmnruntime.ExecutionToken),
 		FlowElementInstance:    make(map[int64]bpmnruntime.FlowElementInstance),
 		Incidents:              make(map[int64]bpmnruntime.Incident),
+		ErrorSubscriptions:     make(map[int64]bpmnruntime.ErrorSubscription),
 	}
 }
 
@@ -85,6 +86,9 @@ func (mem *Storage) Copy() *Storage {
 	}
 	for k, v := range mem.Incidents {
 		c.Incidents[k] = v
+	}
+	for k, v := range mem.ErrorSubscriptions {
+		c.ErrorSubscriptions[k] = v
 	}
 	return c
 }
@@ -727,6 +731,44 @@ func (mem *Storage) SaveIncident(ctx context.Context, incident bpmnruntime.Incid
 	return nil
 }
 
+var _ storage.ErrorSubscriptionStorageWriter = &Storage{}
+
+func (mem *Storage) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
+	mem.ErrorSubscriptions[subscription.GetKey()] = subscription
+	return nil
+}
+
+var _ storage.ErrorSubscriptionStorageReader = &Storage{}
+
+func (mem *Storage) FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+
+	res := make([]bpmnruntime.ErrorSubscription, 0)
+	for _, errorSubscription := range mem.ErrorSubscriptions {
+		if errorSubscription.State != bpmnruntime.ErrorStateCreated {
+			continue
+		}
+		if errorSubscription.Token.Key != tokenKey {
+			continue
+		}
+		res = append(res, errorSubscription)
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+	res := make([]bpmnruntime.ErrorSubscription, 0)
+	for _, errorSubscription := range mem.ErrorSubscriptions {
+		if errorSubscription.ProcessInstanceKey != processInstanceKey {
+			continue
+		}
+		if errorSubscription.State != state {
+			continue
+		}
+		res = append(res, errorSubscription)
+	}
+	return res, nil
+}
+
 type StorageBatch struct {
 	db               *Storage
 	stmtToRun        []func() error
@@ -835,6 +877,13 @@ func (b *StorageBatch) UpdateOutputFlowElementInstance(ctx context.Context, flow
 func (b *StorageBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveIncident(ctx, incident)
+	})
+	return nil
+}
+
+func (b *StorageBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.SaveErrorSubscription(ctx, subscription)
 	})
 	return nil
 }

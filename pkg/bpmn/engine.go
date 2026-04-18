@@ -606,7 +606,7 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 		activityResult = runtime.ActivityStateFailed
 	}
 
-	return engine.getActivityResult(ctx, batch, instance, activity, currentToken, element, activityResult, err)
+	return engine.getActivityResult(ctx, batch, instance, activity, currentToken, activity.Element().(bpmn20.FlowNode), activityResult, err)
 }
 
 func (engine *Engine) getActivityResult(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode, activityResult runtime.ActivityState, err error) ([]runtime.ExecutionToken, error) {

@@ -739,36 +739,50 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 }
 
 func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessInstanceRequest) (*proto.GetProcessInstanceResponse, error) {
-	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
-	engine := s.controller.PartitionEngine(ctx, partitionId)
-	if engine == nil {
-		err := zenerr.TechnicalError(fmt.Errorf("engine with partition %d was not found", partitionId))
+	instanceKey := req.GetProcessInstanceKey()
+	partitionId := zenflake.GetPartitionId(instanceKey)
+
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d was not found", partitionId))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
-	instance, err := engine.FindProcessInstance(ctx, req.GetProcessInstanceKey())
+	instance, err := queries.GetProcessInstance(ctx, instanceKey)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
-			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", *req.ProcessInstanceKey, err))
+			zerr = zenerr.NotFound(fmt.Errorf("process instance %d not found: %w", instanceKey, err))
 		} else {
-			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get process instance %d: %w", *req.ProcessInstanceKey, err))
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to get process instance %d: %w", instanceKey, err))
 		}
 		return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
 	}
 
-	queries := s.controller.PartitionQueries(ctx, partitionId)
-	if queries == nil {
-		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
-		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	definition, err := queries.FindProcessDefinitionByKey(ctx, instance.ProcessDefinitionKey)
+	if err != nil {
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to find process definition %d for instance %d: %w", instance.ProcessDefinitionKey, instanceKey, err))
+		return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+	}
+
+	var parentInstanceKey *int64
+	if instance.ParentProcessExecutionToken.Valid {
+		parentTokens, err := queries.GetTokens(ctx, []int64{instance.ParentProcessExecutionToken.Int64})
+		if err != nil {
+			zerr := zenerr.TechnicalError(fmt.Errorf("failed to find parent execution token %d for instance %d: %w", instance.ParentProcessExecutionToken.Int64, instanceKey, err))
+			return &proto.GetProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+		}
+		if len(parentTokens) > 0 {
+			parentInstanceKey = new(parentTokens[0].ProcessInstanceKey)
+		}
 	}
 
 	activeStates := []int64{int64(runtime.TokenStateWaiting), int64(runtime.TokenStateRunning), int64(runtime.TokenStateFailed)}
 	tokens, err := queries.GetTokensForProcessInstance(ctx, sql.GetTokensForProcessInstanceParams{
-		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		ProcessInstanceKey: instanceKey,
 		States:             activeStates,
 	})
 	if err != nil {
-		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", req.GetProcessInstanceKey()))
+		err := zenerr.TechnicalError(fmt.Errorf("failed to find process instance execution tokens for instance %d", instanceKey))
 		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
 	}
 	respTokens := make([]*proto.ExecutionToken, 0, len(tokens))
@@ -783,23 +797,22 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 		})
 	}
 
-	vars, err := json.Marshal(instance.ProcessInstance().VariableHolder.LocalVariables())
-	if err != nil {
-		err := zenerr.TechnicalError(fmt.Errorf("failed to marshal variables of process instance %d", req.GetProcessInstanceKey()))
-		return &proto.GetProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	var businessKey *string
+	if instance.BusinessKey.Valid {
+		businessKey = new(instance.BusinessKey.String)
 	}
 
 	return &proto.GetProcessInstanceResponse{
 		Processes: &proto.ProcessInstance{
-			Key:               &instance.ProcessInstance().Key,
-			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
-			Variables:         vars,
-			State:             new(int64(instance.ProcessInstance().State)),
-			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
-			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
-			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
-			BusinessKey:       instance.ProcessInstance().BusinessKey,
-			Type:              new(int64(instance.Type())),
+			Key:               &instance.Key,
+			ProcessId:         &definition.BpmnProcessID,
+			Variables:         []byte(instance.Variables),
+			State:             &instance.State,
+			CreatedAt:         &instance.CreatedAt,
+			DefinitionKey:     &instance.ProcessDefinitionKey,
+			ParentInstanceKey: parentInstanceKey,
+			BusinessKey:       businessKey,
+			Type:              &instance.ProcessType,
 		},
 		ExecutionTokens: respTokens,
 	}, nil

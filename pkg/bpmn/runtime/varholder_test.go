@@ -89,26 +89,26 @@ func TestVariableHolderPropagateVariables(t *testing.T) {
 
 func TestVariableHolderEvaluateAndSetMappingsToLocalVariables(t *testing.T) {
 	tests := []struct {
-		name                      string
-		parentVariables           map[string]interface{}
-		additionalVariableContext map[string]interface{}
-		mappings                  []extensions.TIoMapping
-		evaluateExpressionFunc    func(expression string, variableContext map[string]interface{}) (interface{}, error)
-		expectedLocalVariables    map[string]interface{}
-		expectedError             bool
+		name                   string
+		parentVariables        map[string]interface{}
+		childVariables         map[string]interface{}
+		mappings               []extensions.TIoMapping
+		evaluateExpressionFunc func(expression string, variableContext map[string]interface{}) (interface{}, error)
+		expectedLocalVariables map[string]interface{}
+		expectedError          bool
 	}{
 		{
-			name:                      "with nil parent returns nil",
-			parentVariables:           nil,
-			additionalVariableContext: nil,
-			mappings:                  []extensions.TIoMapping{{Source: "test", Target: "target"}},
-			expectedLocalVariables:    map[string]interface{}{},
-			expectedError:             false,
+			name:                   "with nil parent returns nil",
+			parentVariables:        nil,
+			childVariables:         nil,
+			mappings:               []extensions.TIoMapping{{Source: "test", Target: "target"}},
+			expectedLocalVariables: map[string]interface{}{},
+			expectedError:          false,
 		},
 		{
-			name:                      "successfully map with parent variables only",
-			parentVariables:           map[string]interface{}{"parentKey": "parentValue"},
-			additionalVariableContext: nil,
+			name:            "successfully map with parent variables only",
+			parentVariables: map[string]interface{}{"parentKey": "parentValue"},
+			childVariables:  nil,
 			mappings: []extensions.TIoMapping{
 				{Source: "parentKey", Target: "target"},
 			},
@@ -122,12 +122,12 @@ func TestVariableHolderEvaluateAndSetMappingsToLocalVariables(t *testing.T) {
 			expectedError:          false,
 		},
 		{
-			name:                      "successfully map with merged context (parent + additional)",
-			parentVariables:           map[string]interface{}{"parentKey": "parentValue"},
-			additionalVariableContext: map[string]interface{}{"additionalKey": "additionalValue"},
+			name:            "child local variables are included in merged context",
+			parentVariables: map[string]interface{}{"parentKey": "parentValue"},
+			childVariables:  map[string]interface{}{"childKey": "childValue"},
 			mappings: []extensions.TIoMapping{
 				{Source: "parentKey", Target: "targetParent"},
-				{Source: "additionalKey", Target: "targetAdditional"},
+				{Source: "childKey", Target: "targetChild"},
 			},
 			evaluateExpressionFunc: func(expression string, variableContext map[string]interface{}) (interface{}, error) {
 				if val, ok := variableContext[expression]; ok {
@@ -135,20 +135,17 @@ func TestVariableHolderEvaluateAndSetMappingsToLocalVariables(t *testing.T) {
 				}
 				return nil, errors.New("key not found")
 			},
-			// additionalVariableContext is now set to child's local variables first,
-			// so "additionalKey" appears in expectedLocalVariables alongside the mapped targets.
 			expectedLocalVariables: map[string]interface{}{
-				"parentKey":        "parentValue",
-				"additionalKey":    "additionalValue",
-				"targetParent":     "parentValue",
-				"targetAdditional": "additionalValue",
+				"childKey":     "childValue",
+				"targetParent": "parentValue",
+				"targetChild":  "childValue",
 			},
 			expectedError: false,
 		},
 		{
-			name:                      "additional context overrides parent context",
-			parentVariables:           map[string]interface{}{"key": "parentValue"},
-			additionalVariableContext: map[string]interface{}{"key": "additionalValue"},
+			name:            "child local variables override parent variables in merged context",
+			parentVariables: map[string]interface{}{"key": "parentValue"},
+			childVariables:  map[string]interface{}{"key": "childValue"},
 			mappings: []extensions.TIoMapping{
 				{Source: "key", Target: "target"},
 			},
@@ -158,27 +155,13 @@ func TestVariableHolderEvaluateAndSetMappingsToLocalVariables(t *testing.T) {
 				}
 				return nil, errors.New("key not found")
 			},
-			// additionalVariableContext is set to child's local variables, overriding the parent-copied value.
-			expectedLocalVariables: map[string]interface{}{"key": "additionalValue", "target": "additionalValue"},
+			expectedLocalVariables: map[string]interface{}{"key": "childValue", "target": "childValue"},
 			expectedError:          false,
 		},
 		{
-			name:                      "additionalVariableContext is set to child local variables even without mappings",
-			parentVariables:           map[string]interface{}{"parentKey": "parentValue"},
-			additionalVariableContext: map[string]interface{}{"extraKey": "extraValue"},
-			mappings:                  []extensions.TIoMapping{},
-			evaluateExpressionFunc:    nil,
-			// The child copies parent vars on creation, then additionalVariableContext is merged in.
-			expectedLocalVariables: map[string]interface{}{
-				"parentKey": "parentValue",
-				"extraKey":  "extraValue",
-			},
-			expectedError: false,
-		},
-		{
-			name:                      "evaluation error returns error",
-			parentVariables:           map[string]interface{}{"key": "value"},
-			additionalVariableContext: nil,
+			name:            "evaluation error returns error",
+			parentVariables: map[string]interface{}{"key": "value"},
+			childVariables:  nil,
 			mappings: []extensions.TIoMapping{
 				{Source: "nonexistent", Target: "target"},
 			},
@@ -198,12 +181,11 @@ func TestVariableHolderEvaluateAndSetMappingsToLocalVariables(t *testing.T) {
 				parentVH = &parent
 			}
 
-			childVH := NewVariableHolder(parentVH, nil)
+			childVH := NewVariableHolder(parentVH, tt.childVariables)
 
 			err := childVH.EvaluateAndSetMappingsToLocalVariables(
 				tt.mappings,
 				tt.evaluateExpressionFunc,
-				tt.additionalVariableContext,
 			)
 
 			if tt.expectedError {
@@ -369,42 +351,37 @@ func TestVariableHolderSetLocalVariables(t *testing.T) {
 	}
 }
 
-func TestEvaluateAndSetMappingsToLocalVariablesWithMergedContext(t *testing.T) {
-	// This is a specific test to verify that the merged context is used correctly
+func TestEvaluateAndSetMappingsWithMultiInstanceContext(t *testing.T) {
+	// Simulates the multi-instance use case where additional variables
+	// (e.g. loop element) are passed via the VariableHolder constructor
 	parentVH := NewVariableHolder(nil, map[string]interface{}{
 		"parentVar": "parentValue",
 	})
 
-	childVH := NewVariableHolder(&parentVH, nil)
-
-	additionalContext := map[string]interface{}{
-		"additionalVar": "additionalValue",
+	// Multi-instance variables are now passed as localVariables in constructor
+	multiInstanceVars := map[string]interface{}{
+		"loopElement": "itemValue",
 	}
+	childVH := NewVariableHolder(&parentVH, multiInstanceVars)
 
 	mappings := []extensions.TIoMapping{
 		{Source: "parentVar", Target: "mappedParent"},
-		{Source: "additionalVar", Target: "mappedAdditional"},
+		{Source: "loopElement", Target: "mappedElement"},
 	}
 
-	// Mock evaluation function that checks the merged context
 	evaluateExpressionFunc := func(expression string, variableContext map[string]interface{}) (interface{}, error) {
-		// Verify both parent and additional variables are available in the context
 		if val, ok := variableContext[expression]; ok {
 			return val, nil
 		}
-
 		return nil, errors.New("expression not found in context")
 	}
 
 	err := childVH.EvaluateAndSetMappingsToLocalVariables(
 		mappings,
 		evaluateExpressionFunc,
-		additionalContext,
 	)
 
 	assert.NoError(t, err)
-
-	// Verify the mapped values are set correctly
 	assert.Equal(t, "parentValue", childVH.GetLocalVariable("mappedParent"))
-	assert.Equal(t, "additionalValue", childVH.GetLocalVariable("mappedAdditional"))
+	assert.Equal(t, "itemValue", childVH.GetLocalVariable("mappedElement"))
 }

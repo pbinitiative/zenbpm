@@ -54,20 +54,11 @@ func (vh *VariableHolder) SetLocalVariables(variables map[string]interface{}) {
 
 // EvaluateAndSetMappingsToLocalVariables sets local variables according to mappings
 // uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-// supports the usage of additionalVariableContext for cases when it can't be the part of vh.parent.LocalVariables() context
-func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(
-	mappings []extensions.TIoMapping,
-	evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error),
-	additionalVariableContext map[string]interface{},
-) error {
+func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(mappings []extensions.TIoMapping, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) error {
 	if vh.parent == nil {
 		return nil
 	}
-	vh.SetLocalVariables(additionalVariableContext)
-	mergedContext := vh.parent.LocalVariables()
-	if len(additionalVariableContext) > 0 {
-		mergedContext = mergeLocalVariablesWithOutputVariables(mergedContext, additionalVariableContext)
-	}
+	mergedContext := mergeLocalVariablesWithOutputVariables(vh.parent.LocalVariables(), vh.localVariables)
 	for _, mapping := range mappings {
 		evalResult, err := evaluateExpression(mapping.Source, mergedContext)
 		if err != nil {

@@ -23,10 +23,9 @@ func (engine *Engine) createCallActivity(
 	element *bpmn20.TCallActivity,
 	currentToken runtime.ExecutionToken,
 	callActivityVarHolder runtime.VariableHolder,
-	multiInstanceVariableContext map[string]interface{},
 ) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
-	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
+	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
 	batch.SaveFlowElementInstance(ctx,
@@ -78,9 +77,8 @@ func (engine *Engine) createSubProcess(
 	element *bpmn20.TSubProcess,
 	currentToken runtime.ExecutionToken,
 	subProcessVariableHolder runtime.VariableHolder,
-	multiInstanceVariableContext map[string]interface{},
 ) (runtime.ActivityState, error) {
-	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression, multiInstanceVariableContext); err != nil {
+	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
 	}
@@ -200,31 +198,26 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		currentToken.State = runtime.TokenStateCompleted
 		return []runtime.ExecutionToken{currentToken}, err
 	}
+	var activityResult runtime.ActivityState
 	multiInstanceVariableContext := map[string]interface{}{
 		element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection[multiInstancesAlreadyStarted],
 	}
-	var activityResult runtime.ActivityState
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, multiInstanceVariableContext)
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TSendTask:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TUserTask:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder)
 		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TSubProcess:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
-		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken, variableHolder)
 		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
-		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder, multiInstanceVariableContext)
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder)
 	default:
 		return []runtime.ExecutionToken{}, fmt.Errorf("failed to process %s %d: %w", element.GetType(), activity.GetKey(), errors.New("unsupported activity"))
 	}

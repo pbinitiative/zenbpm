@@ -232,25 +232,22 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal job input variables: %w", err)
-		return &proto.FailJobResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal job input variables: %w", err))
+		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
+
 	if err != nil {
-		err := fmt.Errorf("failed to fail job %d: %w", req.Key, err)
-		return &proto.FailJobResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err))
+		}
+		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
 	}
+
 	return &proto.FailJobResponse{}, nil
 }
 

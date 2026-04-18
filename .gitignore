@@ -21,3 +21,4 @@ cover.out
 docs/docusaurus/
 dist/
 .release-env
+.gocache

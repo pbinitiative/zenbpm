@@ -2163,6 +2163,107 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 	})
 }
 
+var _ storage.ErrorSubscriptionStorageReader = &DB{}
+
+func (rq *DB) FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+
+	errorSubscriptions, err := rq.Queries.FindTokenErrorSubscriptions(ctx, sql.FindTokenErrorSubscriptionsParams{
+		ExecutionToken: tokenKey,
+		State:          int64(state),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for token %d: %w", tokenKey, fmt.Errorf("%w: %w", err, storage.ErrNotFound))
+	}
+
+	return rq.inflateErrorSubscription(ctx, errorSubscriptions)
+}
+
+func (rq *DB) FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+	errorSubscriptions, err := rq.Queries.FindProcessInstanceErrorSubscriptions(ctx, sql.FindProcessInstanceErrorSubscriptionsParams{
+		ProcessInstanceKey: processInstanceKey,
+		State:              int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for process %d: %w", processInstanceKey, fmt.Errorf("%w: %w", err, storage.ErrNotFound))
+	}
+
+	return rq.inflateErrorSubscription(ctx, errorSubscriptions)
+}
+
+func (rq *DB) inflateErrorSubscription(ctx context.Context, errorSubscriptions []sql.ErrorSubscription) ([]bpmnruntime.ErrorSubscription, error) {
+
+	result := make([]bpmnruntime.ErrorSubscription, len(errorSubscriptions))
+	tokensToLoad := make([]int64, len(errorSubscriptions))
+
+	for i, errorSubscriptionRow := range errorSubscriptions {
+		var errorCode *string
+		if errorSubscriptionRow.ErrorCode.Valid {
+			errorCode = &errorSubscriptionRow.ErrorCode.String
+		}
+
+		result[i] = bpmnruntime.ErrorSubscription{
+			ElementId:            errorSubscriptionRow.ElementID,
+			ElementInstanceKey:   errorSubscriptionRow.ElementInstanceKey,
+			Key:                  errorSubscriptionRow.Key,
+			ProcessDefinitionKey: errorSubscriptionRow.ProcessDefinitionKey,
+			ProcessInstanceKey:   errorSubscriptionRow.ProcessInstanceKey,
+			State:                bpmnruntime.ErrorState(errorSubscriptionRow.State),
+			CreatedAt:            time.UnixMilli(errorSubscriptionRow.CreatedAt),
+			ErrorCode:            errorCode,
+			Token:                bpmnruntime.ExecutionToken{Key: errorSubscriptionRow.ExecutionToken},
+		}
+		tokensToLoad[i] = errorSubscriptionRow.ExecutionToken
+	}
+	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load error subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		for i := range result {
+			if result[i].Token.Key == token.Key {
+				result[i].Token = bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+var _ storage.ErrorSubscriptionStorageWriter = &DB{}
+
+func (rq *DB) SaveErrorSubscription(ctx context.Context, errorSubscription bpmnruntime.ErrorSubscription) error {
+	return SaveErrorSubscriptionWith(ctx, rq.Queries, errorSubscription)
+}
+
+func SaveErrorSubscriptionWith(ctx context.Context, db *sql.Queries, errorSubscription bpmnruntime.ErrorSubscription) error {
+	errorCode := ssql.NullString{}
+	if errorSubscription.ErrorCode != nil {
+		errorCode = ssql.NullString{String: *errorSubscription.ErrorCode, Valid: true}
+	}
+
+	err := db.SaveErrorSubscription(ctx, sql.SaveErrorSubscriptionParams{
+		Key:                  errorSubscription.GetKey(),
+		ElementID:            errorSubscription.ElementId,
+		ElementInstanceKey:   errorSubscription.ElementInstanceKey,
+		ProcessDefinitionKey: errorSubscription.ProcessDefinitionKey,
+		ProcessInstanceKey:   errorSubscription.ProcessInstanceKey,
+		ErrorCode:            errorCode,
+		State:                int64(errorSubscription.GetState()),
+		CreatedAt:            errorSubscription.CreatedAt.UnixMilli(),
+		ExecutionToken:       errorSubscription.Token.Key,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save error subscription %d: %w", errorSubscription.GetKey(), err)
+	}
+	return nil
+}
+
 type DBBatch struct {
 	db               *DB
 	stmtToRun        []*proto.Statement
@@ -2309,4 +2410,10 @@ var _ storage.IncidentStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	return SaveIncidentWith(ctx, b.queries, incident)
+}
+
+var _ storage.ErrorSubscriptionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveErrorSubscription(ctx context.Context, errorSubscription bpmnruntime.ErrorSubscription) error {
+	return SaveErrorSubscriptionWith(ctx, b.queries, errorSubscription)
 }

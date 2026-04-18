@@ -52,11 +52,7 @@ func TestCreateInstanceRoutesToPartitionLeader(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Create instance via a follower — should be routed to partition leader
 	followers := tc.Followers()
@@ -111,11 +107,7 @@ func TestJobCompletionAcrossNodes(t *testing.T) {
 	// Deploy on node A
 	DeployDefinitionOnNode(t, nodeA, "simple_task.bpmn")
 
-	resp, err := nodeA.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	defKey := GetFirstDefinitionKey(t, nodeA)
 
 	// Create instance on node A
 	instanceKey := CreateInstanceOnNode(t, nodeA, defKey, nil)
@@ -228,11 +220,7 @@ func TestConcurrentWritesToDifferentNodes(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Create instances concurrently from different nodes
 	var wg sync.WaitGroup

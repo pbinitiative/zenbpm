@@ -318,7 +318,7 @@ func GetFirstDefinitionKey(t *testing.T, n *TestNode) int64 {
 		}
 		defKey = resp.JSON200.Items[0].Key
 		return true
-	}, 30*time.Second, 500*time.Millisecond, "process definition should be visible on node %s", n.ID)
+	}, 5*time.Second, 100*time.Millisecond, "process definition should be visible on node %s", n.ID)
 	return defKey
 }
 

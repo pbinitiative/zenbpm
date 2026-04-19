@@ -45,7 +45,7 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		RaftElectionTimeout:         1 * time.Second,
 		RaftApplyTimeout:            5 * time.Second,
 		RaftShutdownOnRemove:        false,
-		RaftClusterRemoveOnShutdown: true,
+		RaftClusterRemoveOnShutdown: false,
 		RaftStepdownOnShutdown:      true,
 		RaftReapNodeTimeout:         0,
 		RaftReapReadOnlyNodeTimeout: 0,

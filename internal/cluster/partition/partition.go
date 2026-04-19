@@ -360,6 +360,20 @@ func (zpn *ZenPartitionNode) IsLeader(ctx context.Context) bool {
 	return zpn.store.IsLeader()
 }
 
+// Health reports whether this node currently sees a working partition Raft
+// from its own perspective: either it is the Leader, or there is a known
+// leader (heartbeats arriving). Anything else means no quorum from this
+// node's POV.
+func (zpn *ZenPartitionNode) Health() (ok bool, reason string) {
+	if zpn.store.IsLeader() {
+		return true, ""
+	}
+	if zpn.store.HasLeader() {
+		return true, ""
+	}
+	return false, fmt.Sprintf("partition raft state %v, no leader known", zpn.store.State())
+}
+
 func (zpn *ZenPartitionNode) Role() zproto.Role {
 	if zpn.store.IsLeader() {
 		return zproto.Role_ROLE_TYPE_LEADER

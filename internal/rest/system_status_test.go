@@ -26,6 +26,8 @@ func TestNewSystemStatusResponse(t *testing.T) {
 				},
 				Nodes: map[string]state.Node{},
 			},
+			true,
+			nil,
 		)
 
 		encoded, err := json.Marshal(response)
@@ -39,6 +41,7 @@ func TestNewSystemStatusResponse(t *testing.T) {
 				"version": "v1.5.0",
 				"time": "2026-08-07T12:13:14Z"
 			},
+			"health": {"ok": true, "reasons": []},
 			"clusterConfig": {"desiredPartitions": 3},
 			"partitions": {"1": {"id": 1, "leaderId": "node-1"}},
 			"nodes": {}

@@ -15,6 +15,11 @@ type clusterStatusView struct {
 	Nodes         map[string]clusterStatusNode `json:"nodes"`
 }
 
+type clusterStatusHealth struct {
+	OK      bool     `json:"ok"`
+	Reasons []string `json:"reasons"`
+}
+
 type clusterStatusConfigView struct {
 	DesiredPartitions uint32 `json:"desiredPartitions"`
 }

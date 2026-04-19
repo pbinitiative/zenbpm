@@ -209,6 +209,28 @@ func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 }
 
 // Nodes returns the slice of nodes in the cluster, sorted by ID ascending.
+// Health reports whether this node currently sees a working cluster Raft from
+// its own perspective: either it is the Leader, or it is a Follower with a
+// known leader (heartbeats arriving). Anything else (Candidate, Shutdown,
+// Follower without a leader) means no quorum from this node's POV.
+func (s *Store) Health() (ok bool, reason string) {
+	if !s.open.Load() {
+		return false, "raft store not open"
+	}
+	rs := s.raft.State()
+	switch rs {
+	case raft.Leader:
+		return true, ""
+	case raft.Follower:
+		if s.raft.Leader() == "" {
+			return false, "no leader known"
+		}
+		return true, ""
+	default:
+		return false, fmt.Sprintf("raft state %s", rs)
+	}
+}
+
 func (s *Store) Nodes() ([]state.Node, error) {
 	if !s.open.Load() {
 		return nil, zenerr.ErrNotOpen

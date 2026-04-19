@@ -125,7 +125,8 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 		// (raw cluster state, always 200) for existing consumers; readiness
 		// semantics live exclusively on /system/health/ready below.
 		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
-			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus()), "", " ")
+			healthy, reasons := node.Health()
+			body, err := json.MarshalIndent(newSystemStatusResponse(s.buildInfo, node.GetStatus(), healthy, reasons), "", " ")
 			if err != nil {
 				restLogger.Error("failed to marshal status", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)

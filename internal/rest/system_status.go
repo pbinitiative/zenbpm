@@ -8,9 +8,10 @@ import (
 const shortCommitIDLength = 12
 
 type systemStatusResponse struct {
-	Git   systemStatusGit   `json:"git"`
-	Build systemStatusBuild `json:"build"`
-	state.Cluster
+	Git    systemStatusGit     `json:"git"`
+	Build  systemStatusBuild   `json:"build"`
+	Health clusterStatusHealth `json:"health"`
+	clusterStatusView
 }
 
 type systemStatusGit struct {
@@ -23,7 +24,10 @@ type systemStatusBuild struct {
 	Time    string `json:"time"`
 }
 
-func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster) systemStatusResponse {
+func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster, healthy bool, reasons []string) systemStatusResponse {
+	if reasons == nil {
+		reasons = []string{}
+	}
 	return systemStatusResponse{
 		Git: systemStatusGit{
 			Branch:   info.Branch,
@@ -33,7 +37,8 @@ func newSystemStatusResponse(info buildinfo.Info, cluster state.Cluster) systemS
 			Version: info.Version,
 			Time:    info.BuildTime,
 		},
-		Cluster: cluster,
+		Health:            clusterStatusHealth{OK: healthy, Reasons: reasons},
+		clusterStatusView: buildClusterStatusView(cluster),
 	}
 }
 

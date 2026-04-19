@@ -752,6 +752,17 @@ func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) erro
 	return nil
 }
 
+// GetPartitions returns a snapshot of partition nodes hosted on this zen node.
+func (c *Controller) GetPartitions() map[uint32]*partition.ZenPartitionNode {
+	c.partitionsMu.RLock()
+	defer c.partitionsMu.RUnlock()
+	out := make(map[uint32]*partition.ZenPartitionNode, len(c.partitions))
+	for id, p := range c.partitions {
+		out[id] = p
+	}
+	return out
+}
+
 func (c *Controller) Stop() error {
 	c.lifecycleCancel()
 	c.shutdownOnce.Do(func() {

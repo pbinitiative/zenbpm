@@ -131,6 +131,14 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 			Partitions: map[uint32]state.NodePartition{},
 		}
 	}
+	// A Shutdown → Started transition means the peer's heartbeat resumed.
+	// shutdownNode cleared its partition roles to UNKNOWN; restore them to
+	// Follower here so read selectors pick the node back up. Skip the partition
+	// where this node is still registered as the leader — PartitionNodeLeaderChange
+	// owns that slot and we don't want to fight it.
+	resuming := ok &&
+		node.State == state.NodeStateShutdown &&
+		nodeChangeCommand.GetState() == proto.NodeState_NODE_STATE_STARTED
 	// if the leader has changed, change other nodes to be followers
 	if leaderId == node.Id && node.Role < state.RoleLeader && role == state.RoleLeader {
 		for k, n := range currState.Nodes {
@@ -152,6 +160,15 @@ func FsmApplyNodeChange(store FsmStore, nodeChangeCommand *proto.NodeChange) sta
 	}
 	if nodeChangeCommand.GetState() != proto.NodeState_NODE_STATE_UNKNOWN {
 		node.State = state.NodeState(nodeChangeCommand.GetState())
+	}
+	if resuming {
+		for partitionId, np := range node.Partitions {
+			if p, ok := currState.Partitions[partitionId]; ok && p.LeaderId == node.Id {
+				continue
+			}
+			np.Role = state.RoleFollower
+			node.Partitions[partitionId] = np
+		}
 	}
 	currState.Nodes[nodeChangeCommand.GetNodeId()] = node
 	return currState

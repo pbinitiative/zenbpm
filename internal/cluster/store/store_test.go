@@ -323,6 +323,95 @@ func TestShutdownNodeClearsPartitionRoles(t *testing.T) {
 	}, 50*time.Millisecond, 5*time.Second)
 }
 
+// TestResumeNodeRestoresPartitionFollowerRole verifies that a follower whose
+// NodePartition.Role was cleared to UNKNOWN by shutdownNode has it restored
+// to Follower on heartbeat resume. Without this, role selectors that switch
+// on Role silently skip the node (see Cluster.GetPartitionFollower), causing
+// read load to pile on the leader after a transient cluster partition.
+//
+// The partition-leader slot is intentionally not restored here — that's the
+// partition raft's authority, driven by PartitionNodeLeaderChange.
+func TestResumeNodeRestoresPartitionFollowerRole(t *testing.T) {
+	c := config.Cluster{
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
+		NodeId: random.String(),
+	}
+
+	s, ln := newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err := s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err)
+	}
+
+	if err := s.Bootstrap(&state.Node{
+		Id:         s.raftID,
+		Addr:       s.Addr(),
+		Partitions: map[uint32]state.NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err)
+	}
+	if _, err := s.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("failed to wait for leader: %s", err)
+	}
+
+	peerId := "peer-1"
+
+	// Register a follower on partition 1, mirroring the pre-partition state.
+	if err := s.WriteNodeChange(&proto.NodeChange{
+		NodeId: ptr.To(peerId),
+		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
+		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}); err != nil {
+		t.Fatalf("failed to register peer: %s", err)
+	}
+	if err := s.WritePartitionChange(&proto.NodePartitionChange{
+		NodeId:      ptr.To(peerId),
+		PartitionId: ptr.To(uint32(1)),
+		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
+		Role:        proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
+	}); err != nil {
+		t.Fatalf("failed to set peer partition role: %s", err)
+	}
+	testPoll(t, func() bool {
+		n, ok := s.ClusterState().Nodes[peerId]
+		if !ok {
+			return false
+		}
+		p, ok := n.Partitions[1]
+		return ok && p.Role == state.RoleFollower
+	}, 50*time.Millisecond, 5*time.Second)
+
+	// Shut the peer down: clears its partition role to UNKNOWN (zero value).
+	if err := s.shutdownNode(raft.ServerID(peerId)); err != nil {
+		t.Fatalf("shutdownNode returned error: %s", err)
+	}
+	testPoll(t, func() bool {
+		n, ok := s.ClusterState().Nodes[peerId]
+		if !ok || n.State != state.NodeStateShutdown {
+			return false
+		}
+		p, ok := n.Partitions[1]
+		return !ok || p.Role != state.RoleFollower
+	}, 50*time.Millisecond, 5*time.Second)
+
+	// Resume the peer. NodeState flips back to Started and the partition
+	// role is restored to Follower as a side-effect of the NodeChange FSM apply.
+	if err := s.resumeNode(raft.ServerID(peerId)); err != nil {
+		t.Fatalf("resumeNode returned error: %s", err)
+	}
+	testPoll(t, func() bool {
+		n, ok := s.ClusterState().Nodes[peerId]
+		if !ok || n.State != state.NodeStateStarted {
+			return false
+		}
+		p, ok := n.Partitions[1]
+		return ok && p.Role == state.RoleFollower
+	}, 50*time.Millisecond, 5*time.Second)
+}
+
 // Test_SingleNodeSnapshot tests that the Store correctly takes a snapshot
 // and recovers from it.
 func TestSingleNodeSnapshot(t *testing.T) {

@@ -66,8 +66,9 @@ func (s *Store) Open() (retErr error) {
 	s.observer = raft.NewObserver(s.observerChan, blocking, func(o *raft.Observation) bool {
 		_, isLeaderChange := o.Data.(raft.LeaderObservation)
 		_, isFailedHeartBeat := o.Data.(raft.FailedHeartbeatObservation)
+		_, isResumedHeartBeat := o.Data.(raft.ResumedHeartbeatObservation)
 		_, isPeerChange := o.Data.(raft.PeerObservation)
-		return isLeaderChange || isFailedHeartBeat || isPeerChange
+		return isLeaderChange || isFailedHeartBeat || isResumedHeartBeat || isPeerChange
 	})
 	s.raft.RegisterObserver(s.observer)
 

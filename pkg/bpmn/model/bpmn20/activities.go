@@ -160,6 +160,7 @@ type TCallActivity struct {
 type TSubProcess struct {
 	TActivity
 	TProcess
+	TriggeredByEvent bool `xml:"triggeredByEvent,attr"`
 }
 
 type TMultiInstance struct {

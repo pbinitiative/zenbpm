@@ -402,7 +402,7 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 		if timer.TimerState != bpmnruntime.TimerStateCreated {
 			continue
 		}
-		if timer.Token.Key != tokenKey {
+		if timer.Token == nil || timer.Token.Key != tokenKey {
 			continue
 		}
 		res = append(res, timer)
@@ -413,7 +413,7 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
-		if timer.ProcessInstanceKey != processInstanceKey {
+		if timer.ProcessInstanceKey == nil || *timer.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
 		if timer.TimerState != state {

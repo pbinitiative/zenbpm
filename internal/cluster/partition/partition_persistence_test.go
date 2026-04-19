@@ -305,14 +305,14 @@ func TestDataCleanup(t *testing.T) {
 		timer := runtime.Timer{
 			ElementId:            "timer-elem",
 			Key:                  r2 + 80,
-			ElementInstanceKey:   r2 + 81,
+			ElementInstanceKey:   ptr.To(r2 + 81),
 			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst2.ProcessInstance().Key,
+			ProcessInstanceKey:   ptr.To(inst2.ProcessInstance().Key),
 			TimerState:           runtime.TimerStateCreated,
 			CreatedAt:            time.Now(),
 			DueAt:                time.Now().Add(1 * time.Hour),
 			Duration:             1 * time.Hour,
-			Token:                token,
+			Token:                &token,
 		}
 		err = db.SaveTimer(ctx, timer)
 		assert.NoError(t, err)

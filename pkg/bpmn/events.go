@@ -254,7 +254,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		if err != nil {
 			return nil, err
 		}
-		token = timer.Token
+		if timer.Token == nil {
+			return nil, fmt.Errorf("timer %d does not have an associated token on event gateway", timer.Key)
+		}
+		token = *timer.Token
 	}
 	msubs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {

@@ -135,7 +135,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 // Creates and starts the process instance activated by the timer start event
 func (engine *Engine) createStartProcessOnTimerStartEvent(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	_, err := engine.CreateInstanceByKey(ctx, timer.ProcessDefinitionKey, make(map[string]interface{}))
+	_, err := engine.CreateInstanceWithStartingElements(ctx, timer.ProcessDefinitionKey, []string{timer.ElementId}, make(map[string]interface{}), nil)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to create process instance for timer %d: %s", timer.Key, err), err)
 	}

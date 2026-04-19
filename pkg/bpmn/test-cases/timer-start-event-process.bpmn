@@ -25,9 +25,14 @@
         <zeebe:taskDefinition type="input-task-for-timer-start-event-test" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1xx1ap4</bpmn:incoming>
+      <bpmn:incoming>Flow_109w39o</bpmn:incoming>
       <bpmn:outgoing>Flow_0rvswpk</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="Flow_0rvswpk" sourceRef="service-task-1" targetRef="Event_0461t71" />
+    <bpmn:startEvent id="Event_0mtr7my">
+      <bpmn:outgoing>Flow_109w39o</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_109w39o" sourceRef="Event_0mtr7my" targetRef="service-task-1" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="timer-start-event-process-1">
@@ -41,6 +46,9 @@
         <dc:Bounds x="280" y="60" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0mtr7my_di" bpmnElement="Event_0mtr7my">
+        <dc:Bounds x="182" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1xx1ap4_di" bpmnElement="Flow_1xx1ap4">
         <di:waypoint x="218" y="100" />
         <di:waypoint x="280" y="100" />
@@ -48,6 +56,11 @@
       <bpmndi:BPMNEdge id="Flow_0rvswpk_di" bpmnElement="Flow_0rvswpk">
         <di:waypoint x="380" y="100" />
         <di:waypoint x="432" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_109w39o_di" bpmnElement="Flow_109w39o">
+        <di:waypoint x="218" y="180" />
+        <di:waypoint x="330" y="180" />
+        <di:waypoint x="330" y="140" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

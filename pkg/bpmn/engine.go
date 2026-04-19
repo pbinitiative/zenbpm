@@ -1196,9 +1196,42 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.
 	}
 
 	if !activeSubscriptions {
-		instance.ProcessInstance().State = runtime.ActivityStateCompleted
+		// Check if there are any active sub-process instance whose parent execution token belongs to this process instance
+		hasActiveSubProcess, err := engine.hasActiveSubProcessInstance(ctx, instance.ProcessInstance().Key)
+		if err != nil {
+			return errors.Join(newEngineErrorf("failed to check active sub-process instances for key: %d", instance.ProcessInstance().Key), err)
+		}
+		if !hasActiveSubProcess {
+			instance.ProcessInstance().State = runtime.ActivityStateCompleted
+		}
 	}
 	return nil
+}
+
+// hasActiveSubProcessInstance checks whether the process instance has any
+// active sub-process instances whose parentProcessExecutionToken belongs to it.
+// The check is not recursive because the inner child process instance will not be completed due to same reasons,
+// so it's enough to make a check only for 1 level deep
+func (engine *Engine) hasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error) {
+	tokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, processInstanceKey)
+	if err != nil {
+		return false, err
+	}
+	for _, token := range tokens {
+		childInstances, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return false, err
+		}
+		for _, child := range childInstances {
+			if child.Type() != runtime.ProcessTypeSubProcess {
+				continue
+			}
+			if child.ProcessInstance().State == runtime.ActivityStateActive {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (engine *Engine) handleMessageEndEvent(

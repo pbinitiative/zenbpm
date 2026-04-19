@@ -366,6 +366,11 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 }
 
 func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.Context, batch *EngineBatch, instance *runtime.SubProcessInstance) error {
+	// Flush pending writes so that subsequent reads (tokens, process instances) see up-to-date persisted state
+	err := batch.Flush(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to flush batch: %w", err)
+	}
 	parentProcessTargetElementId := instance.ParentProcessTargetElementId
 	parentProcessInstanceKey := instance.ParentProcessExecutionToken.ProcessInstanceKey
 	parentTokenKey := instance.ParentProcessExecutionToken.Key
@@ -397,6 +402,14 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		isEventSubProcess = true
 		if subProcessDefTyped.TProcess.StartEvents[0].IsInterrupting {
 			parentInstance.ProcessInstance().State = runtime.ActivityStateCompleted
+		} else {
+			tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, parentInstance.ProcessInstance().Key)
+			if err != nil {
+				return fmt.Errorf("failed to find active tokens for process %d: %w", parentInstance.ProcessInstance().Key, err)
+			}
+			if len(tokens) == 0 {
+				parentInstance.ProcessInstance().State = runtime.ActivityStateCompleted
+			}
 		}
 	}
 
@@ -404,7 +417,9 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to get token by key: %w", err)
 	}
-	if updatedParentToken.ElementInstanceKey != parentProcessTargetElementInstanceKey {
+	// event subprocesses can be non-interrupting so child's parent token does not have to be waiting on the same target element
+	// Can we even remove this condition or is it required for embedded (non-event) subprocesses?
+	if !isEventSubProcess && updatedParentToken.ElementInstanceKey != parentProcessTargetElementInstanceKey {
 		log.Infof(ctx, "failed to handleParentProcessContinuation for sub process instance %d: parent token is no longer waiting at target element instance key %d", instance.ProcessInstance().Key, parentProcessTargetElementInstanceKey)
 		return nil
 	}
@@ -447,13 +462,23 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	//handle the finalization, transition back to parent process if sub process is not an event sub process
 	var tokens []runtime.ExecutionToken
 	if !isEventSubProcess {
-		tokens, err = engine.handleElementTransition(ctx, batch, parentInstance, parentElement, updatedParentToken)
-		if err != nil {
-			return fmt.Errorf("failed to handle simple transition for parent instance  %d: %w", parentInstance.ProcessInstance().Key, err)
+		isSubprocessChildrenActive := instance.ProcessInstance().State == runtime.ActivityStateActive
+		if !isSubprocessChildrenActive {
+			var hasActive bool
+			hasActive, err = engine.hasActiveSubProcessInstance(ctx, instance.ProcessInstance().Key)
+			if err != nil {
+				return fmt.Errorf("failed to check if sub process children are still active: %w", err)
+			}
+			isSubprocessChildrenActive = hasActive
 		}
-
-		for _, tok := range tokens {
-			batch.SaveToken(ctx, tok)
+		if !isSubprocessChildrenActive {
+			tokens, err = engine.handleElementTransition(ctx, batch, parentInstance, parentElement, updatedParentToken)
+			if err != nil {
+				return fmt.Errorf("failed to handle simple transition for parent instance  %d: %w", parentInstance.ProcessInstance().Key, err)
+			}
+			for _, tok := range tokens {
+				batch.SaveToken(ctx, tok)
+			}
 		}
 	}
 	err = batch.SaveProcessInstance(ctx, parentInstance)
@@ -466,7 +491,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	})
 
 	// for nested event subprocesses: complete parent event subprocesses recursively going up
-	if parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted && parentInstance.Type() == runtime.ProcessTypeSubProcess {
+	if isEventSubProcess && parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted && parentInstance.Type() == runtime.ProcessTypeSubProcess {
 		err = engine.handleParentProcessContinuationForSubProcess(ctx, batch, parentInstance.(*runtime.SubProcessInstance))
 		if err != nil {
 			return fmt.Errorf("failed to handle parent process continuation for parent subprocess instance %d: %w", parentInstance.ProcessInstance().Key, err)

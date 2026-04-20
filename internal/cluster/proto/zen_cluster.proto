@@ -677,6 +677,8 @@ message ElementStatisticEntry {
   string element_id = 1;
   int32 active_count = 2;
   int32 incident_count = 3;
+  int32 completed_count = 4;
+  int32 terminated_count = 5;
 }
 
 message PartitionedElementStatistics {

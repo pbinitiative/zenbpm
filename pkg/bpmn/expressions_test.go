@@ -94,7 +94,7 @@ func TestEvaluateExpressionUndefinedVariableReturnsNil(t *testing.T) {
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 
 	// FEEL runtime is lenient: undefined variables evaluate to nil, not an error
-	result, err := bpmnEngine.evaluateExpression("= undefined_var", nil)
+	result, err := bpmnEngine.evaluateExpression("= undefined_variable", nil)
 
 	assert.NoError(t, err)
 	assert.Nil(t, result)

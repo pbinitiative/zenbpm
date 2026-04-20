@@ -45,7 +45,7 @@ func TestRestApiJob(t *testing.T) {
 	})
 
 	t.Run("complete job", func(t *testing.T) {
-		err := completeJob(t, jobToComplete, map[string]any{
+		err := completeJob(t, jobToComplete.Key, map[string]any{
 			"city": "test",
 		})
 		assert.NoError(t, err)
@@ -151,8 +151,8 @@ func getJobs(t testing.TB, params zenclient.GetJobsParams) (zenclient.JobPartiti
 
 }
 
-func completeJob(t testing.TB, job zenclient.Job, vars map[string]any) error {
-	response, err := app.restClient.CompleteJobWithResponse(t.Context(), job.Key, zenclient.CompleteJobJSONRequestBody{
+func completeJob(t testing.TB, jobKey int64, vars map[string]any) error {
+	response, err := app.restClient.CompleteJobWithResponse(t.Context(), jobKey, zenclient.CompleteJobJSONRequestBody{
 		Variables: &vars,
 	})
 	assert.NoError(t, err)

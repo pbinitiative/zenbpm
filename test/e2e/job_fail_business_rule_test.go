@@ -12,7 +12,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 	t.Run("catch_all", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_catch_all_error_boundary_event.bpmn", "business-rule-task-external-catch-all-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -32,7 +32,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_error_boundary_event.bpmn", "business-rule-task-external-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -51,7 +51,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_error_boundary_event.bpmn", "business-rule-task-external-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -73,7 +73,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 	t.Run("catch_all", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_catch_all_error_boundary_event.bpmn", "business-rule-task-external-catch-all-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -93,7 +93,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_error_boundary_event.bpmn", "business-rule-task-external-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -113,7 +113,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/business_rule_task/business_rule_task_external_with_error_boundary_event.bpmn", "business-rule-task-external-error-boundary")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})

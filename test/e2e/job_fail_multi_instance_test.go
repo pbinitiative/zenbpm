@@ -358,7 +358,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithVariables(t, definition.ProcessDefinitionKey, map[string]any{
+		processInstance := createProcessInstanceWithVariables(t, definition.ProcessDefinitionKey, map[string]any{
 			"variable_name":       "test-value",
 			"testInputCollection": []string{"test1", "test2", "test3"},
 		})
@@ -426,7 +426,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 func createMultiInstanceProcessInstance(t testing.TB, definitionKey int64) (zenclient.ProcessInstance, zenclient.ProcessInstance) {
 	t.Helper()
 
-	processInstance := createErrorBoundaryProcessInstanceWithVariables(t, definitionKey, map[string]any{
+	processInstance := createProcessInstanceWithVariables(t, definitionKey, map[string]any{
 		"variable_name":       "test-value",
 		"testInputCollection": []string{"test1", "test2", "test3"},
 	})

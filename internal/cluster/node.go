@@ -264,6 +264,7 @@ func (node *ZenNode) GetDmnResourceDefinitions(ctx context.Context, request *pro
 		SortByOrder:             sql.ToNullString(request.SortByOrder),
 		DmnResourceDefinitionID: sql.ToNullString(request.DmnResourceDefinitionId),
 		DmnDefinitionName:       sql.ToNullString(request.DmnDefinitionName),
+		Search:                  sql.ToNullString(request.Search),
 		Offset:                  int64((page - 1) * size),
 		Size:                    int64(size),
 	})
@@ -661,7 +662,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 }
 
 // GetProcessDefinitions does not have to go through the grpc as all partitions should have the same definitions so it can just read it from any of its partitions
-func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, onlyLatest *bool, sort *sql.Sort, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
+func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *string, search *string, onlyLatest *bool, sort *sql.Sort, page int32, size int32) (proto.ProcessDefinitionsPage, error) {
 	// Get storage for the selected partition
 	db, err := node.GetReadOnlyDB(ctx)
 	if err != nil {
@@ -675,6 +676,7 @@ func (node *ZenNode) GetProcessDefinitions(ctx context.Context, bpmnProcessId *s
 
 	dbDefinitions, err := db.Queries.FindProcessDefinitions(ctx, sql.FindProcessDefinitionsParams{
 		BpmnProcessIDFilter: sql.ToNullString(bpmnProcessId),
+		Search:              sql.ToNullString(search),
 		Sort:                sql.ToNullString(sort),
 		OnlyLatest:          int64(latest),
 		Offset:              int64((page - 1) * size),
@@ -891,7 +893,7 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 	onlyLatest bool,
 	bpmnProcessIdIn []string,
 	bpmnProcessDefinitionKeyIn []int64,
-	name *string,
+	search *string,
 	sort *sql.Sort,
 ) ([]*proto.PartitionedProcessDefinitionStatistics, error) {
 	clusterState := node.store.ClusterState()
@@ -911,7 +913,7 @@ func (node *ZenNode) GetProcessDefinitionStatistics(
 				onlyLatest,
 				bpmnProcessIdIn,
 				bpmnProcessDefinitionKeyIn,
-				name,
+				search,
 				sort,
 				partitionId,
 			)
@@ -939,7 +941,7 @@ func (node *ZenNode) getProcessDefinitionStatisticsForPartition(
 	onlyLatest bool,
 	bpmnProcessIdIn []string,
 	bpmnProcessDefinitionKeyIn []int64,
-	name *string,
+	search *string,
 	sort *sql.Sort,
 	partitionId uint32,
 ) ([]*proto.PartitionedProcessDefinitionStatistics, error) {
@@ -964,7 +966,7 @@ func (node *ZenNode) getProcessDefinitionStatisticsForPartition(
 		OnlyLatest:                 &onlyLatest,
 		BpmnProcessIdIn:            bpmnProcessIdIn,
 		BpmnProcessDefinitionKeyIn: bpmnProcessDefinitionKeyIn,
-		Name:                       name,
+		Search:                     search,
 		Sort:                       (*string)(sort),
 	})
 

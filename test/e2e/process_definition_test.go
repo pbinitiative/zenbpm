@@ -100,6 +100,92 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.Equal(t, 1, response.JSON200.TotalCount)
 	})
 
+	t.Run("test search filter", func(t *testing.T) {
+		t.Run("search by name substring matches single result", func(t *testing.T) {
+			search := "v2"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			require.Len(t, response.JSON200.Items, 1)
+			assert.Equal(t, "service-task-input-output-v2", *response.JSON200.Items[0].BpmnProcessName)
+		})
+
+		t.Run("search is case-insensitive for name match", func(t *testing.T) {
+			search := "V2"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			require.Len(t, response.JSON200.Items, 1)
+			assert.Equal(t, "service-task-input-output-v2", *response.JSON200.Items[0].BpmnProcessName)
+		})
+
+		t.Run("search matches by bpmn_process_id as well as by name", func(t *testing.T) {
+			search := "service-task-input-output"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			for _, item := range response.JSON200.Items {
+				assert.True(t, strings.Contains(
+					strings.ToLower(item.BpmnProcessId),
+					strings.ToLower(search),
+				))
+			}
+		})
+
+		t.Run("search is case-insensitive for bpmn_process_id match", func(t *testing.T) {
+			search := "SERVICE-TASK-INPUT-OUTPUT"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			for _, item := range response.JSON200.Items {
+				assert.True(t, strings.Contains(
+					strings.ToLower(item.BpmnProcessId),
+					strings.ToLower(search),
+				))
+			}
+		})
+
+		t.Run("search substring matches multiple results", func(t *testing.T) {
+			search := "service-task"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			for _, item := range response.JSON200.Items {
+				assert.True(t, strings.Contains(
+					strings.ToLower(item.BpmnProcessId),
+					strings.ToLower(search),
+				))
+			}
+		})
+
+		t.Run("search returns no results for unmatched term", func(t *testing.T) {
+			search := "nomatch"
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 0, response.JSON200.TotalCount)
+			assert.Empty(t, response.JSON200.Items)
+		})
+
+		t.Run("search with empty string returns all definitions", func(t *testing.T) {
+			search := ""
+			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Greater(t, response.JSON200.TotalCount, 0)
+			assert.NotEmpty(t, response.JSON200.Items)
+		})
+	})
+
 	t.Run("test sorting", func(t *testing.T) {
 		onlyLatest := false
 		sortBy := zenclient.GetProcessDefinitionsParamsSortByVersion

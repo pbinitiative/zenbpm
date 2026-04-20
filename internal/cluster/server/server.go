@@ -1532,7 +1532,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 
 		dbStats, err := queries.FindProcessDefinitionStatistics(ctx, sql.FindProcessDefinitionStatisticsParams{
 			Sort:                sql.ToNullString((*string)(req.Sort)),
-			NameFilter:          sql.ToNullString(req.Name),
+			Search:              sql.ToNullString(req.Search),
 			OnlyLatest:          onlyLatest,
 			Offset:              int64(req.GetSize()) * int64(req.GetPage()-1),
 			Limit:               int64(req.GetSize()),

@@ -573,21 +573,22 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	var activityResult runtime.ActivityState
 	var err error
 
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TSubProcess:
-		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken, variableHolder)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder)
 	default:
 		return nil, fmt.Errorf("unsupported element type '%T' with id '%s': element is not supported by the engine", activity.Element(), activity.Element().GetId())
 	}
@@ -649,15 +650,18 @@ func (engine *Engine) createBusinessRuleTask(
 	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	currentToken runtime.ExecutionToken,
+	businessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
 	var activityResult runtime.ActivityState
 	var err error
 
 	switch element.Implementation.(type) {
 	case *bpmn20.TBusinessRuleTaskLocal:
-		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal), currentToken)
+		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal),
+			currentToken, businessRuleVarHolder)
 	case *bpmn20.TBusinessRuleTaskExternal:
-		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
+		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, currentToken,
+			businessRuleVarHolder)
 	default:
 		return runtime.ActivityStateFailed, fmt.Errorf("unsupported BusinessRuleTask Implementation %s", element.Implementation)
 	}
@@ -676,9 +680,9 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskLocal,
 	currentToken runtime.ExecutionToken,
+	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+	if err := localBusinessRuleVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 	}
@@ -690,7 +694,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			ElementId:          element.GetId(),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     variableHolder.LocalVariables(),
+			InputVariables:     localBusinessRuleVarHolder.LocalVariables(),
 			OutputVariables:    nil,
 		},
 	)
@@ -703,7 +707,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		implementation.CalledDecision.BindingType,
 		implementation.CalledDecision.DecisionId,
 		implementation.CalledDecision.VersionTag,
-		variableHolder.LocalVariables(),
+		localBusinessRuleVarHolder.LocalVariables(),
 	)
 	if err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
@@ -713,7 +717,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	// TODO persist relation between result.DecisionInstanceKey and flow_element_instance
 
 	if len(element.GetOutputMapping()) > 0 {
-		outputVariables, err := variableHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)
+		outputVariables, err := localBusinessRuleVarHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)
 		if err != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
@@ -727,7 +731,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+	localBusinessRuleVarHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 	batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:             currentToken.ElementInstanceKey,
@@ -744,10 +748,10 @@ func (engine *Engine) createExternalBusinessRuleTask(
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
-	implementation *bpmn20.TBusinessRuleTaskExternal,
 	currentToken runtime.ExecutionToken,
+	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	activityState, err := engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	activityState, err := engine.createInternalTask(ctx, batch, instance, element, currentToken, localBusinessRuleVarHolder)
 	if err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create internal task for business rule %s : %w", element.TTask.Id, err)
@@ -1076,7 +1080,8 @@ func (engine *Engine) handleMessageEndEvent(
 	ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
-	activityResult, err := engine.createInternalTask(ctx, batch, instance, endEvent, currentToken)
+	activityResult, err := engine.createInternalTask(ctx, batch, instance, endEvent, currentToken,
+		runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil))
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageEndEvent %d: %w", currentToken.ElementInstanceKey, err)

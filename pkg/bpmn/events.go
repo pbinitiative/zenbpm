@@ -357,7 +357,7 @@ func (engine *Engine) createMessageSubscription(instance runtime.ProcessInstance
 func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	switch ed := ite.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
-		activityResult, err := engine.createInternalTask(ctx, batch, instance, ite, currentToken)
+		activityResult, err := engine.createInternalTask(ctx, batch, instance, ite, currentToken, runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil))
 		if err != nil {
 			currentToken.State = runtime.TokenStateFailed
 			return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageThrowEvent %d: %w", currentToken.ElementInstanceKey, err)

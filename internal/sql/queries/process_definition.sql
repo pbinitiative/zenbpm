@@ -14,6 +14,9 @@ WHERE
 -- force sqlc to keep sort param
   CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
   AND (CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT) IS NULL OR pd.bpmn_process_id = CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT))
+  AND (CAST(sqlc.narg('search') AS TEXT) IS NULL
+           OR lower(pd.bpmn_process_id) LIKE '%' || lower(CAST(sqlc.narg('search') AS TEXT)) || '%'
+           OR lower(pd.bpmn_process_name) LIKE '%' || lower(CAST(sqlc.narg('search') AS TEXT)) || '%')
   AND (
     CAST(sqlc.arg('only_latest') AS INTEGER) = 0
     OR pd.version = (

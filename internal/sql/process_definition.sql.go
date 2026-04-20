@@ -258,8 +258,11 @@ FROM process_definition AS pd
 WHERE
   CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
   AND (CAST(?2 AS TEXT) IS NULL OR pd.bpmn_process_id = CAST(?2 AS TEXT))
+  AND (CAST(?3 AS TEXT) IS NULL
+           OR lower(pd.bpmn_process_id) LIKE '%' || lower(CAST(?3 AS TEXT)) || '%'
+           OR lower(pd.bpmn_process_name) LIKE '%' || lower(CAST(?3 AS TEXT)) || '%')
   AND (
-    CAST(?3 AS INTEGER) = 0
+    CAST(?4 AS INTEGER) = 0
     OR pd.version = (
       SELECT MAX(pd2.version)
       FROM process_definition AS pd2
@@ -279,13 +282,14 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_desc' THEN pd.bpmn_process_name END DESC,
   pd."key" DESC
 
-LIMIT ?5
-OFFSET ?4
+LIMIT ?6
+OFFSET ?5
 `
 
 type FindProcessDefinitionsParams struct {
 	Sort                sql.NullString `json:"sort"`
 	BpmnProcessIDFilter sql.NullString `json:"bpmn_process_id_filter"`
+	Search              sql.NullString `json:"search"`
 	OnlyLatest          int64          `json:"only_latest"`
 	Offset              int64          `json:"offset"`
 	Limit               int64          `json:"limit"`
@@ -305,6 +309,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitions,
 		arg.Sort,
 		arg.BpmnProcessIDFilter,
+		arg.Search,
 		arg.OnlyLatest,
 		arg.Offset,
 		arg.Limit,

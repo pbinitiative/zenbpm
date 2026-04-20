@@ -37,6 +37,13 @@ WHERE
     ELSE
         1
     END
+    AND
+    CASE WHEN ?5 IS NOT NULL THEN
+         lower(drd.dmn_resource_definition_id) like concat('%', lower(?5), '%')
+         OR lower(drd.dmn_definition_name) like concat('%', lower(?5), '%')
+    ELSE
+        1
+    END
 ORDER BY
     -- workaround for sqlc which does not replace params in order by
     CASE CAST(?1 AS TEXT) WHEN 'dmnDefinitionName_asc' THEN drd.dmn_definition_name END ASC,
@@ -49,7 +56,7 @@ ORDER BY
     CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN drd.key END DESC,
     drd.dmn_resource_definition_id ASC, drd.version DESC
 
-LIMIT ?6 OFFSET ?5
+LIMIT ?7 OFFSET ?6
 `
 
 type FindAllDmnResourceDefinitionsParams struct {
@@ -57,6 +64,7 @@ type FindAllDmnResourceDefinitionsParams struct {
 	OnlyLatest              int64       `json:"only_latest"`
 	DmnResourceDefinitionID interface{} `json:"dmn_resource_definition_id"`
 	DmnDefinitionName       interface{} `json:"dmn_definition_name"`
+	Search                  interface{} `json:"search"`
 	Offset                  int64       `json:"offset"`
 	Size                    int64       `json:"size"`
 }
@@ -77,6 +85,7 @@ func (q *Queries) FindAllDmnResourceDefinitions(ctx context.Context, arg FindAll
 		arg.OnlyLatest,
 		arg.DmnResourceDefinitionID,
 		arg.DmnDefinitionName,
+		arg.Search,
 		arg.Offset,
 		arg.Size,
 	)

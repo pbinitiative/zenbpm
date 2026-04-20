@@ -506,6 +506,7 @@ message GetDmnResourceDefinitionsRequest {
   bool only_latest = 4;
   string dmn_resource_definition_id = 5;
   string sort_by_order = 6;
+  string search = 7;
 }
 
 message DmnResourceDefinitionsPage {

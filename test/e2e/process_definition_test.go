@@ -100,6 +100,18 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		assert.Equal(t, 1, response.JSON200.TotalCount)
 	})
 
+	t.Run("test search filter", func(t *testing.T) {
+		search := "v2"
+		response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+			Search: &search,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, response.JSON200.TotalCount)
+		require.Len(t, response.JSON200.Items, 1)
+		assert.Equal(t, "service-task-input-output-v2", *response.JSON200.Items[0].BpmnProcessName)
+	})
+
 	t.Run("test sorting", func(t *testing.T) {
 		onlyLatest := false
 		sortBy := zenclient.GetProcessDefinitionsParamsSortByVersion

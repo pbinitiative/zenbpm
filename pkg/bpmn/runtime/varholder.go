@@ -58,8 +58,9 @@ func (vh *VariableHolder) EvaluateAndSetMappingsToLocalVariables(mappings []exte
 	if vh.parent == nil {
 		return nil
 	}
+	mergedContext := mergeLocalVariablesWithOutputVariables(vh.parent.LocalVariables(), vh.localVariables)
 	for _, mapping := range mappings {
-		evalResult, err := evaluateExpression(mapping.Source, vh.parent.LocalVariables())
+		evalResult, err := evaluateExpression(mapping.Source, mergedContext)
 		if err != nil {
 			return err
 		}

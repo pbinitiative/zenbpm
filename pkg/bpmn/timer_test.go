@@ -132,6 +132,61 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 
 }
 
+func TestNoninterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
+	// given
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-noninterrupting.bpmn")
+	assert.NoError(t, err)
+	// when
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	assert.NoError(t, err)
+
+	// then
+	timers, err := bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now().Add(2*time.Second))
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(timers))
+
+	jobs := findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	// when
+	time.Sleep(2 * time.Second)
+
+	// then
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().GetState())
+
+	jobs = findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(jobs))
+
+	countCompletedBoundaryTokens := 0
+	for _, token := range engineStorage.ExecutionTokens {
+		if token.ProcessInstanceKey == instance.ProcessInstance().Key && token.ElementId == "Event_02rlbpp" && token.State == runtime.TokenStateCompleted {
+			countCompletedBoundaryTokens++
+		}
+	}
+	assert.GreaterOrEqual(t, countCompletedBoundaryTokens, 1)
+
+	// when
+	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].Variables)
+	assert.NoError(t, err)
+
+	// then
+	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+
+	jobs = findActiveJobsForProcessInstance(instance.ProcessInstance().Key, "simple-job")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(jobs))
+
+	timers, err = bpmnEngine.persistence.FindTimersTo(t.Context(), time.Now().Add(2*time.Second))
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(timers))
+}
+
 func findActiveJobsForProcessInstance(processInstanceKey int64, jobType string) []runtime.Job {
 	foundServiceJobs := make([]runtime.Job, 0)
 	for _, job := range engineStorage.Jobs {

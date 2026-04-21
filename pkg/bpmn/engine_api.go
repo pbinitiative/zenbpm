@@ -29,7 +29,7 @@ func (engine *Engine) Start(ctx context.Context) error {
 		if pollTimerDelaySecondsStr == "" {
 			pollTimerDelay = 10 * time.Second
 		} else {
-seconds, err := strconv.Atoi(pollTimerDelaySecondsStr)
+			seconds, err := strconv.Atoi(pollTimerDelaySecondsStr)
 			if err != nil || seconds <= 0 {
 				engine.logger.Warn(fmt.Sprintf("failed to parse POLL_TIMER_DELAY_SECONDS env variable or value is negative, using default value of 10 seconds: %s", err))
 				pollTimerDelay = 10 * time.Second

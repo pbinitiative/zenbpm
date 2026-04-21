@@ -232,8 +232,7 @@ func TestGetSubprocessAndStartEventById_Nested(t *testing.T) {
 }
 
 func TestTimerEventDefinitionId_NilSafety(t *testing.T) {
-	// TTimerEventDefinition.Id is now *string
-	// If Id is nil, eventDefinition() and GetId() should handle it
+	// TTimerEventDefinition.Id is *string; GetId() must handle nil gracefully
 	td := TTimerEventDefinition{
 		Id:           nil,
 		TimeDuration: &TTimeInfo{XMLText: "PT1S"},
@@ -241,9 +240,10 @@ func TestTimerEventDefinitionId_NilSafety(t *testing.T) {
 	// eventDefinition interface marker should not panic
 	td.eventDefinition()
 
-	// GetId with nil should panic (this is existing behavior we document)
-	assert.Panics(t, func() {
-		_ = td.GetId()
+	// GetId with nil Id should return "" (not panic)
+	assert.NotPanics(t, func() {
+		id := td.GetId()
+		assert.Equal(t, "", id)
 	})
 }
 

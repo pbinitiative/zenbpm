@@ -442,7 +442,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	if err != nil {
 		return key, fmt.Errorf("failed to hash process definition id: %w", err)
 	}
-if len(partitionIds) == 0 {
+	if len(partitionIds) == 0 {
 		return key, fmt.Errorf("no partitions available in cluster state")
 	}
 	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
@@ -503,7 +503,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition failed: %w", errors.New(resp.Error.GetMessage())))
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition %s failed", resourceName))
 	}
 
 	return nil

@@ -25,7 +25,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -53,7 +53,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -81,7 +81,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -109,7 +109,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateFailed)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateFailed)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -139,7 +139,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -167,7 +167,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -195,7 +195,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -224,7 +224,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateFailed)
 		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateFailed)
-		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
@@ -259,18 +259,18 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 
 		waitForProcessInstanceState(t, serviceTaskProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceTokenState(t, serviceTaskProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
-		assertProcessInstanceVariables(t, serviceTaskProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, serviceTaskProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, serviceTaskProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, serviceTaskProcess.Key)
 		assertProcessInstanceTokenElements(t, serviceTaskProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
 
 		waitForProcessInstanceState(t, secondChildProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		assertProcessInstanceVariables(t, secondChildProcess.Key, map[string]interface{}{"variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, secondChildProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, secondChildProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, secondChildProcess.Key)
 
 		waitForProcessInstanceState(t, firstChildProcess.Key, zenclient.ProcessInstanceStateCompleted)
-		assertProcessInstanceVariables(t, firstChildProcess.Key, map[string]interface{}{"variable_from_request": "request_variable", "variable_name": "test-value"}) // parent process vars are propagated to a child process
+		assertProcessInstanceVariables(t, firstChildProcess.Key, map[string]interface{}{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, firstChildProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, firstChildProcess.Key, 0, 1)
 

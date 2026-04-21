@@ -175,6 +175,10 @@ func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) er
 	return b.b.SaveTimer(ctx, timer)
 }
 
+func (b *EngineBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+}
+
 func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return b.b.SaveJob(ctx, job)
 }

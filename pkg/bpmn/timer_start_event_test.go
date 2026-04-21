@@ -1,6 +1,8 @@
 package bpmn
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,4 +207,120 @@ func TestInMemoryStorage_FindProcessInstanceTimers_NilProcessInstanceKey(t *test
 	timers, err = store.FindProcessInstanceTimers(t.Context(), 999, runtime.TimerStateCreated)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(timers))
+}
+
+func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(200*time.Millisecond))
+	engine.Start(t.Context())
+	defer engine.Stop()
+
+	bpmnData, err := os.ReadFile("./test-cases/timer-start-event-process.bpmn")
+	require.NoError(t, err)
+
+	xmlData := []byte(strings.ReplaceAll(
+		string(bpmnData),
+		"2026-03-28T10:00:00Z",
+		time.Now().Add(1*time.Hour).UTC().Format(time.RFC3339),
+	))
+
+	def1, err := engine.LoadFromBytes(t.Context(), xmlData, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def1)
+
+	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def1.Key)
+	require.NoError(t, err)
+	require.Len(t, store.Timers, 1)
+
+	def2, err := engine.LoadFromBytes(t.Context(), xmlData, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def2)
+	assert.Equal(t, def1.Key, def2.Key)
+	assert.Equal(t, def1.Version, def2.Version)
+
+	if assert.Len(t, store.Timers, 1, "expected identical reload to keep the existing timer start event timer") {
+		for _, timer := range store.Timers {
+			assert.Equal(t, def1.Key, timer.ProcessDefinitionKey)
+		}
+	}
+}
+
+// TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer verifies that loading a process
+// definition with a timer start event twice (with timeDate in future) results in exactly
+// one timer in the DB for the latest process definition, and that this only timer fires to create an
+// active process instance.
+func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(200*time.Millisecond))
+	engine.Start(t.Context())
+	defer engine.Stop()
+
+	bpmnData, err := os.ReadFile("./test-cases/timer-start-event-process.bpmn")
+	require.NoError(t, err)
+
+	originalTimeDate := "2026-03-28T10:00:00Z"
+
+	// Helper: build BPMN bytes with timeDate = now+1s
+	// Uses extra milliseconds offset to ensure unique content on each call.
+	callCount := 0
+	buildBpmn := func() []byte {
+		callCount++
+		// RFC3339Nano gives nanosecond precision, guaranteeing unique content across calls.
+		newTimeDate := time.Now().Add(1*time.Second + time.Duration(callCount)*time.Millisecond).UTC().Format(time.RFC3339Nano)
+		return []byte(strings.ReplaceAll(string(bpmnData), originalTimeDate, newTimeDate))
+	}
+
+	// First load
+	v1Bytes := buildBpmn()
+	def1, err := engine.LoadFromBytes(t.Context(), v1Bytes, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def1)
+	assert.Equal(t, int32(1), def1.Version)
+
+	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def1.Key)
+	require.NoError(t, err)
+
+	// Second load (different content due to nanosecond-precision timestamp)
+	time.Sleep(10 * time.Millisecond) // ensure different wall-clock time
+	v2Bytes := buildBpmn()
+	def2, err := engine.LoadFromBytes(t.Context(), v2Bytes, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def2)
+	assert.Equal(t, int32(2), def2.Version)
+
+	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def2.Key)
+	require.NoError(t, err)
+
+	// Wait for the timer to fire (timeDate = now+1s, wait 2s)
+	time.Sleep(2 * time.Second)
+
+	// Assert: exactly 1 timer exists in DB for the v2 process definition
+	// and no timer exists for the v1 process definition
+	var timersForV2 []runtime.Timer
+	for _, timer := range store.Timers {
+		assert.NotEqual(t, def1.Key, timer.ProcessDefinitionKey, "expected no timer for v1 process definition")
+		if timer.ProcessDefinitionKey == def2.Key {
+			timersForV2 = append(timersForV2, timer)
+		}
+	}
+	assert.Equal(t, 1, len(timersForV2), "expected exactly 1 timer for v2 process definition")
+
+	// Assert: one process instance for the v2 definition is Active
+	activeInstances := 0
+	for _, pi := range store.ProcessInstances {
+		piData := pi.ProcessInstance()
+		if piData.Definition != nil && piData.Definition.Key == def2.Key &&
+			piData.GetState() == runtime.ActivityStateActive {
+			activeInstances++
+		}
+	}
+	assert.Equal(t, 1, activeInstances, "expected exactly 1 active process instance for v2 process definition")
+
+	// Assert: no process instance exists for the v1 process definition
+	for _, pi := range store.ProcessInstances {
+		piData := pi.ProcessInstance()
+		if piData.Definition != nil {
+			assert.NotEqual(t, def1.Key, piData.Definition.Key, "expected no process instance for v1 process definition")
+		}
+	}
 }

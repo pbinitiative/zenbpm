@@ -1263,6 +1263,10 @@ func (rq *DB) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	return SaveTimerWith(ctx, rq.Queries, timer)
 }
 
+func (rq *DB) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return rq.Queries.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+}
+
 func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer) error {
 	var processInstanceKey ssql.NullInt64
 	if timer.ProcessInstanceKey != nil {
@@ -2390,6 +2394,10 @@ var _ storage.TimerStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	return SaveTimerWith(ctx, b.queries, timer)
+}
+
+func (b *DBBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.queries.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
 }
 
 var _ storage.JobStorageWriter = &DBBatch{}

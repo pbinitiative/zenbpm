@@ -11,6 +11,28 @@ import (
 	"strings"
 )
 
+const deleteProcessDefinitionsTimers = `-- name: DeleteProcessDefinitionsTimers :exec
+DELETE FROM timer
+WHERE process_definition_key IN (/*SLICE:processDefinitionKeys*/?)
+    AND process_instance_key IS NULL
+    AND execution_token IS NULL
+`
+
+func (q *Queries) DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error {
+	query := deleteProcessDefinitionsTimers
+	var queryParams []interface{}
+	if len(processdefinitionkeys) > 0 {
+		for _, v := range processdefinitionkeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", strings.Repeat(",?", len(processdefinitionkeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const deleteProcessInstancesTimers = `-- name: DeleteProcessInstancesTimers :exec
 DELETE FROM timer
 WHERE process_instance_key IN (/*SLICE:processInstanceKeys*/?)

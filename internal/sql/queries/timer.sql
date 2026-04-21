@@ -9,6 +9,12 @@ ON CONFLICT
 DELETE FROM timer
 WHERE process_instance_key IN (sqlc.slice('processInstanceKeys'));
 
+-- name: DeleteProcessDefinitionsTimers :exec
+DELETE FROM timer
+WHERE process_definition_key IN (sqlc.slice('processDefinitionKeys'))
+    AND process_instance_key IS NULL
+    AND execution_token IS NULL;
+
 -- name: FindTimers :many
 SELECT
     *

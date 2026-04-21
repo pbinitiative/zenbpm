@@ -445,6 +445,23 @@ func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) erro
 	return nil
 }
 
+func (mem *Storage) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
+	for _, k := range processDefinitionKeys {
+		keySet[k] = struct{}{}
+	}
+	for key, timer := range mem.Timers {
+		if _, ok := keySet[timer.ProcessDefinitionKey]; !ok {
+			continue
+		}
+		if timer.ProcessInstanceKey != nil || timer.Token != nil {
+			continue
+		}
+		delete(mem.Timers, key)
+	}
+	return nil
+}
+
 var _ storage.JobStorageReader = &Storage{}
 
 func (mem *Storage) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnruntime.Job, error) {
@@ -829,6 +846,13 @@ var _ storage.TimerStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveTimer(ctx, timer)
+	})
+	return nil
+}
+
+func (b *StorageBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
 	})
 	return nil
 }

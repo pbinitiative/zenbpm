@@ -7,6 +7,7 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 )
 
@@ -52,14 +53,20 @@ SELECT
     COUNT(*) OVER() AS total_count
 FROM flow_element_instance
 WHERE
-    process_instance_key = ?1
-LIMIT ?3 OFFSET ?2
+    CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
+    AND process_instance_key = ?2
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
+LIMIT ?4 OFFSET ?3
 `
 
 type FindFlowElementInstancesParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	Offset             int64 `json:"offset"`
-	Limit              int64 `json:"limit"`
+	Sort               sql.NullString `json:"sort"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	Offset             int64          `json:"offset"`
+	Limit              int64          `json:"limit"`
 }
 
 type FindFlowElementInstancesRow struct {
@@ -74,7 +81,12 @@ type FindFlowElementInstancesRow struct {
 }
 
 func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error) {
-	rows, err := q.db.QueryContext(ctx, findFlowElementInstances, arg.ProcessInstanceKey, arg.Offset, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, findFlowElementInstances,
+		arg.Sort,
+		arg.ProcessInstanceKey,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -161,14 +173,20 @@ SELECT
 FROM
     flow_element_instance
 WHERE
-    process_instance_key = ?1
-LIMIT ?3 OFFSET ?2
+    CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
+    AND process_instance_key = ?2
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
+LIMIT ?4 OFFSET ?3
 `
 
 type GetFlowElementInstancesParams struct {
-	ProcessInstanceKey int64 `json:"process_instance_key"`
-	Offset             int64 `json:"offset"`
-	Limit              int64 `json:"limit"`
+	Sort               sql.NullString `json:"sort"`
+	ProcessInstanceKey int64          `json:"process_instance_key"`
+	Offset             int64          `json:"offset"`
+	Limit              int64          `json:"limit"`
 }
 
 type GetFlowElementInstancesRow struct {
@@ -183,7 +201,12 @@ type GetFlowElementInstancesRow struct {
 }
 
 func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getFlowElementInstances, arg.ProcessInstanceKey, arg.Offset, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, getFlowElementInstances,
+		arg.Sort,
+		arg.ProcessInstanceKey,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

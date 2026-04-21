@@ -1432,7 +1432,9 @@ func (s *Server) CancelProcessInstance(ctx context.Context, request public.Cance
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
+
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, sort)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {

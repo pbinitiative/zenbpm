@@ -1646,6 +1646,17 @@ paths:
             default: 10
           description: Number of items per page (max 100)
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of activities

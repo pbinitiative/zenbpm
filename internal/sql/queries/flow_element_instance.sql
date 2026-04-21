@@ -22,7 +22,12 @@ SELECT
     COUNT(*) OVER() AS total_count
 FROM flow_element_instance
 WHERE
-    process_instance_key = @process_instance_key
+    CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+    AND process_instance_key = @process_instance_key
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
 LIMIT @limit OFFSET @offset;
 
 -- name: GetFlowElementInstances :many
@@ -32,7 +37,12 @@ SELECT
 FROM
     flow_element_instance
 WHERE
-    process_instance_key = @process_instance_key
+    CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+    AND process_instance_key = @process_instance_key
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
 LIMIT @limit OFFSET @offset;
 
 

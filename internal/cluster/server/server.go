@@ -865,6 +865,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
 	flowElements, err := queries.FindFlowElementInstances(ctx, sql.FindFlowElementInstancesParams{
+		Sort:               sql.ToNullString(req.Sort),
 		ProcessInstanceKey: *req.ProcessInstanceKey,
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
 		Limit:              int64(req.GetSize()),

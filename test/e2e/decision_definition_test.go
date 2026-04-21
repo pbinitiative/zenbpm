@@ -14,19 +14,29 @@ import (
 
 func TestRestApiDmnResourceDefinition(t *testing.T) {
 	t.Run("deploy dmn resource definition", func(t *testing.T) {
-		response, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		response, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
+		assert.NoError(t, err)
+		assert.NotNil(t, response.JSON201)
+	})
+
+	t.Run("DMN resource definition should not throw panic if deploying a second DMN with the same decisionTable Id", func(t *testing.T) {
+		response, err := deployDmnResourceDefinition(t, "definition/dmn_deployment_same_table_id_1.dmn")
+		assert.NoError(t, err)
+		assert.NotNil(t, response.JSON201)
+
+		response, err = deployDmnResourceDefinition(t, "definition/dmn_deployment_same_table_id_2.dmn")
 		assert.NoError(t, err)
 		assert.NotNil(t, response.JSON201)
 	})
 
 	t.Run("repeatedly calling rest api to deploy the same definition would return conflict response", func(t *testing.T) {
-		response, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		response, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 		assert.Nil(t, response.JSON201)
 		assert.NotNil(t, response.JSON409)
 		assert.Equal(t, "CONFLICT", response.JSON409.Code)
 		assert.Contains(t, response.JSON409.Message, "duplicate dmn resource definition")
 
-		definitions, err := listDecisionDefinitions(t)
+		definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
 		assert.NoError(t, err)
 		count := 0
 		for _, def := range definitions {
@@ -38,7 +48,7 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 	})
 
 	t.Run("listing deployed definitions", func(t *testing.T) {
-		list, err := listDecisionDefinitions(t)
+		list, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
 		assert.NoError(t, err)
 		assert.Greater(t, len(list), 0)
 		var deployedDefinition zenclient.DmnResourceDefinitionSimple
@@ -52,13 +62,29 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 	})
 
 	t.Run("get single deployed definition", func(t *testing.T) {
-		list, err := listDecisionDefinitions(t)
+		_, err := deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("singleDeployment1"), ptr.To("deploymentDefId1"))
+		assert.NoError(t, err)
+
+		list, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+			DmnDefinitionName: ptr.To("singleDeployment1"),
+		})
 		assert.NoError(t, err)
 		assert.Greater(t, len(list), 0)
 
-		detail, err := app.restClient.GetDmnResourceDefinitionWithResponse(t.Context(), list[0].Key)
+		var found *zenclient.DmnResourceDefinitionSimple
+
+		for i := range list {
+			if list[i].DmnDefinitionName == "singleDeployment1" &&
+				list[i].DmnResourceDefinitionId == "deploymentDefId1" {
+				found = &list[i]
+				break
+			}
+		}
+
+		detail, err := app.restClient.GetDmnResourceDefinitionWithResponse(t.Context(), found.Key)
 		assert.NoError(t, err)
-		assert.Equal(t, "example_canAutoLiquidate", detail.JSON200.DmnResourceDefinitionId)
+		assert.Equal(t, found.DmnResourceDefinitionId, detail.JSON200.DmnResourceDefinitionId)
+		assert.Equal(t, found.DmnDefinitionName, detail.JSON200.DmnDefinitionName)
 		assert.NotNil(t, detail.JSON200.DmnData)
 	})
 }
@@ -76,15 +102,15 @@ func TestGetDmnResourceDefinitionNotFound(t *testing.T) {
 
 func TestGetDmnResourceDefinitions(t *testing.T) {
 	t.Run("deploy dmn resource definition", func(t *testing.T) {
-		_, err := deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("name11"), ptr.To("defId1"))
+		_, err := deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("name11"), ptr.To("defId1"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("name12"), ptr.To("defId1"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("name12"), ptr.To("defId1"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("name21"), ptr.To("defId2"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("name21"), ptr.To("defId2"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("name31"), ptr.To("defId3"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("name31"), ptr.To("defId3"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("jmeno41"), ptr.To("defId4"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("jmeno41"), ptr.To("defId4"))
 		assert.NoError(t, err)
 	})
 
@@ -150,7 +176,7 @@ func deployDmnResourceDefinition(t testing.TB, filename string) (*zenclient.Crea
 		return nil, err
 	}
 	wd = strings.ReplaceAll(wd, filepath.Join("test", "e2e"), "")
-	loc := filepath.Join(wd, "pkg", "dmn", "test-data", "bulk-evaluation-test", filename)
+	loc := filepath.Join(wd, "pkg", "dmn", "test-data", filename)
 	file, err := os.Open(loc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -164,7 +190,7 @@ func deployDmnResourceDefinitionWithNewNameAndId(t testing.TB, filename string, 
 		return 0, err
 	}
 	wd = strings.ReplaceAll(wd, filepath.Join("test", "e2e"), "")
-	loc := filepath.Join(wd, "pkg", "dmn", "test-data", "bulk-evaluation-test", filename)
+	loc := filepath.Join(wd, "pkg", "dmn", "test-data", filename)
 	file, err := os.ReadFile(loc)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read file: %w", err)
@@ -187,8 +213,8 @@ func deployDmnResourceDefinitionWithNewNameAndId(t testing.TB, filename string, 
 	return response.JSON201.DmnResourceDefinitionKey, nil
 }
 
-func listDecisionDefinitions(t testing.TB) ([]zenclient.DmnResourceDefinitionSimple, error) {
-	response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{})
+func listDecisionDefinitions(t testing.TB, params *zenclient.GetDmnResourceDefinitionsParams) ([]zenclient.DmnResourceDefinitionSimple, error) {
+	response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list dmn resource definitions: %w", err)
 	}

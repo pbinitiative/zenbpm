@@ -135,16 +135,16 @@ func (engine *ZenDmnEngine) saveDmnResourceDefinition(
 
 	resultDecisions := make([]runtime.DecisionDefinition, 0)
 	for _, decisionDefinition := range decisionDefinitions {
-		decisionDefinitions, err := engine.persistence.GetDecisionDefinitionsById(ctx, decisionDefinition.Id)
+		existingDefinitions, err := engine.persistence.GetDecisionDefinitionsById(ctx, decisionDefinition.Id)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to save decisionDefinition in dmn resource definition %s by id %s: %w", dmnResourceDefinition.Id, decisionDefinition.Id, err)
 		}
 
-		if len(dmnResourceDefinitions) > 0 {
-			var latest = &decisionDefinitions[0]
-			for i := range decisionDefinitions {
-				if latest.Version < decisionDefinitions[i].Version {
-					latest = &decisionDefinitions[i]
+		if len(existingDefinitions) > 0 {
+			var latest = &existingDefinitions[0]
+			for i := range existingDefinitions {
+				if latest.Version < existingDefinitions[i].Version {
+					latest = &existingDefinitions[i]
 				}
 			}
 			decisionDefinition.Version = latest.Version + 1

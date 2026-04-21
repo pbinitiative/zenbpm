@@ -236,7 +236,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, rootProcessInstance.Key, 0, 0)
 
 		parentTwoInstance := waitForChildProcessInstance(t, rootProcessInstance.Key)
-		assertProcessInstanceErrorSubscriptionCount(t, parentTwoInstance.Key, 0, 0)
+		assertProcessInstanceErrorSubscriptionCount(t, parentTwoInstance.Key, 1, 0)
 
 		parentOneInstance := waitForChildProcessInstance(t, parentTwoInstance.Key)
 		assertProcessInstanceErrorSubscriptionCount(t, parentOneInstance.Key, 0, 0)

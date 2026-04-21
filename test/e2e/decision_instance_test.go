@@ -178,7 +178,7 @@ func TestDecisionInstanceLinkedToProcessInstance(t *testing.T) {
 	_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 
-	definition, err := deployGetDefinition(t, "simple-business-rule-task-local.bpmn", "SimpleDMNTest")
+	definition, err := deployGetDefinition(t, "business_rule/simple-business-rule-task-local.bpmn", "SimpleDMNTest")
 	assert.NoError(t, err)
 
 	instance, err := createProcessInstance(t, &definition.Key, map[string]any{})

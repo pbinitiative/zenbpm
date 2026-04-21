@@ -353,7 +353,7 @@ func (engine *ZenDmnEngine) evaluateDecision(
 				}
 			}
 		default:
-			panic(fmt.Sprintf("unsupported TInformationRequirement %+v", requirement))
+			return EvaluatedDecisionResult{}, nil, fmt.Errorf("unsupported information requirement resource type: %T", requirement.RequiredResource)
 		}
 	}
 

@@ -442,6 +442,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	if err != nil {
 		return key, fmt.Errorf("failed to hash process definition id: %w", err)
 	}
+if len(partitionIds) == 0 {
+		return key, fmt.Errorf("no partitions available in cluster state")
+	}
 	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
 
 	// use that partitionIdx to create potential process timer start events always only on that one partitionIdx

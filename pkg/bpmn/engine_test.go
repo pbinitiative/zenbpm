@@ -518,7 +518,7 @@ func TestEventBasedGatewaySelectsMessagePath(t *testing.T) {
 // TODO: Fix this test after implementing support for nested variables
 func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	//setup
-	process, err := bpmnEngine.LoadFromFile(t.Context(), filepath.Join(".", "test-cases", "simple-business-rule-task-local.bpmn"))
+	process, err := bpmnEngine.LoadFromFile(t.Context(), filepath.Join(".", "test-cases", "business_rule/simple-business-rule-task-local.bpmn"))
 	assert.NoError(t, err)
 
 	definition, xmldata, err := bpmnEngine.dmnEngine.ParseDmnFromFile(filepath.Join("..", "dmn", "test-data", "bulk-evaluation-test", "can-autoliquidate-rule.dmn"))

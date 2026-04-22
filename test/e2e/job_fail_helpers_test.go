@@ -178,16 +178,26 @@ func assertProcessInstanceIncidentsLength(t testing.TB, processInstanceKey int64
 func assertProcessInstanceErrorSubscriptionCount(t testing.TB, processInstanceKey int64, expectedCreatedCount int, expectedCancelledCount int) {
 	t.Helper()
 
-	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if err != nil {
+			return false
+		}
 
-	subscriptions, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCreated)
-	require.NoError(t, err)
-	assert.Len(t, subscriptions, expectedCreatedCount)
+		createdSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCreated)
+		if err != nil || len(createdSubs) != expectedCreatedCount {
+			return false
+		}
 
-	subscriptions, err = store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCancelled)
-	require.NoError(t, err)
-	assert.Len(t, subscriptions, expectedCancelledCount)
+		cancelledSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCancelled)
+		if err != nil || len(cancelledSubs) != expectedCancelledCount {
+			return false
+		}
+
+		return true
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should have %d created and %d cancelled error subscriptions",
+		processInstanceKey, expectedCreatedCount, expectedCancelledCount)
 }
 
 func assertProcessInstanceErrorSubscriptionsCountIsZero(t testing.TB, processInstanceKey int64) {

@@ -223,8 +223,6 @@ type configuration struct {
 	Tests []testCase `yaml:"tests"`
 }
 
-const BulkEvaluationTestPath = "./test-data/bulk-evaluation-test"
-
 func TestBulkEvaluateDRD(t *testing.T) {
 	// setup
 	dmnEngine.persistence = inmemory.NewStorage()

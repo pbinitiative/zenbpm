@@ -36,7 +36,7 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 		_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 		require.NoError(t, err)
 
-		def, err := deployGetUniqueDefinition(t, "simple-business-rule-task-local.bpmn")
+		def, err := deployGetUniqueDefinition(t, "business_rule/simple-business-rule-task-local.bpmn")
 		require.NoError(t, err)
 
 		instance, err := createProcessInstance(t, ptr.To(def.Key), map[string]any{})

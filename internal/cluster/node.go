@@ -440,15 +440,15 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	var definitions bpmn20.TDefinitions
 	err = xml.Unmarshal(data, &definitions)
 	if err != nil {
-		return key, fmt.Errorf("failed to unmarshal xml data: %w", err)
+		return key, false, fmt.Errorf("failed to unmarshal xml data: %w", err)
 	}
 	h := fnv.New32a()
 	_, err = h.Write([]byte(definitions.Process.Id))
 	if err != nil {
-		return key, fmt.Errorf("failed to hash process definition id: %w", err)
+		return key, false, fmt.Errorf("failed to hash process definition id: %w", err)
 	}
 	if len(partitionIds) == 0 {
-		return key, fmt.Errorf("no partitions available in cluster state")
+		return key, false, fmt.Errorf("no partitions available in cluster state")
 	}
 	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
 

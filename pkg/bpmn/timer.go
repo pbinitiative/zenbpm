@@ -160,10 +160,6 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			return nil, err
 		}
 	}
-	if timer.Token == nil {
-		return nil, fmt.Errorf("boundary timer event must have token assigned, timerKey=%d", timer.GetKey())
-	}
-	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, *timer.Token)
 
 	err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{

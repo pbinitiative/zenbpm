@@ -308,7 +308,6 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		default:
 			t.Fatalf("unexpected status for initial deploy: %d body=%s", first.StatusCode(), string(first.Body))
 		}
-		// Second deployment of identical content must always return 200 with the same key
 		resp, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())

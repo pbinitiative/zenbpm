@@ -4244,11 +4244,13 @@ func (r GetDmnResourceDefinitionsResponse) StatusCode() int {
 type CreateDmnResourceDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *struct {
+	JSON200      *struct {
+		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
+	}
+	JSON201 *struct {
 		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 	}
 	JSON400 *Error
-	JSON409 *Error
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -4552,11 +4554,13 @@ func (r GetProcessDefinitionsResponse) StatusCode() int {
 type CreateProcessDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *struct {
+	JSON200      *struct {
+		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+	}
+	JSON201 *struct {
 		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 	}
 	JSON400 *Error
-	JSON409 *Error
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -5555,6 +5559,15 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
 			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
@@ -5570,13 +5583,6 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 			return nil, err
 		}
 		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -6145,6 +6151,15 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
 			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
@@ -6160,13 +6175,6 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 			return nil, err
 		}
 		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

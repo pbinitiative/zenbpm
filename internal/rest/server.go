@@ -242,20 +242,23 @@ func (s *Server) CreateDmnResourceDefinition(ctx context.Context, request public
 			zenerr.BadRequest(fmt.Errorf("failed to read the request body: %w", err)).ToApiError(),
 		), nil
 	}
-	key, err := s.node.DeployDmnResourceDefinitionToAllPartitions(ctx, data)
+	key, alreadyExisted, err := s.node.DeployDmnResourceDefinitionToAllPartitions(ctx, data)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.CreateDmnResourceDefinition502JSONResponse(zerr.ToApiError()), nil
-			case zenerr.ConflictCode:
-				return public.CreateDmnResourceDefinition409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CreateDmnResourceDefinition500JSONResponse(zerr.ToApiError()), nil
 			}
 		}
 		return public.CreateDmnResourceDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	if alreadyExisted {
+		return public.CreateDmnResourceDefinition200JSONResponse{
+			DmnResourceDefinitionKey: key,
+		}, nil
 	}
 	return public.CreateDmnResourceDefinition201JSONResponse{
 		DmnResourceDefinitionKey: key,
@@ -541,21 +544,23 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 		return public.CreateProcessDefinition400JSONResponse(zenerr.BadRequest(fmt.Errorf("resource file is required")).ToApiError()), nil
 	}
 
-	// Deploy with filename
-	processDefinitionKey, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
+	processDefinitionKey, alreadyExisted, err := s.node.DeployProcessDefinitionToAllPartitions(ctx, data, filename)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
-			case zenerr.ConflictCode:
-				return public.CreateProcessDefinition409JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
 			}
 		}
 		return public.CreateProcessDefinition500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	if alreadyExisted {
+		return public.CreateProcessDefinition200JSONResponse{
+			ProcessDefinitionKey: processDefinitionKey,
+		}, nil
 	}
 	return public.CreateProcessDefinition201JSONResponse{
 		ProcessDefinitionKey: processDefinitionKey,

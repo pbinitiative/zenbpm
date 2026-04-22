@@ -33,7 +33,14 @@ func (engine *Engine) exclusivelyFilterByConditionExpression(flows []bpmn20.Sequ
 					Err: err,
 				}
 			}
-			if out == true {
+			result, ok := out.(bool)
+			if !ok {
+				return nil, &ExpressionEvaluationError{
+					Msg: fmt.Sprintf("Condition expression %q in flow element id='%s' name='%s' did not evaluate to a boolean (got %v) — likely a missing variable or invalid expression", expression, flow.GetId(), flow.GetName(), out),
+					Err: nil,
+				}
+			}
+			if result {
 				ret = append(ret, flow)
 				break
 			}

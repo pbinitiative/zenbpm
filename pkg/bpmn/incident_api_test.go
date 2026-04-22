@@ -10,12 +10,10 @@ import (
 )
 
 func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) {
-	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	cp := CallPath{}
 
-	// given
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
@@ -26,11 +24,9 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 		"price": 0,
 	}
 
-	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.Error(t, err)
 
-	// then
 	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(incidents))
@@ -44,12 +40,10 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingCreatesIncident(t *testing.T) 
 }
 
 func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T) {
-	// setup
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	cp := CallPath{}
 
-	// given
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-with-condition.bpmn")
 	assert.NoError(t, err)
 	aH := bpmnEngine.NewTaskHandler().Id("task-a").Handler(cp.TaskHandler)
@@ -60,7 +54,6 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 		"price": 0,
 	}
 
-	// when
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
 	assert.Error(t, err)
 
@@ -72,7 +65,6 @@ func TestExclusiveGatewayWithExpressionsNoOutgoingResolvesIncident(t *testing.T)
 	pi := store.ProcessInstances[instance.ProcessInstance().Key]
 	pi.ProcessInstance().VariableHolder.SetLocalVariable("price", 50)
 
-	// then
 	err = bpmnEngine.ResolveIncident(t.Context(), incidents[0].Key)
 	assert.NoError(t, err)
 
@@ -95,4 +87,34 @@ func TestResolveIncidentReturnsErrNotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+func TestExclusiveGatewayMissingVariableObserve(t *testing.T) {
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
+
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/exclusive-gateway-missing-variable-default.bpmn")
+	assert.NoError(t, err)
+	variables := map[string]interface{}{
+		"b": 2,
+	}
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variables)
+	assert.Error(t, err)
+
+	incidents, err := bpmnEngine.persistence.FindIncidentsByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(incidents))
+
+	for _, incident := range incidents {
+		assert.Contains(t, []string{"incident_1", "incident_2"}, incident.ElementId)
+	}
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+	for _, fe := range flowElements {
+		if fe.ElementId == "default_end" {
+			assert.Equal(t, runtime.ActivityStateCompleted, runtime.ActivityStateCompleted)
+		}
+	}
 }

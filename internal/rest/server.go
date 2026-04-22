@@ -57,6 +57,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 			Addr:              conf.HttpServer.Addr,
 		},
 	}
+	r.Use(middleware.Recovery())
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
 	r.Use(middleware.StripEmptyQueryParams())

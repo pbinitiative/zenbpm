@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
@@ -36,11 +37,15 @@ type Server struct {
 // NewServer returns a new instance of ZenBpm GRPC server
 func NewServer(ctx context.Context, node *cluster.ZenNode, addr string) *Server {
 	textMapPropagator := otelpropagation.TraceContext{}
-	so := opentelemetry.ServerOption(opentelemetry.Options{
+	serverOption := opentelemetry.ServerOption(opentelemetry.Options{
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
 		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
 
-	grpcServer := grpc.NewServer(so)
+	grpcServer := grpc.NewServer(
+		serverOption,
+		grpc.ChainUnaryInterceptor(recovery.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(recovery.StreamServerInterceptor()),
+	)
 	server := &Server{
 		node:   node,
 		addr:   addr,

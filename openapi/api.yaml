@@ -62,7 +62,10 @@ paths:
               example:
                 dmnResourceDefinitionKey: 4503599627370495
         200:
-          description: Dmn resource definition already exists with the same dmnResourceDefinitionId and version, deployment ignored
+          description: >
+            DMN resource definition with the same dmnResourceDefinitionId and version already exists
+            and the content is identical — deployment ignored, returns the key of the existing definition.
+            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
           content:
             application/json:
               schema:
@@ -594,7 +597,10 @@ paths:
               example:
                 processDefinitionKey: 4503599627370498
         200:
-          description: Process definition already exists with the same BPMN process ID and version, deployment ignored
+          description: >
+            Process definition with the same BPMN process ID and version already exists
+            and the content is identical — deployment ignored, returns the key of the existing definition.
+            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
           content:
             application/json:
               schema:

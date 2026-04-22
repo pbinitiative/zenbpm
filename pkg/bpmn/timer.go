@@ -147,11 +147,40 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 		if err != nil {
 			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
 		}
+
+		token = runtime.ExecutionToken{
+			Key:                engine.generateKey(),
+			ElementInstanceKey: engine.generateKey(),
+			ElementId:          listener.GetId(),
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			State:              runtime.TokenStateRunning,
+		}
+		err = batch.SaveToken(ctx, token)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if timer.Token == nil {
 		return nil, fmt.Errorf("boundary timer event must have token assigned, timerKey=%d", timer.GetKey())
 	}
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, *timer.Token)
+
+	err := batch.SaveFlowElementInstance(ctx,
+		runtime.FlowElementInstance{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          listener.GetId(),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  token.Key,
+			InputVariables:     nil,
+			OutputVariables:    nil,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to handle boundary timer transition %+v: %w", timer, err)
 	}

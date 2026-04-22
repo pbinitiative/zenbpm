@@ -312,13 +312,13 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 	}, nil
 }
 
-func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, bool, error) {
 	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		return key, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
+		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return key, zenerr.Conflict(fmt.Errorf("duplicate dmn resource definition %d exists", key))
+		return key, true, nil
 	}
 	definitionKey := node.idGen.Generate()
 	clusterState := node.store.ClusterState()
@@ -338,10 +338,10 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	}
 
 	if waitErr := group.Wait(); waitErr != nil {
-		return definitionKey.Int64(), waitErr
+		return definitionKey.Int64(), false, waitErr
 	}
 
-	return definitionKey.Int64(), nil
+	return definitionKey.Int64(), false, nil
 }
 
 func (node *ZenNode) deployDmnResourceDefinitionToPartition(
@@ -418,13 +418,18 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, error) {
+// DeployProcessDefinitionToAllPartitions deploys a BPMN process definition.
+// The alreadyExisted return is true when an identical definition (matched by
+// content checksum) is already deployed; in that case the existing key is
+// returned and no new deployment is performed, so callers can treat this as
+// success (idempotent deploy).
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		return key, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
+		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return key, zenerr.Conflict(fmt.Errorf("duplicate process definition %d exists", key))
+		return key, true, nil
 	}
 	definitionKey := node.idGen.Generate()
 	clusterState := node.store.ClusterState()
@@ -467,9 +472,9 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	}
 
 	if waitErr := group.Wait(); waitErr != nil {
-		return definitionKey.Int64(), waitErr
+		return definitionKey.Int64(), false, waitErr
 	}
-	return definitionKey.Int64(), nil
+	return definitionKey.Int64(), false, nil
 }
 
 func (node *ZenNode) deployProcessDefinitionToPartition(

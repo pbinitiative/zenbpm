@@ -33,10 +33,10 @@ func TestGetProcessInstanceElementStatistics(t *testing.T) {
 	})
 
 	t.Run("active tokens are zero for a completed process instance", func(t *testing.T) {
-		_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 		require.NoError(t, err)
 
-		def, err := deployGetUniqueDefinition(t, "simple-business-rule-task-local.bpmn")
+		def, err := deployGetUniqueDefinition(t, "business_rule/simple-business-rule-task-local.bpmn")
 		require.NoError(t, err)
 
 		instance, err := createProcessInstance(t, ptr.To(def.Key), map[string]any{})

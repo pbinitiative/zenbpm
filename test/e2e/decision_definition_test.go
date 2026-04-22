@@ -30,7 +30,7 @@ func TestRestApiDmnResourceDefinition(t *testing.T) {
 	})
 
 	t.Run("repeatedly calling rest api to deploy the same definition would return conflict response", func(t *testing.T) {
-		response, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
+		response, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
 		assert.Nil(t, response.JSON201)
 		assert.NotNil(t, response.JSON409)
 		assert.Equal(t, "CONFLICT", response.JSON409.Code)

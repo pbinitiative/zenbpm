@@ -580,7 +580,6 @@ paths:
             encoding:
               resource:
                 contentType: application/octet-stream
-
       responses:
         201:
           description: Process definition deployed
@@ -1112,7 +1111,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, state, businessKey]
+            enum: [createdAt, key, state, businessKey, bpmnProcessId]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
@@ -1647,6 +1646,17 @@ paths:
             default: 10
           description: Number of items per page (max 100)
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of activities
@@ -2855,6 +2865,12 @@ components:
         incidentCount:
           type: integer
           description: Number of incidents on this element
+        completedCount:
+          type: integer
+          description: Number of completed element instances
+        terminatedCount:
+          type: integer
+          description: Number of terminated (canceled) element instances
     ElementStatistic:
       type: object
       description: Map of elementId to active/incident counts

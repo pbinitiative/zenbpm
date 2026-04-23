@@ -211,7 +211,7 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 	if !found {
 		return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
 	}
-	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixMilli()))
+	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 

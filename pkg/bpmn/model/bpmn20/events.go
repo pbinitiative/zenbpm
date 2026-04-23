@@ -96,7 +96,7 @@ type TUnknownEventDefinition struct {
 
 type TUnsupportedEventDefinition struct {
 	Name string
-	Id string
+	Id   string
 }
 
 func (TUnsupportedEventDefinition) eventDefinition() {}
@@ -174,13 +174,13 @@ func (d TIntermediateThrowEvent) GetTaskType() string { return d.TaskDefinition.
 func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
 		TEvent
-		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
-		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
-		LinkEventDefinition     TLinkEventDefinition      `xml:"linkEventDefinition"`
+		MessageEventDefinition  TMessageEventDefinition    `xml:"messageEventDefinition"`
+		TimerEventDefinition    TTimerEventDefinition      `xml:"timerEventDefinition"`
+		LinkEventDefinition     TLinkEventDefinition       `xml:"linkEventDefinition"`
 		TaskDefinition          extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
-		Input                   []extensions.TIoMapping   `xml:"extensionElements>ioMapping>input"`
-		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
-		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
+		Input                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
+		Output                  []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
+		UnknownEventDefinitions []TUnknownEventDefinition  `xml:",any"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -229,7 +229,7 @@ func (definitions *TBoundaryEvent) UnmarshalXML(d *xml.Decoder, start xml.StartE
 		CancellActivity         bool                      `xml:"cancelActivity,attr"`
 		MessageEventDefinition  TMessageEventDefinition   `xml:"messageEventDefinition"`
 		TimerEventDefinition    TTimerEventDefinition     `xml:"timerEventDefinition"`
-		ErrorEventDefinition   TErrorEventDefinition   `xml:"errorEventDefinition"`
+		ErrorEventDefinition    TErrorEventDefinition     `xml:"errorEventDefinition"`
 		Output                  []extensions.TIoMapping   `xml:"extensionElements>ioMapping>output"`
 		UnknownEventDefinitions []TUnknownEventDefinition `xml:",any"`
 	}{CancellActivity: true}

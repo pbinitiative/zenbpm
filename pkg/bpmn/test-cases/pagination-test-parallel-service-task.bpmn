@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_pag_svc" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Pagination_Parallel_Service_Task_Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start" sourceRef="StartEvent_1" targetRef="ServiceTask_1" />
+    <bpmn:serviceTask id="ServiceTask_1">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="pagination-parallel-job" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=item" target="testElementInput" />
+          <zeebe:output source="=testJobOutput" target="testElementOutput" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start</bpmn:incoming>
+      <bpmn:outgoing>Flow_end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics>
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=testInputCollection" inputElement="item" outputCollection="testOutputCollection" outputElement="=testElementOutput" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_end" sourceRef="ServiceTask_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Pagination_Parallel_Service_Task_Process">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="102" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_1_di" bpmnElement="ServiceTask_1">
+        <dc:Bounds x="290" y="80" width="100" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="492" y="102" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_di" bpmnElement="Flow_start">
+        <di:waypoint x="188" y="120"/>
+        <di:waypoint x="290" y="120"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_end_di" bpmnElement="Flow_end">
+        <di:waypoint x="390" y="120"/>
+        <di:waypoint x="492" y="120"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

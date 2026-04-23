@@ -1545,7 +1545,7 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, siz
 }
 
 // GetFlowElementHistory will contact follower node of partition that contains process instance
-func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetFlowElementHistoryResponse, error) {
+func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64, sort *sql.Sort) (*proto.GetFlowElementHistoryResponse, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
@@ -1556,11 +1556,16 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size
 	if err != nil {
 		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get flow element history: %w", err))
 	}
-	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
+	req := &proto.GetFlowElementHistoryRequest{
 		ProcessInstanceKey: &processInstanceKey,
 		Page:               &page,
 		Size:               &size,
-	})
+	}
+	if sort != nil {
+		s := string(ptr.Deref(sort, ""))
+		req.Sort = &s
+	}
+	resp, err := client.GetFlowElementHistory(ctx, req)
 	if err != nil {
 		e := fmt.Errorf("failed to get process instance flow element history from partition %d %w", partitionId, err)
 		return nil, zenerr.TechnicalError(e)

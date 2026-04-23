@@ -21,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	grpcrecovery "github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -90,12 +91,18 @@ func (s *Server) Open() error {
 	textMapPropagator := otelpropagation.TraceContext{}
 	so := opentelemetry.ServerOption(opentelemetry.Options{
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
-		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
+		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator},
+	})
 
-	srv := grpc.NewServer(so, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-		MinTime:             5 * time.Second,
-		PermitWithoutStream: true,
-	}))
+	srv := grpc.NewServer(
+		so,
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.ChainUnaryInterceptor(grpcrecovery.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(grpcrecovery.StreamServerInterceptor()),
+	)
 	proto.RegisterZenServiceServer(srv, s)
 	go srv.Serve(s.ln)
 	log.Info("zen cluster service listening on %s", s.addr)

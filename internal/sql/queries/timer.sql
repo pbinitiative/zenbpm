@@ -60,6 +60,15 @@ WHERE
     process_instance_key = @process_instance_key
     AND state = @state;
 
+-- name: FindProcessDefinitionTimersInState :many
+SELECT
+    *
+FROM
+    timer
+WHERE
+    process_definition_key = @process_definition_key
+    AND state = @state;
+
 -- name: FindTimersInStateTillDueAt :many
 SELECT
     *

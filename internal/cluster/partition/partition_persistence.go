@@ -1189,7 +1189,18 @@ func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey 
 	}
 
 	return rq.inflateTimers(ctx, dbTimers)
+}
 
+func (rq *DB) FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindProcessDefinitionTimersInState(ctx, sql.FindProcessDefinitionTimersInStateParams{
+		ProcessDefinitionKey: processDefinitionKey,
+		State:                int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers for process definition %d: %w", processDefinitionKey, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
 }
 
 func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {

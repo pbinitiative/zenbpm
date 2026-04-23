@@ -474,6 +474,22 @@ func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstan
 	return res, nil
 }
 
+func (mem *Storage) FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.ProcessDefinitionKey != processDefinitionKey {
+			continue
+		}
+		if timer.TimerState != state {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
 func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()

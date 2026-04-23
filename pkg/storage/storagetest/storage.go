@@ -345,6 +345,14 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		assert.NoError(t, err)
 		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in timers array: %+v", timer, timers)
 
+		timers, err = s.FindProcessDefinitionTimers(t.Context(), st.processDefinition.Key, bpmnruntime.TimerStateCreated)
+		assert.NoError(t, err)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in FindProcessDefinitionTimers result: %+v", timer, timers)
+
+		timers, err = s.FindProcessDefinitionTimers(t.Context(), st.processDefinition.Key, bpmnruntime.TimerStateTriggered)
+		assert.NoError(t, err)
+		assert.Falsef(t, slices.ContainsFunc(timers, timer.EqualTo), "timer in TimerStateCreated should not appear in TimerStateTriggered results: %+v", timers)
+
 		timerTest, err := s.GetTimer(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, timer.Key, timerTest.Key)

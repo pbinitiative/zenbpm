@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +43,14 @@ func TestTimerStartEvent(t *testing.T) {
 		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), fetchedProcessInstance.Key)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(tokens))
+
+		// the start timer was in the past, so it should already be triggered
+		triggeredTimers, err := store.FindProcessDefinitionTimers(t.Context(), definition.Key, bpmnruntime.TimerStateTriggered)
+		require.NoError(t, err)
+		assert.NotEmpty(t, triggeredTimers, "timer should be in TimerStateTriggered for process definition %d", definition.Key)
+		createdTimers, err := store.FindProcessInstanceTimers(t.Context(), definition.Key, bpmnruntime.TimerStateCreated)
+		require.NoError(t, err)
+		assert.Empty(t, createdTimers, "no timers should remain in TimerStateCreated for process definition %d", definition.Key)
 	})
 
 	// find the input-task-for-timer-start-event-test job and verify it is Active
@@ -65,7 +74,8 @@ func TestTimerStartEvent(t *testing.T) {
 			BpmnProcessId: &definition.BpmnProcessId,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, processInstances.JSON200.Partitions[0].Items[0].State)
+		completedInstance := processInstances.JSON200.Partitions[0].Items[0]
+		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, completedInstance.State)
 	})
 
 }
@@ -80,11 +90,16 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
+	var subProcessChild zenclient.ProcessInstance
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, &definition.Key, map[string]any{})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
+
+		// before the non-interrupting timer fires, it should be in TimerStateCreated
+		subProcessChild = getFirstChildInstance(t, instance.Key)
+		assertTimersCreated(t, subProcessChild.Key)
 	})
 
 	// Wait for the non-interrupting timer (PT1S) to fire
@@ -140,6 +155,9 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+
+		// after process completion, the non-interrupting event subprocess timer should be in TimerStateTriggered
+		assertTimersTriggered(t, subProcessChild.Key)
 	})
 }
 
@@ -156,23 +174,32 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
+	var subProcessChild zenclient.ProcessInstance
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, &definition.Key, map[string]any{})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, instance.Key)
+
+		// timer to start EventSubprocessA_00bugpj should be created
+		subProcessChild = getFirstChildInstance(t, instance.Key)
+		assertTimersCreated(t, subProcessChild.Key)
 	})
 
+	// timer to start EventSubprocessB_16e6pei should be created, timer to start EventSubprocessA_00bugpj should be triggered
+	time.Sleep(1500 * time.Millisecond)
+	eventSubprocessAChild := getFirstChildInstance(t, subProcessChild.Key)
+	assertTimersCreated(t, eventSubprocessAChild.Key)
+	assertTimersTriggered(t, subProcessChild.Key)
+
 	// Wait for timers to fire: EventSubprocessA PT1S, then EventSubprocessB PT1S, then intermediate catch PT2S
-	time.Sleep(4 * time.Second)
+	time.Sleep(2500 * time.Millisecond)
+	assertTimersTriggered(t, eventSubprocessAChild.Key)
 
 	t.Run("verify EventSubprocessA_00bugpj is not completed because EventSubprocessB is waiting", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
-
-		subProcessChild := getFirstChildInstance(t, instance.Key)
-		eventSubprocessAChild := getFirstChildInstance(t, subProcessChild.Key)
 
 		fetchedEventSubprocessA, err := getProcessInstance(t, eventSubprocessAChild.Key)
 		assert.NoError(t, err)
@@ -197,9 +224,6 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
-
-		subProcessChild := getFirstChildInstance(t, instance.Key)
-		eventSubprocessAChild := getFirstChildInstance(t, subProcessChild.Key)
 
 		fetchedEventSubprocessA, err := getProcessInstance(t, eventSubprocessAChild.Key)
 		assert.NoError(t, err)

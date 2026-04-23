@@ -300,6 +300,9 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 		runtime.NewVariableHolder(nil, variableContext),
 		&runtime.DefaultProcessInstance{},
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
+	}
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start process instance: %w", err)

@@ -3,6 +3,7 @@ package bpmn
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -80,45 +81,57 @@ func (tm *timerManager) removeTimer(timer runtime.Timer) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	tm.waitingTimers = slices.DeleteFunc(tm.waitingTimers, func(t waitingTimer) bool {
+		if t.timer.Key != timer.Key {
+			return false
+		}
 		t.cancel()
-		return t.timer.Key == timer.Key
+		return true
 	})
 }
 
 func (tm *timerManager) run() {
 	pollTicker := time.NewTicker(tm.pollTimerDelay)
 	for {
-		select {
-		case <-tm.ctx.Done():
+		if !tm.runOnce(pollTicker) {
 			return
-		case timer := <-tm.ch:
-			// process timer firing
-			if timer.Key == 0 {
-				// receive from closed channel
-				return
-			}
-			tm.processTimerFunc(context.Background(), timer)
-			tm.mu.Lock()
-			for i, item := range tm.waitingTimers {
-				if item.timer.Key == timer.Key {
-					tm.waitingTimers = append(tm.waitingTimers[:i], tm.waitingTimers[i+1:]...)
-					break
-				}
-			}
-			tm.mu.Unlock()
-		case t := <-pollTicker.C:
-			nextPoll := t.Add(tm.pollTimerDelay)
-			toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)
-			if err != nil {
-				tm.logger.Error(fmt.Sprintf("Failed to poll timers for processing: %s", err))
-				continue
-			}
-			for _, tft := range toFireTimers {
-				tm.addWaitingTimer(tft)
-			}
-			tm.nextPoll = t.Add(tm.pollTimerDelay)
 		}
 	}
+}
+
+func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
+	continueTimer = true
+	defer func() {
+		if r := recover(); r != nil {
+			tm.logger.Error(fmt.Sprintf("timerManager panic recovered: %v\n%s", r, debug.Stack()))
+		}
+	}()
+
+	select {
+	case <-tm.ctx.Done():
+		continueTimer = false
+		return
+	case timer := <-tm.ch:
+		// process timer firing
+		if timer.Key == 0 {
+			// receive from closed channel
+			continueTimer = false
+			return
+		}
+		tm.removeTimer(timer)
+		tm.processTimerFunc(context.Background(), timer)
+	case t := <-pollTicker.C:
+		nextPoll := t.Add(tm.pollTimerDelay)
+		toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)
+		if err != nil {
+			tm.logger.Error(fmt.Sprintf("Failed to poll timers for processing: %s", err))
+			return
+		}
+		for _, tft := range toFireTimers {
+			tm.addWaitingTimer(tft)
+		}
+		tm.nextPoll = t.Add(tm.pollTimerDelay)
+	}
+	return
 }
 
 func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {

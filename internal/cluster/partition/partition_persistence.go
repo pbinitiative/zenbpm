@@ -1286,7 +1286,7 @@ func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer
 		ElementInstanceKey:   elementInstanceKey,
 		ProcessDefinitionKey: timer.ProcessDefinitionKey,
 		ProcessInstanceKey:   processInstanceKey,
-		State:                int64(timer.GetState()),
+		State:                int64(timer.TimerState),
 		CreatedAt:            timer.CreatedAt.UnixMilli(),
 		DueAt:                timer.DueAt.UnixMilli(),
 		ExecutionToken:       executionTokenKey,

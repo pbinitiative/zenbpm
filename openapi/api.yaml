@@ -1111,7 +1111,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [createdAt, key, state, businessKey]
+            enum: [createdAt, key, state, businessKey, bpmnProcessId]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom

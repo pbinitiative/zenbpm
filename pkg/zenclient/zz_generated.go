@@ -133,10 +133,11 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
-	GetProcessInstancesParamsSortByBusinessKey GetProcessInstancesParamsSortBy = "businessKey"
-	GetProcessInstancesParamsSortByCreatedAt   GetProcessInstancesParamsSortBy = "createdAt"
-	GetProcessInstancesParamsSortByKey         GetProcessInstancesParamsSortBy = "key"
-	GetProcessInstancesParamsSortByState       GetProcessInstancesParamsSortBy = "state"
+	GetProcessInstancesParamsSortByBpmnProcessId GetProcessInstancesParamsSortBy = "bpmnProcessId"
+	GetProcessInstancesParamsSortByBusinessKey   GetProcessInstancesParamsSortBy = "businessKey"
+	GetProcessInstancesParamsSortByCreatedAt     GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey           GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState         GetProcessInstancesParamsSortBy = "state"
 )
 
 // Defines values for GetProcessInstancesParamsSortOrder.

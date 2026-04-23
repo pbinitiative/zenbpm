@@ -20,7 +20,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
-	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -57,6 +56,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 			Addr:              conf.HttpServer.Addr,
 		},
 	}
+	r.Use(middleware.Recovery())
 	r.Use(middleware.Cors())
 	r.Use(middleware.Opentelemetry(conf))
 	r.Use(middleware.StripEmptyQueryParams())
@@ -64,15 +64,15 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-				writeError(w, r, http.StatusBadRequest, apierror.ApiError{
+				writeError(w, r, http.StatusBadRequest, public.Error{
 					Message: err.Error(),
-					Type:    "BAD_REQUEST",
+					Code:    "BAD_REQUEST",
 				})
 			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-				writeError(w, r, http.StatusInternalServerError, apierror.ApiError{
+				writeError(w, r, http.StatusInternalServerError, public.Error{
 					Message: err.Error(),
-					Type:    "ERROR",
+					Code:    "ERROR",
 				})
 			},
 		}))
@@ -810,9 +810,13 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, reques
 	for i, partition := range partitions {
 		items := make(public.ElementStatistic, len(partition.GetStatistics()))
 		for _, entry := range partition.GetStatistics() {
+			completedCount := int(entry.GetCompletedCount())
+			terminatedCount := int(entry.GetTerminatedCount())
 			items[entry.GetElementId()] = public.ElementStatisticCounts{
-				ActiveCount:   int(entry.GetActiveCount()),
-				IncidentCount: int(entry.GetIncidentCount()),
+				ActiveCount:     int(entry.GetActiveCount()),
+				IncidentCount:   int(entry.GetIncidentCount()),
+				CompletedCount:  &completedCount,
+				TerminatedCount: &terminatedCount,
 			}
 		}
 		result.Partitions[i] = public.PartitionElementStatistics{
@@ -1034,10 +1038,10 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	if request.Params.SortBy != nil {
 		s := string(*request.Params.SortBy)
 		switch *request.Params.SortBy {
-		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByBusinessKey:
+		case public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId:
 			sortByDbColumn = &s
 		default:
-			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState}
+			supportedSortBy := []public.GetProcessInstancesParamsSortBy{public.GetProcessInstancesParamsSortByCreatedAt, public.GetProcessInstancesParamsSortByKey, public.GetProcessInstancesParamsSortByState, public.GetProcessInstancesParamsSortByBusinessKey, public.GetProcessInstancesParamsSortByBpmnProcessId}
 			return public.GetProcessInstances400JSONResponse(
 				zenerr.BadRequest(fmt.Errorf("unexpected GetProcessInstancesRequest.SortBy: %v, supported: %v", *request.Params.SortBy, supportedSortBy)).ToApiError(),
 			), nil
@@ -1428,7 +1432,9 @@ func (s *Server) CancelProcessInstance(ctx context.Context, request public.Cance
 
 func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryRequestObject) (public.GetHistoryResponseObject, error) {
 	defaultPagination(&request.Params.Page, &request.Params.Size)
-	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey)
+
+	sort := sql.SortString(request.Params.SortOrder, request.Params.SortBy)
+	flow, err := s.node.GetFlowElementHistory(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, sort)
 	if err != nil {
 		var zerr *zenerr.ZenError
 		if errors.As(err, &zerr) {

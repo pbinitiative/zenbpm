@@ -18,17 +18,16 @@ WHERE process_instance_key IN (sqlc.slice('keys'));
 
 -- name: FindFlowElementInstances :many
 SELECT
-    fei.*,
+    *,
     COUNT(*) OVER() AS total_count
-FROM execution_token AS et
-JOIN process_instance AS pi
-    ON (pi.parent_process_execution_token = et.key
-    OR pi.key = @process_instance_key)
-    AND process_type != 3
-JOIN flow_element_instance AS fei
-    ON fei.process_instance_key = pi.key
+FROM flow_element_instance
 WHERE
-    et.process_instance_key = @process_instance_key
+    CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+    AND process_instance_key = @process_instance_key
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
 LIMIT @limit OFFSET @offset;
 
 -- name: GetFlowElementInstances :many
@@ -38,7 +37,12 @@ SELECT
 FROM
     flow_element_instance
 WHERE
-    process_instance_key = @process_instance_key
+    CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
+    AND process_instance_key = @process_instance_key
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN created_at END DESC,
+  created_at DESC
 LIMIT @limit OFFSET @offset;
 
 

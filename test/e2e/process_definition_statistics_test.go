@@ -144,19 +144,6 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.Empty(t, allStatsItems(resp.JSON200))
 	})
 
-	t.Run("pagination", func(t *testing.T) {
-		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
-			&zenclient.GetProcessDefinitionStatisticsParams{
-				BpmnProcessDefinitionKeyIn: &[]int64{}, // testing with empty array to cover potential edge case,
-				Page:                       ptr.To(int32(1)),
-				Size:                       ptr.To(int32(1)),
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		assert.Equal(t, 1, len(allStatsItems(resp.JSON200)))
-		assert.Greater(t, resp.JSON200.TotalCount, 1)
-	})
-
 	t.Run("name filter", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{

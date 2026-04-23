@@ -133,10 +133,11 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
-	GetProcessInstancesParamsSortByBusinessKey GetProcessInstancesParamsSortBy = "businessKey"
-	GetProcessInstancesParamsSortByCreatedAt   GetProcessInstancesParamsSortBy = "createdAt"
-	GetProcessInstancesParamsSortByKey         GetProcessInstancesParamsSortBy = "key"
-	GetProcessInstancesParamsSortByState       GetProcessInstancesParamsSortBy = "state"
+	GetProcessInstancesParamsSortByBpmnProcessId GetProcessInstancesParamsSortBy = "bpmnProcessId"
+	GetProcessInstancesParamsSortByBusinessKey   GetProcessInstancesParamsSortBy = "businessKey"
+	GetProcessInstancesParamsSortByCreatedAt     GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey           GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState         GetProcessInstancesParamsSortBy = "state"
 )
 
 // Defines values for GetProcessInstancesParamsSortOrder.
@@ -171,6 +172,17 @@ const (
 	GetChildProcessInstancesParamsStateCompleted  GetChildProcessInstancesParamsState = "completed"
 	GetChildProcessInstancesParamsStateFailed     GetChildProcessInstancesParamsState = "failed"
 	GetChildProcessInstancesParamsStateTerminated GetChildProcessInstancesParamsState = "terminated"
+)
+
+// Defines values for GetHistoryParamsSortBy.
+const (
+	GetHistoryParamsSortByCreatedAt GetHistoryParamsSortBy = "createdAt"
+)
+
+// Defines values for GetHistoryParamsSortOrder.
+const (
+	GetHistoryParamsSortOrderAsc  GetHistoryParamsSortOrder = "asc"
+	GetHistoryParamsSortOrderDesc GetHistoryParamsSortOrder = "desc"
 )
 
 // Defines values for GetIncidentsParamsState.
@@ -269,8 +281,14 @@ type ElementStatisticCounts struct {
 	// ActiveCount Number of active element instances
 	ActiveCount int `json:"activeCount"`
 
+	// CompletedCount Number of completed element instances
+	CompletedCount *int `json:"completedCount,omitempty"`
+
 	// IncidentCount Number of incidents on this element
 	IncidentCount int `json:"incidentCount"`
+
+	// TerminatedCount Number of terminated (canceled) element instances
+	TerminatedCount *int `json:"terminatedCount,omitempty"`
 }
 
 // ElementStatisticsPartitions defines model for ElementStatisticsPartitions.
@@ -988,8 +1006,18 @@ type GetHistoryParams struct {
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+	Size   *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	SortBy *GetHistoryParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetHistoryParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetHistoryParamsSortBy defines parameters for GetHistory.
+type GetHistoryParamsSortBy string
+
+// GetHistoryParamsSortOrder defines parameters for GetHistory.
+type GetHistoryParamsSortOrder string
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
@@ -3605,6 +3633,38 @@ func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHi
 		if params.Size != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

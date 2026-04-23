@@ -569,9 +569,10 @@ message GetProcessInstanceJobsResponse {
 }
 
 message GetFlowElementHistoryRequest {
-  int64 process_instance_key = 1;
-  int32 page = 2;
-  int32 size = 3;
+  string sort = 1;
+  int64 process_instance_key = 2;
+  int32 page = 3;
+  int32 size = 4;
 }
 
 message GetFlowElementHistoryResponse {
@@ -678,6 +679,8 @@ message ElementStatisticEntry {
   string element_id = 1;
   int32 active_count = 2;
   int32 incident_count = 3;
+  int32 completed_count = 4;
+  int32 terminated_count = 5;
 }
 
 message PartitionedElementStatistics {

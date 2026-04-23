@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -38,6 +39,9 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 			completeTimerSpan.SetStatus(codes.Error, retErr.Error())
 		}
 		completeTimerSpan.End()
+		if r := recover(); r != nil {
+			engine.logger.Error(fmt.Sprintf("failed to process timer, panic recovered: %v\n%s", r, debug.Stack()))
+		}
 	}()
 
 	if timer.ProcessInstanceKey == nil { // timer start event creates and starts the new process instance

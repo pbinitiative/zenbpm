@@ -324,3 +324,39 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 		}
 	}
 }
+
+// TestCreateStartProcessOnTimerStartEvent_TimerMarkedTriggeredBeforeInstanceCreation
+// verifies that the timer is persisted as Triggered BEFORE
+// CreateInstanceWithStartingElements is called. If instance creation fails the
+// timer must not stay in Created state (which would cause duplicate instances on
+// the next poll cycle).
+func TestCreateStartProcessOnTimerStartEvent_TimerMarkedTriggeredBeforeInstanceCreation(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+
+	// Use a non-existent process definition key so that CreateInstanceWithStartingElements returns an error.
+	nonExistentPDKey := engine.generateKey()
+	timerKey := engine.generateKey()
+
+	timer := runtime.Timer{
+		Key:                  timerKey,
+		ElementId:            "start-timer",
+		ProcessDefinitionKey: nonExistentPDKey,
+		ProcessInstanceKey:   nil,
+		Token:                nil,
+		TimerState:           runtime.TimerStateCreated,
+	}
+	require.NoError(t, store.SaveTimer(t.Context(), timer))
+
+	// TriggerTimer → createStartProcessOnTimerStartEvent. Instance creation fails
+	// because there is no matching process definition.
+	_, _, err := engine.TriggerTimer(t.Context(), timer)
+	require.Error(t, err, "expected an error because the process definition does not exist")
+
+	// Despite the error the timer must have been marked Triggered so that
+	// the timer manager does not fire it again.
+	persisted, getErr := store.GetTimer(t.Context(), timerKey)
+	require.NoError(t, getErr)
+	assert.Equal(t, runtime.TimerStateTriggered, persisted.TimerState,
+		"timer must be Triggered even when subsequent instance creation fails")
+}

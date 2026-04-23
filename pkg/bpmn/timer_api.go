@@ -135,19 +135,20 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 // Creates and starts the process instance activated by the timer start event
 func (engine *Engine) createStartProcessOnTimerStartEvent(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	_, err := engine.CreateInstanceWithStartingElements(ctx, timer.ProcessDefinitionKey, []string{timer.ElementId}, make(map[string]interface{}), nil)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to create process instance for timer %d: %s", timer.Key, err), err)
-	}
 	batch := engine.persistence.NewBatch()
 	timer.TimerState = runtime.TimerStateTriggered
-	err = batch.SaveTimer(ctx, timer)
+	err := batch.SaveTimer(ctx, timer)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to update timer state for timer %d: %s", timer.Key, err), err)
 	}
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to flush batch for timer %d: %s", timer.Key, err), err)
+	}
+
+	_, err = engine.CreateInstanceWithStartingElements(ctx, timer.ProcessDefinitionKey, []string{timer.ElementId}, make(map[string]interface{}), nil)
+	if err != nil {
+		return nil, nil, errors.Join(newEngineErrorf("failed to create process instance for timer %d: %s", timer.Key, err), err)
 	}
 	return nil, nil, nil
 }

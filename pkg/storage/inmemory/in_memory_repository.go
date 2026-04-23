@@ -500,6 +500,8 @@ func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) erro
 }
 
 func (mem *Storage) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
 	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
 	for _, k := range processDefinitionKeys {
 		keySet[k] = struct{}{}

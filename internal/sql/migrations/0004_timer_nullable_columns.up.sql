@@ -9,7 +9,7 @@ CREATE TABLE timer_new(
     process_definition_key integer NOT NULL, -- int64 reference to process definition
     process_instance_key integer, -- int64 reference to process instance
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
-    created_at integer NOT NULL, -- unix millis of when the instance of the message subscription was created
+    created_at integer NOT NULL, -- unix millis of when the instance of the timer subscription was created
     due_at integer NOT NULL, -- unix millis of when timer should fire
     execution_token integer, -- key of the execution_token that created timer
     FOREIGN KEY (process_instance_key) REFERENCES process_instance(key),

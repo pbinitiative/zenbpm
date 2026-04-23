@@ -264,3 +264,54 @@ func TestFindBaseElementById(t *testing.T) {
 	_, ok = FindBaseElementById(&definitions, "does-not-exist")
 	assert.False(t, ok)
 }
+
+func TestStartEventTimerDefinition_NoId(t *testing.T) {
+	xmlStr := `<startEvent xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="start1">
+		<timerEventDefinition>
+			<timeDuration>PT5M</timeDuration>
+		</timerEventDefinition>
+	</startEvent>`
+
+	var startEvent TStartEvent
+	err := xml.Unmarshal([]byte(xmlStr), &startEvent)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(startEvent.EventDefinitions), "timerEventDefinition without id must still be registered as an event definition")
+	timerDef, ok := startEvent.EventDefinitions[0].(TTimerEventDefinition)
+	require.True(t, ok, "event definition should be a TTimerEventDefinition")
+	require.NotNil(t, timerDef.TimeDuration)
+	assert.Equal(t, "PT5M", timerDef.TimeDuration.XMLText)
+}
+
+func TestStartEventMessageDefinition_NoId(t *testing.T) {
+	xmlStr := `<startEvent xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="start1">
+		<messageEventDefinition messageRef="msg1" />
+	</startEvent>`
+
+	var startEvent TStartEvent
+	err := xml.Unmarshal([]byte(xmlStr), &startEvent)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(startEvent.EventDefinitions), "messageEventDefinition without id must still be registered as an event definition")
+	msgDef, ok := startEvent.EventDefinitions[0].(TMessageEventDefinition)
+	require.True(t, ok, "event definition should be a TMessageEventDefinition")
+	assert.Equal(t, "msg1", msgDef.MessageRef)
+}
+
+func TestIntermediateCatchEvent_TimerDefinition_NoId(t *testing.T) {
+	xmlStr := `<intermediateCatchEvent xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="ice1">
+		<timerEventDefinition>
+			<timeDuration>PT10S</timeDuration>
+		</timerEventDefinition>
+	</intermediateCatchEvent>`
+
+	var event TIntermediateCatchEvent
+	err := xml.Unmarshal([]byte(xmlStr), &event)
+	require.NoError(t, err)
+
+	require.NotNil(t, event.EventDefinition, "timerEventDefinition without id must still be set on intermediate catch event")
+	timerDef, ok := event.EventDefinition.(TTimerEventDefinition)
+	require.True(t, ok)
+	require.NotNil(t, timerDef.TimeDuration)
+	assert.Equal(t, "PT10S", timerDef.TimeDuration.XMLText)
+}

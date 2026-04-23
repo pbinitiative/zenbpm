@@ -17,30 +17,28 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+const gRPCEndpoint = "/test.Panic/Unary"
+const recoverBufSizeOneMegaByte = 1 << 20
+
 func TestGRPCServerRecovery(t *testing.T) {
 
+	conn := startRecoverServer(t)
+
 	t.Run("gRPC Server should recover from panic in unary handler", func(t *testing.T) {
-		conn := startRecoverServer(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		out := new(emptypb.Empty)
-		require.NotPanics(t, func() {
-			err := conn.Invoke(ctx, "/test.Panic/Unary", &emptypb.Empty{}, out)
-			errorStatus, ok := status.FromError(err)
-			require.True(t, ok, "expected gRPC status error, got %v", err)
-			assert.Equal(t, codes.Internal, errorStatus.Code())
-			assert.Equal(t, "An unexpected error occurred while processing the request", errorStatus.Message())
-		})
 
-		err := conn.Invoke(ctx, "/test.Panic/Unary", &emptypb.Empty{}, out)
-		errorStatus, _ := status.FromError(err)
-		assert.Equal(t, codes.Internal, errorStatus.Code())
-		assert.Equal(t, "An unexpected error occurred while processing the request", errorStatus.Message())
+		err := conn.Invoke(ctx, gRPCEndpoint, &emptypb.Empty{}, out)
+		assertErrorResponse(t, err)
+
+		// ensure the server still handles requests after recovering from the panic
+		err = conn.Invoke(ctx, gRPCEndpoint, &emptypb.Empty{}, out)
+		assertErrorResponse(t, err)
 	})
 
 	t.Run("gRPC Server should recover from panic in stream handler", func(t *testing.T) {
-		conn := startRecoverServer(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
@@ -50,17 +48,24 @@ func TestGRPCServerRecovery(t *testing.T) {
 			ClientStreams: true,
 		}
 
-		require.NotPanics(t, func() {
-			clientStream, err := conn.NewStream(ctx, streamDesc, "/test.Panic/Stream")
-			require.NoError(t, err)
+		clientStream, err := conn.NewStream(ctx, streamDesc, "/test.Panic/Stream")
+		require.NoError(t, err)
+		assertErrorResponse(t, clientStream.RecvMsg(new(emptypb.Empty)))
 
-			err = clientStream.RecvMsg(new(emptypb.Empty))
-			errorStatus, ok := status.FromError(err)
-			require.True(t, ok, "expected gRPC status error, got %v", err)
-			assert.Equal(t, codes.Internal, errorStatus.Code())
-			assert.Equal(t, "An unexpected error occurred while processing the request", errorStatus.Message())
-		})
+		// ensure the server still handles requests after recovering from the panic
+		clientStream2, err := conn.NewStream(ctx, streamDesc, "/test.Panic/Stream")
+		require.NoError(t, err)
+		assertErrorResponse(t, clientStream2.RecvMsg(new(emptypb.Empty)))
 	})
+}
+
+func assertErrorResponse(t *testing.T, err error) {
+	t.Helper()
+
+	errorStatus, ok := status.FromError(err)
+	require.True(t, ok, "expected gRPC status error, got %v", err)
+	assert.Equal(t, codes.Internal, errorStatus.Code())
+	assert.Equal(t, "An unexpected error occurred while processing the request", errorStatus.Message())
 }
 
 var panicService = grpc.ServiceDesc{
@@ -73,7 +78,7 @@ var panicService = grpc.ServiceDesc{
 			if err := dec(in); err != nil {
 				return nil, err
 			}
-			info := &grpc.UnaryServerInfo{Server: server, FullMethod: "/test.Panic/Unary"}
+			info := &grpc.UnaryServerInfo{Server: server, FullMethod: gRPCEndpoint}
 			handler := func(ctx context.Context, req any) (any, error) { panic("unary boom") }
 			if interceptor == nil {
 				return handler(ctx, in)
@@ -88,8 +93,6 @@ var panicService = grpc.ServiceDesc{
 		ClientStreams: true,
 	}},
 }
-
-const recoverBufSizeOneMegaByte = 1 << 20
 
 func startRecoverServer(t *testing.T) *grpc.ClientConn {
 	t.Helper()

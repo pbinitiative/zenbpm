@@ -31,7 +31,7 @@ func Recovery() func(next http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(public.Error{
-					Code:    "TECHNICAL_ERROR",
+					Code:    "ERROR",
 					Message: recoveryErrorMessage,
 				})
 			}()

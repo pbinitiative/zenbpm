@@ -20,7 +20,6 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/log"
-	apierror "github.com/pbinitiative/zenbpm/internal/rest/error"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/internal/sql"
@@ -65,15 +64,15 @@ func NewServer(node *cluster.ZenNode, conf config.Config) *Server {
 		// mount generated handler from open-api
 		h := public.Handler(public.NewStrictHandlerWithOptions(&s, []nethttp.StrictHTTPMiddlewareFunc{}, public.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-				writeError(w, r, http.StatusBadRequest, apierror.ApiError{
+				writeError(w, r, http.StatusBadRequest, public.Error{
 					Message: err.Error(),
-					Type:    "BAD_REQUEST",
+					Code:    "BAD_REQUEST",
 				})
 			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-				writeError(w, r, http.StatusInternalServerError, apierror.ApiError{
+				writeError(w, r, http.StatusInternalServerError, public.Error{
 					Message: err.Error(),
-					Type:    "ERROR",
+					Code:    "ERROR",
 				})
 			},
 		}))

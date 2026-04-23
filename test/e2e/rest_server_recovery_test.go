@@ -41,7 +41,7 @@ func TestRestServerRecovery(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, responseFromPanicEndpoint.StatusCode)
 		assert.Equal(t, "application/json", responseFromPanicEndpoint.Header.Get("Content-Type"))
 		assert.Equal(t, public.Error{
-			Code:    "TECHNICAL_ERROR",
+			Code:    "ERROR",
 			Message: "An unexpected error occurred while processing the request",
 		}, body)
 

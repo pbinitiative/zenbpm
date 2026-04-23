@@ -23,7 +23,7 @@
         <bpmn:outgoing>Flow_0ka5vj8</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:subProcess id="EventSubprocessA_00bugpj" triggeredByEvent="true">
-        <bpmn:startEvent id="Event_1i1fx2b" isInterrupting="false">
+        <bpmn:startEvent id="eventSubProcessATimerEvent_1i1fx2b" isInterrupting="false">
           <bpmn:outgoing>Flow_0zjmg06</bpmn:outgoing>
           <bpmn:timerEventDefinition id="TimerEventDefinition_03hr5aw">
             <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -33,7 +33,7 @@
           <bpmn:incoming>Flow_0fm9rv6</bpmn:incoming>
         </bpmn:endEvent>
         <bpmn:subProcess id="EventSubprocessB_16e6pei" triggeredByEvent="true">
-          <bpmn:startEvent id="Event_0a3aipv" isInterrupting="false">
+          <bpmn:startEvent id="eventSubProcessBTimerEvent_0a3aipv" isInterrupting="false">
             <bpmn:outgoing>Flow_13syrf4</bpmn:outgoing>
             <bpmn:timerEventDefinition id="TimerEventDefinition_0y0nqde">
               <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -42,7 +42,7 @@
           <bpmn:endEvent id="EndEventB_1pttfqp">
             <bpmn:incoming>Flow_17p7xh1</bpmn:incoming>
           </bpmn:endEvent>
-          <bpmn:sequenceFlow id="Flow_13syrf4" sourceRef="Event_0a3aipv" targetRef="ServiceTask2_05612g8" />
+          <bpmn:sequenceFlow id="Flow_13syrf4" sourceRef="eventSubProcessBTimerEvent_0a3aipv" targetRef="ServiceTask2_05612g8" />
           <bpmn:serviceTask id="ServiceTask2_05612g8" name="service task2">
             <bpmn:extensionElements>
               <zeebe:taskDefinition type="EventSubprocessBtype" />
@@ -52,7 +52,7 @@
           </bpmn:serviceTask>
           <bpmn:sequenceFlow id="Flow_17p7xh1" sourceRef="ServiceTask2_05612g8" targetRef="EndEventB_1pttfqp" />
         </bpmn:subProcess>
-        <bpmn:sequenceFlow id="Flow_0zjmg06" sourceRef="Event_1i1fx2b" targetRef="Event_1u5vukv" />
+        <bpmn:sequenceFlow id="Flow_0zjmg06" sourceRef="eventSubProcessATimerEvent_1i1fx2b" targetRef="Event_1u5vukv" />
         <bpmn:sequenceFlow id="Flow_0fm9rv6" sourceRef="Event_1u5vukv" targetRef="EndEventA_0evifiy" />
         <bpmn:intermediateCatchEvent id="Event_1u5vukv">
           <bpmn:incoming>Flow_0zjmg06</bpmn:incoming>
@@ -90,7 +90,7 @@
       <bpmndi:BPMNShape id="Activity_00bugpj_di" bpmnElement="EventSubprocessA_00bugpj" isExpanded="true">
         <dc:Bounds x="370" y="240" width="395" height="250" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0gsw1d2_di" bpmnElement="Event_1i1fx2b">
+      <bpmndi:BPMNShape id="Event_0gsw1d2_di" bpmnElement="eventSubProcessATimerEvent_1i1fx2b">
         <dc:Bounds x="407" y="272" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_0evifiy_di" bpmnElement="EndEventA_0evifiy">
@@ -99,7 +99,7 @@
       <bpmndi:BPMNShape id="Activity_16e6pei_di" bpmnElement="EventSubprocessB_16e6pei" isExpanded="true">
         <dc:Bounds x="405" y="330" width="330" height="130" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0bkwt15_di" bpmnElement="Event_0a3aipv">
+      <bpmndi:BPMNShape id="Event_0bkwt15_di" bpmnElement="eventSubProcessBTimerEvent_0a3aipv">
         <dc:Bounds x="427" y="372" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1pttfqp_di" bpmnElement="EndEventB_1pttfqp">

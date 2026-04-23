@@ -47,7 +47,7 @@ func TestTimerStartEvent(t *testing.T) {
 		// the start timer was in the past, so it should already be triggered
 		triggeredTimers, err := store.FindProcessDefinitionTimers(t.Context(), definition.Key, bpmnruntime.TimerStateTriggered)
 		require.NoError(t, err)
-		assert.NotEmpty(t, triggeredTimers, "timer should be in TimerStateTriggered for process definition %d", definition.Key)
+		assert.Equal(t, 1, len(triggeredTimers), "timer should be in TimerStateTriggered for process definition %d", definition.Key)
 		createdTimers, err := store.FindProcessInstanceTimers(t.Context(), definition.Key, bpmnruntime.TimerStateCreated)
 		require.NoError(t, err)
 		assert.Empty(t, createdTimers, "no timers should remain in TimerStateCreated for process definition %d", definition.Key)
@@ -99,7 +99,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 
 		// before the non-interrupting timer fires, it should be in TimerStateCreated
 		subProcessChild = getFirstChildInstance(t, instance.Key)
-		assertTimersCreated(t, subProcessChild.Key)
+		assertTimerCreated(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
 	})
 
 	// Wait for the non-interrupting timer (PT1S) to fire
@@ -157,7 +157,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
 
 		// after process completion, the non-interrupting event subprocess timer should be in TimerStateTriggered
-		assertTimersTriggered(t, subProcessChild.Key)
+		assertTimerTriggered(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
 	})
 }
 
@@ -183,18 +183,18 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 
 		// timer to start EventSubprocessA_00bugpj should be created
 		subProcessChild = getFirstChildInstance(t, instance.Key)
-		assertTimersCreated(t, subProcessChild.Key)
+		assertTimerCreated(t, subProcessChild.Key, "eventSubProcessATimerEvent_1i1fx2b")
 	})
 
 	// timer to start EventSubprocessB_16e6pei should be created, timer to start EventSubprocessA_00bugpj should be triggered
 	time.Sleep(1500 * time.Millisecond)
 	eventSubprocessAChild := getFirstChildInstance(t, subProcessChild.Key)
-	assertTimersCreated(t, eventSubprocessAChild.Key)
-	assertTimersTriggered(t, subProcessChild.Key)
+	assertTimerCreated(t, eventSubprocessAChild.Key, "eventSubProcessBTimerEvent_0a3aipv")
+	assertTimerTriggered(t, subProcessChild.Key, "eventSubProcessATimerEvent_1i1fx2b")
 
 	// Wait for timers to fire: EventSubprocessA PT1S, then EventSubprocessB PT1S, then intermediate catch PT2S
 	time.Sleep(2500 * time.Millisecond)
-	assertTimersTriggered(t, eventSubprocessAChild.Key)
+	assertTimerTriggered(t, eventSubprocessAChild.Key, "eventSubProcessBTimerEvent_0a3aipv")
 
 	t.Run("verify EventSubprocessA_00bugpj is not completed because EventSubprocessB is waiting", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)

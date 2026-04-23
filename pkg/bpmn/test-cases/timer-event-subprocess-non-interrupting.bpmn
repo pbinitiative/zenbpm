@@ -26,8 +26,8 @@
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
       </bpmn:endEvent>
-      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="Event_12i3m6f" targetRef="Event_0a9ph2i" />
-      <bpmn:startEvent id="Event_12i3m6f" isInterrupting="false">
+      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="eventSubprocessTimerEvent_12i3m6f" targetRef="Event_0a9ph2i" />
+      <bpmn:startEvent id="eventSubprocessTimerEvent_12i3m6f" isInterrupting="false">
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_1uuh2ke">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -60,7 +60,7 @@
       <bpmndi:BPMNShape id="Event_0a9ph2i_di" bpmnElement="Event_0a9ph2i">
         <dc:Bounds x="552" y="402" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_1xb4zd3_di" bpmnElement="Event_12i3m6f">
+      <bpmndi:BPMNShape id="Event_1xb4zd3_di" bpmnElement="eventSubprocessTimerEvent_12i3m6f">
         <dc:Bounds x="202" y="402" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0yl0wws_di" bpmnElement="Flow_0yl0wws">

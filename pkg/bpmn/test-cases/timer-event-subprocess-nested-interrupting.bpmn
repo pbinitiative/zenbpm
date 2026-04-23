@@ -26,8 +26,8 @@
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_00h23fd</bpmn:incoming>
       </bpmn:endEvent>
-      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="Event_12i3m6f" targetRef="Activity_055f4nj" />
-      <bpmn:startEvent id="Event_12i3m6f">
+      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="eventSubprocessL1TimerEvent_12i3m6f" targetRef="Activity_055f4nj" />
+      <bpmn:startEvent id="eventSubprocessL1TimerEvent_12i3m6f">
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_0j2io9y">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -37,8 +37,8 @@
         <bpmn:endEvent id="Event_08ff21p">
           <bpmn:incoming>Flow_0h2g7mc</bpmn:incoming>
         </bpmn:endEvent>
-        <bpmn:sequenceFlow id="Flow_0ss9opw" sourceRef="Event_075kpin" targetRef="Activity_1ey36nv" />
-        <bpmn:startEvent id="Event_075kpin">
+        <bpmn:sequenceFlow id="Flow_0ss9opw" sourceRef="eventSubProcessL2TimerEvent_075kpin" targetRef="Activity_1ey36nv" />
+        <bpmn:startEvent id="eventSubProcessL2TimerEvent_075kpin">
           <bpmn:outgoing>Flow_0ss9opw</bpmn:outgoing>
           <bpmn:timerEventDefinition id="TimerEventDefinition_1okhnw8">
             <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -48,8 +48,8 @@
           <bpmn:endEvent id="Event_18wifoj">
             <bpmn:incoming>Flow_1ex4n94</bpmn:incoming>
           </bpmn:endEvent>
-          <bpmn:sequenceFlow id="Flow_1ex4n94" sourceRef="Event_0zi70w1" targetRef="Event_18wifoj" />
-          <bpmn:startEvent id="Event_0zi70w1">
+          <bpmn:sequenceFlow id="Flow_1ex4n94" sourceRef="eventSubProcessL3TimerEvent_0zi70w1" targetRef="Event_18wifoj" />
+          <bpmn:startEvent id="eventSubProcessL3TimerEvent_0zi70w1">
             <bpmn:outgoing>Flow_1ex4n94</bpmn:outgoing>
             <bpmn:timerEventDefinition id="TimerEventDefinition_16wcxxm">
               <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -116,7 +116,7 @@
       <bpmndi:BPMNShape id="Event_0a9ph2i_di" bpmnElement="Event_0a9ph2i">
         <dc:Bounds x="504" y="242" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_01h922o_di" bpmnElement="Event_12i3m6f">
+      <bpmndi:BPMNShape id="Event_01h922o_di" bpmnElement="eventSubprocessL1TimerEvent_12i3m6f">
         <dc:Bounds x="190" y="242" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0qhb6na_di" bpmnElement="Activity_0qhb6na" isExpanded="true">
@@ -125,7 +125,7 @@
       <bpmndi:BPMNShape id="Event_08ff21p_di" bpmnElement="Event_08ff21p">
         <dc:Bounds x="474" y="352" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_10zil04_di" bpmnElement="Event_075kpin">
+      <bpmndi:BPMNShape id="Event_10zil04_di" bpmnElement="eventSubProcessL2TimerEvent_075kpin">
         <dc:Bounds x="230" y="352" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1epwa93_di" bpmnElement="Activity_1epwa93" isExpanded="true">
@@ -134,7 +134,7 @@
       <bpmndi:BPMNShape id="Event_18wifoj_di" bpmnElement="Event_18wifoj">
         <dc:Bounds x="452" y="462" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_03fgjwg_di" bpmnElement="Event_0zi70w1">
+      <bpmndi:BPMNShape id="Event_03fgjwg_di" bpmnElement="eventSubProcessL3TimerEvent_0zi70w1">
         <dc:Bounds x="252" y="462" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1ex4n94_di" bpmnElement="Flow_1ex4n94">

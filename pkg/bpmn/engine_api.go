@@ -300,8 +300,13 @@ func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.Proce
 		runtime.NewVariableHolder(nil, variableContext),
 		&runtime.DefaultProcessInstance{},
 	)
-	err = batch.Flush(ctx)
+	// Propagate createInstance errors before calling batch.Flush — the old
+	// code overwrote err with Flush's return and then dereferenced the nil
+	// instance on the happy-path line below, panicking the gRPC handler.
 	if err != nil {
+		return nil, fmt.Errorf("failed to start process instance: %w", err)
+	}
+	if err = batch.Flush(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start process instance: %w", err)
 	}
 

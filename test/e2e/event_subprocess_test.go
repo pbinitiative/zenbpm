@@ -241,13 +241,13 @@ func TestEventSubProcess(t *testing.T) {
 
 // requireChildEventSubProcessCompleted finds the completed child event subprocess instance of the given
 // parent instance, requires it to exist, asserts it is in completed state, and returns it.
-func requireChildEventSubProcessCompleted(t *testing.T, parentInstanceKey int64) *zenclient.ProcessInstance {
+func requireChildEventSubProcessCompleted(t *testing.T, parentInstanceKey int64) *zenclient.ProcessInstancesListItem {
 	t.Helper()
 	childrenPage, err := getChildInstances(t, parentInstanceKey)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, childrenPage.Count, 1, "There should be at least one child process instance (the event subprocess)")
 
-	var instance *zenclient.ProcessInstance
+	var instance *zenclient.ProcessInstancesListItem
 	for i := range childrenPage.Partitions {
 		for j := range childrenPage.Partitions[i].Items {
 			item := &childrenPage.Partitions[i].Items[j]

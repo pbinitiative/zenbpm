@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -10,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRestApiProcessInstance(t *testing.T) {
@@ -30,7 +29,7 @@ func TestRestApiProcessInstance(t *testing.T) {
 
 	t.Run("create process instance - by bpmn id", func(t *testing.T) {
 		bpmnProcessId := "usertask-assignee-mapping-process"
-		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", "usertask-assignee-mapping-process")
+		_, err := deployGetDefinition(t, "usertask-assignee-mapping.bpmn", bpmnProcessId)
 		assert.NoError(t, err)
 		resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 			BpmnProcessId:        &bpmnProcessId,
@@ -231,6 +230,32 @@ func TestBusinessKey(t *testing.T) {
 		for _, pi := range processInstances.JSON200.Partitions[0].Items {
 			assert.Equal(t, bk, ptr.Deref(pi.BusinessKey, ""))
 		}
+	})
+}
+
+func TestActiveElementInstances(t *testing.T) {
+
+	definition, _ := deployGetDefinition(t, "process_instance/message_boundary_event_on_sub_process_interrupting.bpmn", "message_boundary_event_on_sub_process_interrupting")
+
+	instance, _ := createProcessInstance(t, &definition.Key, map[string]any{
+		"variable_name":  123,
+		"correlationKey": "1fdafa4664das",
+	})
+
+	t.Run("Get process instance detail should return one active element instance with the correct values", func(t *testing.T) {
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		log.Printf("instance: %+v", fetchedInstance)
+
+		assert.NotNil(t, fetchedInstance.ActiveElementInstances)
+		assert.Len(t, fetchedInstance.ActiveElementInstances, 1)
+
+		activeElementInstance := fetchedInstance.ActiveElementInstances[0]
+
+		assert.NotNil(t, activeElementInstance.ElementInstanceKey)
+		assert.Equal(t, "sub_process", activeElementInstance.ElementId)
+		assert.Equal(t, "TokenStateWaiting", activeElementInstance.State)
+		require.WithinDuration(t, time.Now(), activeElementInstance.CreatedAt, time.Second)
 	})
 }
 
@@ -691,84 +716,6 @@ func TestDeleteAndUpdateProcessInstanceVariablesAndCancelReturnsConflict(t *test
 		assert.Contains(t, cancelResponse.JSON409.Message, "cannot cancel process instance")
 		assert.Contains(t, cancelResponse.JSON409.Message, "it is not in correct state, expected=ActivityStateActive, actual=ActivityStateCompleted")
 	})
-}
-
-func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables map[string]any) (zenclient.ProcessInstance, error) {
-	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
-		BpmnProcessId:        nil,
-		BusinessKey:          nil,
-		HistoryTimeToLive:    nil,
-		ProcessDefinitionKey: processDefinitionKey,
-		Variables:            &variables,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
-	assert.NotNil(t, resp.JSON201)
-	return *resp.JSON201, nil
-}
-
-func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d", key)).
-		DoOk()
-	if err != nil {
-		return zenclient.ProcessInstance{}, fmt.Errorf("failed to read process instance: %w", err)
-	}
-	instance := zenclient.ProcessInstance{}
-
-	err = json.Unmarshal(resp, &instance)
-	if err != nil {
-		return zenclient.ProcessInstance{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return instance, nil
-}
-
-func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d&includeChildProcesses=true", key)).
-		DoOk()
-	if err != nil {
-		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to read process instance: %w", err)
-	}
-	page := zenclient.ProcessInstancePage{}
-
-	err = json.Unmarshal(resp, &page)
-	if err != nil {
-		return zenclient.ProcessInstancePage{}, fmt.Errorf("failed to unmarshal process instance: %w", err)
-	}
-	return page, nil
-}
-
-func getProcessInstanceJobs(t testing.TB, key int64) ([]public.Job, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d/jobs", key)).
-		DoOk()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
-	}
-	jobPage := public.JobPage{}
-
-	err = json.Unmarshal(resp, &jobPage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job page: %w", err)
-	}
-	return jobPage.Items, nil
-}
-
-func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d/incidents", key)).
-		DoOk()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read process instance incidents: %w", err)
-	}
-	incidentPage := public.IncidentPage{}
-
-	err = json.Unmarshal(resp, &incidentPage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal incident page: %w", err)
-	}
-	return incidentPage.Items, nil
 }
 
 func deployGetDefinition(t *testing.T, filename string, bpmnProcessId string) (zenclient.ProcessDefinitionSimple, error) {

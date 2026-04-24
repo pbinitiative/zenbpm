@@ -46,46 +46,6 @@ func createErrorBoundaryProcessInstanceWithVariables(t testing.TB, definitionKey
 	return instance
 }
 
-func waitForProcessInstanceState(t testing.TB, processInstanceKey int64, expectedState zenclient.ProcessInstanceState) {
-	t.Helper()
-
-	assert.Eventually(t, func() bool {
-		current, err := getProcessInstance(t, processInstanceKey)
-		if err != nil {
-			return false
-		}
-		return current.State == expectedState
-	}, 10*time.Second, 100*time.Millisecond, "process instance %d should reach state %s", processInstanceKey, expectedState)
-}
-
-func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64, elementId string) public.Job {
-	t.Helper()
-
-	var foundJob public.Job
-	require.Eventually(t, func() bool {
-		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
-		if err != nil {
-			return false
-		}
-		for _, job := range jobs {
-			if job.ElementId == elementId && job.State == public.JobStateActive {
-				foundJob = job
-				return true
-			}
-		}
-		return false
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should expose active job for element %s", processInstanceKey, elementId)
-	return foundJob
-}
-
-func assertProcessInstanceVariables(t testing.TB, processInstanceKey int64, expected map[string]any) {
-	t.Helper()
-
-	instance, err := getProcessInstance(t, processInstanceKey)
-	require.NoError(t, err)
-	assert.Equal(t, expected, instance.Variables)
-}
-
 func callFailJobViaRest(t testing.TB, jobKey int64, errorCode *string) {
 	t.Helper()
 
@@ -204,64 +164,4 @@ func assertProcessInstanceErrorSubscriptionsCountIsZero(t testing.TB, processIns
 	t.Helper()
 
 	assertProcessInstanceErrorSubscriptionCount(t, processInstanceKey, 0, 0)
-}
-
-func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, contains []string, notContains []string) {
-	t.Helper()
-
-	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-	require.NoError(t, err)
-
-	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
-	require.NoError(t, err)
-
-	elementIds := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		elementIds = append(elementIds, token.ElementId)
-	}
-
-	for _, elementId := range contains {
-		assert.Contains(t, elementIds, elementId)
-	}
-	for _, elementId := range notContains {
-		assert.NotContains(t, elementIds, elementId)
-	}
-}
-
-func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState) {
-	t.Helper()
-
-	require.Eventually(t, func() bool {
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-		if err != nil {
-			return false
-		}
-
-		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
-		if err != nil {
-			return false
-		}
-
-		for _, token := range tokens {
-			if token.ElementId == elementId && token.State == expectedState {
-				return true
-			}
-		}
-
-		return false
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
-}
-
-func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {
-	t.Helper()
-
-	response, err := app.restClient.CancelProcessInstanceWithResponse(context.Background(), processInstanceKey)
-	assert.NoError(t, err)
-
-	switch response.StatusCode() {
-	case http.StatusNoContent, http.StatusConflict:
-		return
-	default:
-		assert.Failf(t, "unexpected cleanup response", "process instance %d cleanup returned %s", processInstanceKey, response.Status())
-	}
 }

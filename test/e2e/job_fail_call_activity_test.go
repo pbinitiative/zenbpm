@@ -295,10 +295,10 @@ func waitForTwoProcessInstanceStates(t testing.TB, firstKey int64, firstExpected
 	}, 10*time.Second, 100*time.Millisecond, "process instances %d and %d should reach states %s and %s", firstKey, secondKey, firstExpected, secondExpected)
 }
 
-func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstance {
+func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstancesListItem {
 	t.Helper()
 
-	var child zenclient.ProcessInstance
+	var child zenclient.ProcessInstancesListItem
 	require.Eventually(t, func() bool {
 		page, err := getChildInstances(t, parentProcessInstanceKey)
 		if err != nil {
@@ -313,10 +313,10 @@ func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) z
 	return child
 }
 
-func waitForDirectChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstance {
+func waitForDirectChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstancesListItem {
 	t.Helper()
 
-	var child zenclient.ProcessInstance
+	var child zenclient.ProcessInstancesListItem
 	require.Eventually(t, func() bool {
 		page, err := getChildInstances(t, parentProcessInstanceKey)
 		if err != nil || len(page.Partitions) == 0 {

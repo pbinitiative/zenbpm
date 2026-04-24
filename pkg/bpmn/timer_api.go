@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"go.opentelemetry.io/otel/codes"
@@ -35,6 +37,9 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 			completeTimerSpan.SetStatus(codes.Error, retErr.Error())
 		}
 		completeTimerSpan.End()
+		if r := recover(); r != nil {
+			engine.logger.Error(fmt.Sprintf("failed to process timer, panic recovered: %v\n%s", r, debug.Stack()))
+		}
 	}()
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, timer.ProcessInstanceKey)
 	if err != nil {
@@ -43,7 +48,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	currentToken := timer.Token
 	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
-	if tokenNode.GetId() == "" {
+	if tokenNode == nil || tokenNode.GetId() == "" {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId), err)
 	}
 

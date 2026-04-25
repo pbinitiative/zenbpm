@@ -1,10 +1,14 @@
 package e2e
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +48,9 @@ func TestTimerStartEvent(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(tokens))
 
+		// verify that only the timer start event element was executed, not the plain start event
+		assertStartEventExecuted(t, store, fetchedProcessInstance.Key, "timerStartEvent_1234", "plainStartEvent_0mtr7my")
+
 		// the start timer was in the past, so it should already be triggered
 		triggeredTimers, err := store.FindProcessDefinitionTimers(t.Context(), definition.Key, bpmnruntime.TimerStateTriggered)
 		require.NoError(t, err)
@@ -78,6 +85,55 @@ func TestTimerStartEvent(t *testing.T) {
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, completedInstance.State)
 	})
 
+}
+
+// TestPlainStartEvent_WithFutureTimerStartEvent verifies that when the timer start event has a
+// date in the future, starting a process instance manually triggers only the plain start event branch
+func TestPlainStartEvent_WithFutureTimerStartEvent(t *testing.T) {
+	// Process: (Timer start event with DateTime in FUTURE) -> (service task) -> (end event)
+	//                                                          ^
+	//                                                          |
+	//          (Plain start event) -------------------------+
+	//
+	// Because the timer date is in the future, only the plain start event fires
+	// when the process instance is created manually. There should be exactly 1 active token.
+
+	bpmnData, err := os.ReadFile("../../pkg/bpmn/test-cases/timer-start-event-process.bpmn")
+	require.NoError(t, err)
+
+	futureTimerDate := time.Now().Add(1 * time.Hour).UTC().Format(time.RFC3339)
+	uniqueProcessId := fmt.Sprintf("timer-start-event-process-future-%d", time.Now().UnixNano())
+
+	modifiedBpmn := []byte(strings.NewReplacer(
+		"2026-03-28T10:00:00Z", futureTimerDate,
+		"timer-start-event-process-1", uniqueProcessId,
+	).Replace(string(bpmnData)))
+
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "timer-start-event-process.bpmn")
+	require.NoError(t, err)
+
+	var definitionKey int64
+	if deployResp.JSON201 != nil {
+		definitionKey = deployResp.JSON201.ProcessDefinitionKey
+	} else {
+		require.NotNil(t, deployResp.JSON200, "expected either 200 or 201 response from deploy")
+		definitionKey = deployResp.JSON200.ProcessDefinitionKey
+	}
+
+	instance, err := createProcessInstance(t, &definitionKey, map[string]any{})
+	require.NoError(t, err)
+	require.NotEmpty(t, instance.Key)
+	assert.Equal(t, zenclient.ProcessInstanceStateActive, instance.State)
+
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instance.Key))
+	require.NoError(t, err)
+	// Only the plain start event branch should be executing — the timer start event is in the future.
+	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), instance.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tokens), "only the plain start event branch should execute since the timer date is in the future")
+
+	// verify that only the plain start event element was executed, not the timer start event
+	assertStartEventExecuted(t, store, instance.Key, "plainStartEvent_0mtr7my", "timerStartEvent_1234")
 }
 
 func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
@@ -247,6 +303,26 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
 	})
+}
+
+// assertStartEventExecuted verifies that expectedElementId is present among the flow element
+// instances for the given process instance, and that unexpectedElementId is absent.
+func assertStartEventExecuted(t testing.TB, store storage.Storage, processInstanceKey int64, expectedElementId, unexpectedElementId string) {
+	t.Helper()
+	flowElements, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+	require.NoError(t, err)
+
+	var found, notFound bool
+	for _, fe := range flowElements {
+		if fe.ElementId == expectedElementId {
+			found = true
+		}
+		if fe.ElementId == unexpectedElementId {
+			notFound = true
+		}
+	}
+	assert.True(t, found, "expected start event %q to have a flow element instance for process instance %d", expectedElementId, processInstanceKey)
+	assert.False(t, notFound, "unexpected start event %q should not have a flow element instance for process instance %d", unexpectedElementId, processInstanceKey)
 }
 
 // getFirstChildInstance retrieves the first child process instance of the given parent and asserts exactly one exists.

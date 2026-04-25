@@ -4,8 +4,8 @@
     <bpmn:endEvent id="Event_0461t71">
       <bpmn:incoming>Flow_0rvswpk</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_1xx1ap4" sourceRef="StartEvent_1" targetRef="service-task-1" />
-    <bpmn:startEvent id="StartEvent_1">
+    <bpmn:sequenceFlow id="Flow_1xx1ap4" sourceRef="timerStartEvent_1234" targetRef="service-task-1" />
+    <bpmn:startEvent id="timerStartEvent_1234">
       <bpmn:extensionElements />
       <bpmn:outgoing>Flow_1xx1ap4</bpmn:outgoing>
       <bpmn:timerEventDefinition id="TimerEventDefinition_1oofo2d">
@@ -29,24 +29,24 @@
       <bpmn:outgoing>Flow_0rvswpk</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="Flow_0rvswpk" sourceRef="service-task-1" targetRef="Event_0461t71" />
-    <bpmn:startEvent id="Event_0mtr7my">
+    <bpmn:startEvent id="plainStartEvent_0mtr7my">
       <bpmn:outgoing>Flow_109w39o</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:sequenceFlow id="Flow_109w39o" sourceRef="Event_0mtr7my" targetRef="service-task-1" />
+    <bpmn:sequenceFlow id="Flow_109w39o" sourceRef="plainStartEvent_0mtr7my" targetRef="service-task-1" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="timer-start-event-process-1">
       <bpmndi:BPMNShape id="Event_0461t71_di" bpmnElement="Event_0461t71">
         <dc:Bounds x="432" y="82" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0ruw1xz_di" bpmnElement="StartEvent_1">
+      <bpmndi:BPMNShape id="Event_0ruw1xz_di" bpmnElement="timerStartEvent_1234">
         <dc:Bounds x="182" y="82" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0296s40_di" bpmnElement="service-task-1">
         <dc:Bounds x="280" y="60" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0mtr7my_di" bpmnElement="Event_0mtr7my">
+      <bpmndi:BPMNShape id="Event_0mtr7my_di" bpmnElement="plainStartEvent_0mtr7my">
         <dc:Bounds x="182" y="162" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1xx1ap4_di" bpmnElement="Flow_1xx1ap4">

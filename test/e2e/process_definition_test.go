@@ -263,6 +263,29 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 	return resp.JSON200.Items, nil
 }
 
+func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	part, err := writer.CreateFormFile("resource", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err = part.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+	if err = writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
+	}
+	if resp.StatusCode() >= 400 {
+		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
+	}
+	return resp, nil
+}
+
 func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
 	wd, err := os.Getwd()
 	if err != nil {

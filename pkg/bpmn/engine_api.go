@@ -306,7 +306,7 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 	return instance, nil
 }
 
-// CreateInstance creates a new instance for a process with given processKey
+// CreateInstance creates and runs the new process instance for a given process definition
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	batch := engine.persistence.NewBatch()

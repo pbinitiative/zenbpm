@@ -135,9 +135,23 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 // Creates and starts the process instance activated by the timer start event
 func (engine *Engine) createStartProcessOnTimerStartEvent(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	// Re-fetch the timer to verify it has not already been triggered or cancelled by a concurrent
+	// activity (e.g. an interrupting event subprocess fired in parallel).
+	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
+	if err != nil {
+		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)
+	}
+	switch timerRefreshed.TimerState {
+	case runtime.TimerStateTriggered:
+		return nil, nil, nil
+	case runtime.TimerStateCancelled:
+		return nil, nil, nil
+	}
+	timer = timerRefreshed
+
 	batch := engine.persistence.NewBatch()
 	timer.TimerState = runtime.TimerStateTriggered
-	err := batch.SaveTimer(ctx, timer)
+	err = batch.SaveTimer(ctx, timer)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to update timer state for timer %d: %s", timer.Key, err), err)
 	}
@@ -183,7 +197,26 @@ func (engine *Engine) createStartEventSubProcessOnTimerStartEvent(ctx context.Co
 		}
 	}()
 
-	// If the start event is interrupting, cancel the parent instance
+	// Re-fetch the timer state now that the parent process instance is locked.
+	// When multiple timer-start events on interrupting event subprocesses fire concurrently,
+	// the first one to be processed cancels all sibling timers on the parent. Without this
+	// check the subsequent timers would race with the first event subprocess' parent-process
+	// continuation for the parent instance lock and produce spurious "failed locking parent
+	// instance" errors (and unnecessary work).
+	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to refresh timer %d: %w", timer.Key, err)
+	}
+	switch timerRefreshed.TimerState {
+	case runtime.TimerStateTriggered:
+		batch.Clear(ctx)
+		return nil, nil, nil
+	case runtime.TimerStateCancelled:
+		batch.Clear(ctx)
+		return nil, nil, nil
+	}
+	timer = timerRefreshed
+
 	if startEventDef.IsInterrupting {
 		_, err = engine.handleProcessInstanceInnerCancel(ctx, instance, &batch)
 		if err != nil {

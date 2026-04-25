@@ -356,6 +356,8 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	return executionTokens, nil
 }
 
+// createInstance creates a process instance for a given process definition and returns it.
+// Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
 	ctx context.Context,
 	batch storage.Batch,
@@ -389,6 +391,9 @@ func (engine *Engine) createInstance(
 
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
+		if len(startEvent.EventDefinitions) > 0 {
+			continue
+		}
 		var be bpmn20.FlowNode = &startEvent
 		token := runtime.ExecutionToken{
 			Key:                engine.generateKey(),

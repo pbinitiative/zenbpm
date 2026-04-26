@@ -23,6 +23,12 @@
         <bpmn:outgoing>Flow_0ka5vj8</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:subProcess id="EventSubprocessA_00bugpj" triggeredByEvent="true">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;event-subprocess-a-done&#34;" target="eventSubProcessAVariable" />
+            <zeebe:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:startEvent id="eventSubProcessATimerEvent_1i1fx2b" isInterrupting="false">
           <bpmn:outgoing>Flow_0zjmg06</bpmn:outgoing>
           <bpmn:timerEventDefinition id="TimerEventDefinition_03hr5aw">
@@ -32,8 +38,13 @@
         <bpmn:endEvent id="EndEventA_0evifiy">
           <bpmn:incoming>Flow_0fm9rv6</bpmn:incoming>
         </bpmn:endEvent>
-        <bpmn:subProcess id="EventSubprocessB_16e6pei" triggeredByEvent="true">
-          <bpmn:startEvent id="eventSubProcessBTimerEvent_0a3aipv" isInterrupting="false">
+          <bpmn:subProcess id="EventSubprocessB_16e6pei" triggeredByEvent="true">
+            <bpmn:extensionElements>
+              <zeebe:ioMapping>
+                <zeebe:output source="=&#34;event-subprocess-b-done&#34;" target="eventSubProcessBVariable" />
+              </zeebe:ioMapping>
+            </bpmn:extensionElements>
+            <bpmn:startEvent id="eventSubProcessBTimerEvent_0a3aipv" isInterrupting="false">
             <bpmn:outgoing>Flow_13syrf4</bpmn:outgoing>
             <bpmn:timerEventDefinition id="TimerEventDefinition_0y0nqde">
               <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>

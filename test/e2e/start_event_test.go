@@ -214,6 +214,10 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 
 		// after process completion, the non-interrupting event subprocess timer should be in TimerStateTriggered
 		assertTimerTriggered(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
+
+		// verify that the event subprocess output variable was propagated to the main process
+		assert.Equal(t, "nested-event-subprocess-done", fetchedInstance.Variables["eventSubProcessVariable"],
+			"eventSubProcessVariable should be propagated from the nested event subprocess through the subprocess to the root process")
 	})
 }
 
@@ -302,6 +306,12 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+
+		// verify that event subprocess output variables were propagated to the root process
+		assert.Equal(t, "event-subprocess-a-done", fetchedInstance.Variables["eventSubProcessAVariable"],
+			"eventSubProcessAVariable should be propagated from EventSubprocessA through SubProcess to root")
+		assert.Equal(t, "event-subprocess-b-done", fetchedInstance.Variables["eventSubProcessBVariable"],
+			"eventSubProcessBVariable should be propagated from EventSubprocessB through EventSubprocessA and SubProcess to root")
 	})
 }
 

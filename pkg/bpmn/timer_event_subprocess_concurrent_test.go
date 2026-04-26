@@ -74,6 +74,11 @@ func TestConcurrentInterruptingTimerEventSubProcesses_NoLockContention(t *testin
 	incidents, err := store.FindIncidentsByProcessInstanceKey(t.Context(), piKey)
 	require.NoError(t, err)
 	assert.Empty(t, incidents, "no incidents should have been raised by the concurrent timers")
+
+	// The event subprocess output mapping should have propagated its variable to the parent.
+	vars := pi.ProcessInstance().VariableHolder
+	assert.Equal(t, "concurrent-event-subprocess-fired", vars.GetLocalVariable("eventSubProcessResult"),
+		"eventSubProcessResult should be propagated from the winning event subprocess to the parent")
 }
 
 // TestCreateStartEventSubProcessOnTimerStartEvent_TimerAlreadyCancelled exercises the fast-path

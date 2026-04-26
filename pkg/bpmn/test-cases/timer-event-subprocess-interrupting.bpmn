@@ -23,11 +23,23 @@
       <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;timer-fired&#34;" target="subProcessResult" />
+          <zeebe:output source="=true" target="timerInterrupted" />
+          <zeebe:output source="=&#34;timer-event-subprocess&#34;" target="interruptedBy" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="subProcessTimerEvent_12i3m6f" targetRef="Event_0a9ph2i" />
       <bpmn:startEvent id="subProcessTimerEvent_12i3m6f">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;PT1S&#34;" target="timerDuration" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_0j2io9y">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>

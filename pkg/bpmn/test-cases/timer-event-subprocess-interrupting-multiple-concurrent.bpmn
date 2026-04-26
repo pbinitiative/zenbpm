@@ -23,6 +23,11 @@
       <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
       </bpmn:endEvent>
@@ -37,6 +42,11 @@
     <bpmn:sequenceFlow id="Flow_1mibmwr" sourceRef="service-task-1" targetRef="Event_1mhay4i" />
     <bpmn:sequenceFlow id="Flow_1pv0o34" sourceRef="StartEvent_1" targetRef="service-task-1" />
     <bpmn:subProcess id="Activity_16a1wfb" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0dfy64u">
         <bpmn:incoming>Flow_0ktihe3</bpmn:incoming>
       </bpmn:endEvent>
@@ -49,6 +59,11 @@
       <bpmn:sequenceFlow id="Flow_0ktihe3" sourceRef="Event_1rx56mi" targetRef="Event_0dfy64u" />
     </bpmn:subProcess>
     <bpmn:subProcess id="Activity_1mk74fs" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9l5or">
         <bpmn:incoming>Flow_0lbg38q</bpmn:incoming>
       </bpmn:endEvent>
@@ -61,6 +76,11 @@
       <bpmn:sequenceFlow id="Flow_0lbg38q" sourceRef="Event_1ko8aa1" targetRef="Event_0a9l5or" />
     </bpmn:subProcess>
     <bpmn:subProcess id="Activity_12inlsg" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_1lkgu7u">
         <bpmn:incoming>Flow_0cz2z42</bpmn:incoming>
       </bpmn:endEvent>
@@ -73,6 +93,11 @@
       <bpmn:sequenceFlow id="Flow_0cz2z42" sourceRef="Event_0onqysj" targetRef="Event_1lkgu7u" />
     </bpmn:subProcess>
     <bpmn:subProcess id="Activity_0kr0xg2" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0sywqt6">
         <bpmn:incoming>Flow_1jqc7n3</bpmn:incoming>
       </bpmn:endEvent>
@@ -85,6 +110,11 @@
       <bpmn:sequenceFlow id="Flow_1jqc7n3" sourceRef="Event_0q10af7" targetRef="Event_0sywqt6" />
     </bpmn:subProcess>
     <bpmn:subProcess id="Activity_0fdi9us" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;concurrent-event-subprocess-fired&#34;" target="eventSubProcessResult" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0k98nrz">
         <bpmn:incoming>Flow_05xsrey</bpmn:incoming>
       </bpmn:endEvent>

@@ -102,6 +102,14 @@ func TestEventSubProcess(t *testing.T) {
 
 		// after process completion, root instance timer should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "subProcessTimerEvent_12i3m6f")
+
+		vars := fetchedInstance.Variables
+		assert.Equal(t, "timer-fired", vars["subProcessResult"],
+			"subProcessResult should be set by the event subprocess output mapping")
+		assert.Equal(t, true, vars["timerInterrupted"],
+			"timerInterrupted should be set by the event subprocess output mapping")
+		assert.Equal(t, "timer-event-subprocess", vars["interruptedBy"],
+			"interruptedBy should be set by the event subprocess output mapping")
 	})
 
 	t.Run("test non-interrupting timer event sub process", func(t *testing.T) {
@@ -141,6 +149,14 @@ func TestEventSubProcess(t *testing.T) {
 
 		// after the event subprocess completes, root instance timer should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "eventSubprocessTimerEvent_12i3m6f")
+
+		// verify that the event subprocess output variables were propagated to the still-active parent instance
+		fetchedInstance, err = getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, "non-interrupting-done", fetchedInstance.Variables["eventSubProcessResult"],
+			"eventSubProcessResult should be propagated from the non-interrupting event subprocess to the parent")
+		assert.Equal(t, true, fetchedInstance.Variables["nonInterruptingExecuted"],
+			"nonInterruptingExecuted should be propagated from the non-interrupting event subprocess to the parent")
 	})
 
 	t.Run("test interrupting timer event nested sub processes", func(t *testing.T) {
@@ -191,6 +207,14 @@ func TestEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
 			"Parent process instance should be completed as the event subprocess is interrupting and was completed")
+
+		// verify that event subprocess output variables were propagated through all levels to root
+		assert.Equal(t, "l1-completed", fetchedInstance.Variables["l1Result"],
+			"l1Result should be propagated from L1 event subprocess to root")
+		assert.Equal(t, "l2-completed", fetchedInstance.Variables["l2Result"],
+			"l2Result should be propagated through L1 from L2 event subprocess to root")
+		assert.Equal(t, "l3-completed", fetchedInstance.Variables["l3Result"],
+			"l3Result should be propagated through L2 and L1 from L3 event subprocess to root")
 
 		// after process completion, root instance timers should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "eventSubprocessL1TimerEvent_12i3m6f")

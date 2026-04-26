@@ -23,6 +23,13 @@
       <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;l1-completed&#34;" target="l1Result" />
+          <zeebe:output source="=l2Result" target="l2Result" />
+          <zeebe:output source="=l3Result" target="l3Result" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_00h23fd</bpmn:incoming>
       </bpmn:endEvent>
@@ -33,8 +40,14 @@
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
         </bpmn:timerEventDefinition>
       </bpmn:startEvent>
-      <bpmn:subProcess id="Activity_0qhb6na" triggeredByEvent="true">
-        <bpmn:endEvent id="Event_08ff21p">
+        <bpmn:subProcess id="Activity_0qhb6na" triggeredByEvent="true">
+          <bpmn:extensionElements>
+            <zeebe:ioMapping>
+              <zeebe:output source="=&#34;l2-completed&#34;" target="l2Result" />
+              <zeebe:output source="=l3Result" target="l3Result" />
+            </zeebe:ioMapping>
+          </bpmn:extensionElements>
+          <bpmn:endEvent id="Event_08ff21p">
           <bpmn:incoming>Flow_0h2g7mc</bpmn:incoming>
         </bpmn:endEvent>
         <bpmn:sequenceFlow id="Flow_0ss9opw" sourceRef="eventSubProcessL2TimerEvent_075kpin" targetRef="Activity_1ey36nv" />
@@ -44,8 +57,13 @@
             <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
           </bpmn:timerEventDefinition>
         </bpmn:startEvent>
-        <bpmn:subProcess id="Activity_1epwa93" triggeredByEvent="true">
-          <bpmn:endEvent id="Event_18wifoj">
+          <bpmn:subProcess id="Activity_1epwa93" triggeredByEvent="true">
+            <bpmn:extensionElements>
+              <zeebe:ioMapping>
+                <zeebe:output source="=&#34;l3-completed&#34;" target="l3Result" />
+              </zeebe:ioMapping>
+            </bpmn:extensionElements>
+            <bpmn:endEvent id="Event_18wifoj">
             <bpmn:incoming>Flow_1ex4n94</bpmn:incoming>
           </bpmn:endEvent>
           <bpmn:sequenceFlow id="Flow_1ex4n94" sourceRef="eventSubProcessL3TimerEvent_0zi70w1" targetRef="Event_18wifoj" />

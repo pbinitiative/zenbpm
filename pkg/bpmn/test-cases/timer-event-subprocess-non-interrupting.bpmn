@@ -23,6 +23,12 @@
       <bpmn:outgoing>Flow_1pv0o34</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=&#34;non-interrupting-done&#34;" target="eventSubProcessResult" />
+          <zeebe:output source="=true" target="nonInterruptingExecuted" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
       </bpmn:endEvent>

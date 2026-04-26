@@ -23,6 +23,11 @@
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Flow_1bzf0qp" sourceRef="ServiceTaskA_1dv8s8j" targetRef="Event_1b5kldi" />
       <bpmn:subProcess id="EventSubprocess_00v1rg6" triggeredByEvent="true">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;nested-event-subprocess-done&#34;" target="eventSubProcessVariable" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:sequenceFlow id="Flow_1j5omak" sourceRef="eventSubprocessTimerEvent_010eof4" targetRef="ServiceTaskB_00m7f5d" />
         <bpmn:endEvent id="Event_1e8ggec">
           <bpmn:incoming>Flow_1jx8d33</bpmn:incoming>

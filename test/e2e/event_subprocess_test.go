@@ -15,6 +15,53 @@ import (
 func TestEventSubProcess(t *testing.T) {
 	cleanProcessInstances(t)
 
+	t.Run("test job completion cancels event subprocess timer", func(t *testing.T) {
+		// parent process definition: (plain start event) -> (service task) -> (end event)
+		// timer event sub process definition: (timer start event with 1s duration) -> (end event)
+
+		// When the main service task job is completed before the timer fires, the event subprocess
+		// timer start event should be cancelled.
+
+		// Deploy timer-event-subprocess-interrupting.bpmn
+		definition, err := deployGetDefinition(t, "timer-event-subprocess-interrupting.bpmn", "Process_timerEventSubProcessInterrupting")
+		assert.NoError(t, err)
+		assert.NotZero(t, definition.Key, "Definition key should not be zero")
+
+		// Create a process instance
+		instance, err := createProcessInstance(t, &definition.Key, nil)
+		assert.NoError(t, err)
+		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
+
+		// Verify the instance is active (service task is waiting for a job worker)
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
+
+		// Before completing the job, the event subprocess timer should be in TimerStateCreated
+		assertTimerCreated(t, instance.Key, "subProcessTimerEvent_12i3m6f")
+
+		// Read and complete the active job for the service task
+		jobs, err := getJobs(t, zenclient.GetJobsParams{
+			JobType:            ptr.To("input-task-timer-event-subprocess-interrupting"),
+			ProcessInstanceKey: ptr.To(instance.Key),
+		})
+		assert.NoError(t, err)
+		require.Equal(t, 1, len(jobs.Partitions), "Should have exactly one partition with jobs")
+		require.Equal(t, 1, len(jobs.Partitions[0].Items), "Should have exactly one active job")
+
+		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{})
+		assert.NoError(t, err)
+
+		// After job completion the process instance should be completed
+		fetchedInstance, err = getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
+			"Process instance should be completed after the service task job is completed")
+
+		// The event subprocess timer start event should be in TimerStateCancelled since the process completed
+		assertTimerCancelled(t, instance.Key, "subProcessTimerEvent_12i3m6f")
+	})
+
 	t.Run("test interrupting timer event sub process", func(t *testing.T) {
 		// parent process definition: (plain start event) -> (service task) -> (end event)
 		// timer event sub process definition: (timer start event with 1s duration) -> (end event)
@@ -238,4 +285,22 @@ func assertTimerCreated(t *testing.T, instanceKey int64, elementId string) {
 		}
 	}
 	assert.True(t, found, "expected timer with elementId %q to be in TimerStateCreated for process instance %d, got: %+v", elementId, instanceKey, createdTimers)
+}
+
+// assertTimerCancelled verifies that a timer with the given elementId exists in TimerStateCancelled
+// for the given process instance.
+func assertTimerCancelled(t *testing.T, instanceKey int64, elementId string) {
+	t.Helper()
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
+	require.NoError(t, err)
+	cancelledTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCancelled)
+	require.NoError(t, err)
+	found := false
+	for _, timer := range cancelledTimers {
+		if timer.ElementId == elementId {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected timer with elementId %q to be in TimerStateCancelled for process instance %d, got: %+v", elementId, instanceKey, cancelledTimers)
 }

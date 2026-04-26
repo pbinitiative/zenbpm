@@ -77,3 +77,61 @@ func TestProcessWaitingForUserTaskRemainsActive(t *testing.T) {
 
 	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
 }
+
+// TestJobCompletionCancelsEventSubprocessTimer verifies that when a service task job
+// is completed and the process instance reaches its end event, any active timers
+// belonging to event subprocess timer start events are transitioned to
+// TimerStateCancelled.
+func TestJobCompletionCancelsEventSubprocessTimer(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-interrupting.bpmn")
+	require.NoError(t, err)
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	require.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().State)
+
+	// Find the active job for the service task
+	var jobKey int64
+	for _, job := range engineStorage.Jobs {
+		if job.ProcessInstanceKey == instance.ProcessInstance().Key &&
+			job.Type == "input-task-timer-event-subprocess-interrupting" &&
+			job.State == runtime.ActivityStateActive {
+			jobKey = job.Key
+			break
+		}
+	}
+	require.NotZero(t, jobKey, "expected to find an active job for input-task-timer-event-subprocess-interrupting")
+
+	// Before completing the job the event subprocess timer should be in TimerStateCreated
+	createdTimers, err := bpmnEngine.persistence.FindProcessInstanceTimers(t.Context(), instance.ProcessInstance().Key, runtime.TimerStateCreated)
+	require.NoError(t, err)
+	found := false
+	for _, timer := range createdTimers {
+		if timer.ElementId == "subProcessTimerEvent_12i3m6f" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected event subprocess timer to be in TimerStateCreated before job completion")
+
+	// Complete the job
+	err = bpmnEngine.JobCompleteByKey(t.Context(), jobKey, nil)
+	require.NoError(t, err)
+
+	// The process instance should now be completed
+	updatedInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, updatedInstance.ProcessInstance().State)
+
+	// The event subprocess timer start event timer should now be in TimerStateCancelled
+	cancelledTimers, err := bpmnEngine.persistence.FindProcessInstanceTimers(t.Context(), instance.ProcessInstance().Key, runtime.TimerStateCancelled)
+	require.NoError(t, err)
+	found = false
+	for _, timer := range cancelledTimers {
+		if timer.ElementId == "subProcessTimerEvent_12i3m6f" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected event subprocess timer to be in TimerStateCancelled after job completion, got: %+v", cancelledTimers)
+}

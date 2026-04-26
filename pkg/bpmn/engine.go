@@ -1147,7 +1147,7 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 	}
 	if processPlainEvent { // additionally processing of plain end event might make sense only for future non terminate end events
 		currentToken.State = runtime.TokenStateCompleted
-		err := engine.handlePlainEndEvent(ctx, instance, false)
+		err := engine.handlePlainEndEvent(ctx, batch, instance, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
 		}
@@ -1163,7 +1163,7 @@ func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *Engine
 	return tokens, nil
 }
 
-func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.ProcessInstance, onJobCompletion bool) error {
+func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, onJobCompletion bool) error {
 	activeSubscriptions := false
 
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
@@ -1211,6 +1211,17 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.
 			return errors.Join(newEngineErrorf("failed to check active sub-process instances for key: %d", instance.ProcessInstance().Key), err)
 		}
 		if !hasActiveSubProcess {
+			// Cancel all active timers for this process instance
+			timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to load active timers for key: %d", instance.ProcessInstance().Key), err)
+			}
+			for _, timer := range timers {
+				timer.TimerState = runtime.TimerStateCancelled
+				if err = batch.SaveTimer(ctx, timer); err != nil {
+					return errors.Join(newEngineErrorf("failed to cancel timer %d for process instance key: %d", timer.Key, instance.ProcessInstance().Key), err)
+				}
+			}
 			instance.ProcessInstance().State = runtime.ActivityStateCompleted
 		}
 	}
@@ -1269,7 +1280,7 @@ func (engine *Engine) handleMessageEndEvent(
 	return nil, err
 }
 
-func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
+func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
 ) (updatedTokens []runtime.ExecutionToken, err error) {
 	for _, endEventDefinition := range endEvent.EventDefinitions {
@@ -1277,7 +1288,7 @@ func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, in
 		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
 		// end event definitions completions twice on continuation
 		case bpmn20.TMessageEventDefinition:
-			err = engine.handlePlainEndEvent(ctx, instance, true)
+			err = engine.handlePlainEndEvent(ctx, batch, instance, true)
 			if err != nil {
 				return nil, fmt.Errorf("failed to handle plain EndEvent: %w", err)
 			}

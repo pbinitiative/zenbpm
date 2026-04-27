@@ -170,6 +170,7 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		Page:                    request.Params.Page,
 		Size:                    request.Params.Size,
 		DmnDefinitionName:       request.Params.DmnDefinitionName,
+		Search:                  request.Params.Search,
 		OnlyLatest:              request.Params.OnlyLatest,
 		DmnResourceDefinitionId: request.Params.DmnResourceDefinitionId,
 		SortByOrder:             (*string)(sortByOrder),
@@ -643,6 +644,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 
 	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
 		request.Params.BpmnProcessId,
+		request.Params.Search,
 		request.Params.OnlyLatest,
 		sort,
 		*request.Params.Page, *request.Params.Size)

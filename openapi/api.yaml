@@ -145,6 +145,11 @@ paths:
           schema:
             type: string
           description: Filter by name (partial match)
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by DMN resource definition ID or DMN definition name
       responses:
         200:
           description: List of dmn resource definitions
@@ -353,6 +358,7 @@ paths:
               example:
                 code: "BAD_GATEWAY"
                 message: "Failed to redirect request to responsible node"
+
   /decision-instances:
     get:
       operationId: getDecisionInstances
@@ -682,6 +688,11 @@ paths:
           schema:
             type: string
           description: Filter by BPMN process ID to get all versions of a specific process
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Filter by BPMN process ID or BPMN process name (partial match)
       responses:
         200:
           description: List of process definitions
@@ -2132,6 +2143,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /jobs/{jobKey}/fail:
     post:
       operationId: failJob
@@ -2462,6 +2474,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
   /tests/{nodeId}/stop-pprof-server:
     post:
       operationId: testStopPprofServer

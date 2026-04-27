@@ -59,6 +59,13 @@ WHERE
     ELSE
         1
     END
+    AND
+    CASE WHEN @search IS NOT NULL THEN
+         lower(drd.dmn_resource_definition_id) like concat('%', lower(@search), '%')
+         OR lower(drd.dmn_definition_name) like concat('%', lower(@search), '%')
+    ELSE
+        1
+    END
 ORDER BY
     -- workaround for sqlc which does not replace params in order by
     CASE CAST(?1 AS TEXT) WHEN 'dmnDefinitionName_asc' THEN drd.dmn_definition_name END ASC,

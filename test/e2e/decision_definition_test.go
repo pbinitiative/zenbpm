@@ -141,6 +141,24 @@ func TestGetDmnResourceDefinitions(t *testing.T) {
 		assert.Equal(t, "name12", processInstances.JSON200.Items[1].DmnDefinitionName)
 		assert.Equal(t, "defId1", processInstances.JSON200.Items[1].DmnResourceDefinitionId)
 	})
+
+	t.Run("find dmn resource definition by search across id and name", func(t *testing.T) {
+		search := "defId2"
+		response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+			Search: &search,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, response.JSON200.TotalCount)
+		assert.Equal(t, "defId2", response.JSON200.Items[0].DmnResourceDefinitionId)
+
+		search = "jmeno41"
+		response, err = app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+			Search: &search,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, response.JSON200.TotalCount)
+		assert.Equal(t, "jmeno41", response.JSON200.Items[0].DmnDefinitionName)
+	})
 }
 
 func TestGetDmnResourceDefinitionsBadRequests(t *testing.T) {

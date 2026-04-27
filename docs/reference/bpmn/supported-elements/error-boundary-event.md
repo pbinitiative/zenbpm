@@ -10,11 +10,12 @@ Error boundary event allows a process to react when something goes wrong during 
 
 Use an error boundary event when a job worker detects a problem and the process should handle it explicitly — for example, switch to an alternative flow, notify a user, or skip a failed step.
 
-In ZenBPM, errors are raised by failing a job with an `errorCode` via the job API. The engine then looks for a matching error boundary event attached to the activity (or its ancestor scopes) and routes execution accordingly.
+In ZenBPM, BPMN errors can be raised in two ways:
 
-:::note
-ZenBPM currently does not support error end events as a way to throw errors. Errors can only be raised through the job failure API.
-:::
+- by reaching an error end event
+- by failing a job with an `errorCode` via the job API
+
+ZenBPM combines the "fail job" and "throw BPMN error" behavior in the same API call. When `FailJob` is invoked with an `errorCode`, the engine looks for a matching error boundary event attached to the activity (or its ancestor scopes) and routes execution accordingly. If no handler matches, the failure becomes an incident.
 
 ## Behavior
 

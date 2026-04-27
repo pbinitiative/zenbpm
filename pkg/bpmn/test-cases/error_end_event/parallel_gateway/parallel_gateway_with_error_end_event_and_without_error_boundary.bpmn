@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1q43p09" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.24.0">
+  <bpmn:process id="parallel_gateway_with_error_end_event_no_boundary" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_040pc1r</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="user_task">
+      <bpmn:incoming>Flow_040pc1r</bpmn:incoming>
+      <bpmn:outgoing>Flow_148tkpx</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_040pc1r" sourceRef="StartEvent_1" targetRef="user_task" />
+    <bpmn:sequenceFlow id="Flow_148tkpx" sourceRef="user_task" targetRef="parallel_gateway" />
+    <bpmn:parallelGateway id="parallel_gateway">
+      <bpmn:incoming>Flow_148tkpx</bpmn:incoming>
+      <bpmn:outgoing>Flow_1n6ihu6</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1eovp25</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_1n6ihu6" sourceRef="parallel_gateway" targetRef="error_end_event" />
+    <bpmn:serviceTask id="service_task">
+      <bpmn:incoming>Flow_1eovp25</bpmn:incoming>
+      <bpmn:outgoing>Flow_1by5ks9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1eovp25" sourceRef="parallel_gateway" targetRef="service_task" />
+    <bpmn:endEvent id="normal_end">
+      <bpmn:incoming>Flow_1by5ks9</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1by5ks9" sourceRef="service_task" targetRef="normal_end" />
+    <bpmn:endEvent id="error_end_event">
+      <bpmn:incoming>Flow_1n6ihu6</bpmn:incoming>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0atdyn2" />
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_gateway_with_error_end_event_no_boundary">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_06bud4s_di" bpmnElement="user_task">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_1rutrf0_di" bpmnElement="parallel_gateway">
+        <dc:Bounds x="425" y="95" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_17ogymu_di" bpmnElement="service_task">
+        <dc:Bounds x="520" y="150" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_080eihn_di" bpmnElement="normal_end">
+        <dc:Bounds x="672" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1coe7c6_di" bpmnElement="error_end_event">
+        <dc:Bounds x="672" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_040pc1r_di" bpmnElement="Flow_040pc1r">
+        <di:waypoint x="218" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_148tkpx_di" bpmnElement="Flow_148tkpx">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="425" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1n6ihu6_di" bpmnElement="Flow_1n6ihu6">
+        <di:waypoint x="475" y="120" />
+        <di:waypoint x="672" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1eovp25_di" bpmnElement="Flow_1eovp25">
+        <di:waypoint x="450" y="145" />
+        <di:waypoint x="450" y="190" />
+        <di:waypoint x="520" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1by5ks9_di" bpmnElement="Flow_1by5ks9">
+        <di:waypoint x="620" y="190" />
+        <di:waypoint x="672" y="190" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

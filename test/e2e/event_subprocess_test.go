@@ -49,7 +49,7 @@ func TestEventSubProcess(t *testing.T) {
 		require.Equal(t, 1, len(jobs.Partitions), "Should have exactly one partition with jobs")
 		require.Equal(t, 1, len(jobs.Partitions[0].Items), "Should have exactly one active job")
 
-		err = completeJob(t, jobs.Partitions[0].Items[0], map[string]any{})
+		err = completeJob(t, jobs.Partitions[0].Items[0].Key, map[string]any{})
 		assert.NoError(t, err)
 
 		// After job completion the process instance should be completed

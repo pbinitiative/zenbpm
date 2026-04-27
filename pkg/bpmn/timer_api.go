@@ -55,7 +55,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	currentToken := timer.Token
 	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
-	if tokenNode.GetId() == "" {
+	if tokenNode == nil || tokenNode.GetId() == "" {
 		return nil, nil, errors.Join(newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId), err)
 	}
 

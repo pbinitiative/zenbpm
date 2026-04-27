@@ -41,7 +41,7 @@ func TestInvalidTimerWillStopExecutionAndReturnErr(t *testing.T) {
 
 	assert.Equal(t, runtime.ActivityStateFailed, instance.ProcessInstance().State)
 	assert.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "Can't find 'timeDuration' value for INTERMEDIATE_CATCH_EVENT with id=TimerEventDefinition_0he1igl"))
+	assert.True(t, strings.Contains(err.Error(), "Error parsing 'timeDuration' value from Activity with ID=Event_1uc8qla. Error:timerDef.TimeDuration is nil"))
 	assert.Equal(t, "", cp.CallPath)
 }
 

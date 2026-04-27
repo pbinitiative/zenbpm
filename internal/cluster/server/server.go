@@ -622,13 +622,23 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	for _, engine := range engines {
 		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
 		if err != nil {
-			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
+			}, nil
+		}
+	}
+	if req.GetRegisterForPotentialTimerStartEvents() {
+		engine := s.GetRandomEngine(ctx)
+		if engine == nil {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.TechnicalError(fmt.Errorf("no engine available on this node")).ToProtoError(),
+			}, nil
+		}
+		err := engine.RegisterForPotentialTimerStartEvents(ctx, req.GetKey())
+		if err != nil {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition for potential TimerStartEvents: %w", err)).ToProtoError(),
+			}, nil
 		}
 	}
 	return &proto.DeployProcessDefinitionResponse{}, nil

@@ -141,6 +141,7 @@ test: ## Run tests
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test ./... -coverprofile cover.out
 
 .PHONY: bench
@@ -152,6 +153,7 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -count=1 -v ./test/e2e/...
 
 .PHONY: test-dmntest
@@ -159,6 +161,7 @@ test-dmntest:
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -tags=dmntest ./pkg/dmn/dmntest/... -v
 
 ##@ Build

@@ -450,7 +450,7 @@ func (mem *Storage) FindTokenActiveTimerSubscriptions(ctx context.Context, token
 		if timer.TimerState != bpmnruntime.TimerStateCreated {
 			continue
 		}
-		if timer.Token.Key != tokenKey {
+		if timer.Token == nil || timer.Token.Key != tokenKey {
 			continue
 		}
 		res = append(res, timer)
@@ -463,7 +463,23 @@ func (mem *Storage) FindProcessInstanceTimers(ctx context.Context, processInstan
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.Timer, 0)
 	for _, timer := range mem.Timers {
-		if timer.ProcessInstanceKey != processInstanceKey {
+		if timer.ProcessInstanceKey == nil || *timer.ProcessInstanceKey != processInstanceKey {
+			continue
+		}
+		if timer.TimerState != state {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.ProcessDefinitionKey != processDefinitionKey {
 			continue
 		}
 		if timer.TimerState != state {
@@ -496,6 +512,25 @@ func (mem *Storage) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) erro
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	mem.Timers[timer.GetKey()] = timer
+	return nil
+}
+
+func (mem *Storage) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
+	for _, k := range processDefinitionKeys {
+		keySet[k] = struct{}{}
+	}
+	for key, timer := range mem.Timers {
+		if _, ok := keySet[timer.ProcessDefinitionKey]; !ok {
+			continue
+		}
+		if timer.ProcessInstanceKey != nil || timer.Token != nil {
+			continue
+		}
+		delete(mem.Timers, key)
+	}
 	return nil
 }
 
@@ -940,6 +975,13 @@ var _ storage.TimerStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveTimer(ctx, timer)
+	})
+	return nil
+}
+
+func (b *StorageBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
 	})
 	return nil
 }

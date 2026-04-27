@@ -64,6 +64,10 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		if latest.BpmnChecksum == md5sum {
 			return latest, nil
 		}
+		err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete process definitions timers: %w", err)
+		}
 		processInfo.Version = latest.Version + 1
 	}
 	err = engine.persistence.SaveProcessDefinition(ctx, processInfo)

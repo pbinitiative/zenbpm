@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"slices"
 	"time"
@@ -25,6 +27,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -433,8 +436,27 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	partitionIds := sortedPartitionIds(clusterState)
 	group, groupCtx := errgroup.WithContext(ctx)
 
+	// determine partitionIdx using incoming process definition id
+	var definitions bpmn20.TDefinitions
+	err = xml.Unmarshal(data, &definitions)
+	if err != nil {
+		return key, false, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+	h := fnv.New32a()
+	_, err = h.Write([]byte(definitions.Process.Id))
+	if err != nil {
+		return key, false, fmt.Errorf("failed to hash process definition id: %w", err)
+	}
+	if len(partitionIds) == 0 {
+		return key, false, fmt.Errorf("no partitions available in cluster state")
+	}
+	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
+
+	// use that partitionIdx to create potential process timer start events always only on that one partitionIdx
+	timerStartEventPartitionId := partitionIds[partitionIdx]
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
+		registerForPotentialTimerStartEvents := timerStartEventPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
@@ -444,6 +466,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 				definitionKey.Int64(),
 				data,
 				resourceName,
+				registerForPotentialTimerStartEvents,
 			)
 		})
 	}
@@ -461,6 +484,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	definitionKey int64,
 	data []byte,
 	resourceName string,
+	registerForPotentialTimerStartEvents bool,
 ) error {
 
 	partitionLeader := clusterState.Nodes[partitionLeaderId]
@@ -470,9 +494,10 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:          ptr.To(definitionKey),
-		Data:         data,
-		ResourceName: &resourceName,
+		Key:                                  ptr.To(definitionKey),
+		Data:                                 data,
+		ResourceName:                         &resourceName,
+		RegisterForPotentialTimerStartEvents: &registerForPotentialTimerStartEvents,
 	})
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to deploy process definition failed: %w", err))
@@ -483,7 +508,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition failed: %w", errors.New(resp.Error.GetMessage())))
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition %s failed", resourceName))
 	}
 
 	return nil

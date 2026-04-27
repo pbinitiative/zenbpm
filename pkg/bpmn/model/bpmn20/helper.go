@@ -283,3 +283,19 @@ func FindBoundaryEventsForActivity(processContainer *TFlowElementsContainer, act
 	}
 	return result
 }
+
+func FindBaseElementById(definitions *TDefinitions, id string) (BaseElement, bool) {
+	v, ok := definitions.baseElements[id]
+	return v, ok
+}
+
+// FindEventSubProcesses returns (non-recursively) all subprocesses with TriggeredByEvent=true in the given flow elements container.
+func FindEventSubProcesses(container *TFlowElementsContainer) []*TSubProcess {
+	result := make([]*TSubProcess, 0)
+	for i := range container.SubProcess {
+		if container.SubProcess[i].TriggeredByEvent {
+			result = append(result, &container.SubProcess[i])
+		}
+	}
+	return result
+}

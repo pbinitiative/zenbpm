@@ -14,12 +14,13 @@ type Querier interface {
 	CountFlowElementInstances(ctx context.Context, processInstanceKey int64) (int64, error)
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
+	DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []int64) error
-	DeleteProcessInstancesTimers(ctx context.Context, keys []int64) error
+	DeleteProcessInstancesTimers(ctx context.Context, processinstancekeys []sql.NullInt64) error
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
@@ -56,6 +57,7 @@ type Querier interface {
 	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
+	FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)

@@ -242,12 +242,13 @@ func getTimer(key, pdKey, piKey int64, originActivity bpmnruntime.Job) bpmnrunti
 	return bpmnruntime.Timer{
 		ElementId:            fmt.Sprintf("timer-%d", key),
 		Key:                  key,
+		ElementInstanceKey:   &key,
 		ProcessDefinitionKey: pdKey,
-		ProcessInstanceKey:   piKey,
+		ProcessInstanceKey:   &piKey,
 		TimerState:           bpmnruntime.TimerStateCreated,
 		CreatedAt:            time.Now().Truncate(time.Millisecond),
 		DueAt:                time.Now().Add(1 * time.Hour).Truncate(time.Millisecond),
-		Token: bpmnruntime.ExecutionToken{
+		Token: &bpmnruntime.ExecutionToken{
 			Key:                key,
 			ElementInstanceKey: key,
 			ElementId:          "",
@@ -278,6 +279,37 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 
 		err = s.SaveTimer(t.Context(), timer)
 		assert.NoError(t, err)
+
+		t.Run("Create and delete process definitions timers", func(t *testing.T) {
+			pdTimerKey := s.GenerateId()
+			pdTimer := bpmnruntime.Timer{
+				ElementId:            fmt.Sprintf("timer-start-%d", pdTimerKey),
+				Key:                  pdTimerKey,
+				ElementInstanceKey:   nil,
+				ProcessDefinitionKey: st.processDefinition.Key,
+				ProcessInstanceKey:   nil,
+				TimerState:           bpmnruntime.TimerStateCreated,
+				CreatedAt:            time.Now().Truncate(time.Millisecond),
+				DueAt:                time.Now().Add(1 * time.Hour).Truncate(time.Millisecond),
+				Token:                nil,
+			}
+			err = s.SaveTimer(t.Context(), pdTimer)
+			assert.NoError(t, err)
+
+			err = s.DeleteProcessDefinitionsTimers(t.Context(), []int64{st.processDefinition.Key})
+			assert.NoError(t, err)
+
+			timers, err := s.FindTimersTo(t.Context(), pdTimer.DueAt.Add(1*time.Second))
+			assert.NoError(t, err)
+			foundProcessInstanceTimer := false
+			for _, found := range timers {
+				assert.NotEqual(t, pdTimerKey, found.Key, "process-definition-level timer should have been deleted")
+				if found.Key == timer.Key {
+					foundProcessInstanceTimer = true
+				}
+			}
+			assert.True(t, foundProcessInstanceTimer, "process-instance timer should not have been deleted")
+		})
 	}
 }
 
@@ -299,7 +331,7 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 
 		timer := getTimer(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, job)
 
-		err = s.SaveToken(t.Context(), timer.Token)
+		err = s.SaveToken(t.Context(), *timer.Token)
 		assert.NoError(t, err)
 
 		err = s.SaveTimer(t.Context(), timer)
@@ -307,11 +339,19 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 
 		timers, err := s.FindTimersTo(t.Context(), timer.DueAt.Add(1*time.Second))
 		assert.NoError(t, err)
-		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in timers array: %+v", timer, timers)
 
 		timers, err = s.FindTokenActiveTimerSubscriptions(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
-		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer in timers array: %+v", timers)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in timers array: %+v", timer, timers)
+
+		timers, err = s.FindProcessDefinitionTimers(t.Context(), st.processDefinition.Key, bpmnruntime.TimerStateCreated)
+		assert.NoError(t, err)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in FindProcessDefinitionTimers result: %+v", timer, timers)
+
+		timers, err = s.FindProcessDefinitionTimers(t.Context(), st.processDefinition.Key, bpmnruntime.TimerStateTriggered)
+		assert.NoError(t, err)
+		assert.Falsef(t, slices.ContainsFunc(timers, timer.EqualTo), "timer in TimerStateCreated should not appear in TimerStateTriggered results: %+v", timers)
 
 		timerTest, err := s.GetTimer(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
@@ -401,7 +441,7 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 		err := s.SaveJob(t.Context(), job)
 		assert.NoError(t, err)
 
-		message := getMessage(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, bpmnruntime.ExecutionToken{
+		message := getMessage(r, st.processInstance.ProcessInstance().Key, st.processDefinition.Key, bpmnruntime.ExecutionToken{
 			Key:                r,
 			ElementInstanceKey: r,
 			ElementId:          "messageElementId",
@@ -428,7 +468,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 		}
 		s.SaveToken(t.Context(), token)
 
-		messageSub := getMessage(r, st.processDefinition.Key, st.processInstance.ProcessInstance().Key, token)
+		messageSub := getMessage(r, st.processInstance.ProcessInstance().Key, st.processDefinition.Key, token)
 		err := s.SaveMessageSubscription(t.Context(), messageSub)
 		assert.NoError(t, err)
 

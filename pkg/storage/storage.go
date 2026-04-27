@@ -146,6 +146,8 @@ type TimerStorageReader interface {
 
 	FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
 
+	FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+
 	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 
@@ -153,6 +155,9 @@ type TimerStorageWriter interface {
 	// SaveTimer persists the Timer
 	// and potentially overwrites prior data stored with given key
 	SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error
+
+	// DeleteProcessDefinitionsTimers deletes all timers associated with the given process definition keys
+	DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error
 }
 
 type JobStorageReader interface {

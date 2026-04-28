@@ -127,3 +127,25 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	}
 	return nil
 }
+
+func (engine *Engine) resolveIncidentsForToken(ctx context.Context, batch *EngineBatch, tokenKey int64) error {
+
+	incidents, err := engine.persistence.FindIncidentsByExecutionTokenKey(ctx, tokenKey)
+	if err != nil {
+		return fmt.Errorf("failed to find incidents for execution token %d: %w", tokenKey, err)
+	}
+
+	for _, incident := range incidents {
+		if incident.ResolvedAt != nil {
+			continue
+		}
+
+		incident.ResolvedAt = ptr.To(time.Now())
+		err = batch.SaveIncident(ctx, incident)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
+		}
+	}
+
+	return nil
+}

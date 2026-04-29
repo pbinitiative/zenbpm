@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_03ul3qj" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="Error_end_event_catch_all" name="Error End Event - Catch-all boundary" isExecutable="true">
+    <bpmn:startEvent id="StartEvent">
+      <bpmn:outgoing>Flow_0gw2c45</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_0gw2c45" sourceRef="StartEvent" targetRef="Subprocess" />
+    <bpmn:subProcess id="Subprocess">
+      <bpmn:incoming>Flow_0gw2c45</bpmn:incoming>
+      <bpmn:outgoing>Flow_1e21tpl</bpmn:outgoing>
+      <bpmn:startEvent id="Event_sub_start">
+        <bpmn:outgoing>Flow_1rvuuoo</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_1rvuuoo" sourceRef="Event_sub_start" targetRef="error_end_event" />
+      <bpmn:endEvent id="error_end_event">
+        <bpmn:incoming>Flow_1rvuuoo</bpmn:incoming>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_1pgfedr" />
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="error_event_boundary" attachedToRef="Subprocess">
+      <bpmn:outgoing>Flow_16zn6he</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_07rs7zy" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="handled_end" name="Handled end">
+      <bpmn:incoming>Flow_16zn6he</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_16zn6he" sourceRef="error_event_boundary" targetRef="handled_end" />
+    <bpmn:endEvent id="Event_should_not_happen" name="Should not happen end">
+      <bpmn:incoming>Flow_1e21tpl</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1e21tpl" sourceRef="Subprocess" targetRef="Event_should_not_happen" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Error_end_event_catch_all">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent">
+        <dc:Bounds x="152" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Subprocess_di" bpmnElement="Subprocess" isExpanded="true">
+        <dc:Bounds x="280" y="80" width="380" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1hmuatj_di" bpmnElement="Event_sub_start">
+        <dc:Bounds x="302" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0nm5kbc_di" bpmnElement="error_end_event">
+        <dc:Bounds x="572" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1rvuuoo_di" bpmnElement="Flow_1rvuuoo">
+        <di:waypoint x="338" y="190" />
+        <di:waypoint x="572" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="handled_end_di" bpmnElement="handled_end">
+        <dc:Bounds x="742" y="382" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="729" y="425" width="63" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1qjq5lu_di" bpmnElement="Event_should_not_happen">
+        <dc:Bounds x="742" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="730" y="236" width="59" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_051rhe7_di" bpmnElement="error_event_boundary">
+        <dc:Bounds x="572" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0gw2c45_di" bpmnElement="Flow_0gw2c45">
+        <di:waypoint x="188" y="190" />
+        <di:waypoint x="280" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16zn6he_di" bpmnElement="Flow_16zn6he">
+        <di:waypoint x="590" y="338" />
+        <di:waypoint x="590" y="400" />
+        <di:waypoint x="742" y="400" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1e21tpl_di" bpmnElement="Flow_1e21tpl">
+        <di:waypoint x="660" y="200" />
+        <di:waypoint x="742" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

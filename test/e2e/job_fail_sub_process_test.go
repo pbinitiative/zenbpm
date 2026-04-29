@@ -13,7 +13,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 	t.Run("catch_all_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event_catch_all.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -41,7 +41,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 	t.Run("matched_error_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event_and_output_mapping.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -69,7 +69,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 	t.Run("matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -97,7 +97,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -127,7 +127,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 	t.Run("catch_all_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event_catch_all.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -155,7 +155,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 	t.Run("matched_error_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event_and_output_mapping.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -183,7 +183,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 	t.Run("matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -211,7 +211,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
 		definitionKey := deployUniqueSubProcessDefinitionKey(t, "error_events/sub_process/subprocess_with_error_boundery_event.bpmn")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -240,7 +240,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 	t.Run("nested_matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
 		definitionKey := deployProcessDefinitionKey(t, "error_events/sub_process/subprocess_nested_with_error_boundery_event.bpmn", "nested_subprocess_with_error_boundery_event")
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})

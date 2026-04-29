@@ -18,7 +18,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -42,7 +42,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -66,7 +66,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -91,7 +91,7 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -115,7 +115,7 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
@@ -139,7 +139,7 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		processInstance := createErrorBoundaryProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
+		processInstance := createProcessInstanceWithDefaultVariables(t, definition.ProcessDefinitionKey)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})

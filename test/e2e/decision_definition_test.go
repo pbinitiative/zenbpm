@@ -141,6 +141,80 @@ func TestGetDmnResourceDefinitions(t *testing.T) {
 		assert.Equal(t, "name12", processInstances.JSON200.Items[1].DmnDefinitionName)
 		assert.Equal(t, "defId1", processInstances.JSON200.Items[1].DmnResourceDefinitionId)
 	})
+
+	t.Run("find dmn resource definition by search across id and name", func(t *testing.T) {
+		t.Run("search by exact id matches single result", func(t *testing.T) {
+			search := "defId2"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			assert.Equal(t, "defId2", response.JSON200.Items[0].DmnResourceDefinitionId)
+		})
+
+		t.Run("search by exact name matches single result", func(t *testing.T) {
+			search := "jmeno41"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			assert.Equal(t, "jmeno41", response.JSON200.Items[0].DmnDefinitionName)
+		})
+
+		t.Run("search is case-insensitive across id", func(t *testing.T) {
+			search := "DEFID2"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			assert.Equal(t, "defId2", response.JSON200.Items[0].DmnResourceDefinitionId)
+		})
+
+		t.Run("search is case-insensitive across name", func(t *testing.T) {
+			search := "JMENO41"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, response.JSON200.TotalCount)
+			assert.Equal(t, "jmeno41", response.JSON200.Items[0].DmnDefinitionName)
+		})
+
+		t.Run("search substring matches multiple results", func(t *testing.T) {
+			search := "name"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 4, response.JSON200.TotalCount)
+			for _, item := range response.JSON200.Items {
+				assert.Contains(t, strings.ToLower(item.DmnDefinitionName)+strings.ToLower(item.DmnResourceDefinitionId), "name")
+			}
+		})
+
+		t.Run("search returns no results for unmatched term", func(t *testing.T) {
+			search := "zzznomatch"
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 0, response.JSON200.TotalCount)
+			assert.Empty(t, response.JSON200.Items)
+		})
+
+		t.Run("search with empty string returns all definitions", func(t *testing.T) {
+			search := ""
+			response, err := app.restClient.GetDmnResourceDefinitionsWithResponse(t.Context(), &zenclient.GetDmnResourceDefinitionsParams{
+				Search: &search,
+			})
+			assert.NoError(t, err)
+			assert.Greater(t, response.JSON200.TotalCount, 0)
+			assert.NotEmpty(t, response.JSON200.Items)
+		})
+	})
 }
 
 func TestGetDmnResourceDefinitionsBadRequests(t *testing.T) {

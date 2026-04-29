@@ -7,7 +7,6 @@ package sql
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 )
 
@@ -109,9 +108,15 @@ WITH filtered_definitions AS (
   FROM process_definition AS pd
   WHERE
     -- force sqlc to keep sort param
-    CAST(?3 AS TEXT) IS CAST(?3 AS TEXT)
-    -- name filter (partial match)
-    AND (CAST(?4 AS TEXT) IS NULL OR pd.bpmn_process_name LIKE '%' || CAST(?4 AS TEXT) || '%')
+    CASE WHEN ?3 IS NULL THEN 1 ELSE 1 END
+    -- search filter (partial match on bpmn_process_name or bpmn_process_id)
+    AND
+      CASE WHEN ?4 IS NOT NULL AND ?4 != "" THEN
+          lower(pd.bpmn_process_id) LIKE concat('%', lower(?4), '%')
+          OR lower(pd.bpmn_process_name) LIKE concat('%', lower(?4), '%')
+      ELSE
+          1
+      END
     -- onlyLatest filter
     AND (
       CAST(?5 AS INTEGER) = 0
@@ -183,13 +188,13 @@ OFFSET ?1
 `
 
 type FindProcessDefinitionStatisticsParams struct {
-	Offset              int64          `json:"offset"`
-	Limit               int64          `json:"limit"`
-	Sort                sql.NullString `json:"sort"`
-	NameFilter          sql.NullString `json:"name_filter"`
-	OnlyLatest          int64          `json:"only_latest"`
-	BpmnProcessIDInJson interface{}    `json:"bpmn_process_id_in_json"`
-	DefinitionKeyInJson interface{}    `json:"definition_key_in_json"`
+	Offset              int64       `json:"offset"`
+	Limit               int64       `json:"limit"`
+	Sort                interface{} `json:"sort"`
+	Search              interface{} `json:"search"`
+	OnlyLatest          int64       `json:"only_latest"`
+	BpmnProcessIDInJson interface{} `json:"bpmn_process_id_in_json"`
+	DefinitionKeyInJson interface{} `json:"definition_key_in_json"`
 }
 
 type FindProcessDefinitionStatisticsRow struct {
@@ -210,7 +215,7 @@ func (q *Queries) FindProcessDefinitionStatistics(ctx context.Context, arg FindP
 		arg.Offset,
 		arg.Limit,
 		arg.Sort,
-		arg.NameFilter,
+		arg.Search,
 		arg.OnlyLatest,
 		arg.BpmnProcessIDInJson,
 		arg.DefinitionKeyInJson,
@@ -256,10 +261,22 @@ SELECT
   COUNT(*) OVER() AS total_count
 FROM process_definition AS pd
 WHERE
-  CAST(?1 AS TEXT) IS CAST(?1 AS TEXT)
-  AND (CAST(?2 AS TEXT) IS NULL OR pd.bpmn_process_id = CAST(?2 AS TEXT))
+  CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+  AND
+    CASE WHEN ?2 IS NOT NULL THEN
+        pd.bpmn_process_id = CAST(?2 AS TEXT)
+    ELSE
+        1
+    END
+  AND
+    CASE WHEN ?3 IS NOT NULL AND ?3 != "" THEN
+       lower(pd.bpmn_process_id) LIKE concat('%', lower(?3), '%')
+       OR lower(pd.bpmn_process_name) LIKE concat('%', lower(?3), '%')
+    ELSE
+        1
+    END
   AND (
-    CAST(?3 AS INTEGER) = 0
+    CAST(?4 AS INTEGER) = 0
     OR pd.version = (
       SELECT MAX(pd2.version)
       FROM process_definition AS pd2
@@ -267,7 +284,6 @@ WHERE
         AND (CAST(?2 AS TEXT) IS NULL OR pd2.bpmn_process_id = CAST(?2 AS TEXT))
     )
   )
-  
 ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'version_asc'  THEN pd.version END ASC,
   CASE CAST(?1 AS TEXT) WHEN 'version_desc' THEN pd.version END DESC,
@@ -279,16 +295,17 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessName_desc' THEN pd.bpmn_process_name END DESC,
   pd."key" DESC
 
-LIMIT ?5
-OFFSET ?4
+LIMIT ?6
+OFFSET ?5
 `
 
 type FindProcessDefinitionsParams struct {
-	Sort                sql.NullString `json:"sort"`
-	BpmnProcessIDFilter sql.NullString `json:"bpmn_process_id_filter"`
-	OnlyLatest          int64          `json:"only_latest"`
-	Offset              int64          `json:"offset"`
-	Limit               int64          `json:"limit"`
+	Sort                interface{} `json:"sort"`
+	BpmnProcessIDFilter interface{} `json:"bpmn_process_id_filter"`
+	Search              interface{} `json:"search"`
+	OnlyLatest          int64       `json:"only_latest"`
+	Offset              int64       `json:"offset"`
+	Limit               int64       `json:"limit"`
 }
 
 type FindProcessDefinitionsRow struct {
@@ -305,6 +322,7 @@ func (q *Queries) FindProcessDefinitions(ctx context.Context, arg FindProcessDef
 	rows, err := q.db.QueryContext(ctx, findProcessDefinitions,
 		arg.Sort,
 		arg.BpmnProcessIDFilter,
+		arg.Search,
 		arg.OnlyLatest,
 		arg.Offset,
 		arg.Limit,

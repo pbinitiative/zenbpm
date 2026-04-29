@@ -768,6 +768,9 @@ type GetDmnResourceDefinitionsParams struct {
 
 	// DmnDefinitionName Filter by name (partial match)
 	DmnDefinitionName *string `form:"dmnDefinitionName,omitempty" json:"dmnDefinitionName,omitempty"`
+
+	// Search Search by DMN resource definition ID or DMN definition name
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
 // GetDmnResourceDefinitionsParamsSortBy defines parameters for GetDmnResourceDefinitions.
@@ -874,6 +877,9 @@ type GetProcessDefinitionsParams struct {
 
 	// BpmnProcessId Filter by BPMN process ID to get all versions of a specific process
 	BpmnProcessId *string `form:"bpmnProcessId,omitempty" json:"bpmnProcessId,omitempty"`
+
+	// Search Filter by BPMN process ID or BPMN process name (partial match)
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
 // GetProcessDefinitionsParamsSortBy defines parameters for GetProcessDefinitions.
@@ -905,8 +911,8 @@ type GetProcessDefinitionStatisticsParams struct {
 	// BpmnProcessDefinitionKeyIn Filter by process definition key
 	BpmnProcessDefinitionKeyIn *[]int64 `form:"bpmnProcessDefinitionKeyIn,omitempty" json:"bpmnProcessDefinitionKeyIn,omitempty"`
 
-	// Name Filter by name (partial match)
-	Name *string `form:"name,omitempty" json:"name,omitempty"`
+	// Search Search by BPMN process ID or BPMN process name (partial match)
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
 	// SortBy Sort field
 	SortBy *GetProcessDefinitionStatisticsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
@@ -2178,6 +2184,22 @@ func NewGetDmnResourceDefinitionsRequest(server string, params *GetDmnResourceDe
 
 		}
 
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -2860,6 +2882,22 @@ func NewGetProcessDefinitionsRequest(server string, params *GetProcessDefinition
 
 		}
 
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -3002,9 +3040,9 @@ func NewGetProcessDefinitionStatisticsRequest(server string, params *GetProcessD
 
 		}
 
-		if params.Name != nil {
+		if params.Search != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "name", runtime.ParamLocationQuery, *params.Name); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

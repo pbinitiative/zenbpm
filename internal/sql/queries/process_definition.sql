@@ -12,18 +12,29 @@ SELECT
 FROM process_definition AS pd
 WHERE
 -- force sqlc to keep sort param
-  CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
-  AND (CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT) IS NULL OR pd.bpmn_process_id = CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT))
+  CASE WHEN @sort IS NULL THEN 1 ELSE 1 END
+  AND
+    CASE WHEN @bpmn_process_id_filter IS NOT NULL THEN
+        pd.bpmn_process_id = CAST(@bpmn_process_id_filter AS TEXT)
+    ELSE
+        1
+    END
+  AND
+    CASE WHEN @search IS NOT NULL AND @search != "" THEN
+       lower(pd.bpmn_process_id) LIKE concat('%', lower(@search), '%')
+       OR lower(pd.bpmn_process_name) LIKE concat('%', lower(@search), '%')
+    ELSE
+        1
+    END
   AND (
-    CAST(sqlc.arg('only_latest') AS INTEGER) = 0
+    CAST(@only_latest AS INTEGER) = 0
     OR pd.version = (
       SELECT MAX(pd2.version)
       FROM process_definition AS pd2
       WHERE pd2.bpmn_process_id = pd.bpmn_process_id
-        AND (CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT) IS NULL OR pd2.bpmn_process_id = CAST(sqlc.narg('bpmn_process_id_filter') AS TEXT))
+        AND (CAST(@bpmn_process_id_filter AS TEXT) IS NULL OR pd2.bpmn_process_id = CAST(@bpmn_process_id_filter AS TEXT))
     )
   )
-  
 ORDER BY
 -- workaround for sqlc does not replace params in order by
   CASE CAST(?1 AS TEXT) WHEN 'version_asc'  THEN pd.version END ASC,
@@ -154,12 +165,18 @@ WITH filtered_definitions AS (
   FROM process_definition AS pd
   WHERE
     -- force sqlc to keep sort param
-    CAST(sqlc.narg('sort') AS TEXT) IS CAST(sqlc.narg('sort') AS TEXT)
-    -- name filter (partial match)
-    AND (CAST(sqlc.narg('name_filter') AS TEXT) IS NULL OR pd.bpmn_process_name LIKE '%' || CAST(sqlc.narg('name_filter') AS TEXT) || '%')
+    CASE WHEN @sort IS NULL THEN 1 ELSE 1 END
+    -- search filter (partial match on bpmn_process_name or bpmn_process_id)
+    AND
+      CASE WHEN @search IS NOT NULL AND @search != "" THEN
+          lower(pd.bpmn_process_id) LIKE concat('%', lower(@search), '%')
+          OR lower(pd.bpmn_process_name) LIKE concat('%', lower(@search), '%')
+      ELSE
+          1
+      END
     -- onlyLatest filter
     AND (
-      CAST(sqlc.arg('only_latest') AS INTEGER) = 0
+      CAST(@only_latest AS INTEGER) = 0
       OR pd.version = (
         SELECT MAX(pd2.version)
         FROM process_definition AS pd2

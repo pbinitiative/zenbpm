@@ -32,6 +32,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -54,6 +55,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -76,6 +78,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -99,6 +102,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task"})
 	})
 }
 
@@ -123,6 +127,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -145,6 +150,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -167,6 +173,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -190,6 +197,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task"})
 	})
 }
 
@@ -214,6 +222,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -236,6 +245,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -258,6 +268,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -281,6 +292,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task"})
 	})
 }
 
@@ -305,6 +317,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -327,6 +340,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("matching_error_code_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -349,6 +363,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 	})
 
 	t.Run("nested_matching_error_code_is_caught", func(t *testing.T) {
@@ -376,17 +391,19 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, multiInstanceProcess.Key, zenclient.ProcessInstanceStateTerminated)
-		waitForProcessInstanceState(t, subProcessInstance.Key, zenclient.ProcessInstanceStateCompleted)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 
 		assertProcessInstanceTokenState(t, multiInstanceProcess.Key, "service_task", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, multiInstanceProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, multiInstanceProcess.Key)
 		assertProcessInstanceTokenElements(t, multiInstanceProcess.Key, []string{"service_task"}, []string{"error_boundary_event_end", "end"})
+		assertProcessInstanceHistory(t, multiInstanceProcess.Key, []string{"service_task", "Event_15f0ox7"})
 
 		assertProcessInstanceTokenState(t, subProcessInstance.Key, "error_boundary_event_end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceIncidentsLength(t, subProcessInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, subProcessInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, subProcessInstance.Key, []string{"error_boundary_event_end"}, []string{"end"})
+		assertProcessInstanceHistory(t, subProcessInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task", "Flow_104hlf4", "error_boundary_event_end"})
 
 		assertProcessInstanceTokenState(t, processInstance.Key, "Event_11axlot", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
@@ -397,6 +414,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"Event_11axlot"}, []string{"Activity_11wye3s"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_1llmj1k", "Event_0m9r0ve", "Activity_11wye3s", "Flow_0n7mtnz", "Event_11axlot"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -420,6 +438,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 			"error_boundary_event_end",
 			"end",
 		)
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task"})
 	})
 }
 

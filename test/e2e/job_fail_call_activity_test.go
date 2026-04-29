@@ -42,12 +42,14 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id", "boundary-error-main-task"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -70,12 +72,14 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id", "boundary-error-main-task"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -97,12 +101,14 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateFailed)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "boundary-error-call-activity", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity"})
 	})
 }
 
@@ -127,12 +133,14 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id", "boundary-error-main-task"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -154,12 +162,14 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id", "boundary-error-main-task"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_in_multi_instance_is_caught", func(t *testing.T) {
@@ -188,11 +198,13 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "service_task"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "call_activity_parent_2", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -215,12 +227,14 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateFailed)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
+		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id"})
 
 		assertProcessInstanceTokenState(t, parentInstance.Key, "boundary-error-call-activity", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, parentInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, parentInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-call-activity"})
 	})
 
 	t.Run("nested_matched_error_is_caught", func(t *testing.T) {
@@ -251,22 +265,26 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		assertProcessInstanceTokenState(t, leafInstance.Key, "id", bpmnruntime.TokenStateCanceled)
 		assertProcessInstanceIncidentsLength(t, leafInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, leafInstance.Key)
+		assertProcessInstanceHistory(t, leafInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id", "boundary-error-main-task"})
 
 		waitForProcessInstanceState(t, parentOneInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceIncidentsLength(t, parentOneInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, parentOneInstance.Key)
+		assertProcessInstanceHistory(t, parentOneInstance.Key, []string{"Flow_start_main", "StartEvent_1", "call_activity_parent_1"})
 
 		waitForProcessInstanceState(t, parentTwoInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, parentTwoInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceIncidentsLength(t, parentTwoInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentTwoInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, parentTwoInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, parentTwoInstance.Key, []string{"Flow_start_main", "StartEvent_1", "call_activity_parent_2", "Flow_boundary_handled", "handled-end"})
 
 		waitForProcessInstanceState(t, rootProcessInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, rootProcessInstance.Key, "End", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceIncidentsLength(t, rootProcessInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, rootProcessInstance.Key)
 		assertProcessInstanceTokenElements(t, rootProcessInstance.Key, []string{"End"}, nil)
+		assertProcessInstanceHistory(t, rootProcessInstance.Key, []string{"Flow_start_main", "StartEvent_1", "call_activity_root", "Flow_main_success", "End"})
 	})
 }
 

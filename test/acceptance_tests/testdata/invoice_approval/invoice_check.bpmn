@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0ucoqpf" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+    <bpmn:process id="KontrolaDodavatelskeFaktury" name="Kontrola dodavatelské faktury" isExecutable="true">
+        <bpmn:startEvent id="StartEvent" name="Požadavek na kontrolu dodavatelské faktury">
+            <bpmn:outgoing>Flow_00fawym</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_00fawym" sourceRef="StartEvent" targetRef="Gateway_0ph9vm1" />
+        <bpmn:sequenceFlow id="Flow_02dkz6e" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_KontrolaSpolehlivostiPlatceDPH" />
+        <bpmn:parallelGateway id="Gateway_0ph9vm1">
+            <bpmn:incoming>Flow_00fawym</bpmn:incoming>
+            <bpmn:outgoing>Flow_02dkz6e</bpmn:outgoing>
+            <bpmn:outgoing>Flow_10ndnwp</bpmn:outgoing>
+            <bpmn:outgoing>Flow_0t74lzp</bpmn:outgoing>
+            <bpmn:outgoing>Flow_1ptdbeo</bpmn:outgoing>
+            <bpmn:outgoing>Flow_01lpj58</bpmn:outgoing>
+        </bpmn:parallelGateway>
+        <bpmn:dataStoreReference id="DataStoreReference_0xjgw52" name="Registr DPH" />
+        <bpmn:serviceTask id="ServiceTask_KontrolaSpolehlivostiPlatceDPH" name="(3) Kontrola spolehlivosti plátce DPH">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="KontrolaSpolehlivostiPlatceDPH" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_02dkz6e</bpmn:incoming>
+            <bpmn:outgoing>Flow_07lk8qn</bpmn:outgoing>
+            <bpmn:property id="Property_04uozxw" name="__targetRef_placeholder" />
+            <bpmn:dataInputAssociation id="DataInputAssociation_1lccb3y">
+                <bpmn:sourceRef>DataStoreReference_0xjgw52</bpmn:sourceRef>
+                <bpmn:targetRef>Property_04uozxw</bpmn:targetRef>
+            </bpmn:dataInputAssociation>
+        </bpmn:serviceTask>
+        <bpmn:exclusiveGateway id="Gateway_SpolehlivyPlatce" name="Spolehlivý plátce DPH?" default="Flow_NespolehlivyPlatceDPH">
+            <bpmn:incoming>Flow_07lk8qn</bpmn:incoming>
+            <bpmn:outgoing>Flow_NespolehlivyPlatceDPH</bpmn:outgoing>
+            <bpmn:outgoing>Flow_SpolehlivyPlatceDPH</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <bpmn:sequenceFlow id="Flow_07lk8qn" sourceRef="ServiceTask_KontrolaSpolehlivostiPlatceDPH" targetRef="Gateway_SpolehlivyPlatce" />
+        <bpmn:sequenceFlow id="Flow_NespolehlivyPlatceDPH" name="Ne" sourceRef="Gateway_SpolehlivyPlatce" targetRef="ServiceTask_AktualizaceDatDodavatele" />
+        <bpmn:serviceTask id="ServiceTask_AktualizaceDatDodavatele" name="(4) Aktualizace dat o dodavateli">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="AktualizaceDatDodavatele" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_NespolehlivyPlatceDPH</bpmn:incoming>
+            <bpmn:outgoing>Flow_1bej1of</bpmn:outgoing>
+            <bpmn:dataOutputAssociation id="DataOutputAssociation_15u9kfj">
+                <bpmn:targetRef>DataStoreReference_0wu7vu1</bpmn:targetRef>
+            </bpmn:dataOutputAssociation>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="EndEvent_SpolehlivostPlatceDphOverena" name="Spolehlivost plátce DPH byla zkontrolována">
+            <bpmn:incoming>Flow_1bej1of</bpmn:incoming>
+            <bpmn:incoming>Flow_SpolehlivyPlatceDPH</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_1bej1of" sourceRef="ServiceTask_AktualizaceDatDodavatele" targetRef="EndEvent_SpolehlivostPlatceDphOverena" />
+        <bpmn:sequenceFlow id="Flow_SpolehlivyPlatceDPH" name="Ano" sourceRef="Gateway_SpolehlivyPlatce" targetRef="EndEvent_SpolehlivostPlatceDphOverena">
+            <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=isReliableVatPayer</bpmn:conditionExpression>
+        </bpmn:sequenceFlow>
+        <bpmn:sequenceFlow id="Flow_10ndnwp" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_OvereniExistenceObjednavky" />
+        <bpmn:sequenceFlow id="Flow_0t74lzp" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_KontrolaRegistraceBankovnihoUctu" />
+        <bpmn:serviceTask id="ServiceTask_OvereniExistenceObjednavky" name="(1) Ověření existence korespondující objednávky">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="KontrolaExistenceKorespondujiciObjednavky" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_10ndnwp</bpmn:incoming>
+            <bpmn:outgoing>Flow_01fv9oy</bpmn:outgoing>
+            <bpmn:property id="Property_0w3qbtq" name="__targetRef_placeholder" />
+            <bpmn:dataInputAssociation id="DataInputAssociation_1ahtjtb">
+                <bpmn:sourceRef>DataStoreReference_0a05h7g</bpmn:sourceRef>
+                <bpmn:targetRef>Property_0w3qbtq</bpmn:targetRef>
+            </bpmn:dataInputAssociation>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="EndEvent_ObjednavkaZkontrolovana" name="Existence objednávky zkontrolována">
+            <bpmn:incoming>Flow_01fv9oy</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_01fv9oy" sourceRef="ServiceTask_OvereniExistenceObjednavky" targetRef="EndEvent_ObjednavkaZkontrolovana" />
+        <bpmn:dataStoreReference id="DataStoreReference_0a05h7g" name="Evidence objednávek" />
+        <bpmn:dataStoreReference id="DataStoreReference_0wu7vu1" name="Evidence dodavatelů" />
+        <bpmn:serviceTask id="ServiceTask_KontrolaRegistraceBankovnihoUctu" name="(5) Kontrola účtu z faktury v registru plátců DPH">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="KontrolaShodnostiBankUctuNaFaktureVuciEvidenci" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_0t74lzp</bpmn:incoming>
+            <bpmn:outgoing>Flow_1keknwe</bpmn:outgoing>
+            <bpmn:property id="Property_00w3vhw" name="__targetRef_placeholder" />
+            <bpmn:dataInputAssociation id="DataInputAssociation_18t00qf">
+                <bpmn:sourceRef>DataStoreReference_0xjgw52</bpmn:sourceRef>
+                <bpmn:targetRef>Property_00w3vhw</bpmn:targetRef>
+            </bpmn:dataInputAssociation>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="EndEvent_RegistraceBankovnihoUctuOverena" name="Číslo účtu na faktuře bylo ověřeno proti registru plátců DPH.">
+            <bpmn:incoming>Flow_1keknwe</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_1keknwe" sourceRef="ServiceTask_KontrolaRegistraceBankovnihoUctu" targetRef="EndEvent_RegistraceBankovnihoUctuOverena" />
+        <bpmn:serviceTask id="ServiceTask_OvereniUdajuDodavatele" name="(2) Ověření údajů o dodavateli vůči interní evidenci">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="KontrolaShodnostiUdajuDodavateleNaFaktureVuciInterniEvidenci" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_01lpj58</bpmn:incoming>
+            <bpmn:outgoing>Flow_1l46wvn</bpmn:outgoing>
+            <bpmn:property id="Property_059ts6b" name="__targetRef_placeholder" />
+            <bpmn:dataInputAssociation id="DataInputAssociation_0d2g7q7">
+                <bpmn:sourceRef>DataStoreReference_0wu7vu1</bpmn:sourceRef>
+                <bpmn:targetRef>Property_059ts6b</bpmn:targetRef>
+            </bpmn:dataInputAssociation>
+        </bpmn:serviceTask>
+        <bpmn:serviceTask id="ServiceTask_MatematickaKontrolaFaktury" name="(6) Matematická kontrola faktury">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="MatematickaKontrolaObsahuFaktury" />
+            </bpmn:extensionElements>
+            <bpmn:incoming>Flow_1ptdbeo</bpmn:incoming>
+            <bpmn:outgoing>Flow_0nqdm5z</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="EndEvent_UdajeDodavateleOvereny" name="Informace o dodavateli na faktuře byly zkontrolovány proti interní evidenci dodavatelů">
+            <bpmn:incoming>Flow_1l46wvn</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_1l46wvn" sourceRef="ServiceTask_OvereniUdajuDodavatele" targetRef="EndEvent_UdajeDodavateleOvereny" />
+        <bpmn:sequenceFlow id="Flow_1ptdbeo" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_MatematickaKontrolaFaktury" />
+        <bpmn:endEvent id="EndEvent_MatematickaKontrolaFakturyDokoncena" name="Správnost matematických výpočtů na faktuře byla zkontrolována">
+            <bpmn:incoming>Flow_0nqdm5z</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_0nqdm5z" sourceRef="ServiceTask_MatematickaKontrolaFaktury" targetRef="EndEvent_MatematickaKontrolaFakturyDokoncena" />
+        <bpmn:sequenceFlow id="Flow_01lpj58" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_OvereniUdajuDodavatele" />
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+        <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="KontrolaDodavatelskeFaktury">
+            <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent">
+                <dc:Bounds x="182" y="512" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="166" y="555" width="71" height="53" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Gateway_0dsu3ay_di" bpmnElement="Gateway_0ph9vm1">
+                <dc:Bounds x="265" y="505" width="50" height="50" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="DataStoreReference_0xjgw52_di" bpmnElement="DataStoreReference_0xjgw52">
+                <dc:Bounds x="355" y="595" width="50" height="50" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="349" y="662" width="62" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_14x55xt_di" bpmnElement="ServiceTask_KontrolaSpolehlivostiPlatceDPH">
+                <dc:Bounds x="340" y="490" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Gateway_0wog5ty_di" bpmnElement="Gateway_SpolehlivyPlatce" isMarkerVisible="true">
+                <dc:Bounds x="465" y="505" width="50" height="50" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="448" y="474" width="83" height="27" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_16sk2ay_di" bpmnElement="ServiceTask_AktualizaceDatDodavatele">
+                <dc:Bounds x="560" y="490" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_12k1kut_di" bpmnElement="EndEvent_SpolehlivostPlatceDphOverena">
+                <dc:Bounds x="692" y="512" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="670" y="466" width="80" height="40" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_0yohxep_di" bpmnElement="ServiceTask_OvereniExistenceObjednavky">
+                <dc:Bounds x="340" y="170" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_1d54dx8_di" bpmnElement="EndEvent_ObjednavkaZkontrolovana">
+                <dc:Bounds x="492" y="192" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="476" y="235" width="70" height="40" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="DataStoreReference_0a05h7g_di" bpmnElement="DataStoreReference_0a05h7g">
+                <dc:Bounds x="465" y="75" width="50" height="50" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="462" y="138" width="57" height="27" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="DataStoreReference_0wu7vu1_di" bpmnElement="DataStoreReference_0wu7vu1">
+                <dc:Bounds x="365" y="385" width="50" height="50" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="362" y="447" width="54" height="27" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_0t3exbq_di" bpmnElement="ServiceTask_KontrolaRegistraceBankovnihoUctu">
+                <dc:Bounds x="340" y="690" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_0h2uzwm_di" bpmnElement="EndEvent_RegistraceBankovnihoUctuOverena">
+                <dc:Bounds x="492" y="712" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="476" y="755" width="70" height="66" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_06gx8pw_di" bpmnElement="ServiceTask_OvereniUdajuDodavatele">
+                <dc:Bounds x="340" y="280" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_116f4er_di" bpmnElement="ServiceTask_MatematickaKontrolaFaktury">
+                <dc:Bounds x="340" y="820" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_0zwef0f_di" bpmnElement="EndEvent_UdajeDodavateleOvereny">
+                <dc:Bounds x="492" y="302" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="477" y="345" width="69" height="93" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_1y2nwtj_di" bpmnElement="EndEvent_MatematickaKontrolaFakturyDokoncena">
+                <dc:Bounds x="492" y="842" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="474" y="885" width="74" height="66" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge id="Flow_00fawym_di" bpmnElement="Flow_00fawym">
+                <di:waypoint x="218" y="530" />
+                <di:waypoint x="265" y="530" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_02dkz6e_di" bpmnElement="Flow_02dkz6e">
+                <di:waypoint x="315" y="530" />
+                <di:waypoint x="340" y="530" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="DataInputAssociation_1lccb3y_di" bpmnElement="DataInputAssociation_1lccb3y">
+                <di:waypoint x="384" y="595" />
+                <di:waypoint x="388" y="570" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_07lk8qn_di" bpmnElement="Flow_07lk8qn">
+                <di:waypoint x="440" y="530" />
+                <di:waypoint x="465" y="530" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_1ctbvnw_di" bpmnElement="Flow_NespolehlivyPlatceDPH">
+                <di:waypoint x="515" y="530" />
+                <di:waypoint x="560" y="530" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="530" y="512" width="15" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="DataOutputAssociation_15u9kfj_di" bpmnElement="DataOutputAssociation_15u9kfj">
+                <di:waypoint x="610" y="490" />
+                <di:waypoint x="460" y="450" />
+                <di:waypoint x="420" y="410" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_1bej1of_di" bpmnElement="Flow_1bej1of">
+                <di:waypoint x="660" y="530" />
+                <di:waypoint x="692" y="530" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_0q9ojri_di" bpmnElement="Flow_SpolehlivyPlatceDPH">
+                <di:waypoint x="490" y="555" />
+                <di:waypoint x="490" y="610" />
+                <di:waypoint x="710" y="610" />
+                <di:waypoint x="710" y="548" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="591" y="592" width="20" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_10ndnwp_di" bpmnElement="Flow_10ndnwp">
+                <di:waypoint x="290" y="505" />
+                <di:waypoint x="290" y="210" />
+                <di:waypoint x="340" y="210" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_0t74lzp_di" bpmnElement="Flow_0t74lzp">
+                <di:waypoint x="290" y="555" />
+                <di:waypoint x="290" y="730" />
+                <di:waypoint x="340" y="730" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="DataInputAssociation_1ahtjtb_di" bpmnElement="DataInputAssociation_1ahtjtb">
+                <di:waypoint x="465" y="105" />
+                <di:waypoint x="390" y="120" />
+                <di:waypoint x="390" y="170" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_01fv9oy_di" bpmnElement="Flow_01fv9oy">
+                <di:waypoint x="440" y="210" />
+                <di:waypoint x="492" y="210" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="DataInputAssociation_18t00qf_di" bpmnElement="DataInputAssociation_18t00qf">
+                <di:waypoint x="383" y="645" />
+                <di:waypoint x="388" y="690" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_1keknwe_di" bpmnElement="Flow_1keknwe">
+                <di:waypoint x="440" y="730" />
+                <di:waypoint x="492" y="730" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="DataInputAssociation_0d2g7q7_di" bpmnElement="DataInputAssociation_0d2g7q7">
+                <di:waypoint x="390" y="385" />
+                <di:waypoint x="390" y="360" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_1l46wvn_di" bpmnElement="Flow_1l46wvn">
+                <di:waypoint x="440" y="320" />
+                <di:waypoint x="492" y="320" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_1ptdbeo_di" bpmnElement="Flow_1ptdbeo">
+                <di:waypoint x="290" y="555" />
+                <di:waypoint x="290" y="860" />
+                <di:waypoint x="340" y="860" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_0nqdm5z_di" bpmnElement="Flow_0nqdm5z">
+                <di:waypoint x="440" y="860" />
+                <di:waypoint x="492" y="860" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_01lpj58_di" bpmnElement="Flow_01lpj58">
+                <di:waypoint x="290" y="505" />
+                <di:waypoint x="290" y="320" />
+                <di:waypoint x="340" y="320" />
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

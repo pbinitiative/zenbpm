@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"

@@ -423,7 +423,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 	})
 }
 
-func createMultiInstanceProcessInstance(t testing.TB, definitionKey int64) (zenclient.ProcessInstance, zenclient.ProcessInstance) {
+func createMultiInstanceProcessInstance(t testing.TB, definitionKey int64) (zenclient.ProcessInstance, zenclient.ProcessInstancesListItem) {
 	t.Helper()
 
 	processInstance := createErrorBoundaryProcessInstanceWithVariables(t, definitionKey, map[string]any{
@@ -499,10 +499,10 @@ func assertMultiInstanceUnmatchedIncident(t testing.TB, parentKey int64, childKe
 	assertProcessInstanceTokenElements(t, parentKey, []string{parentElementId}, []string{handledEndId, defaultEndId})
 }
 
-func waitForChildProcessInstanceByType(t testing.TB, parentProcessInstanceKey int64, processType zenclient.ProcessInstanceProcessType) zenclient.ProcessInstance {
+func waitForChildProcessInstanceByType(t testing.TB, parentProcessInstanceKey int64, processType zenclient.ProcessInstanceProcessType) zenclient.ProcessInstancesListItem {
 	t.Helper()
 
-	var child zenclient.ProcessInstance
+	var child zenclient.ProcessInstancesListItem
 	require.Eventually(t, func() bool {
 		page, err := getChildInstances(t, parentProcessInstanceKey)
 		if err != nil {

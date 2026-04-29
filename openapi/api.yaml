@@ -2679,7 +2679,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ProcessInstance"
+            $ref: "#/components/schemas/ProcessInstancesListItem"
     DmnResourceDefinitionsPage:
       type: object
       allOf:
@@ -3011,28 +3011,64 @@ components:
           type: string
           format: date-time
         state:
-          type: string
-          enum:
-            - active
-            - completed
-            - terminated
-            - failed
+          $ref: "#/components/schemas/ProcessInstanceState"
         parentProcessInstanceKey:
           type: integer
           format: int64
         processType:
-          type: string
-          enum:
-            - default
-            - multiInstance
-            - subprocess
-            - callActivity
+          $ref: "#/components/schemas/ProcessInstanceProcessType"
         variables:
           type: object
         activeElementInstances:
           type: array
           items:
             $ref: "#/components/schemas/ElementInstance"
+    ProcessInstancesListItem:
+      type: object
+      required:
+        - key
+        - processDefinitionKey
+        - createdAt
+        - state
+        - variables
+        - processType
+      properties:
+        key:
+          type: integer
+          format: int64
+        processDefinitionKey:
+          type: integer
+          format: int64
+        bpmnProcessId:
+          type: string
+        businessKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        state:
+          $ref: "#/components/schemas/ProcessInstanceState"
+        parentProcessInstanceKey:
+          type: integer
+          format: int64
+        processType:
+          $ref: "#/components/schemas/ProcessInstanceProcessType"
+        variables:
+          type: object
+    ProcessInstanceProcessType:
+      type: string
+      enum:
+        - default
+        - multiInstance
+        - subprocess
+        - callActivity
+    ProcessInstanceState:
+      type: string
+      enum:
+        - active
+        - completed
+        - terminated
+        - failed
     JobPage:
       type: object
       allOf:

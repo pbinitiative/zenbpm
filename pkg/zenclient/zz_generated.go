@@ -553,8 +553,8 @@ type PartitionProcessDefinitionStatistics struct {
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
-	Items     []ProcessInstance `json:"items"`
-	Partition int               `json:"partition"`
+	Items     []ProcessInstancesListItem `json:"items"`
+	Partition int                        `json:"partition"`
 }
 
 // PartitionedPageMetadata defines model for PartitionedPageMetadata.
@@ -646,12 +646,6 @@ type ProcessInstance struct {
 	Variables                map[string]interface{}     `json:"variables"`
 }
 
-// ProcessInstanceProcessType defines model for ProcessInstance.ProcessType.
-type ProcessInstanceProcessType string
-
-// ProcessInstanceState defines model for ProcessInstance.State.
-type ProcessInstanceState string
-
 // ProcessInstancePage defines model for ProcessInstancePage.
 type ProcessInstancePage struct {
 	// Count Number of items returned in the current page
@@ -666,6 +660,25 @@ type ProcessInstancePage struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// ProcessInstanceProcessType defines model for ProcessInstanceProcessType.
+type ProcessInstanceProcessType string
+
+// ProcessInstanceState defines model for ProcessInstanceState.
+type ProcessInstanceState string
+
+// ProcessInstancesListItem defines model for ProcessInstancesListItem.
+type ProcessInstancesListItem struct {
+	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
+	BusinessKey              *string                    `json:"businessKey,omitempty"`
+	CreatedAt                time.Time                  `json:"createdAt"`
+	Key                      int64                      `json:"key"`
+	ParentProcessInstanceKey *int64                     `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                      `json:"processDefinitionKey"`
+	ProcessType              ProcessInstanceProcessType `json:"processType"`
+	State                    ProcessInstanceState       `json:"state"`
+	Variables                map[string]interface{}     `json:"variables"`
 }
 
 // StartElementInstanceData defines model for StartElementInstanceData.

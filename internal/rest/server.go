@@ -1640,6 +1640,7 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 	}
 
 	return public.GetJob200JSONResponse{
+		Assignee:           job.Assignee,
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
 		Key:                job.GetKey(),

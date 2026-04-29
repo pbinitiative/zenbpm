@@ -133,10 +133,11 @@ const (
 
 // Defines values for GetProcessInstancesParamsSortBy.
 const (
-	GetProcessInstancesParamsSortByBusinessKey GetProcessInstancesParamsSortBy = "businessKey"
-	GetProcessInstancesParamsSortByCreatedAt   GetProcessInstancesParamsSortBy = "createdAt"
-	GetProcessInstancesParamsSortByKey         GetProcessInstancesParamsSortBy = "key"
-	GetProcessInstancesParamsSortByState       GetProcessInstancesParamsSortBy = "state"
+	GetProcessInstancesParamsSortByBpmnProcessId GetProcessInstancesParamsSortBy = "bpmnProcessId"
+	GetProcessInstancesParamsSortByBusinessKey   GetProcessInstancesParamsSortBy = "businessKey"
+	GetProcessInstancesParamsSortByCreatedAt     GetProcessInstancesParamsSortBy = "createdAt"
+	GetProcessInstancesParamsSortByKey           GetProcessInstancesParamsSortBy = "key"
+	GetProcessInstancesParamsSortByState         GetProcessInstancesParamsSortBy = "state"
 )
 
 // Defines values for GetProcessInstancesParamsSortOrder.
@@ -171,6 +172,17 @@ const (
 	GetChildProcessInstancesParamsStateCompleted  GetChildProcessInstancesParamsState = "completed"
 	GetChildProcessInstancesParamsStateFailed     GetChildProcessInstancesParamsState = "failed"
 	GetChildProcessInstancesParamsStateTerminated GetChildProcessInstancesParamsState = "terminated"
+)
+
+// Defines values for GetHistoryParamsSortBy.
+const (
+	GetHistoryParamsSortByCreatedAt GetHistoryParamsSortBy = "createdAt"
+)
+
+// Defines values for GetHistoryParamsSortOrder.
+const (
+	GetHistoryParamsSortOrderAsc  GetHistoryParamsSortOrder = "asc"
+	GetHistoryParamsSortOrderDesc GetHistoryParamsSortOrder = "desc"
 )
 
 // Defines values for GetIncidentsParamsState.
@@ -269,8 +281,14 @@ type ElementStatisticCounts struct {
 	// ActiveCount Number of active element instances
 	ActiveCount int `json:"activeCount"`
 
+	// CompletedCount Number of completed element instances
+	CompletedCount *int `json:"completedCount,omitempty"`
+
 	// IncidentCount Number of incidents on this element
 	IncidentCount int `json:"incidentCount"`
+
+	// TerminatedCount Number of terminated (canceled) element instances
+	TerminatedCount *int `json:"terminatedCount,omitempty"`
 }
 
 // ElementStatisticsPartitions defines model for ElementStatisticsPartitions.
@@ -535,8 +553,8 @@ type PartitionProcessDefinitionStatistics struct {
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
-	Items     []ProcessInstance `json:"items"`
-	Partition int               `json:"partition"`
+	Items     []ProcessInstancesListItem `json:"items"`
+	Partition int                        `json:"partition"`
 }
 
 // PartitionedPageMetadata defines model for PartitionedPageMetadata.
@@ -628,12 +646,6 @@ type ProcessInstance struct {
 	Variables                map[string]interface{}     `json:"variables"`
 }
 
-// ProcessInstanceProcessType defines model for ProcessInstance.ProcessType.
-type ProcessInstanceProcessType string
-
-// ProcessInstanceState defines model for ProcessInstance.State.
-type ProcessInstanceState string
-
 // ProcessInstancePage defines model for ProcessInstancePage.
 type ProcessInstancePage struct {
 	// Count Number of items returned in the current page
@@ -648,6 +660,25 @@ type ProcessInstancePage struct {
 
 	// TotalCount Total number of items available
 	TotalCount int `json:"totalCount"`
+}
+
+// ProcessInstanceProcessType defines model for ProcessInstanceProcessType.
+type ProcessInstanceProcessType string
+
+// ProcessInstanceState defines model for ProcessInstanceState.
+type ProcessInstanceState string
+
+// ProcessInstancesListItem defines model for ProcessInstancesListItem.
+type ProcessInstancesListItem struct {
+	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
+	BusinessKey              *string                    `json:"businessKey,omitempty"`
+	CreatedAt                time.Time                  `json:"createdAt"`
+	Key                      int64                      `json:"key"`
+	ParentProcessInstanceKey *int64                     `json:"parentProcessInstanceKey,omitempty"`
+	ProcessDefinitionKey     int64                      `json:"processDefinitionKey"`
+	ProcessType              ProcessInstanceProcessType `json:"processType"`
+	State                    ProcessInstanceState       `json:"state"`
+	Variables                map[string]interface{}     `json:"variables"`
 }
 
 // StartElementInstanceData defines model for StartElementInstanceData.
@@ -785,6 +816,13 @@ type AssignJobJSONBody struct {
 
 // CompleteJobJSONBody defines parameters for CompleteJob.
 type CompleteJobJSONBody struct {
+	Variables *map[string]interface{} `json:"variables,omitempty"`
+}
+
+// FailJobJSONBody defines parameters for FailJob.
+type FailJobJSONBody struct {
+	// ErrorCode The error code against which an error catch event is matched.
+	ErrorCode *string                 `json:"errorCode,omitempty"`
 	Variables *map[string]interface{} `json:"variables,omitempty"`
 }
 
@@ -981,8 +1019,18 @@ type GetHistoryParams struct {
 	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
 
 	// Size Number of items per page (max 100)
-	Size *int32 `form:"size,omitempty" json:"size,omitempty"`
+	Size   *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	SortBy *GetHistoryParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortOrder Sort direction
+	SortOrder *GetHistoryParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
+
+// GetHistoryParamsSortBy defines parameters for GetHistory.
+type GetHistoryParamsSortBy string
+
+// GetHistoryParamsSortOrder defines parameters for GetHistory.
+type GetHistoryParamsSortOrder string
 
 // GetIncidentsParams defines parameters for GetIncidents.
 type GetIncidentsParams struct {
@@ -1021,6 +1069,9 @@ type AssignJobJSONRequestBody AssignJobJSONBody
 
 // CompleteJobJSONRequestBody defines body for CompleteJob for application/json ContentType.
 type CompleteJobJSONRequestBody CompleteJobJSONBody
+
+// FailJobJSONRequestBody defines body for FailJob for application/json ContentType.
+type FailJobJSONRequestBody FailJobJSONBody
 
 // PublishMessageJSONRequestBody defines body for PublishMessage for application/json ContentType.
 type PublishMessageJSONRequestBody PublishMessageJSONBody
@@ -1151,6 +1202,11 @@ type ClientInterface interface {
 	CompleteJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FailJobWithBody request with any body
+	FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishMessageWithBody request with any body
 	PublishMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1384,6 +1440,30 @@ func (c *Client) CompleteJobWithBody(ctx context.Context, jobKey int64, contentT
 
 func (c *Client) CompleteJob(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCompleteJobRequest(c.Server, jobKey, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FailJobWithBody(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFailJobRequestWithBody(c.Server, jobKey, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FailJob(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFailJobRequest(c.Server, jobKey, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2495,6 +2575,53 @@ func NewCompleteJobRequestWithBody(server string, jobKey int64, contentType stri
 	return req, nil
 }
 
+// NewFailJobRequest calls the generic FailJob builder with application/json body
+func NewFailJobRequest(server string, jobKey int64, body FailJobJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewFailJobRequestWithBody(server, jobKey, "application/json", bodyReader)
+}
+
+// NewFailJobRequestWithBody generates requests for FailJob with any type of body
+func NewFailJobRequestWithBody(server string, jobKey int64, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobKey", runtime.ParamLocationPath, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/jobs/%s/fail", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPublishMessageRequest calls the generic PublishMessage builder with application/json body
 func NewPublishMessageRequest(server string, body PublishMessageJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3532,6 +3659,38 @@ func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHi
 
 		}
 
+		if params.SortBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortBy", runtime.ParamLocationQuery, *params.SortBy); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SortOrder != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sortOrder", runtime.ParamLocationQuery, *params.SortOrder); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -3975,6 +4134,11 @@ type ClientWithResponsesInterface interface {
 
 	CompleteJobWithResponse(ctx context.Context, jobKey int64, body CompleteJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteJobResponse, error)
 
+	// FailJobWithBodyWithResponse request with any body
+	FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
+
+	FailJobWithResponse(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*FailJobResponse, error)
+
 	// PublishMessageWithBodyWithResponse request with any body
 	PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error)
 
@@ -4153,11 +4317,13 @@ func (r GetDmnResourceDefinitionsResponse) StatusCode() int {
 type CreateDmnResourceDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *struct {
+	JSON200      *struct {
+		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
+	}
+	JSON201 *struct {
 		DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
 	}
 	JSON400 *Error
-	JSON409 *Error
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -4329,6 +4495,31 @@ func (r CompleteJobResponse) StatusCode() int {
 	return 0
 }
 
+type FailJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Error
+	JSON404      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r FailJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r FailJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type PublishMessageResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4436,11 +4627,13 @@ func (r GetProcessDefinitionsResponse) StatusCode() int {
 type CreateProcessDefinitionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *struct {
+	JSON200      *struct {
+		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+	}
+	JSON201 *struct {
 		ProcessDefinitionKey int64 `json:"processDefinitionKey"`
 	}
 	JSON400 *Error
-	JSON409 *Error
 	JSON500 *Error
 	JSON502 *Error
 }
@@ -4984,6 +5177,23 @@ func (c *ClientWithResponses) CompleteJobWithResponse(ctx context.Context, jobKe
 	return ParseCompleteJobResponse(rsp)
 }
 
+// FailJobWithBodyWithResponse request with arbitrary body returning *FailJobResponse
+func (c *ClientWithResponses) FailJobWithBodyWithResponse(ctx context.Context, jobKey int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FailJobResponse, error) {
+	rsp, err := c.FailJobWithBody(ctx, jobKey, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFailJobResponse(rsp)
+}
+
+func (c *ClientWithResponses) FailJobWithResponse(ctx context.Context, jobKey int64, body FailJobJSONRequestBody, reqEditors ...RequestEditorFn) (*FailJobResponse, error) {
+	rsp, err := c.FailJob(ctx, jobKey, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFailJobResponse(rsp)
+}
+
 // PublishMessageWithBodyWithResponse request with arbitrary body returning *PublishMessageResponse
 func (c *ClientWithResponses) PublishMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishMessageResponse, error) {
 	rsp, err := c.PublishMessageWithBody(ctx, contentType, body, reqEditors...)
@@ -5422,6 +5632,15 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
 			DmnResourceDefinitionKey int64 `json:"dmnResourceDefinitionKey"`
@@ -5437,13 +5656,6 @@ func ParseCreateDmnResourceDefinitionResponse(rsp *http.Response) (*CreateDmnRes
 			return nil, err
 		}
 		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -5753,6 +5965,53 @@ func ParseCompleteJobResponse(rsp *http.Response) (*CompleteJobResponse, error) 
 	return response, nil
 }
 
+// ParseFailJobResponse parses an HTTP response from a FailJobWithResponse call
+func ParseFailJobResponse(rsp *http.Response) (*FailJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &FailJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePublishMessageResponse parses an HTTP response from a PublishMessageWithResponse call
 func ParsePublishMessageResponse(rsp *http.Response) (*PublishMessageResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5965,6 +6224,15 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
 			ProcessDefinitionKey int64 `json:"processDefinitionKey"`
@@ -5980,13 +6248,6 @@ func ParseCreateProcessDefinitionResponse(rsp *http.Response) (*CreateProcessDef
 			return nil, err
 		}
 		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

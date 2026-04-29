@@ -154,7 +154,7 @@ func (rq *DB) dataCleanup(currTime time.Time) (bool, error) {
 		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processes))
+		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
 		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
@@ -1183,7 +1183,7 @@ func (rq *DB) GetTimer(ctx context.Context, timerKey int64) (bpmnruntime.Timer, 
 
 func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.Queries.FindTokenTimers(ctx, sql.FindTokenTimersParams{
-		ExecutionToken: tokenKey,
+		ExecutionToken: ssql.NullInt64{Int64: tokenKey, Valid: true},
 		State:          int64(bpmnruntime.TimerStateCreated),
 	})
 	if err != nil {
@@ -1195,7 +1195,7 @@ func (rq *DB) FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey in
 
 func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.Queries.FindProcessInstanceTimersInState(ctx, sql.FindProcessInstanceTimersInStateParams{
-		ProcessInstanceKey: processInstanceKey,
+		ProcessInstanceKey: ssql.NullInt64{Int64: processInstanceKey, Valid: true},
 		State:              int64(state),
 	})
 	if err != nil {
@@ -1203,7 +1203,18 @@ func (rq *DB) FindProcessInstanceTimers(ctx context.Context, processInstanceKey 
 	}
 
 	return rq.inflateTimers(ctx, dbTimers)
+}
 
+func (rq *DB) FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindProcessDefinitionTimersInState(ctx, sql.FindProcessDefinitionTimersInStateParams{
+		ProcessDefinitionKey: processDefinitionKey,
+		State:                int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers for process definition %d: %w", processDefinitionKey, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
 }
 
 func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
@@ -1220,20 +1231,34 @@ func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Ti
 
 func (rq *DB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]bpmnruntime.Timer, error) {
 	res := make([]bpmnruntime.Timer, len(dbTimers))
-	tokensToLoad := make([]int64, len(dbTimers))
+	tokensToLoad := make([]int64, 0)
 	for i, timer := range dbTimers {
+		var processInstanceKey *int64
+		if timer.ProcessInstanceKey.Valid {
+			processInstanceKey = &timer.ProcessInstanceKey.Int64
+		}
+		var elementInstanceKey *int64
+		if timer.ElementInstanceKey.Valid {
+			elementInstanceKey = &timer.ElementInstanceKey.Int64
+		}
+		var executionToken *bpmnruntime.ExecutionToken
+		if timer.ExecutionToken.Valid {
+			executionToken = &bpmnruntime.ExecutionToken{Key: timer.ExecutionToken.Int64}
+		}
 		res[i] = bpmnruntime.Timer{
 			ElementId:            timer.ElementID,
-			ElementInstanceKey:   timer.ElementInstanceKey,
+			ElementInstanceKey:   elementInstanceKey,
 			Key:                  timer.Key,
 			ProcessDefinitionKey: timer.ProcessDefinitionKey,
-			ProcessInstanceKey:   timer.ProcessInstanceKey,
+			ProcessInstanceKey:   processInstanceKey,
 			TimerState:           bpmnruntime.TimerState(timer.State),
 			CreatedAt:            time.UnixMilli(timer.CreatedAt),
 			DueAt:                time.UnixMilli(timer.DueAt),
-			Token:                bpmnruntime.ExecutionToken{Key: timer.ExecutionToken},
+			Token:                executionToken,
 		}
-		tokensToLoad[i] = timer.ExecutionToken
+		if executionToken != nil {
+			tokensToLoad = append(tokensToLoad, executionToken.Key)
+		}
 		res[i].Duration = res[i].DueAt.Sub(res[i].CreatedAt)
 	}
 	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
@@ -1243,8 +1268,8 @@ func (rq *DB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]bpmnru
 	for _, token := range loadedTokens {
 		// we might have the same token registered for multiple subs (event base gateway) so we have to go through whole array
 		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
+			if res[i].Token != nil && res[i].Token.Key == token.Key {
+				res[i].Token = &bpmnruntime.ExecutionToken{
 					Key:                token.Key,
 					ElementInstanceKey: token.ElementInstanceKey,
 					ElementId:          token.ElementID,
@@ -1263,17 +1288,33 @@ func (rq *DB) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error {
 	return SaveTimerWith(ctx, rq.Queries, timer)
 }
 
+func (rq *DB) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return rq.Queries.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+}
+
 func SaveTimerWith(ctx context.Context, db *sql.Queries, timer bpmnruntime.Timer) error {
+	var processInstanceKey ssql.NullInt64
+	if timer.ProcessInstanceKey != nil {
+		processInstanceKey = ssql.NullInt64{Int64: *timer.ProcessInstanceKey, Valid: true}
+	}
+	var elementInstanceKey ssql.NullInt64
+	if timer.ElementInstanceKey != nil {
+		elementInstanceKey = ssql.NullInt64{Int64: *timer.ElementInstanceKey, Valid: true}
+	}
+	var executionTokenKey ssql.NullInt64
+	if timer.Token != nil {
+		executionTokenKey = ssql.NullInt64{Int64: timer.Token.Key, Valid: true}
+	}
 	err := db.SaveTimer(ctx, sql.SaveTimerParams{
 		Key:                  timer.GetKey(),
 		ElementID:            timer.ElementId,
-		ElementInstanceKey:   timer.ElementInstanceKey,
+		ElementInstanceKey:   elementInstanceKey,
 		ProcessDefinitionKey: timer.ProcessDefinitionKey,
-		ProcessInstanceKey:   timer.ProcessInstanceKey,
-		State:                int64(timer.GetState()),
+		ProcessInstanceKey:   processInstanceKey,
+		State:                int64(timer.TimerState),
 		CreatedAt:            timer.CreatedAt.UnixMilli(),
 		DueAt:                timer.DueAt.UnixMilli(),
-		ExecutionToken:       timer.Token.Key,
+		ExecutionToken:       executionTokenKey,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save timer %d: %w", timer.GetKey(), err)
@@ -2258,6 +2299,107 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 	})
 }
 
+var _ storage.ErrorSubscriptionStorageReader = &DB{}
+
+func (rq *DB) FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+
+	errorSubscriptions, err := rq.Queries.FindTokenErrorSubscriptions(ctx, sql.FindTokenErrorSubscriptionsParams{
+		ExecutionToken: tokenKey,
+		State:          int64(state),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for token %d: %w", tokenKey, fmt.Errorf("%w: %w", err, storage.ErrNotFound))
+	}
+
+	return rq.inflateErrorSubscription(ctx, errorSubscriptions)
+}
+
+func (rq *DB) FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error) {
+	errorSubscriptions, err := rq.Queries.FindProcessInstanceErrorSubscriptions(ctx, sql.FindProcessInstanceErrorSubscriptionsParams{
+		ProcessInstanceKey: processInstanceKey,
+		State:              int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for process %d: %w", processInstanceKey, fmt.Errorf("%w: %w", err, storage.ErrNotFound))
+	}
+
+	return rq.inflateErrorSubscription(ctx, errorSubscriptions)
+}
+
+func (rq *DB) inflateErrorSubscription(ctx context.Context, errorSubscriptions []sql.ErrorSubscription) ([]bpmnruntime.ErrorSubscription, error) {
+
+	result := make([]bpmnruntime.ErrorSubscription, len(errorSubscriptions))
+	tokensToLoad := make([]int64, len(errorSubscriptions))
+
+	for i, errorSubscriptionRow := range errorSubscriptions {
+		var errorCode *string
+		if errorSubscriptionRow.ErrorCode.Valid {
+			errorCode = &errorSubscriptionRow.ErrorCode.String
+		}
+
+		result[i] = bpmnruntime.ErrorSubscription{
+			ElementId:            errorSubscriptionRow.ElementID,
+			ElementInstanceKey:   errorSubscriptionRow.ElementInstanceKey,
+			Key:                  errorSubscriptionRow.Key,
+			ProcessDefinitionKey: errorSubscriptionRow.ProcessDefinitionKey,
+			ProcessInstanceKey:   errorSubscriptionRow.ProcessInstanceKey,
+			State:                bpmnruntime.ErrorState(errorSubscriptionRow.State),
+			CreatedAt:            time.UnixMilli(errorSubscriptionRow.CreatedAt),
+			ErrorCode:            errorCode,
+			Token:                bpmnruntime.ExecutionToken{Key: errorSubscriptionRow.ExecutionToken},
+		}
+		tokensToLoad[i] = errorSubscriptionRow.ExecutionToken
+	}
+	loadedTokens, err := rq.Queries.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load error subscriptions tokens: %w", err)
+	}
+	for _, token := range loadedTokens {
+		for i := range result {
+			if result[i].Token.Key == token.Key {
+				result[i].Token = bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+var _ storage.ErrorSubscriptionStorageWriter = &DB{}
+
+func (rq *DB) SaveErrorSubscription(ctx context.Context, errorSubscription bpmnruntime.ErrorSubscription) error {
+	return SaveErrorSubscriptionWith(ctx, rq.Queries, errorSubscription)
+}
+
+func SaveErrorSubscriptionWith(ctx context.Context, db *sql.Queries, errorSubscription bpmnruntime.ErrorSubscription) error {
+	errorCode := ssql.NullString{}
+	if errorSubscription.ErrorCode != nil {
+		errorCode = ssql.NullString{String: *errorSubscription.ErrorCode, Valid: true}
+	}
+
+	err := db.SaveErrorSubscription(ctx, sql.SaveErrorSubscriptionParams{
+		Key:                  errorSubscription.GetKey(),
+		ElementID:            errorSubscription.ElementId,
+		ElementInstanceKey:   errorSubscription.ElementInstanceKey,
+		ProcessDefinitionKey: errorSubscription.ProcessDefinitionKey,
+		ProcessInstanceKey:   errorSubscription.ProcessInstanceKey,
+		ErrorCode:            errorCode,
+		State:                int64(errorSubscription.GetState()),
+		CreatedAt:            errorSubscription.CreatedAt.UnixMilli(),
+		ExecutionToken:       errorSubscription.Token.Key,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save error subscription %d: %w", errorSubscription.GetKey(), err)
+	}
+	return nil
+}
+
 type DBBatch struct {
 	db               *DB
 	stmtToRun        []*proto.Statement
@@ -2360,6 +2502,10 @@ func (b *DBBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error 
 	return SaveTimerWith(ctx, b.queries, timer)
 }
 
+func (b *DBBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.queries.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+}
+
 var _ storage.JobStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
@@ -2425,4 +2571,10 @@ var _ storage.IncidentStorageWriter = &DBBatch{}
 
 func (b *DBBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	return SaveIncidentWith(ctx, b.queries, incident)
+}
+
+var _ storage.ErrorSubscriptionStorageWriter = &DBBatch{}
+
+func (b *DBBatch) SaveErrorSubscription(ctx context.Context, errorSubscription bpmnruntime.ErrorSubscription) error {
+	return SaveErrorSubscriptionWith(ctx, b.queries, errorSubscription)
 }

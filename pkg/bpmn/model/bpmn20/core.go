@@ -70,6 +70,7 @@ type BaseElement interface {
 type TRootElementsContainer struct {
 	Process  TProcess   `xml:"process"`
 	Messages []TMessage `xml:"message"`
+	Errors   []TError   `xml:"error"`
 }
 
 type TDefinitions struct {
@@ -93,10 +94,25 @@ func (d *TDefinitions) GetMessageByRef(ref string) (TMessage, error) {
 	return TMessage{}, fmt.Errorf("failed to find message among process messages")
 }
 
+func (d *TDefinitions) GetErrorByRef(ref string) (TError, error) {
+	for _, bpmnError := range d.Errors {
+		if bpmnError.Id == ref {
+			return bpmnError, nil
+		}
+	}
+	return TError{}, fmt.Errorf("failed to find error among process errors")
+}
+
 type TMessage struct {
 	Id        string        `xml:"id,attr"`
 	Name      string        `xml:"name,attr"`
 	Extension TSubscription `xml:"extensionElements>subscription"`
+}
+
+type TError struct {
+	TBaseElement
+	Name      string `xml:"name,attr"`
+	ErrorCode string `xml:"errorCode,attr"`
 }
 
 type TSubscription struct {

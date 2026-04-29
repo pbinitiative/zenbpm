@@ -189,6 +189,8 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 }
 
 func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition201JSONResponse, error) {
+	t.Helper()
+
 	result := public.CreateProcessDefinition201JSONResponse{}
 	wd, err := os.Getwd()
 	if err != nil {

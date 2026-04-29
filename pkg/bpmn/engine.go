@@ -49,6 +49,10 @@ type Engine struct {
 	feelRuntime    script.FeelRuntime
 	jsRuntime      script.JsRuntime
 
+	// pollTimerDelay is the interval between timer polling cycles.
+	// Defaults to 10 seconds if not set via EngineWithPollTimerDelay.
+	pollTimerDelay time.Duration
+
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
 }
@@ -126,6 +130,15 @@ func EngineWithLogger(logger hclog.Logger) EngineOption {
 	}
 }
 
+// EngineWithPollTimerDelay sets the interval between timer polling cycles.
+// If not set, it defaults to 10 seconds. The value can also be overridden via the
+// POLL_TIMER_DELAY_SECONDS environment variable.
+func EngineWithPollTimerDelay(d time.Duration) EngineOption {
+	return func(engine *Engine) {
+		engine.pollTimerDelay = d
+	}
+}
+
 func (engine *Engine) GetDmnEngine() *dmn.ZenDmnEngine {
 	return engine.dmnEngine
 }
@@ -145,16 +158,29 @@ func (engine *Engine) cancelInstance(ctx context.Context, instance runtime.Proce
 func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, instance runtime.ProcessInstance, batch *EngineBatch, omitTokenKeys ...int64,
 ) (terminatedTokens []runtime.ExecutionToken, err error) {
 	// Cancel all message subscriptions
-	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
+	messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().GetInstanceKey(), runtime.ActivityStateActive)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	for _, sub := range subscriptions {
-		sub.MessageSubscription().State = runtime.ActivityStateTerminated
-		err = batch.SaveMessageSubscription(ctx, sub)
+	for _, messageSubscription := range subscriptions {
+		messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
+		err = batch.SaveMessageSubscription(ctx, messageSubscription)
 		if err != nil {
-			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.MessageSubscription().Key, err)
+			return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", messageSubscription.MessageSubscription().Key, err)
+		}
+	}
+
+	// Cancel all error subscriptions
+	errorSubscriptions, err := engine.persistence.FindProcessInstanceErrorSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ErrorStateCreated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find error subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	for _, errorSubscription := range errorSubscriptions {
+		errorSubscription.State = runtime.ErrorStateCancelled
+		err = batch.SaveErrorSubscription(ctx, errorSubscription)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save changes to error subscription %d: %w", errorSubscription.Key, err)
 		}
 	}
 
@@ -261,6 +287,12 @@ func (engine *Engine) terminateExecutionTokens(
 					}
 				}
 
+				err := engine.cancelBoundarySubscriptions(ctx, batch, processInstanceKey, &activeToken)
+				if err != nil {
+					return nil, fmt.Errorf("failed to cancel subscriptions for execution token %d: %w", activeToken.Key, err)
+				}
+
+				// TODO this was removed??
 				// Cancel all timer subscriptions
 				timers, err := engine.persistence.FindTokenActiveTimerSubscriptions(ctx, activeToken.Key)
 				if err != nil {
@@ -350,6 +382,8 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	return executionTokens, nil
 }
 
+// createInstance creates a process instance for a given process definition and returns it.
+// Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
 	ctx context.Context,
 	batch storage.Batch,
@@ -383,6 +417,9 @@ func (engine *Engine) createInstance(
 
 	executionTokens := make([]runtime.ExecutionToken, 0, 1)
 	for _, startEvent := range process.Definitions.Process.StartEvents {
+		if len(startEvent.EventDefinitions) > 0 {
+			continue
+		}
 		var be bpmn20.FlowNode = &startEvent
 		token := runtime.ExecutionToken{
 			Key:                engine.generateKey(),
@@ -394,6 +431,13 @@ func (engine *Engine) createInstance(
 		executionTokens = append(executionTokens, token)
 		batch.SaveToken(ctx, token)
 	}
+
+	// Create event sub process triggers for event subprocesses of the process instance
+	err = engine.createEventSubProcessTriggers(ctx, batch, instance, &process.Definitions.Process.TFlowElementsContainer)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create event subprocess subscriptions: %w", err)
+	}
+
 	return instance, executionTokens, nil
 }
 
@@ -447,6 +491,115 @@ func (engine *Engine) createInstanceWithStartingElements(
 	}
 
 	return instance, executionTokens, nil
+}
+
+// createEventSubProcessTriggers scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
+// For each event subprocess that has only 1 StartEvent it creates a trigger to start that event sub process
+func (engine *Engine) createEventSubProcessTriggers(
+	ctx context.Context,
+	batch storage.Batch,
+	instance runtime.ProcessInstance,
+	container *bpmn20.TFlowElementsContainer,
+) error {
+	eventSubProcesses := bpmn20.FindEventSubProcesses(container)
+	for _, eventSubProcess := range eventSubProcesses {
+		if len(eventSubProcess.StartEvents) != 1 { // event sub process must have exactly one start event according the bpmn 2.0 spec
+			continue
+		}
+		startEvent := eventSubProcess.StartEvents[0]
+		for _, startEventDefinition := range startEvent.EventDefinitions {
+			switch startEventDefinition.(type) {
+			case bpmn20.TTimerEventDefinition:
+				err := engine.createTimerStartEventsTimers(
+					ctx,
+					batch,
+					eventSubProcess.TProcess,
+					instance.ProcessInstance().GetProcessInfo().Key,
+					&instance,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to create timers for timer start event %s of event subprocess %s: %w",
+						startEvent.GetId(), eventSubProcess.GetId(), err)
+				}
+			case bpmn20.TMessageEventDefinition:
+				// ... handle message start event
+			default:
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+/*
+Creates timers for:
+
+  - TimerStartEvents of the main process definition. Those timers are created when the process definition is deployed or
+    when the engine starts up, and they are responsible for creation and starting process instances when they fire.
+
+  - TimerStartEvents of event sub processes. Those timers are created when a process instance is created, and
+    they are responsible for starting an event sub process instance when they fire.
+*/
+func (engine *Engine) createTimerStartEventsTimers(
+	ctx context.Context,
+	batch storage.Batch,
+	process bpmn20.TProcess,
+	processDefinitionKey int64,
+	processInstance *runtime.ProcessInstance,
+) error {
+	for _, startEvent := range process.StartEvents {
+		for _, startEventDefinition := range startEvent.EventDefinitions {
+			if timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition); ok {
+				switch {
+				case timerStartEventDefinition.TimeDate != nil:
+					startTime, err := findStartTime(timerStartEventDefinition)
+					if err != nil {
+						return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					now := time.Now()
+					var processInstanceKey *int64
+					if processInstance != nil {
+						processInstanceKey = &(*processInstance).ProcessInstance().Key
+					}
+					timer := runtime.Timer{
+						ElementId:            startEvent.GetId(),
+						Key:                  engine.generateKey(),
+						ElementInstanceKey:   nil,
+						ProcessDefinitionKey: processDefinitionKey,
+						ProcessInstanceKey:   processInstanceKey,
+						TimerState:           runtime.TimerStateCreated,
+						CreatedAt:            now,
+						DueAt:                startTime,
+						Duration:             startTime.Sub(now),
+						Token:                nil,
+					}
+					err = batch.SaveTimer(ctx, timer)
+					if err != nil {
+						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					engine.timerManager.registerTimer(timer)
+				case timerStartEventDefinition.TimeDuration != nil:
+					if processInstance == nil {
+						return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
+							processDefinitionKey, startEvent.GetId())
+					}
+					timer, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
+					if err != nil {
+						return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+					err = batch.SaveTimer(ctx, *timer)
+					if err != nil {
+						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+							startEvent.GetId(), processDefinitionKey, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (engine *Engine) getExecutionTokenActivity(
@@ -580,21 +733,22 @@ func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, in
 	var activityResult runtime.ActivityState
 	var err error
 
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
 	switch element := activity.Element().(type) {
 	case *bpmn20.TServiceTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TSendTask:
-		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TUserTask:
-		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:
-		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		activityResult, err = engine.createCallActivity(ctx, batch, instance, element, currentToken, variableHolder)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TSubProcess:
-		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken)
-		// we created process instance and its running in separate goroutine
+		activityResult, err = engine.createSubProcess(ctx, batch, instance, element, currentToken, variableHolder)
+		// we created process instance and it's running in separate goroutine
 	case *bpmn20.TBusinessRuleTask:
-		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken)
+		activityResult, err = engine.createBusinessRuleTask(ctx, batch, instance, element, currentToken, variableHolder)
 	default:
 		return nil, fmt.Errorf("unsupported element type '%T' with id '%s': element is not supported by the engine", activity.Element(), activity.Element().GetId())
 	}
@@ -637,8 +791,13 @@ func (engine *Engine) createBoundaryEventSubscriptions(ctx context.Context, batc
 			if err != nil {
 				return err
 			}
+		case bpmn20.TErrorEventDefinition:
+			_, err := engine.createErrorCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TErrorEventDefinition), element, currentToken)
+			if err != nil {
+				return err
+			}
 		default:
-			panic(fmt.Sprintf("unsupported BoundaryEvent %+v", be))
+			return fmt.Errorf("unsupported boundary event definition type %T for boundary event %q attached to element %q", be.EventDefinition, be.GetId(), be.AttachedToRef)
 		}
 	}
 
@@ -651,15 +810,18 @@ func (engine *Engine) createBusinessRuleTask(
 	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
 	currentToken runtime.ExecutionToken,
+	businessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
 	var activityResult runtime.ActivityState
 	var err error
 
 	switch element.Implementation.(type) {
 	case *bpmn20.TBusinessRuleTaskLocal:
-		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal), currentToken)
+		activityResult, err = engine.handleLocalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskLocal),
+			currentToken, businessRuleVarHolder)
 	case *bpmn20.TBusinessRuleTaskExternal:
-		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, element.Implementation.(*bpmn20.TBusinessRuleTaskExternal), currentToken)
+		activityResult, err = engine.createExternalBusinessRuleTask(ctx, batch, instance, element, currentToken,
+			businessRuleVarHolder)
 	default:
 		return runtime.ActivityStateFailed, fmt.Errorf("unsupported BusinessRuleTask Implementation %s", element.Implementation)
 	}
@@ -678,9 +840,9 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	element *bpmn20.TBusinessRuleTask,
 	implementation *bpmn20.TBusinessRuleTaskLocal,
 	currentToken runtime.ExecutionToken,
+	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+	if err := localBusinessRuleVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 	}
@@ -692,7 +854,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			ElementId:          element.GetId(),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     variableHolder.LocalVariables(),
+			InputVariables:     localBusinessRuleVarHolder.LocalVariables(),
 			OutputVariables:    nil,
 		},
 	)
@@ -705,7 +867,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		implementation.CalledDecision.BindingType,
 		implementation.CalledDecision.DecisionId,
 		implementation.CalledDecision.VersionTag,
-		variableHolder.LocalVariables(),
+		localBusinessRuleVarHolder.LocalVariables(),
 	)
 	if err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
@@ -715,7 +877,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	// TODO persist relation between result.DecisionInstanceKey and flow_element_instance
 
 	if len(element.GetOutputMapping()) > 0 {
-		outputVariables, err := variableHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)
+		outputVariables, err := localBusinessRuleVarHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)
 		if err != nil {
 			instance.ProcessInstance().State = runtime.ActivityStateFailed
 			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
@@ -729,7 +891,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 		return runtime.ActivityStateCompleted, nil
 	}
 
-	variableHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
+	localBusinessRuleVarHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 	batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:             currentToken.ElementInstanceKey,
@@ -746,10 +908,10 @@ func (engine *Engine) createExternalBusinessRuleTask(
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	element *bpmn20.TBusinessRuleTask,
-	implementation *bpmn20.TBusinessRuleTaskExternal,
 	currentToken runtime.ExecutionToken,
+	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	activityState, err := engine.createInternalTask(ctx, batch, instance, element, currentToken)
+	activityState, err := engine.createInternalTask(ctx, batch, instance, element, currentToken, localBusinessRuleVarHolder)
 	if err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create internal task for business rule %s : %w", element.TTask.Id, err)
@@ -834,7 +996,7 @@ func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch *Engine
 				return resTokens, fmt.Errorf("failed to handle IntermediateCatchEvent: %w", err)
 			}
 		default:
-			panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", flow.GetTargetRef().GetId(), flow.GetTargetRef().GetType()))
+			return resTokens, fmt.Errorf("unsupported element after EventBasedGateway: id=%q, type=%T", flow.GetTargetRef().GetId(), flow.GetTargetRef())
 		}
 	}
 	return resTokens, nil
@@ -979,7 +1141,7 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, currentToken)
 		return tokens, err
 	default:
-		panic(fmt.Sprintf("unsupported IntermediateCatchEvent %+v", ice))
+		return nil, fmt.Errorf("unsupported IntermediateCatchEvent definition type %T for element %q", ice.EventDefinition, ice.GetId())
 	}
 }
 
@@ -1011,7 +1173,7 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 	}
 	if processPlainEvent { // additionally processing of plain end event might make sense only for future non terminate end events
 		currentToken.State = runtime.TokenStateCompleted
-		err := engine.handlePlainEndEvent(ctx, instance, false)
+		err := engine.handlePlainEndEvent(ctx, batch, instance, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
 		}
@@ -1027,7 +1189,7 @@ func (engine *Engine) handleTerminateEndEvent(ctx context.Context, batch *Engine
 	return tokens, nil
 }
 
-func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.ProcessInstance, onJobCompletion bool) error {
+func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, onJobCompletion bool) error {
 	activeSubscriptions := false
 
 	activeSubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
@@ -1069,16 +1231,61 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, instance runtime.
 	}
 
 	if !activeSubscriptions {
-		instance.ProcessInstance().State = runtime.ActivityStateCompleted
+		// Check if there are any active sub-process instance whose parent execution token belongs to this process instance
+		hasActiveSubProcess, err := engine.hasActiveSubProcessInstance(ctx, instance.ProcessInstance().Key)
+		if err != nil {
+			return errors.Join(newEngineErrorf("failed to check active sub-process instances for key: %d", instance.ProcessInstance().Key), err)
+		}
+		if !hasActiveSubProcess {
+			// Cancel all active timers for this process instance
+			timers, err := engine.persistence.FindProcessInstanceTimers(ctx, instance.ProcessInstance().Key, runtime.TimerStateCreated)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to load active timers for key: %d", instance.ProcessInstance().Key), err)
+			}
+			for _, timer := range timers {
+				timer.TimerState = runtime.TimerStateCancelled
+				if err = batch.SaveTimer(ctx, timer); err != nil {
+					return errors.Join(newEngineErrorf("failed to cancel timer %d for process instance key: %d", timer.Key, instance.ProcessInstance().Key), err)
+				}
+			}
+			instance.ProcessInstance().State = runtime.ActivityStateCompleted
+		}
 	}
 	return nil
+}
+
+// hasActiveSubProcessInstance checks whether the process instance has any
+// active sub-process instances whose parentProcessExecutionToken belongs to it.
+// The check is not recursive because the inner child process instance will not be completed due to same reasons,
+// so it's enough to make a check only for 1 level deep
+func (engine *Engine) hasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error) {
+	tokens, err := engine.persistence.GetAllTokensForProcessInstance(ctx, processInstanceKey)
+	if err != nil {
+		return false, err
+	}
+	for _, token := range tokens {
+		childInstances, err := engine.persistence.FindProcessInstancesByParentExecutionTokenKey(ctx, token.Key)
+		if err != nil {
+			return false, err
+		}
+		for _, child := range childInstances {
+			if child.Type() != runtime.ProcessTypeSubProcess {
+				continue
+			}
+			if child.ProcessInstance().State == runtime.ActivityStateActive {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (engine *Engine) handleMessageEndEvent(
 	ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, currentToken runtime.ExecutionToken,
 ) (tokens []runtime.ExecutionToken, err error) {
-	activityResult, err := engine.createInternalTask(ctx, batch, instance, endEvent, currentToken)
+	activityResult, err := engine.createInternalTask(ctx, batch, instance, endEvent, currentToken,
+		runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil))
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return []runtime.ExecutionToken{currentToken}, fmt.Errorf("failed to process MessageEndEvent %d: %w", currentToken.ElementInstanceKey, err)
@@ -1099,7 +1306,7 @@ func (engine *Engine) handleMessageEndEvent(
 	return nil, err
 }
 
-func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, instance runtime.ProcessInstance,
+func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance,
 	endEvent *bpmn20.TEndEvent, jobToken runtime.ExecutionToken, tokens []runtime.ExecutionToken,
 ) (updatedTokens []runtime.ExecutionToken, err error) {
 	for _, endEventDefinition := range endEvent.EventDefinitions {
@@ -1107,7 +1314,7 @@ func (engine *Engine) handleExternalEndEventContinuation(ctx context.Context, in
 		// Only TMessageEndEventDefinition is supported on job completion as we don't want to blindly handle different
 		// end event definitions completions twice on continuation
 		case bpmn20.TMessageEventDefinition:
-			err = engine.handlePlainEndEvent(ctx, instance, true)
+			err = engine.handlePlainEndEvent(ctx, batch, instance, true)
 			if err != nil {
 				return nil, fmt.Errorf("failed to handle plain EndEvent: %w", err)
 			}

@@ -19,9 +19,9 @@ const _ProcessType_name = "ProcessTypeDefaultProcessTypeSubProcessProcessTypeCal
 var _ProcessType_index = [...]uint8{0, 18, 39, 62, 86}
 
 func (i ProcessType) String() string {
-	i -= 1
-	if i < 0 || i >= ProcessType(len(_ProcessType_index)-1) {
-		return "ProcessType(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_ProcessType_index)-1 {
+		return "ProcessType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _ProcessType_name[_ProcessType_index[i]:_ProcessType_index[i+1]]
+	return _ProcessType_name[_ProcessType_index[idx]:_ProcessType_index[idx+1]]
 }

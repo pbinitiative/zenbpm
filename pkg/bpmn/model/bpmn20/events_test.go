@@ -2,23 +2,22 @@ package bpmn20
 
 import (
 	"encoding/xml"
+	"fmt"
 	"os"
+	"path"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBoundaryEventParses(t *testing.T) {
-	var definitions TDefinitions
-	var xmlData, err = os.ReadFile("../../test-cases/message-boundary-event-interrupting.bpmn")
 
+	definitions, err := readBpnmFile(t, "message-boundary-event-interrupting.bpmn")
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)
 	}
-	err1 := xml.Unmarshal(xmlData, &definitions)
-	if err1 != nil {
-		t.Fatalf("failed to unmarshal XML: %v", err)
-	}
+
 	assert.Equal(t, 1, len(definitions.Process.BoundaryEvent))
 
 	be := definitions.Process.BoundaryEvent[0]
@@ -36,5 +35,29 @@ func TestBoundaryEventParses(t *testing.T) {
 	}
 
 	assert.Equal(t, "simple-boundary-id", m.MessageRef)
+}
 
+func readBpnmFile(t testing.TB, filename string) (result TDefinitions, err error) {
+	t.Helper()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return result, err
+	}
+
+	wd = strings.ReplaceAll(wd, "/model/bpmn20", "")
+	loc := path.Join(wd, "test-cases", filename)
+	xmlData, err := os.ReadFile(loc)
+
+	if err != nil {
+		return result, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var definitions TDefinitions
+	err1 := xml.Unmarshal(xmlData, &definitions)
+	if err1 != nil {
+		t.Fatalf("failed to unmarshal XML: %v", err)
+	}
+
+	return definitions, nil
 }

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="definition" name="DRD Bug" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <decision id="decisionWithInputData" name="Decision">
+    <informationRequirement id="InformationRequirement_146v6a5">
+      <requiredInput href="#InputData_142r6b1" />
+    </informationRequirement>
+    <informationRequirement id="InformationRequirement_06h7phl">
+      <requiredInput href="#InputData_187onyt" />
+    </informationRequirement>
+    <decisionTable id="DecisionTable_0fgyvh5">
+      <input id="Input_1" label="Append Data">
+        <inputExpression id="InputExpression_1" typeRef="boolean">
+          <text>append_data</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_09ivbqc" label="Append Data 2">
+        <inputExpression id="LiteralExpression_07qd2js" typeRef="boolean">
+          <text>append_data_2</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" name="output" typeRef="string" />
+      <rule id="DecisionRule_0xwcxog">
+        <inputEntry id="UnaryTests_15yxvbl">
+          <text>true</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0u2cveo">
+          <text>false</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_13uduqu">
+          <text>"OK"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_1lfhrto">
+        <inputEntry id="UnaryTests_1wka9mq">
+          <text>false</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_0nprcrx">
+          <text>true</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_02978aj">
+          <text>"NON-OK"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <inputData id="InputData_142r6b1" name="append_data" />
+  <inputData id="InputData_187onyt" name="append_data_2" />
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape id="Decision_0kyq2q3_di" dmnElementRef="decision">
+        <dc:Bounds height="80" width="180" x="160" y="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_14nzgm8" dmnElementRef="InputData_142r6b1">
+        <dc:Bounds height="45" width="125" x="187" y="317" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="DMNEdge_1neg6cg" dmnElementRef="InformationRequirement_146v6a5">
+        <di:waypoint x="250" y="317" />
+        <di:waypoint x="220" y="180" />
+        <di:waypoint x="220" y="160" />
+      </dmndi:DMNEdge>
+      <dmndi:DMNShape id="DMNShape_0z4munp" dmnElementRef="InputData_187onyt">
+        <dc:Bounds height="45" width="125" x="427" y="317" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="DMNEdge_1t9lx8d" dmnElementRef="InformationRequirement_06h7phl">
+        <di:waypoint x="490" y="317" />
+        <di:waypoint x="280" y="180" />
+        <di:waypoint x="280" y="160" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

@@ -37,3 +37,21 @@ func TestPlainTaskDeploymentReturnsUnsupportedError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "task")
 }
+
+func TestUnsupportedSignalIntermediateCatchEventFailsDeployment(t *testing.T) {
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-signal-intermediate-catch-event.bpmn")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unsupported element configuration")
+	assert.ErrorContains(t, err, "intermediateCatchEvent")
+	assert.ErrorContains(t, err, "SignalCatch_1")
+}
+
+func TestUnsupportedEventBasedGatewayNonICETargetFailsDeployment(t *testing.T) {
+	_, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/unsupported-event-based-gateway-non-ice-target.bpmn")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unsupported element configuration")
+	assert.ErrorContains(t, err, "eventBasedGateway")
+	assert.ErrorContains(t, err, "EventBasedGateway_1")
+}

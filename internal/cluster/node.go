@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"slices"
 	"time"
@@ -25,6 +27,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/sql"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -309,13 +312,13 @@ func (node *ZenNode) GetDmnResourceDefinition(ctx context.Context, key int64) (p
 	}, nil
 }
 
-func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, error) {
+func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Context, data []byte) (int64, bool, error) {
 	key, err := node.getDmnResourceDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		return key, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
+		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get dmn resource definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return key, zenerr.Conflict(fmt.Errorf("duplicate dmn resource definition %d exists", key))
+		return key, true, nil
 	}
 	definitionKey := node.idGen.Generate()
 	clusterState := node.store.ClusterState()
@@ -335,10 +338,10 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	}
 
 	if waitErr := group.Wait(); waitErr != nil {
-		return definitionKey.Int64(), waitErr
+		return definitionKey.Int64(), false, waitErr
 	}
 
-	return definitionKey.Int64(), nil
+	return definitionKey.Int64(), false, nil
 }
 
 func (node *ZenNode) deployDmnResourceDefinitionToPartition(
@@ -415,21 +418,45 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 	return resp, nil
 }
 
-func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, error) {
+// DeployProcessDefinitionToAllPartitions deploys a BPMN process definition.
+// The alreadyExisted return is true when an identical definition (matched by
+// content checksum) is already deployed; in that case the existing key is
+// returned and no new deployment is performed, so callers can treat this as
+// success (idempotent deploy).
+func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
 	key, err := node.GetDefinitionKeyByBytes(ctx, data)
 	if err != nil {
-		return key, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
+		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
 	}
 	if key != 0 {
-		return key, zenerr.Conflict(fmt.Errorf("duplicate process definition %d exists", key))
+		return key, true, nil
 	}
 	definitionKey := node.idGen.Generate()
 	clusterState := node.store.ClusterState()
 	partitionIds := sortedPartitionIds(clusterState)
 	group, groupCtx := errgroup.WithContext(ctx)
 
+	// determine partitionIdx using incoming process definition id
+	var definitions bpmn20.TDefinitions
+	err = xml.Unmarshal(data, &definitions)
+	if err != nil {
+		return key, false, fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+	h := fnv.New32a()
+	_, err = h.Write([]byte(definitions.Process.Id))
+	if err != nil {
+		return key, false, fmt.Errorf("failed to hash process definition id: %w", err)
+	}
+	if len(partitionIds) == 0 {
+		return key, false, fmt.Errorf("no partitions available in cluster state")
+	}
+	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
+
+	// use that partitionIdx to create potential process timer start events always only on that one partitionIdx
+	timerStartEventPartitionId := partitionIds[partitionIdx]
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
+		registerForPotentialTimerStartEvents := timerStartEventPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
@@ -439,14 +466,15 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 				definitionKey.Int64(),
 				data,
 				resourceName,
+				registerForPotentialTimerStartEvents,
 			)
 		})
 	}
 
 	if waitErr := group.Wait(); waitErr != nil {
-		return definitionKey.Int64(), waitErr
+		return definitionKey.Int64(), false, waitErr
 	}
-	return definitionKey.Int64(), nil
+	return definitionKey.Int64(), false, nil
 }
 
 func (node *ZenNode) deployProcessDefinitionToPartition(
@@ -456,6 +484,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	definitionKey int64,
 	data []byte,
 	resourceName string,
+	registerForPotentialTimerStartEvents bool,
 ) error {
 
 	partitionLeader := clusterState.Nodes[partitionLeaderId]
@@ -465,9 +494,10 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:          ptr.To(definitionKey),
-		Data:         data,
-		ResourceName: &resourceName,
+		Key:                                  ptr.To(definitionKey),
+		Data:                                 data,
+		ResourceName:                         &resourceName,
+		RegisterForPotentialTimerStartEvents: &registerForPotentialTimerStartEvents,
 	})
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to deploy process definition failed: %w", err))
@@ -478,7 +508,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition failed: %w", errors.New(resp.Error.GetMessage())))
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to deploy process definition %s failed", resourceName))
 	}
 
 	return nil
@@ -538,6 +568,34 @@ func (node *ZenNode) AssignJob(ctx context.Context, key int64, assignee string) 
 	if resp.Error != nil {
 		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to assign job failed"))
 	}
+	return nil
+}
+
+func (node *ZenNode) FailJob(ctx context.Context, key int64, errorCode string, variables map[string]any) error {
+	partition := zenflake.GetPartitionId(key)
+	client, err := node.client.PartitionLeader(partition)
+
+	if err != nil {
+		return zenerr.ClusterError(fmt.Errorf("failed to get client: %w", err))
+	}
+	vars, err := json.Marshal(variables)
+
+	if err != nil {
+		return zenerr.BadRequest(fmt.Errorf("failed marshal variables: %w", err))
+	}
+	resp, err := client.FailJob(ctx, &proto.FailJobRequest{
+		Key:       &key,
+		ErrorCode: &errorCode,
+		Variables: vars,
+	})
+
+	if err != nil {
+		return zenerr.TechnicalError(fmt.Errorf("client call to fail job failed: %w", err))
+	}
+	if resp.Error != nil {
+		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to fail job failed"))
+	}
+
 	return nil
 }
 
@@ -1551,7 +1609,7 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, siz
 }
 
 // GetFlowElementHistory will contact follower node of partition that contains process instance
-func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64) (*proto.GetFlowElementHistoryResponse, error) {
+func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64, sort *sql.Sort) (*proto.GetFlowElementHistoryResponse, error) {
 	state := node.store.ClusterState()
 	partitionId := zenflake.GetPartitionId(processInstanceKey)
 	follower, err := state.GetPartitionFollower(partitionId)
@@ -1562,11 +1620,16 @@ func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size
 	if err != nil {
 		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get flow element history: %w", err))
 	}
-	resp, err := client.GetFlowElementHistory(ctx, &proto.GetFlowElementHistoryRequest{
+	req := &proto.GetFlowElementHistoryRequest{
 		ProcessInstanceKey: &processInstanceKey,
 		Page:               &page,
 		Size:               &size,
-	})
+	}
+	if sort != nil {
+		s := string(ptr.Deref(sort, ""))
+		req.Sort = &s
+	}
+	resp, err := client.GetFlowElementHistory(ctx, req)
 	if err != nil {
 		e := fmt.Errorf("failed to get process instance flow element history from partition %d %w", partitionId, err)
 		return nil, zenerr.TechnicalError(e)

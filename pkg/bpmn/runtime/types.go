@@ -298,6 +298,51 @@ func EqualTo(m MessageSubscription, m2 MessageSubscription) bool {
 	return false
 }
 
+//go:generate go tool stringer -type=ErrorState
+
+type ErrorState int
+
+const (
+	_ ErrorState = iota
+	ErrorStateCreated
+	ErrorStateCancelled
+)
+
+type ErrorSubscription struct {
+	ElementId            string
+	Key                  int64
+	ElementInstanceKey   int64
+	ProcessDefinitionKey int64
+	ProcessInstanceKey   int64
+	ErrorCode            *string
+	State                ErrorState
+	CreatedAt            time.Time
+	Token                ExecutionToken
+}
+
+func (errorSubscription ErrorSubscription) EqualTo(e2 ErrorSubscription) bool {
+	if errorSubscription.ElementId == e2.ElementId &&
+		errorSubscription.Key == e2.Key &&
+		errorSubscription.ProcessDefinitionKey == e2.ProcessDefinitionKey &&
+		errorSubscription.ProcessInstanceKey == e2.ProcessInstanceKey &&
+		errorSubscription.ErrorCode == e2.ErrorCode &&
+		errorSubscription.State == e2.State &&
+		errorSubscription.CreatedAt.Truncate(time.Millisecond).Equal(e2.CreatedAt.Truncate(time.Millisecond)) {
+		return true
+	}
+	return false
+}
+
+func (errorSubscription ErrorSubscription) GetId() string {
+	return errorSubscription.ElementId
+}
+func (errorSubscription ErrorSubscription) GetKey() int64 {
+	return errorSubscription.Key
+}
+func (errorSubscription ErrorSubscription) GetState() ErrorState {
+	return errorSubscription.State
+}
+
 //go:generate go tool stringer -type=TimerState
 type TimerState int
 
@@ -312,16 +357,16 @@ const (
 // The logic is simple: CreatedAt + Duration = DueAt
 // The TimerState is one of [ TimerCreated, TimerTriggered, TimerCancelled ]
 type Timer struct {
-	ElementId            string // id of the intermediateCatchEvent
+	ElementId            string // id of the intermediateCatchEvent or event sub process TimerStartEvent
 	Key                  int64
-	ElementInstanceKey   int64
+	ElementInstanceKey   *int64
 	ProcessDefinitionKey int64
-	ProcessInstanceKey   int64
+	ProcessInstanceKey   *int64
 	TimerState           TimerState
 	CreatedAt            time.Time
 	DueAt                time.Time
 	Duration             time.Duration
-	Token                ExecutionToken
+	Token                *ExecutionToken
 }
 
 func (t Timer) GetId() string {
@@ -334,6 +379,30 @@ func (t Timer) GetKey() int64 {
 }
 
 func (t Timer) EqualTo(t2 Timer) bool {
+	// Compare ElementInstanceKey pointers
+	elementInstanceKeyMatch := false
+	if t.ElementInstanceKey == nil && t2.ElementInstanceKey == nil {
+		elementInstanceKeyMatch = true
+	} else if t.ElementInstanceKey != nil && t2.ElementInstanceKey != nil {
+		elementInstanceKeyMatch = *t.ElementInstanceKey == *t2.ElementInstanceKey
+	}
+
+	// Compare ProcessInstanceKey pointers
+	processInstanceKeyMatch := false
+	if t.ProcessInstanceKey == nil && t2.ProcessInstanceKey == nil {
+		processInstanceKeyMatch = true
+	} else if t.ProcessInstanceKey != nil && t2.ProcessInstanceKey != nil {
+		processInstanceKeyMatch = *t.ProcessInstanceKey == *t2.ProcessInstanceKey
+	}
+
+	// Compare Token pointers
+	tokenMatch := false
+	if t.Token == nil && t2.Token == nil {
+		tokenMatch = true
+	} else if t.Token != nil && t2.Token != nil {
+		tokenMatch = *t.Token == *t2.Token
+	}
+
 	if t.Key == t2.Key &&
 		t.ElementId == t2.ElementId &&
 		t.ProcessDefinitionKey == t2.ProcessDefinitionKey &&
@@ -341,7 +410,9 @@ func (t Timer) EqualTo(t2 Timer) bool {
 		t.CreatedAt.Truncate(time.Millisecond).Equal(t2.CreatedAt.Truncate(time.Millisecond)) &&
 		t.DueAt.Truncate(time.Millisecond).Equal(t2.DueAt.Truncate(time.Millisecond)) &&
 		t.Duration == t2.Duration &&
-		t.Token == t2.Token {
+		elementInstanceKeyMatch &&
+		processInstanceKeyMatch &&
+		tokenMatch {
 		return true
 	}
 	return false

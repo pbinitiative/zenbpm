@@ -3,7 +3,7 @@ openapi: 3.0.0
 info:
   title: ZenBPM OpenAPI
   description: REST API for ZenBPM
-  version: 0.1.0
+  version: 1.1.0
   contact:
     name: API Support
     email: info@pbinitiative.org
@@ -61,14 +61,25 @@ paths:
                     format: int64
               example:
                 dmnResourceDefinitionKey: 4503599627370495
-        400:
-          description: Bad request
+        200:
+          description: >
+            DMN resource definition with the same dmnResourceDefinitionId and version already exists
+            and the content is identical — deployment ignored, returns the key of the existing definition.
+            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-        409:
-          description: Conflict - dmn resource definition already exists
+                type: object
+                required:
+                  - dmnResourceDefinitionKey
+                properties:
+                  dmnResourceDefinitionKey:
+                    type: integer
+                    format: int64
+              example:
+                dmnResourceDefinitionKey: 4503599627370495
+        400:
+          description: Bad request
           content:
             application/json:
               schema:
@@ -121,7 +132,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ dmnDefinitionName, dmnResourceDefinitionId, version, key ]
+            enum: [dmnDefinitionName, dmnResourceDefinitionId, version, key]
           description: Sort field
         - $ref: "#/components/parameters/sortOrder"
         - name: dmnResourceDefinitionId
@@ -399,7 +410,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ evaluatedAt, key ]
+            enum: [evaluatedAt, key]
           description: Sort field
         - $ref: "#/components/parameters/sortOrder"
       responses:
@@ -569,10 +580,26 @@ paths:
             encoding:
               resource:
                 contentType: application/octet-stream
-
       responses:
         201:
           description: Process definition deployed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - processDefinitionKey
+                properties:
+                  processDefinitionKey:
+                    type: integer
+                    format: int64
+              example:
+                processDefinitionKey: 4503599627370498
+        200:
+          description: >
+            Process definition with the same BPMN process ID and version already exists
+            and the content is identical — deployment ignored, returns the key of the existing definition.
+            If the content differs for the same ID and version, a new version is deployed and 201 is returned instead.
           content:
             application/json:
               schema:
@@ -594,15 +621,6 @@ paths:
               example:
                 code: "BAD_REQUEST"
                 message: "The provided BPMN file is invalid: missing required 'process' element"
-        409:
-          description: Conflict - process definition already exists
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                code: "CONFLICT"
-                message: "A process definition with the same BPMN process ID and version already exists"
         500:
           description: Internal server error
           content:
@@ -656,7 +674,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ name, bpmnProcessId, bpmnProcessName, version, key ]
+            enum: [name, bpmnProcessId, bpmnProcessName, version, key]
           description: Sort field
         - $ref: "#/components/parameters/sortOrder"
         - name: bpmnProcessId
@@ -1093,7 +1111,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ createdAt, key, state, businessKey ]
+            enum: [createdAt, key, state, businessKey, bpmnProcessId]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: createdFrom
@@ -1112,7 +1130,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ active, completed, terminated, failed ]
+            enum: [active, completed, terminated, failed]
           description: Filter by state
         - name: activityId
           in: query
@@ -1395,14 +1413,14 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ key, state ]
+            enum: [key, state]
           description: Sort field (applies globally across partitions)
         - $ref: "#/components/parameters/sortOrder"
         - name: state
           in: query
           schema:
             type: string
-            enum: [ active, completed, terminated, failed ]
+            enum: [active, completed, terminated, failed]
           description: Filter by state
       responses:
         200:
@@ -1628,6 +1646,17 @@ paths:
             default: 10
           description: Number of items per page (max 100)
           example: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
       responses:
         200:
           description: List of activities
@@ -1690,7 +1719,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ resolved, unresolved ]
+            enum: [resolved, unresolved]
           description: Filter by incident state (omit to get all incidents)
         - name: page
           in: query
@@ -1876,13 +1905,13 @@ paths:
           in: query
           schema:
             type: string
-            enum: [ createdAt, key, type, state ]
+            enum: [createdAt, key, type, state]
           description: Sort field
         - name: sortOrder
           in: query
           schema:
             type: string
-            enum: [ asc, desc ]
+            enum: [asc, desc]
           description: Sort direction
       responses:
         200:
@@ -2103,6 +2132,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /jobs/{jobKey}/fail:
+    post:
+      operationId: failJob
+      tags:
+        - job
+      summary: Fail a job
+      parameters:
+        - name: jobKey
+          in: path
+          required: true
+          description: The key of the job to fail.
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                errorCode:
+                  type: string
+                  description: The error code against which an error catch event is matched.
+                variables:
+                  type: object
+            example:
+              errorCode: "123-456-789"
+              variables:
+                transactionId: "tx-789-xyz"
+      responses:
+        204:
+          description: The job is failed.
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Failed to redirect request to responsible node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /messages:
     post:
@@ -2248,7 +2334,7 @@ paths:
                 customerId: "customer-456"
                 amount: 1000
                 applicationDate: "2025-08-22"
-              startingElementIds: [ "flowNode-1", "flowNode-2" ]
+              startingElementIds: ["flowNode-1", "flowNode-2"]
       responses:
         201:
           description: Process instance created
@@ -2493,7 +2579,7 @@ components:
           type: string
         decisionType:
           type: string
-          enum: [ DECISION_TABLE, LITERAL_EXPRESSION ]
+          enum: [DECISION_TABLE, LITERAL_EXPRESSION]
         evaluationOrder:
           type: integer
           description: Order in which this decision was evaluated
@@ -2592,7 +2678,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ProcessInstance"
+            $ref: "#/components/schemas/ProcessInstancesListItem"
     DmnResourceDefinitionsPage:
       type: object
       allOf:
@@ -2646,7 +2732,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvaluatedDecisionResult"
-        decisionOutput: { }
+        decisionOutput: {}
     EvaluatedDecisionResult:
       type: object
       required:
@@ -2712,7 +2798,7 @@ components:
           type: string
         inputExpression:
           type: string
-        inputValue: { }
+        inputValue: {}
     EvaluatedDecisionOutput:
       type: object
       required:
@@ -2778,6 +2864,12 @@ components:
         incidentCount:
           type: integer
           description: Number of incidents on this element
+        completedCount:
+          type: integer
+          description: Number of completed element instances
+        terminatedCount:
+          type: integer
+          description: Number of terminated (canceled) element instances
     ElementStatistic:
       type: object
       description: Map of elementId to active/incident counts
@@ -2918,28 +3010,64 @@ components:
           type: string
           format: date-time
         state:
-          type: string
-          enum:
-            - active
-            - completed
-            - terminated
-            - failed
+          $ref: "#/components/schemas/ProcessInstanceState"
         parentProcessInstanceKey:
           type: integer
           format: int64
         processType:
-          type: string
-          enum:
-            - default
-            - multiInstance
-            - subprocess
-            - callActivity
+          $ref: "#/components/schemas/ProcessInstanceProcessType"
         variables:
           type: object
         activeElementInstances:
           type: array
           items:
             $ref: "#/components/schemas/ElementInstance"
+    ProcessInstancesListItem:
+      type: object
+      required:
+        - key
+        - processDefinitionKey
+        - createdAt
+        - state
+        - variables
+        - processType
+      properties:
+        key:
+          type: integer
+          format: int64
+        processDefinitionKey:
+          type: integer
+          format: int64
+        bpmnProcessId:
+          type: string
+        businessKey:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        state:
+          $ref: "#/components/schemas/ProcessInstanceState"
+        parentProcessInstanceKey:
+          type: integer
+          format: int64
+        processType:
+          $ref: "#/components/schemas/ProcessInstanceProcessType"
+        variables:
+          type: object
+    ProcessInstanceProcessType:
+      type: string
+      enum:
+        - default
+        - multiInstance
+        - subprocess
+        - callActivity
+    ProcessInstanceState:
+      type: string
+      enum:
+        - active
+        - completed
+        - terminated
+        - failed
     JobPage:
       type: object
       allOf:
@@ -3148,5 +3276,5 @@ components:
       in: query
       schema:
         type: string
-        enum: [ asc, desc ]
+        enum: [asc, desc]
       description: Sort direction

@@ -162,6 +162,23 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 	return nil
 }
 
+// GetSubprocessAndStartEventById recursively searches for a start event by ID within this process and all nested subprocesses.
+func (p *TProcess) GetSubprocessAndStartEventById(id string) (*TSubProcess, *TStartEvent) {
+	for _, subProcess := range p.SubProcess {
+		// Check immediate subprocess start events
+		for _, startEvent := range subProcess.StartEvents {
+			if startEvent.GetId() == id {
+				return &subProcess, &startEvent
+			}
+		}
+		// Recursively search nested subprocesses within this subprocess
+		if nestedSubprocess, startEvent := subProcess.GetSubprocessAndStartEventById(id); nestedSubprocess != nil {
+			return nestedSubprocess, startEvent
+		}
+	}
+	return nil, nil
+}
+
 type ElementType string
 
 type TDefaultFlowExtension struct {

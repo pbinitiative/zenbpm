@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -21,7 +23,22 @@ func (engine *Engine) Start(ctx context.Context) error {
 	if engine.timerManager != nil {
 		engine.timerManager.stop()
 	}
-	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, 10*time.Second)
+	pollTimerDelay := engine.pollTimerDelay
+	if pollTimerDelay == 0 {
+		pollTimerDelaySecondsStr := os.Getenv("POLL_TIMER_DELAY_SECONDS")
+		if pollTimerDelaySecondsStr == "" {
+			pollTimerDelay = 10 * time.Second
+		} else {
+			seconds, err := strconv.Atoi(pollTimerDelaySecondsStr)
+			if err != nil || seconds <= 0 {
+				engine.logger.Warn(fmt.Sprintf("failed to parse POLL_TIMER_DELAY_SECONDS env variable or value is negative, using default value of 10 seconds: %s", err))
+				pollTimerDelay = 10 * time.Second
+			} else {
+				pollTimerDelay = time.Duration(seconds) * time.Second
+			}
+		}
+	}
+	engine.timerManager = newTimerManager(engine.ProcessTimer, engine.persistence.FindTimersTo, pollTimerDelay)
 	engine.timerManager.start()
 	tokens, err := engine.persistence.GetRunningTokens(engine.context)
 	if err != nil {
@@ -136,7 +153,7 @@ mainLoop:
 		activity, err := engine.getExecutionTokenActivity(ctx, instance, currentToken)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
-			engine.logger.Warn("failed to get execution activity", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			engine.logger.Warn("failed to process token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {
@@ -178,7 +195,7 @@ mainLoop:
 		err = batch.SaveProcessInstance(ctx, instance)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
-			engine.logger.Warn("failed to save process instance after processing the token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			engine.logger.Warn("failed to save process instance after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {
@@ -186,7 +203,7 @@ mainLoop:
 				runErr = errors.Join(runErr, incidentError)
 			}
 			endErrorSpan(tokenSpan, err)
-			return fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+			return fmt.Errorf("failed to save process instance processInstance=%d after processing the token=%d, %w", instance.ProcessInstance().Key, currentToken.Key, err)
 		}
 
 		if instance.ProcessInstance().State == runtime.ActivityStateCompleted {
@@ -194,7 +211,7 @@ mainLoop:
 				err := engine.handleParentProcessContinuation(ctx, &batch, instance, activity.Element())
 				if err != nil {
 					runErr = errors.Join(runErr, err)
-					engine.logger.Warn("failed to flush after processing the tokens parent", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+					engine.logger.Warn("failed to handle parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 					batch.WriteTokenIncident(ctx, currentToken, instance, err)
 					incidentError := batch.Flush(ctx)
 					if incidentError != nil {
@@ -208,7 +225,7 @@ mainLoop:
 			err = batch.Flush(ctx)
 			if err != nil {
 				runErr = errors.Join(runErr, err)
-				engine.logger.Warn("failed to flush after processing the token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+				engine.logger.Warn("failed to flush after processing parent process continuation", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 				batch.WriteTokenIncident(ctx, currentToken, instance, err)
 				incidentError := batch.Flush(ctx)
 				if incidentError != nil {
@@ -225,7 +242,7 @@ mainLoop:
 		err = batch.Flush(ctx)
 		if err != nil {
 			runErr = errors.Join(runErr, err)
-			engine.logger.Warn("failed to flush after processing the token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
+			engine.logger.Warn("failed to flush after processing token", "token", currentToken.Key, "processInstance", instance.ProcessInstance().Key, "err", err)
 			batch.WriteTokenIncident(ctx, currentToken, instance, err)
 			incidentError := batch.Flush(ctx)
 			if incidentError != nil {
@@ -236,7 +253,7 @@ mainLoop:
 			continue
 		}
 		tokenSpan.End()
-	}
+	} // end of main loop
 
 	if instance.ProcessInstance().State == runtime.ActivityStateCompleted || instance.ProcessInstance().State == runtime.ActivityStateFailed {
 		engine.exportEndProcessEvent(*process, instance)
@@ -273,7 +290,7 @@ func (engine *Engine) CreateInstanceById(ctx context.Context, processId string, 
 	return instance, nil
 }
 
-// CreateInstanceByKey creates a new instance for a process with given process definition key
+// CreateInstanceByKey creates a new instance for a process with given process definition key and runs it
 // Might return BpmnEngineError, when no process with given ID was found
 func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int64, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, definitionKey)
@@ -289,7 +306,7 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 	return instance, nil
 }
 
-// CreateInstance creates a new instance for a process with given processKey
+// CreateInstance creates and runs the new process instance for a given process definition
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
 	batch := engine.persistence.NewBatch()

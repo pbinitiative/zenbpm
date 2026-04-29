@@ -53,7 +53,18 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 	t.Run("get history multiInstance", func(t *testing.T) {
 		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance1Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
-		assert.Equal(t, 4, history.JSON200.TotalCount)
+		assert.Equal(t, 3, history.JSON200.TotalCount)
+	})
+
+	t.Run("get child history multiInstance", func(t *testing.T) {
+		children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), instance1Key, &zenclient.GetChildProcessInstancesParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, children.JSON200.TotalCount)
+		assert.Equal(t, zenclient.ProcessInstanceProcessType("multiInstance"), children.JSON200.Partitions[0].Items[0].ProcessType)
+		childKey := children.JSON200.Partitions[0].Items[0].Key
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, history.JSON200.TotalCount)
 	})
 
 	t.Run("get history callActivity", func(t *testing.T) {
@@ -62,10 +73,32 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		assert.Equal(t, 3, history.JSON200.TotalCount)
 	})
 
+	t.Run("get child history callActivity", func(t *testing.T) {
+		children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), instance2Key, &zenclient.GetChildProcessInstancesParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, children.JSON200.TotalCount)
+		assert.Equal(t, zenclient.ProcessInstanceProcessType("callActivity"), children.JSON200.Partitions[0].Items[0].ProcessType)
+		childKey := children.JSON200.Partitions[0].Items[0].Key
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 3, history.JSON200.TotalCount)
+	})
+
 	t.Run("get history subprocess", func(t *testing.T) {
 		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance3Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
-		assert.Equal(t, 6, history.JSON200.TotalCount)
+		assert.Equal(t, 3, history.JSON200.TotalCount)
+	})
+
+	t.Run("get child history subprocess", func(t *testing.T) {
+		children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), instance3Key, &zenclient.GetChildProcessInstancesParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, children.JSON200.TotalCount)
+		assert.Equal(t, zenclient.ProcessInstanceProcessType("subprocess"), children.JSON200.Partitions[0].Items[0].ProcessType)
+		childKey := children.JSON200.Partitions[0].Items[0].Key
+		history, err := app.restClient.GetHistoryWithResponse(t.Context(), childKey, &zenclient.GetHistoryParams{})
+		assert.NoError(t, err)
+		assert.Equal(t, 3, history.JSON200.TotalCount)
 	})
 
 	assert.NoError(t, err)

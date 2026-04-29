@@ -13,9 +13,9 @@ import (
 func TestDecisionInstance(t *testing.T) {
 	var result *zenclient.EvaluatedDRDResult
 	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
-	_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+	_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
-	definitions, err := listDecisionDefinitions(t)
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
 	assert.NoError(t, err)
 	for _, def := range definitions {
 		if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
@@ -78,13 +78,13 @@ func TestDecisionInstances(t *testing.T) {
 	var resDefId1Key int64
 	var redDefId2Key int64
 	t.Run("deploy dmn resource definition", func(t *testing.T) {
-		_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+		_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 		assert.NoError(t, err)
-		resDefId1Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("resDefName1"), ptr.To("resDefId1"))
+		resDefId1Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName1"), ptr.To("resDefId1"))
 		assert.NoError(t, err)
-		redDefId2Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("resDefName2"), ptr.To("resDefId2"))
+		redDefId2Key, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName2"), ptr.To("resDefId2"))
 		assert.NoError(t, err)
-		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "can-autoliquidate-rule.dmn", ptr.To("resDefName3"), ptr.To("resDefId3"))
+		_, err = deployDmnResourceDefinitionWithNewNameAndId(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn", ptr.To("resDefName3"), ptr.To("resDefId3"))
 		assert.NoError(t, err)
 	})
 
@@ -175,10 +175,10 @@ func TestDecisionInstances(t *testing.T) {
 }
 
 func TestDecisionInstanceLinkedToProcessInstance(t *testing.T) {
-	_, err := deployDmnResourceDefinition(t, "can-autoliquidate-rule.dmn")
+	_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
 
-	definition, err := deployGetDefinition(t, "simple-business-rule-task-local.bpmn", "SimpleDMNTest")
+	definition, err := deployGetDefinition(t, "business_rule/simple-business-rule-task-local.bpmn", "SimpleDMNTest")
 	assert.NoError(t, err)
 
 	instance, err := createProcessInstance(t, &definition.Key, map[string]any{})

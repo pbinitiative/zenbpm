@@ -24,7 +24,7 @@ PATH := $(LOCALBIN):$(PATH)
 PACKAGE_NAME ?= github.com/pbinitiative/zenbpm
 ## Tool Versions
 SQLC_VERSION ?= v1.29.0
-PROTOC_VERSION ?= 30.1
+PROTOC_VERSION ?= 33.4
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 GOLANG_CROSS_VERSION ?= v1.25.1
@@ -69,7 +69,7 @@ $(PROTOC): $(LOCALBIN)
 		chmod +x $(LOCALBIN)/protoc; \
 		rm protoc-$(PROTOC_VERSION)-$(PROTOC_OS)$(PROTOC_ARCH).zip; \
 	fi
-	
+
 
 ##@ General
 
@@ -141,17 +141,19 @@ test: ## Run tests
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test ./... -coverprofile cover.out
 
 .PHONY: bench
 bench: ## Run benchmarks
 	LOG_LEVEL=ERROR go test ./... -bench=.
 
-.PHONY: test-e2e 
+.PHONY: test-e2e
 test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -count=1 -v ./test/e2e/...
 
 .PHONY: test-dmntest
@@ -159,6 +161,7 @@ test-dmntest:
 	export PROFILE=TEST; \
 	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
 	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -tags=dmntest ./pkg/dmn/dmntest/... -v
 
 ##@ Build
@@ -194,4 +197,4 @@ release:
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--verbose \
-		release --clean 
+		release --clean

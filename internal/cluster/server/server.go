@@ -21,6 +21,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/types"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
+	grpcrecovery "github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
@@ -90,12 +91,18 @@ func (s *Server) Open() error {
 	textMapPropagator := otelpropagation.TraceContext{}
 	so := opentelemetry.ServerOption(opentelemetry.Options{
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
-		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
+		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator},
+	})
 
-	srv := grpc.NewServer(so, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-		MinTime:             5 * time.Second,
-		PermitWithoutStream: true,
-	}))
+	srv := grpc.NewServer(
+		so,
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.ChainUnaryInterceptor(grpcrecovery.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(grpcrecovery.StreamServerInterceptor()),
+	)
 	proto.RegisterZenServiceServer(srv, s)
 	go srv.Serve(s.ln)
 	log.Info("zen cluster service listening on %s", s.addr)
@@ -232,25 +239,22 @@ func (s *Server) FailJob(ctx context.Context, req *proto.FailJobRequest) (*proto
 	vars := map[string]any{}
 	err := json.Unmarshal(req.Variables, &vars)
 	if err != nil {
-		err := fmt.Errorf("failed to unmarshal job input variables: %w", err)
-		return &proto.FailJobResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		zerr := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal job input variables: %w", err))
+		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
 	}
 
 	err = s.jobManager.FailJob(ctx, jobmanager.ClientID(req.GetClientId()), req.GetKey(), req.GetMessage(), req.ErrorCode, vars)
+
 	if err != nil {
-		err := fmt.Errorf("failed to fail job %d: %w", req.Key, err)
-		return &proto.FailJobResponse{
-			Error: &proto.ErrorResult{
-				Code:    nil,
-				Message: ptr.To(err.Error()),
-			},
-		}, err
+		var zerr *zenerr.ZenError
+		if isErrNotFound(err) {
+			zerr = zenerr.NotFound(fmt.Errorf("job %d not found", req.GetKey()))
+		} else {
+			zerr = zenerr.TechnicalError(fmt.Errorf("failed to fail job %d: %w", req.GetKey(), err))
+		}
+		return &proto.FailJobResponse{Error: zerr.ToProtoError()}, nil
 	}
+
 	return &proto.FailJobResponse{}, nil
 }
 
@@ -618,13 +622,23 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 	for _, engine := range engines {
 		_, err = engine.LoadFromBytes(ctx, req.GetData(), req.GetKey())
 		if err != nil {
-			err = fmt.Errorf("failed to deploy process definition: %w", err)
 			return &proto.DeployProcessDefinitionResponse{
-				Error: &proto.ErrorResult{
-					Code:    nil,
-					Message: ptr.To(err.Error()),
-				},
-			}, err
+				Error: zenerr.TechnicalError(fmt.Errorf("failed to deploy process definition: %w", err)).ToProtoError(),
+			}, nil
+		}
+	}
+	if req.GetRegisterForPotentialTimerStartEvents() {
+		engine := s.GetRandomEngine(ctx)
+		if engine == nil {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.TechnicalError(fmt.Errorf("no engine available on this node")).ToProtoError(),
+			}, nil
+		}
+		err := engine.RegisterForPotentialTimerStartEvents(ctx, req.GetKey())
+		if err != nil {
+			return &proto.DeployProcessDefinitionResponse{
+				Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition for potential TimerStartEvents: %w", err)).ToProtoError(),
+			}, nil
 		}
 	}
 	return &proto.DeployProcessDefinitionResponse{}, nil
@@ -868,6 +882,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		return &proto.GetFlowElementHistoryResponse{Error: err.ToProtoError()}, nil
 	}
 	flowElements, err := queries.FindFlowElementInstances(ctx, sql.FindFlowElementInstancesParams{
+		Sort:               sql.ToNullString(req.Sort),
 		ProcessInstanceKey: *req.ProcessInstanceKey,
 		Offset:             int64(req.GetSize()) * int64(req.GetPage()-1),
 		Limit:              int64(req.GetSize()),
@@ -1486,9 +1501,11 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, req *p
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
 		for i, row := range rows {
 			statistics[i] = &proto.ElementStatisticEntry{
-				ElementId:     ptr.To(row.ElementID),
-				ActiveCount:   ptr.To(int32(row.ActiveCount)),
-				IncidentCount: ptr.To(int32(row.IncidentCount)),
+				ElementId:       ptr.To(row.ElementID),
+				ActiveCount:     ptr.To(int32(row.ActiveCount)),
+				IncidentCount:   ptr.To(int32(row.IncidentCount)),
+				CompletedCount:  ptr.To(int32(row.CompletedCount)),
+				TerminatedCount: ptr.To(int32(row.TerminatedCount)),
 			}
 		}
 

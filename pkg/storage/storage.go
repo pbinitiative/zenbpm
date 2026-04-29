@@ -30,6 +30,8 @@ type Storage interface {
 	FlowElementInstanceWriter
 	IncidentStorageReader
 	IncidentStorageWriter
+	ErrorSubscriptionStorageReader
+	ErrorSubscriptionStorageWriter
 
 	GenerateId() int64
 	NewBatch() Batch
@@ -56,6 +58,7 @@ type Batch interface {
 	TokenStorageWriter
 	FlowElementInstanceWriter
 	IncidentStorageWriter
+	ErrorSubscriptionStorageWriter
 
 	// Close will flush the batch into the storage and prepares the batch for new statements
 	Flush(ctx context.Context) error
@@ -143,6 +146,8 @@ type TimerStorageReader interface {
 
 	FindProcessInstanceTimers(ctx context.Context, processInstanceKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
 
+	FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+
 	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 
@@ -150,6 +155,9 @@ type TimerStorageWriter interface {
 	// SaveTimer persists the Timer
 	// and potentially overwrites prior data stored with given key
 	SaveTimer(ctx context.Context, timer bpmnruntime.Timer) error
+
+	// DeleteProcessDefinitionsTimers deletes all timers associated with the given process definition keys
+	DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error
 }
 
 type JobStorageReader interface {
@@ -217,4 +225,13 @@ type IncidentStorageReader interface {
 
 type IncidentStorageWriter interface {
 	SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error
+}
+
+type ErrorSubscriptionStorageReader interface {
+	FindTokenErrorSubscriptions(ctx context.Context, tokenKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error)
+	FindProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ErrorState) ([]bpmnruntime.ErrorSubscription, error)
+}
+
+type ErrorSubscriptionStorageWriter interface {
+	SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error
 }

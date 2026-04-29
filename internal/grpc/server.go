@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
+	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
@@ -36,11 +37,15 @@ type Server struct {
 // NewServer returns a new instance of ZenBpm GRPC server
 func NewServer(ctx context.Context, node *cluster.ZenNode, addr string) *Server {
 	textMapPropagator := otelpropagation.TraceContext{}
-	so := opentelemetry.ServerOption(opentelemetry.Options{
+	serverOption := opentelemetry.ServerOption(opentelemetry.Options{
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: otel.GetMeterProvider()},
 		TraceOptions:   oteltracing.TraceOptions{TracerProvider: otel.GetTracerProvider(), TextMapPropagator: textMapPropagator}})
 
-	grpcServer := grpc.NewServer(so)
+	grpcServer := grpc.NewServer(
+		serverOption,
+		grpc.ChainUnaryInterceptor(recovery.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(recovery.StreamServerInterceptor()),
+	)
 	server := &Server{
 		node:   node,
 		addr:   addr,
@@ -108,8 +113,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		}
 		switch req := clientReq.Request.(type) {
 		case *proto.JobStreamRequest_Complete:
-			vars := map[string]any{}
-			err := json.Unmarshal(req.Complete.Variables, &vars)
+			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
 				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
@@ -136,10 +140,9 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				continue
 			}
 		case *proto.JobStreamRequest_Fail:
-			vars := map[string]any{}
-			err := json.Unmarshal(req.Fail.Variables, &vars)
+			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
@@ -152,7 +155,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
-				stream.Send(&proto.JobStreamResponse{
+				_ = stream.Send(&proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
@@ -218,4 +221,18 @@ func getClientID(ctx context.Context) jobmanager.ClientID {
 		}
 	}
 	return clientID
+}
+
+func decodeVariables(raw []byte) (map[string]any, error) {
+	vars := map[string]any{}
+	if len(raw) == 0 {
+		return vars, nil
+	}
+	if err := json.Unmarshal(raw, &vars); err != nil {
+		return nil, err
+	}
+	if vars == nil {
+		return map[string]any{}, nil
+	}
+	return vars, nil
 }

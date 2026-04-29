@@ -37,8 +37,14 @@ func (r *FeelinRuntime) UnaryTest(expression string, variableContext map[string]
 func (r *FeelinRuntime) Evaluate(expression string, variableContext map[string]any) (any, error) {
 	var runner = r.pool.GetRunnerFromPool()
 	defer r.pool.ReturnRunnerToPool(runner)
-
-	return (*runner.(*FeelinRunner).evalFunc)(expression, variableContext)
+	res, err := (*runner.(*FeelinRunner).evalFunc)(expression, variableContext)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := res.(func(goja.FunctionCall) goja.Value); ok {
+		return nil, nil
+	}
+	return res, err
 }
 
 //go:embed feelin/index.esm.js

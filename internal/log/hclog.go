@@ -13,10 +13,11 @@ import (
 )
 
 type HcLogger struct {
-	slog *slog.Logger
-	name string
-	args []interface{}
-	skip int
+	slog  *slog.Logger
+	name  string
+	attrs []slog.Attr
+	args  []interface{}
+	skip  int
 }
 
 func NewHcLog(logger *slog.Logger, skip int) *HcLogger {
@@ -43,36 +44,29 @@ func (l *HcLogger) Log(level hclog.Level, msg string, args ...interface{}) {
 	}
 }
 
-func (l *HcLogger) argsToAttrs(args ...interface{}) []slog.Attr {
-	attrSize := len(args) + len(l.args)
-	if l.name != "" {
-		attrSize += 1
-	}
-	attrs := make([]slog.Attr, attrSize)
-	for i := range args {
-		if t, ok := args[i].([]interface{}); ok {
-			if len(t) == 0 {
-				continue
-			}
-			attrs = append(attrs, slog.Attr{
-				Key:   fmt.Sprintf("%s", t[0]),
-				Value: slog.AnyValue(t[1]),
-			})
-		}
-	}
-	for i := range l.args {
-		if t, ok := l.args[i].([]interface{}); ok {
-			if len(t) == 0 {
-				continue
-			}
-			attrs = append(attrs, slog.Attr{
-				Key:   fmt.Sprintf("%s", t[0]),
-				Value: slog.AnyValue(t[1]),
-			})
-		}
-	}
+func (l *HcLogger) argsToAttrs(args []interface{}) []slog.Attr {
+	attrs := argsToAttrs(args)
+	attrs = append(attrs, l.attrs...)
 	if l.name != "" {
 		attrs = append(attrs, slog.String("logger", l.name))
+	}
+	return attrs
+}
+
+func argsToAttrs(args []interface{}) []slog.Attr {
+	attrSize := len(args) / 2
+	attrs := make([]slog.Attr, attrSize)
+	itemCount := 0
+	for i := 0; i < len(args); i += 2 {
+		if i+1 >= len(args) {
+			break // uneven args
+		}
+		key, ok := args[i].(string)
+		if !ok {
+			key = fmt.Sprintf("%v", args[i])
+		}
+		attrs[itemCount] = slog.Any(key, args[i+1])
+		itemCount++
 	}
 	return attrs
 }
@@ -117,14 +111,17 @@ func (l *HcLogger) IsError() bool {
 	return l.slog.Enabled(context.Background(), slog.LevelError)
 }
 
-func (l *HcLogger) ImpliedArgs() []interface{} {
-	return l.args
+func (l *HcLogger) ImpliedAttrs() []slog.Attr {
+	return l.attrs
 }
+
+func (l *HcLogger) ImpliedArgs() []interface{} { return l.args }
 
 func (l *HcLogger) With(args ...interface{}) hclog.Logger {
 	logger := NewHcLog(l.slog.With(args...), l.skip)
 	logger.name = l.name
-	logger.args = append(l.args, args)
+	logger.args = append(l.args, args...)
+	logger.attrs = append(l.attrs, argsToAttrs(args)...)
 	return logger
 }
 
@@ -136,6 +133,7 @@ func (l *HcLogger) Named(name string) hclog.Logger {
 	logger := NewHcLog(l.slog, l.skip)
 	logger.name = name
 	logger.args = l.args
+	logger.attrs = l.attrs
 	return logger
 }
 
@@ -143,6 +141,7 @@ func (l *HcLogger) ResetNamed(name string) hclog.Logger {
 	logger := NewHcLog(l.slog, l.skip)
 	logger.name = fmt.Sprintf("%s-%s", l.name, name)
 	logger.args = l.args
+	logger.attrs = l.attrs
 	return logger
 }
 

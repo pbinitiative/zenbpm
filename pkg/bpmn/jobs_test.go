@@ -544,7 +544,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 }
 
 func TestBusinessRuleTaskExternalActivated(t *testing.T) {
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-business-rule-task-external.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/business_rule/simple-business-rule-task-external.bpmn")
 	assert.NoError(t, err)
 
 	h := bpmnEngine.NewTaskHandler().Type("test-business-rule-task-job").Handler(func(aj ActivatedJob) {
@@ -566,7 +566,7 @@ func TestBusinessRuleTaskExternalActivated(t *testing.T) {
 func TestBusinessRuleTaskExternalComplete(t *testing.T) {
 	cp := CallPath{}
 
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-business-rule-task-external.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/business_rule/simple-business-rule-task-external.bpmn")
 	assert.NoError(t, err)
 
 	st1 := bpmnEngine.NewTaskHandler().Id("BusinessRuleTask1").Handler(cp.TaskHandler)

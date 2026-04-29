@@ -50,8 +50,21 @@ func (engine *Engine) NewEngineBatchClean() (EngineBatch, error) {
 	}, nil
 }
 
+func (b *EngineBatch) hasLockedInstance(instanceKey int64) bool {
+	for _, touchedKey := range b.touchedInstances {
+		if touchedKey == instanceKey {
+			return true
+		}
+	}
+	return false
+}
+
 // AddParentLockedInstance only refreshes the input instances. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstance bpmnruntime.ProcessInstance) error {
+	if b.hasLockedInstance(parentInstance.ProcessInstance().Key) {
+		return b.engine.persistence.RefreshProcessInstance(ctx, parentInstance)
+	}
+
 	//This does the same thing as AddLockedInstance because I havent found better way yet
 	//TODO: do this better
 	err := b.engine.runningInstances.tryLockInstance(ctx, parentInstance.ProcessInstance().Key)
@@ -69,6 +82,10 @@ func (b *EngineBatch) AddParentLockedInstance(ctx context.Context, parentInstanc
 
 // AddLockedInstance only refreshes the input instance. State of tokens, job, variables has to be refreshed manually
 func (b *EngineBatch) AddLockedInstance(ctx context.Context, instance bpmnruntime.ProcessInstance) error {
+	if b.hasLockedInstance(instance.ProcessInstance().Key) {
+		return b.engine.persistence.RefreshProcessInstance(ctx, instance)
+	}
+
 	b.engine.runningInstances.lockInstance(instance.ProcessInstance().Key)
 	err := b.engine.persistence.RefreshProcessInstance(ctx, instance)
 	if err != nil {
@@ -158,6 +175,10 @@ func (b *EngineBatch) SaveTimer(ctx context.Context, timer bpmnruntime.Timer) er
 	return b.b.SaveTimer(ctx, timer)
 }
 
+func (b *EngineBatch) DeleteProcessDefinitionsTimers(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.b.DeleteProcessDefinitionsTimers(ctx, processDefinitionKeys)
+}
+
 func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 	return b.b.SaveJob(ctx, job)
 }
@@ -180,4 +201,8 @@ func (b *EngineBatch) UpdateOutputFlowElementInstance(ctx context.Context, histo
 
 func (b *EngineBatch) SaveIncident(ctx context.Context, incident bpmnruntime.Incident) error {
 	return b.b.SaveIncident(ctx, incident)
+}
+
+func (b *EngineBatch) SaveErrorSubscription(ctx context.Context, subscription bpmnruntime.ErrorSubscription) error {
+	return b.b.SaveErrorSubscription(ctx, subscription)
 }

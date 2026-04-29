@@ -18,9 +18,9 @@ const _TimerState_name = "TimerStateCreatedTimerStateTriggeredTimerStateCancelle
 var _TimerState_index = [...]uint8{0, 17, 36, 55}
 
 func (i TimerState) String() string {
-	i -= 1
-	if i < 0 || i >= TimerState(len(_TimerState_index)-1) {
-		return "TimerState(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_TimerState_index)-1 {
+		return "TimerState(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _TimerState_name[_TimerState_index[i]:_TimerState_index[i+1]]
+	return _TimerState_name[_TimerState_index[idx]:_TimerState_index[idx+1]]
 }

@@ -31,10 +31,11 @@ func TestRestApiProcessDefinition(t *testing.T) {
 
 	t.Run("repeatedly calling rest api to deploy definition", func(t *testing.T) {
 		response, err := deployDefinition(t, "service-task-input-output.bpmn")
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, response.StatusCode())
 		assert.Nil(t, response.JSON201)
-		assert.NotNil(t, response.JSON409)
-		assert.Equal(t, "CONFLICT", response.JSON409.Code)
-		assert.Contains(t, response.JSON409.Message, "duplicate process definition")
+		require.NotNil(t, response.JSON200)
+		assert.NotZero(t, response.JSON200.ProcessDefinitionKey)
 
 		definitions, err := listProcessDefinitions(t)
 		assert.NoError(t, err)
@@ -182,7 +183,7 @@ func deployDefinition(t testing.TB, filename string) (*zenclient.CreateProcessDe
 		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
 	}
 
-	if resp.StatusCode() >= 400 && resp.StatusCode() != http.StatusConflict {
+	if resp.StatusCode() >= 400 {
 		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
 	}
 
@@ -210,7 +211,7 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 	if !found {
 		return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
 	}
-	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixMilli()))
+	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 
@@ -262,6 +263,29 @@ func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, 
 	return resp.JSON200.Items, nil
 }
 
+func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	part, err := writer.CreateFormFile("resource", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err = part.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+	if err = writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
+	}
+	if resp.StatusCode() >= 400 {
+		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
+	}
+	return resp, nil
+}
+
 func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -290,16 +314,28 @@ func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProces
 }
 
 func TestRestApiProcessDefinitionErrors(t *testing.T) {
-	t.Run("CreateProcessDefinition - 409 conflict on duplicate content", func(t *testing.T) {
-		// Ensure the definition is deployed at least once before testing conflict
-		_, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
+	t.Run("CreateProcessDefinition - idempotent deploy returns 200 on duplicate content", func(t *testing.T) {
+		// Ensure the definition is deployed at least once before testing idempotency
+		first, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
 		require.NoError(t, err)
-		// Second deployment of identical content must always return 409
+		// The first deploy may be 201 (fresh) or 200 (another test deployed it already);
+		// either way we need the key to compare against.
+		var firstKey int64
+		switch first.StatusCode() {
+		case http.StatusCreated:
+			require.NotNil(t, first.JSON201)
+			firstKey = first.JSON201.ProcessDefinitionKey
+		case http.StatusOK:
+			require.NotNil(t, first.JSON200)
+			firstKey = first.JSON200.ProcessDefinitionKey
+		default:
+			t.Fatalf("unexpected status for initial deploy: %d body=%s", first.StatusCode(), string(first.Body))
+		}
 		resp, err := deployDefinitionRaw(t, "service-task-input-output.bpmn")
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusConflict, resp.StatusCode())
-		require.NotNil(t, resp.JSON409)
-		assert.Equal(t, "CONFLICT", resp.JSON409.Code)
+		assert.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
+		assert.Equal(t, firstKey, resp.JSON200.ProcessDefinitionKey)
 	})
 
 	t.Run("GetProcessDefinition - 404 for nonexistent key", func(t *testing.T) {

@@ -18,9 +18,9 @@ const _NodeState_name = "NodeStateErrorNodeStateStartedNodeStateShutdown"
 var _NodeState_index = [...]uint8{0, 14, 30, 47}
 
 func (i NodeState) String() string {
-	i -= 1
-	if i < 0 || i >= NodeState(len(_NodeState_index)-1) {
-		return "NodeState(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_NodeState_index)-1 {
+		return "NodeState(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _NodeState_name[_NodeState_index[i]:_NodeState_index[i+1]]
+	return _NodeState_name[_NodeState_index[idx]:_NodeState_index[idx+1]]
 }

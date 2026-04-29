@@ -26,9 +26,9 @@ const _ActivityState_name = "ActivityStateActiveActivityStateCompensatedActivity
 var _ActivityState_index = [...]uint8{0, 19, 43, 68, 90, 113, 132, 152, 170, 193, 217, 239}
 
 func (i ActivityState) String() string {
-	i -= 1
-	if i < 0 || i >= ActivityState(len(_ActivityState_index)-1) {
-		return "ActivityState(" + strconv.FormatInt(int64(i+1), 10) + ")"
+	idx := int(i) - 1
+	if i < 1 || idx >= len(_ActivityState_index)-1 {
+		return "ActivityState(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _ActivityState_name[_ActivityState_index[i]:_ActivityState_index[i+1]]
+	return _ActivityState_name[_ActivityState_index[idx]:_ActivityState_index[idx+1]]
 }

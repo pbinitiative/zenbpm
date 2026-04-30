@@ -138,3 +138,20 @@ func (engine *Engine) createInternalTask(
 
 	return job.State, jobError
 }
+
+func (engine *Engine) terminateActiveJobsForToken(ctx context.Context, batch *EngineBatch, tokenKey int64) error {
+
+	jobs, err := engine.persistence.GetJobsInStateByTokenKey(ctx, tokenKey, []runtime.ActivityState{runtime.ActivityStateActive, runtime.ActivityStateCompleting, runtime.ActivityStateFailed})
+	if err != nil {
+		return fmt.Errorf("failed to find jobs for execution token %d: %w", tokenKey, err)
+	}
+	for _, job := range jobs {
+		job.State = runtime.ActivityStateTerminated
+		err = batch.SaveJob(ctx, job)
+		if err != nil {
+			return fmt.Errorf("failed to save changes to job %d: %w", job.Key, err)
+		}
+	}
+
+	return nil
+}

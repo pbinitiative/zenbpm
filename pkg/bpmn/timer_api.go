@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -33,6 +34,11 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 ) {
 	ctx, completeTimerSpan := engine.tracer.Start(ctx, fmt.Sprintf("timer:%d", timer.Key))
 	defer func() {
+		if r := recover(); r != nil {
+			panicErr := fmt.Errorf("failed to process timer, panic recovered: %v\n%s", r, debug.Stack())
+			engine.logger.Error(panicErr.Error())
+			retErr = panicErr
+		}
 		if retErr != nil {
 			completeTimerSpan.RecordError(retErr)
 			completeTimerSpan.SetStatus(codes.Error, retErr.Error())
@@ -50,18 +56,18 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey), err)
+		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
 	}
 
 	currentToken := timer.Token
 	tokenNode := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(currentToken.ElementId)
 	if tokenNode == nil || tokenNode.GetId() == "" {
-		return nil, nil, errors.Join(newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId), err)
+		return nil, nil, newEngineErrorf("failed to find timer node with elementId: %s", timer.ElementId)
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
 	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err))
+		return nil, nil, newEngineErrorf("failed to create batch for timer %d: %s", timer.Key, err)
 	}
 	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 	if err != nil {

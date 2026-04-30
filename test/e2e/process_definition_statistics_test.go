@@ -1,13 +1,14 @@
 package e2e
 
 import (
+	"net/http"
+	"testing"
+	"time"
+
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
-	"time"
 )
 
 // allStatsItems collects all ProcessDefinitionStatistics items from all partitions.
@@ -144,14 +145,13 @@ func TestProcessDefinitionStatistics(t *testing.T) {
 		assert.Empty(t, allStatsItems(resp.JSON200))
 	})
 
-	t.Run("name filter", func(t *testing.T) {
+	t.Run("search filter", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionStatisticsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionStatisticsParams{
-				Name: ptr.To("service-task"),
+				Search: ptr.To("service-task"),
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode())
-		// All returned items should match the name filter
 		for _, item := range allStatsItems(resp.JSON200) {
 			assert.Contains(t, item.BpmnProcessId, "service-task")
 		}

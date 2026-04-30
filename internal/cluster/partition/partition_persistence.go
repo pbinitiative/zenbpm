@@ -1344,6 +1344,10 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
 		}
+		var assignee *string
+		if job.Assignee.Valid {
+			assignee = ptr.To(job.Assignee.String)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
@@ -1356,6 +1360,7 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 				Key: job.ExecutionToken,
 			},
 			Variables: variables,
+			Assignee:  assignee,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1388,6 +1393,10 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 	res := make([]bpmnruntime.Job, len(jobs))
 	tokensToLoad := make([]int64, len(jobs))
 	for i, job := range jobs {
+		var assignee *string
+		if job.Assignee.Valid {
+			assignee = ptr.To(job.Assignee.String)
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
@@ -1399,6 +1408,7 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
+			Assignee: assignee,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1447,6 +1457,11 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 	if err != nil {
 		return res, fmt.Errorf("failed to unmarshal job variables: %w", err)
 	}
+	var assignee *string
+	if job.Assignee.Valid {
+		s := job.Assignee.String
+		assignee = &s
+	}
 	res = bpmnruntime.Job{
 		ElementId:          job.ElementID,
 		ElementInstanceKey: job.ElementInstanceKey,
@@ -1463,6 +1478,7 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 			State:              bpmnruntime.TokenState(token.State),
 		},
 		Variables: variables,
+		Assignee:  assignee,
 	}
 	return res, nil
 }

@@ -40,7 +40,7 @@ func TestMessageEndEvent(t *testing.T) {
 	})
 
 	t.Run("complete the waiting job", func(t *testing.T) {
-		err := completeJob(t, jobToComplete, jobToComplete.Variables)
+		err := completeJob(t, jobToComplete.Key, jobToComplete.Variables)
 		assert.NoError(t, err)
 	})
 

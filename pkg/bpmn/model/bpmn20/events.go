@@ -77,6 +77,7 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 		TEvent
 		TerminateEventDefinition *TTerminateEventDefinition `xml:"terminateEventDefinition"`
 		MessageEventDefinition   *TMessageEventDefinition   `xml:"messageEventDefinition"`
+		TErrorEventDefinition    TErrorEventDefinition      `xml:"errorEventDefinition"`
 		TaskDefinition           extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 		Input                    []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
 		Output                   []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
@@ -93,6 +94,11 @@ func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) 
 	if tempStruct.MessageEventDefinition != nil {
 		endEvent.EventDefinitions = append(endEvent.EventDefinitions, *tempStruct.MessageEventDefinition)
 		endEvent.TaskDefinition = tempStruct.TaskDefinition
+		endEvent.Input = tempStruct.Input
+		endEvent.Output = tempStruct.Output
+	}
+	if tempStruct.TErrorEventDefinition.Id != nil {
+		endEvent.EventDefinitions = append(endEvent.EventDefinitions, tempStruct.TErrorEventDefinition)
 		endEvent.Input = tempStruct.Input
 		endEvent.Output = tempStruct.Output
 	}
@@ -336,7 +342,7 @@ type TTimeInfo struct {
 }
 
 type TErrorEventDefinition struct {
-	Id       string  `xml:"id,attr"`
+	Id       *string `xml:"id,attr"`
 	Name     string  `xml:"name,attr"`
 	ErrorRef *string `xml:"errorRef,attr"`
 }

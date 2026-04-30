@@ -170,6 +170,7 @@ func (s *Server) GetDmnResourceDefinitions(ctx context.Context, request public.G
 		Page:                    request.Params.Page,
 		Size:                    request.Params.Size,
 		DmnDefinitionName:       request.Params.DmnDefinitionName,
+		Search:                  request.Params.Search,
 		OnlyLatest:              request.Params.OnlyLatest,
 		DmnResourceDefinitionId: request.Params.DmnResourceDefinitionId,
 		SortByOrder:             (*string)(sortByOrder),
@@ -643,6 +644,7 @@ func (s *Server) GetProcessDefinitions(ctx context.Context, request public.GetPr
 
 	definitionsPage, err := s.node.GetProcessDefinitions(ctx,
 		request.Params.BpmnProcessId,
+		request.Params.Search,
 		request.Params.OnlyLatest,
 		sort,
 		*request.Params.Page, *request.Params.Size)
@@ -860,7 +862,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 		onlyLatest,
 		bpmnProcessIdIn,
 		bpmnProcessDefinitionKeyIn,
-		request.Params.Name,
+		request.Params.Search,
 		sort,
 	)
 	if err != nil {
@@ -1640,6 +1642,7 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 	}
 
 	return public.GetJob200JSONResponse{
+		Assignee:           job.Assignee,
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
 		Key:                job.GetKey(),

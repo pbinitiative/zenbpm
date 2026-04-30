@@ -30,14 +30,18 @@ func TestTimerStartEvent(t *testing.T) {
 		assert.NoError(t, err)
 
 		// No process instance creation is needed. Timer start event should create the instance itself after definition deployment and timer activation duration
-		time.Sleep(2 * time.Second)
-
-		// verify that process instance exists and is in Active state
-		processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &definition.BpmnProcessId,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 1, processInstances.JSON200.TotalCount)
+		require.Eventually(t, func() bool {
+			processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+				BpmnProcessId: &definition.BpmnProcessId,
+			})
+			if err != nil || processInstances == nil || processInstances.JSON200 == nil {
+				return false
+			}
+			if processInstances.JSON200.TotalCount != 1 {
+				return false
+			}
+			return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
+		}, 5*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
 		fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
 
@@ -74,7 +78,7 @@ func TestTimerStartEvent(t *testing.T) {
 	})
 
 	t.Run("complete job and verify instance is completed", func(t *testing.T) {
-		err := completeJob(t, jobToComplete, map[string]any{})
+		err := completeJob(t, jobToComplete.Key, map[string]any{})
 		assert.NoError(t, err)
 
 		processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
@@ -170,7 +174,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		subProcessJob = jobsPartitionPage.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.JobStateActive, subProcessJob.State)
 
-		err = completeJob(t, subProcessJob, map[string]any{})
+		err = completeJob(t, subProcessJob.Key, map[string]any{})
 		assert.NoError(t, err)
 	})
 
@@ -200,7 +204,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		eventSubProcessJob = jobsPartitionPage.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.JobStateActive, eventSubProcessJob.State)
 
-		err = completeJob(t, eventSubProcessJob, map[string]any{})
+		err = completeJob(t, eventSubProcessJob.Key, map[string]any{})
 		assert.NoError(t, err)
 	})
 
@@ -274,7 +278,7 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		eventSubprocessBJob := jobsPartitionPage.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.JobStateActive, eventSubprocessBJob.State)
 
-		err = completeJob(t, eventSubprocessBJob, map[string]any{})
+		err = completeJob(t, eventSubprocessBJob.Key, map[string]any{})
 		assert.NoError(t, err)
 
 		time.Sleep(100 * time.Millisecond)
@@ -298,7 +302,7 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		eventSubprocessJob := jobsPartitionPage.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.JobStateActive, eventSubprocessJob.State)
 
-		err = completeJob(t, eventSubprocessJob, map[string]any{})
+		err = completeJob(t, eventSubprocessJob.Key, map[string]any{})
 		assert.NoError(t, err)
 
 		time.Sleep(100 * time.Millisecond)

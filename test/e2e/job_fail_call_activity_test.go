@@ -327,7 +327,7 @@ func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) z
 		}
 		child = page.Partitions[0].Items[0]
 		return true
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should create a child process instance", parentProcessInstanceKey)
+	}, 15*time.Second, 100*time.Millisecond, "process instance %d should create a child process instance", parentProcessInstanceKey)
 	return child
 }
 

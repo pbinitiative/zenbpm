@@ -144,6 +144,10 @@ func TestEventSubProcess(t *testing.T) {
 		// before the timer fires, the event subprocess timer should be in TimerStateCreated
 		assertTimerCreated(t, instance.Key, "eventSubprocessTimerEvent_12i3m6f")
 
+		subProcessInstanceWithTimer := waitForChildProcessInstance(t, instance.Key)
+		assertProcessInstanceTokenState(t, subProcessInstanceWithTimer.Key, "end_event_non_interrupting", bpmnruntime.TokenStateCompleted)
+		waitForProcessInstanceState(t, subProcessInstanceWithTimer.Key, zenclient.ProcessInstanceStateCompleted)
+
 		// the job of the main service task should be still in ACTIVE state as the event subprocess is not-interrupting
 		assertSingleJobState(t, instance.Key, zenclient.JobStateActive)
 

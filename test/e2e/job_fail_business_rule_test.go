@@ -27,6 +27,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -46,6 +47,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -66,6 +68,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external"})
 	})
 }
 
@@ -88,6 +91,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -108,6 +112,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -128,5 +133,6 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "boundary-error-business-rule-external"})
 	})
 }

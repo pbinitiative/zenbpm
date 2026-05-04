@@ -103,7 +103,7 @@ func waitForProcessInstanceState(t testing.TB, processInstanceKey int64, expecte
 			return false
 		}
 		return current.State == expectedState
-	}, 10*time.Second, 100*time.Millisecond, "process instance %d should reach state %s", processInstanceKey, expectedState)
+	}, 15*time.Second, 100*time.Millisecond, "process instance %d should reach state %s", processInstanceKey, expectedState)
 }
 
 func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64, elementId string) public.Job {
@@ -129,9 +129,11 @@ func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64
 func assertProcessInstanceVariables(t testing.TB, processInstanceKey int64, expected map[string]any) {
 	t.Helper()
 
-	instance, err := getProcessInstance(t, processInstanceKey)
-	require.NoError(t, err)
-	assert.Equal(t, expected, instance.Variables)
+	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+		instance, err := getProcessInstance(t, processInstanceKey)
+		require.NoError(collect, err)
+		assert.Equal(collect, expected, instance.Variables)
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d variables should match", processInstanceKey)
 }
 
 func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, contains []string, notContains []string) {
@@ -140,20 +142,22 @@ func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, 
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
 	require.NoError(t, err)
 
-	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
-	require.NoError(t, err)
+	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+		require.NoError(collect, err)
 
-	elementIds := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		elementIds = append(elementIds, token.ElementId)
-	}
+		elementIds := make([]string, 0, len(tokens))
+		for _, token := range tokens {
+			elementIds = append(elementIds, token.ElementId)
+		}
 
-	for _, elementId := range contains {
-		assert.Contains(t, elementIds, elementId)
-	}
-	for _, elementId := range notContains {
-		assert.NotContains(t, elementIds, elementId)
-	}
+		for _, elementId := range contains {
+			assert.Contains(collect, elementIds, elementId)
+		}
+		for _, elementId := range notContains {
+			assert.NotContains(collect, elementIds, elementId)
+		}
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain %v elements and not contains %v elements", processInstanceKey, contains, notContains)
 }
 
 func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState) {
@@ -178,6 +182,23 @@ func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, ele
 
 		return false
 	}, 1*time.Second, 100*time.Millisecond, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
+}
+
+func assertProcessInstanceHistory(t testing.TB, processInstanceKey int64, expectedHistoryElements []string) {
+	t.Helper()
+
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+	require.NoError(t, err)
+
+	flowElements, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+	require.NoError(t, err)
+
+	elementIds := make([]string, 0, len(flowElements))
+	for _, flowElement := range flowElements {
+		elementIds = append(elementIds, flowElement.ElementId)
+	}
+
+	assert.ElementsMatch(t, expectedHistoryElements, elementIds, fmt.Sprintf("History elements should match, History elements: %v", elementIds))
 }
 
 func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {

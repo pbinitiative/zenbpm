@@ -156,7 +156,8 @@ func (engine *Engine) failJobWithIncident(
 	batch *EngineBatch,
 	job runtime.Job,
 	instance runtime.ProcessInstance,
-	message string, errorCode *string,
+	message string,
+	errorCode *string,
 ) error {
 
 	job.State = runtime.ActivityStateFailed

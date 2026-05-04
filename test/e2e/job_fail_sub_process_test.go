@@ -29,6 +29,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -36,6 +37,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("matched_error_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -57,6 +59,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -64,6 +67,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
@@ -85,6 +89,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -92,6 +97,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -113,6 +119,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
 		assertProcessInstanceTokenState(t, processInstance.Key, "subprocess_1", bpmnruntime.TokenStateWaiting)
@@ -120,6 +127,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"subprocess_1"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1"})
 	})
 }
 
@@ -143,6 +151,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -150,6 +159,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("matched_error_is_caught_and_propagates_variables_to_catching_scope", func(t *testing.T) {
@@ -171,6 +181,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -178,6 +189,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
@@ -199,6 +211,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", bpmnruntime.TokenStateCompleted)
@@ -206,6 +219,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1", "Flow_01g5l10", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -228,6 +242,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
 		assertProcessInstanceTokenElements(t, innerProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, innerProcess.Key, []string{"Flow_0921sm2", "Event_0r3npi7", "service_task"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
 		assertProcessInstanceTokenState(t, processInstance.Key, "subprocess_1", bpmnruntime.TokenStateWaiting)
@@ -235,6 +250,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"subprocess_1"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_08y636o", "Event_18sxgar", "subprocess_1"})
 	})
 
 	t.Run("nested_matched_error_is_caught_and_propagates_all_variables_to_catching_scope", func(t *testing.T) {
@@ -263,16 +279,19 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, serviceTaskProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, serviceTaskProcess.Key)
 		assertProcessInstanceTokenElements(t, serviceTaskProcess.Key, []string{"service_task"}, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, serviceTaskProcess.Key, []string{"Flow_0lr9l93", "Event_0vhkfv0", "service_task", "Event_0pbbln3"})
 
 		waitForProcessInstanceState(t, secondChildProcess.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceVariables(t, secondChildProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, secondChildProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, secondChildProcess.Key)
+		assertProcessInstanceHistory(t, secondChildProcess.Key, []string{"Flow_0921sm2", "start_subprocess_0", "subprocess_0"})
 
 		waitForProcessInstanceState(t, firstChildProcess.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceVariables(t, firstChildProcess.Key, map[string]interface{}{"variable_from_request": "request_variable", "variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, firstChildProcess.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, firstChildProcess.Key, 0, 1)
+		assertProcessInstanceHistory(t, firstChildProcess.Key, []string{"Flow_1ijsfip", "start_subprocess_1", "subprocess_1", "Flow_1nd1fpn", "Event_09haznn"})
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceTokenState(t, processInstance.Key, "complete", bpmnruntime.TokenStateCompleted)
@@ -280,6 +299,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"complete"}, []string{})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_07q4pdb", "start_subprocess_2", "subprocess_2", "Flow_17ropai", "complete"})
 	})
 }
 

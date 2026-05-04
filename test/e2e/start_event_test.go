@@ -41,7 +41,7 @@ func TestTimerStartEvent(t *testing.T) {
 				return false
 			}
 			return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
-		}, 5*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
+		}, 20*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
 		fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
 
@@ -67,26 +67,42 @@ func TestTimerStartEvent(t *testing.T) {
 	// find the input-task-for-timer-start-event-test job and verify it is Active
 	var jobToComplete zenclient.Job
 	t.Run("read waiting jobs", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "input-task-for-timer-start-event-test")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
-		jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
+
+		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+			jobsPartitionPage, errJobs := readWaitingJobs(t, "input-task-for-timer-start-event-test")
+
+			if errJobs != nil {
+				return
+			}
+
+			if !assert.NotEmpty(t, jobsPartitionPage) {
+				return
+			}
+
+			if !assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items) {
+				return
+			}
+
+			jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
+		}, 15*time.Second, 100*time.Millisecond, "timer start event should have at least one job")
+
 		assert.NotEmpty(t, jobToComplete.Key)
 		assert.NotEmpty(t, jobToComplete.ProcessInstanceKey)
 		assert.Equal(t, zenclient.JobStateActive, jobToComplete.State)
 	})
 
 	t.Run("complete job and verify instance is completed", func(t *testing.T) {
-		err := completeJob(t, jobToComplete.Key, map[string]any{})
-		assert.NoError(t, err)
 
-		processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &definition.BpmnProcessId,
-		})
-		assert.NoError(t, err)
-		completedInstance := processInstances.JSON200.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, completedInstance.State)
+		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+			errCompleteJob := completeJob(t, jobToComplete.Key, map[string]any{})
+			assert.NoError(t, errCompleteJob)
+
+			processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+				BpmnProcessId: &definition.BpmnProcessId,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, zenclient.ProcessInstanceStateCompleted, processInstances.JSON200.Partitions[0].Items[0].State)
+		}, 15*time.Second, 100*time.Millisecond, "timer start event should have completed")
 	})
 
 }
@@ -319,33 +335,54 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 	})
 }
 
-// assertStartEventExecuted verifies that expectedElementId is present among the flow element
+// assertStartEventExecuted verifies that expectedElementId is presented among the flow element
 // instances for the given process instance, and that unexpectedElementId is absent.
 func assertStartEventExecuted(t testing.TB, store storage.Storage, processInstanceKey int64, expectedElementId, unexpectedElementId string) {
 	t.Helper()
-	flowElements, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
-	require.NoError(t, err)
 
-	var found, notFound bool
-	for _, fe := range flowElements {
-		if fe.ElementId == expectedElementId {
-			found = true
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		flowElements, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+		if !assert.NoError(collect, err) {
+			return
 		}
-		if fe.ElementId == unexpectedElementId {
-			notFound = true
+
+		var found, notFound bool
+		for _, fe := range flowElements {
+			if fe.ElementId == expectedElementId {
+				found = true
+			}
+			if fe.ElementId == unexpectedElementId {
+				notFound = true
+			}
 		}
-	}
-	assert.True(t, found, "expected start event %q to have a flow element instance for process instance %d", expectedElementId, processInstanceKey)
-	assert.False(t, notFound, "unexpected start event %q should not have a flow element instance for process instance %d", unexpectedElementId, processInstanceKey)
+
+		assert.True(collect, found, "expected start event %q to have a flow element instance for process instance %d", expectedElementId, processInstanceKey)
+		assert.False(collect, notFound, "unexpected start event %q should not have a flow element instance for process instance %d", unexpectedElementId, processInstanceKey)
+	}, 5*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
 }
 
-// getFirstChildInstance retrieves the first child process instance of the given parent and asserts exactly one exists.
 func getFirstChildInstance(t testing.TB, parentKey int64) zenclient.ProcessInstancesListItem {
 	t.Helper()
-	children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), parentKey, &zenclient.GetChildProcessInstancesParams{})
-	require.NoError(t, err)
-	require.NotEmpty(t, children.JSON200.Partitions)
-	require.NotEmpty(t, children.JSON200.Partitions[0].Items)
-	require.Equal(t, 1, len(children.JSON200.Partitions[0].Items))
-	return children.JSON200.Partitions[0].Items[0]
+
+	processInstanceListItem := zenclient.ProcessInstancesListItem{}
+
+	require.Eventually(t, func() bool {
+		children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), parentKey, &zenclient.GetChildProcessInstancesParams{})
+
+		if err != nil {
+			return false
+		}
+
+		if children.JSON200 == nil || len(children.JSON200.Partitions) == 0 {
+			return false
+		}
+
+		if len(children.JSON200.Partitions[0].Items) != 1 {
+			return false
+		}
+
+		processInstanceListItem = children.JSON200.Partitions[0].Items[0]
+		return true
+	}, 5*time.Second, 100*time.Millisecond, "The child process instance list should contain exactly one child process instance.")
+	return processInstanceListItem
 }

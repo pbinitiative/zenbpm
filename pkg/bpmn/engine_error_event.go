@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -202,13 +203,28 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 	}
 
 	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
-	_, err = variableHolder.PropagateOutputVariablesToParent(match.event.GetOutputMapping(), variables, engine.evaluateExpression)
+	propagatedVariables, err := variableHolder.PropagateOutputVariablesToParent(match.event.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to propagate boundary error variables to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
 	}
 
 	if err := batch.SaveProcessInstance(ctx, boundaryInstance); err != nil {
 		return nil, nil, fmt.Errorf("failed to save process instance %d after boundary error handling: %w", boundaryInstance.ProcessInstance().Key, err)
+	}
+
+	err = batch.SaveFlowElementInstance(ctx,
+		runtime.FlowElementInstance{
+			Key:                engine.generateKey(),
+			ProcessInstanceKey: currentInstance.ProcessInstance().GetInstanceKey(),
+			ElementId:          match.event.TEvent.GetId(),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  match.scope.token.Key,
+			InputVariables:     nil,
+			OutputVariables:    propagatedVariables,
+		},
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to save flow elements to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
 	}
 
 	for _, token := range tokens {

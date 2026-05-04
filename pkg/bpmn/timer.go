@@ -22,9 +22,9 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 	if err != nil {
 		return currentToken, fmt.Errorf("failed to save timer: %w", err)
 	}
-
-	// TODO: add timer into engine timer registry
-	_ = timer
+	batch.AddPostFlushAction(ctx, func() {
+		engine.timerManager.registerTimer(*timer)
+	})
 
 	currentToken.State = runtime.TokenStateWaiting
 	return currentToken, err
@@ -58,7 +58,6 @@ func (engine *Engine) createDurationTimer(
 		Duration:             time.Duration(durationVal.TS) * time.Second,
 		Token:                token,
 	}
-	engine.timerManager.registerTimer(t)
 	return &t, nil
 }
 

@@ -33,6 +33,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -57,6 +58,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -81,6 +83,7 @@ func TestGrpcJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary"})
 	})
 }
 
@@ -106,6 +109,7 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("matching_error_code_is_caught", func(t *testing.T) {
@@ -130,6 +134,7 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
 		assertProcessInstanceTokenElements(t, processInstance.Key, []string{"handled-end"}, []string{"should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary", "boundary-error-main-task", "Flow_boundary_handled", "handled-end"})
 	})
 
 	t.Run("unmatched_error_creates_incident", func(t *testing.T) {
@@ -154,5 +159,6 @@ func TestRestJobFailOnServiceTask(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertProcessInstanceTokenElements(t, processInstance.Key, nil, []string{"handled-end", "should-not-happen-end"})
+		assertProcessInstanceHistory(t, processInstance.Key, []string{"Flow_start_main", "StartEvent_1", "service-task-error-boundary"})
 	})
 }

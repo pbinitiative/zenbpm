@@ -77,16 +77,10 @@ func TestEventSubProcess(t *testing.T) {
 		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
 
 		// Verify the instance is active (service-task-1 is waiting for a job worker)
-		fetchedInstance, err := getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateActive)
 
 		// before the timer fires, the event subprocess timer should be in TimerStateCreated
 		assertTimerCreated(t, instance.Key, "subProcessTimerEvent_12i3m6f")
-
-		// Wait for 2s till timer start event of event sub process fires and completes the event sub process
-		// which should interrupt the main process and complete it as well
-		time.Sleep(2 * time.Second)
 
 		// the job of the main service task should be in TERMINATED state as the event subprocess should have interrupted it
 		assertSingleJobState(t, instance.Key, zenclient.JobStateTerminated)
@@ -95,21 +89,37 @@ func TestEventSubProcess(t *testing.T) {
 		_ = requireChildEventSubProcessCompleted(t, instance.Key)
 
 		// Verify the parent process instance is also completed
-		fetchedInstance, err = getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
-			"Parent process instance should be completed as the event subprocess is interrupting and was completed")
+
+		var fetchedInstance *zenclient.ProcessInstance
+
+		assert.Eventually(t, func() bool {
+			processInstance, errGetProcessInstance := getProcessInstance(t, instance.Key)
+
+			if errGetProcessInstance != nil {
+				return false
+			}
+
+			if processInstance.State != zenclient.ProcessInstanceStateCompleted {
+				return false
+			}
+
+			fetchedInstance = &processInstance
+			return true
+		}, 15*time.Second, 100*time.Millisecond, "Parent process instance should be completed as the event subprocess is interrupting and was completed")
 
 		// after process completion, root instance timer should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "subProcessTimerEvent_12i3m6f")
 
 		vars := fetchedInstance.Variables
-		assert.Equal(t, "timer-fired", vars["subProcessResult"],
-			"subProcessResult should be set by the event subprocess output mapping")
-		assert.Equal(t, true, vars["timerInterrupted"],
-			"timerInterrupted should be set by the event subprocess output mapping")
-		assert.Equal(t, "timer-event-subprocess", vars["interruptedBy"],
-			"interruptedBy should be set by the event subprocess output mapping")
+
+		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.Equal(collect, "timer-fired", vars["subProcessResult"],
+				"subProcessResult should be set by the event subprocess output mapping")
+			assert.Equal(collect, true, vars["timerInterrupted"],
+				"timerInterrupted should be set by the event subprocess output mapping")
+			assert.Equal(collect, "timer-event-subprocess", vars["interruptedBy"],
+				"interruptedBy should be set by the event subprocess output mapping")
+		}, 15*time.Second, 100*time.Millisecond, "Should have triggered a timer event")
 	})
 
 	t.Run("test non-interrupting timer event sub process", func(t *testing.T) {
@@ -134,9 +144,9 @@ func TestEventSubProcess(t *testing.T) {
 		// before the timer fires, the event subprocess timer should be in TimerStateCreated
 		assertTimerCreated(t, instance.Key, "eventSubprocessTimerEvent_12i3m6f")
 
-		// Wait for 2s till timer start event of event sub process fires and completes the event sub process
-		// that should NOT interrupt the main process and complete it
-		time.Sleep(2 * time.Second)
+		subProcessInstanceWithTimer := waitForChildProcessInstance(t, instance.Key)
+		assertProcessInstanceTokenState(t, subProcessInstanceWithTimer.Key, "end_event_non_interrupting", bpmnruntime.TokenStateCompleted)
+		waitForProcessInstanceState(t, subProcessInstanceWithTimer.Key, zenclient.ProcessInstanceStateCompleted)
 
 		// the job of the main service task should be still in ACTIVE state as the event subprocess is not-interrupting
 		assertSingleJobState(t, instance.Key, zenclient.JobStateActive)
@@ -150,13 +160,14 @@ func TestEventSubProcess(t *testing.T) {
 		// after the event subprocess completes, root instance timer should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "eventSubprocessTimerEvent_12i3m6f")
 
-		// verify that the event subprocess output variables were propagated to the still-active parent instance
-		fetchedInstance, err = getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, "non-interrupting-done", fetchedInstance.Variables["eventSubProcessResult"],
-			"eventSubProcessResult should be propagated from the non-interrupting event subprocess to the parent")
-		assert.Equal(t, true, fetchedInstance.Variables["nonInterruptingExecuted"],
-			"nonInterruptingExecuted should be propagated from the non-interrupting event subprocess to the parent")
+		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+			fetchedInstance, err = getProcessInstance(t, instance.Key)
+			assert.NoError(collect, err)
+			assert.Equal(collect, "non-interrupting-done", fetchedInstance.Variables["eventSubProcessResult"],
+				"eventSubProcessResult should be propagated from the non-interrupting event subprocess to the parent")
+			assert.Equal(collect, true, fetchedInstance.Variables["nonInterruptingExecuted"],
+				"nonInterruptingExecuted should be propagated from the non-interrupting event subprocess to the parent")
+		}, 15*time.Second, 100*time.Millisecond, "the event subprocess output variables should be propagated to the still-active parent instance")
 	})
 
 	t.Run("test interrupting timer event nested sub processes", func(t *testing.T) {
@@ -183,38 +194,32 @@ func TestEventSubProcess(t *testing.T) {
 		// root process timer (that would start L1 sub process) should be created
 		assertTimerCreated(t, instance.Key, "eventSubprocessL1TimerEvent_12i3m6f")
 
-		// Wait for L1 event subprocess timer (PT1S) to fire and create the L1 child instance
-		time.Sleep(1500 * time.Millisecond)
-
 		// L1 child instance should now exist and be active; its L2 timer should be in TimerStateCreated
 		l1Instance := getFirstChildInstance(t, instance.Key)
 		assertTimerCreated(t, l1Instance.Key, "eventSubProcessL2TimerEvent_075kpin")
-
-		// Wait for L2 event subprocess timer (PT1S) to fire and create the L2 child instance
-		time.Sleep(1000 * time.Millisecond)
 
 		// L2 child instance should now exist and be active; its L3 timer should be in TimerStateCreated
 		l2Instance := getFirstChildInstance(t, l1Instance.Key)
 		assertTimerCreated(t, l2Instance.Key, "eventSubProcessL3TimerEvent_0zi70w1")
 
-		// Wait for L3 event subprocess timer (PT1S) to fire and all instances to complete
-		time.Sleep(2 * time.Second)
-
 		// ROOT parent instance: verify jobs are terminated
 		assertSingleJobState(t, instance.Key, zenclient.JobStateTerminated)
-		// ROOT parent instance: Verify the parent process instance is also completed
-		fetchedInstance, err = getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
-			"Parent process instance should be completed as the event subprocess is interrupting and was completed")
 
-		// verify that event subprocess output variables were propagated through all levels to root
-		assert.Equal(t, "l1-completed", fetchedInstance.Variables["l1Result"],
-			"l1Result should be propagated from L1 event subprocess to root")
-		assert.Equal(t, "l2-completed", fetchedInstance.Variables["l2Result"],
-			"l2Result should be propagated through L1 from L2 event subprocess to root")
-		assert.Equal(t, "l3-completed", fetchedInstance.Variables["l3Result"],
-			"l3Result should be propagated through L2 and L1 from L3 event subprocess to root")
+		// ROOT parent instance: Verify the parent process instance is also completed
+		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+			fetchedInstance, err = getProcessInstance(t, instance.Key)
+			assert.NoError(collect, err)
+			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
+				"Parent process instance should be completed as the event subprocess is interrupting and was completed")
+
+			// verify that event subprocess output variables were propagated through all levels to root
+			assert.Equal(collect, "l1-completed", fetchedInstance.Variables["l1Result"],
+				"l1Result should be propagated from L1 event subprocess to root")
+			assert.Equal(collect, "l2-completed", fetchedInstance.Variables["l2Result"],
+				"l2Result should be propagated through L1 from L2 event subprocess to root")
+			assert.Equal(collect, "l3-completed", fetchedInstance.Variables["l3Result"],
+				"l3Result should be propagated through L2 and L1 from L3 event subprocess to root")
+		}, 15*time.Second, 100*time.Millisecond, "Parent process instance should be completed with output variables as the event subprocess is interrupting and was completed")
 
 		// after process completion, root instance timers should be in TimerStateTriggered
 		assertTimerTriggered(t, instance.Key, "eventSubprocessL1TimerEvent_12i3m6f")
@@ -243,22 +248,41 @@ func TestEventSubProcess(t *testing.T) {
 // parent instance, requires it to exist, asserts it is in completed state, and returns it.
 func requireChildEventSubProcessCompleted(t *testing.T, parentInstanceKey int64) *zenclient.ProcessInstancesListItem {
 	t.Helper()
-	childrenPage, err := getChildInstances(t, parentInstanceKey)
-	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, childrenPage.Count, 1, "There should be at least one child process instance (the event subprocess)")
-
 	var instance *zenclient.ProcessInstancesListItem
-	for i := range childrenPage.Partitions {
-		for j := range childrenPage.Partitions[i].Items {
-			item := &childrenPage.Partitions[i].Items[j]
-			if item.ParentProcessInstanceKey != nil && *item.ParentProcessInstanceKey == parentInstanceKey {
-				instance = item
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		childrenPage, err := getChildInstances(t, parentInstanceKey)
+		if !assert.NoError(collect, err) {
+			return
+		}
+		if !assert.GreaterOrEqual(collect, childrenPage.Count, 1, "There should be at least one child process instance (the event subprocess)") {
+			return
+		}
+
+		var found *zenclient.ProcessInstancesListItem
+		for i := range childrenPage.Partitions {
+			for j := range childrenPage.Partitions[i].Items {
+				item := &childrenPage.Partitions[i].Items[j]
+				if item.ParentProcessInstanceKey != nil && *item.ParentProcessInstanceKey == parentInstanceKey {
+					found = item
+					break
+				}
+			}
+			if found != nil {
 				break
 			}
 		}
-	}
-	require.NotNil(t, instance, "Event subprocess instance should exist as a child of the parent instance")
-	assert.Equal(t, zenclient.ProcessInstanceStateCompleted, instance.State, "Event subprocess should have completed")
+
+		if !assert.NotNil(collect, found, "Event subprocess instance should exist as a child of the parent instance") {
+			return
+		}
+		if !assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, found.State, "Event subprocess should have completed") {
+			return
+		}
+
+		instance = found
+	}, 15*time.Second, 100*time.Millisecond, "child event subprocess should complete")
+
 	return instance
 }
 
@@ -266,13 +290,16 @@ func requireChildEventSubProcessCompleted(t *testing.T, parentInstanceKey int64)
 // with one job, and that job is in expectedJobState state.
 func assertSingleJobState(t *testing.T, instanceKey int64, expectedJobState zenclient.JobState) {
 	t.Helper()
-	jobs, err := getJobs(t, zenclient.GetJobsParams{
-		ProcessInstanceKey: ptr.To(instanceKey),
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(jobs.Partitions), "Should have one partition with jobs")
-	assert.Equal(t, 1, len(jobs.Partitions[0].Items), "Should have one job for the process instance")
-	assert.Equal(t, expectedJobState, jobs.Partitions[0].Items[0].State, "The job should be in "+expectedJobState+" state as the event subprocess should have interrupted it")
+
+	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+		jobs, err := getJobs(t, zenclient.GetJobsParams{
+			ProcessInstanceKey: ptr.To(instanceKey),
+		})
+		assert.NoError(collect, err)
+		assert.Equal(collect, 1, len(jobs.Partitions), "Should have one partition with jobs")
+		assert.Equal(collect, 1, len(jobs.Partitions[0].Items), "Should have one job for the process instance")
+		assert.Equal(collect, expectedJobState, jobs.Partitions[0].Items[0].State, "The job should be in "+expectedJobState+" state as the event subprocess should have interrupted it")
+	}, 15*time.Second, 100*time.Millisecond, "The job should be in "+expectedJobState+" state")
 }
 
 // assertTimerTriggered verifies that a timer with the given elementId exists in TimerStateTriggered
@@ -281,16 +308,23 @@ func assertTimerTriggered(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 	require.NoError(t, err)
-	triggeredTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateTriggered)
-	require.NoError(t, err)
-	found := false
-	for _, timer := range triggeredTimers {
-		if timer.ElementId == elementId {
-			found = true
-			break
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		triggeredTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateTriggered)
+		if !assert.NoError(collect, err) {
+			return
 		}
-	}
-	assert.True(t, found, "expected timer with elementId %q to be in TimerStateTriggered for process instance %d, got: %+v", elementId, instanceKey, triggeredTimers)
+
+		found := false
+		for _, timer := range triggeredTimers {
+			if timer.ElementId == elementId {
+				found = true
+				break
+			}
+		}
+
+		assert.True(collect, found, "expected timer with elementId %q to be in TimerStateTriggered for process instance %d, got: %+v", elementId, instanceKey, triggeredTimers)
+	}, 20*time.Second, 100*time.Millisecond, "timer should be triggered")
 }
 
 // assertTimerCreated verifies that a timer with the given elementId exists in TimerStateCreated

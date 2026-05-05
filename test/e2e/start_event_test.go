@@ -166,7 +166,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
-	var subProcessChild zenclient.ProcessInstancesListItem
+	var subProcessChild zenclient.ProcessInstancesSimple
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, &definition.Key, map[string]any{})
@@ -254,7 +254,7 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
-	var subProcessChild zenclient.ProcessInstancesListItem
+	var subProcessChild zenclient.ProcessInstancesSimple
 
 	t.Run("create process instance", func(t *testing.T) {
 		instance, err = createProcessInstance(t, &definition.Key, map[string]any{})
@@ -361,10 +361,10 @@ func assertStartEventExecuted(t testing.TB, store storage.Storage, processInstan
 	}, 5*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
 }
 
-func getFirstChildInstance(t testing.TB, parentKey int64) zenclient.ProcessInstancesListItem {
+func getFirstChildInstance(t testing.TB, parentKey int64) zenclient.ProcessInstancesSimple {
 	t.Helper()
 
-	processInstanceListItem := zenclient.ProcessInstancesListItem{}
+	processInstanceListItem := zenclient.ProcessInstancesSimple{}
 
 	require.Eventually(t, func() bool {
 		children, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), parentKey, &zenclient.GetChildProcessInstancesParams{})

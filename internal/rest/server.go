@@ -967,11 +967,13 @@ func (s *Server) CreateProcessInstance(ctx context.Context, request public.Creat
 	}
 
 	return public.CreateProcessInstance201JSONResponse{
-		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-		Key:                  process.GetKey(),
-		ProcessDefinitionKey: process.GetDefinitionKey(),
-		State:                processInstanceState,
-		Variables:            processVars,
+		ProcessInstancesSimple: public.ProcessInstancesSimple{
+			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Key:                  process.GetKey(),
+			ProcessDefinitionKey: process.GetDefinitionKey(),
+			State:                processInstanceState,
+			Variables:            processVars,
+		},
 	}, nil
 }
 
@@ -1002,14 +1004,28 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, request pub
 	if err != nil {
 		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
+
+	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
+	if errInstanceState != nil {
+		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+	}
+
+	processInstanceType, errInstanceType := getRestProcessInstanceType(runtime.ProcessType(process.GetType()))
+	if errInstanceType != nil {
+		return public.StartProcessInstanceOnElements500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
+	}
+
 	return public.StartProcessInstanceOnElements201JSONResponse{
-		CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-		Key:                  process.GetKey(),
-		ProcessDefinitionKey: process.GetDefinitionKey(),
-		// TODO: make sure its the same string
-		State:     public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
-		Variables: processVars,
+		ProcessInstancesSimple: public.ProcessInstancesSimple{
+			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+			Key:                  process.GetKey(),
+			ProcessDefinitionKey: process.GetDefinitionKey(),
+			State:                processInstanceState,
+			ProcessType:          processInstanceType,
+			Variables:            processVars,
+		},
 	}, nil
+
 }
 
 func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProcessInstancesRequestObject) (public.GetProcessInstancesResponseObject, error) {
@@ -1110,7 +1126,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
-			Items:     make([]public.ProcessInstancesListItem, len(partitionInstances.GetInstances())),
+			Items:     make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
 			Partition: int(partitionInstances.GetPartitionId()),
 		}
 		count += len(partitionInstances.GetInstances())
@@ -1132,7 +1148,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				return public.GetProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
 			}
 
-			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesListItem{
+			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
 				BpmnProcessId:        instance.ProcessId,
 				BusinessKey:          instance.BusinessKey,
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
@@ -1200,16 +1216,18 @@ func (s *Server) GetProcessInstance(ctx context.Context, request public.GetProce
 	}
 
 	return &public.GetProcessInstance200JSONResponse{
-		ActiveElementInstances:   respActiveElementInstances,
-		CreatedAt:                time.UnixMilli(instance.GetCreatedAt()),
-		Key:                      instance.GetKey(),
-		BusinessKey:              instance.BusinessKey,
-		ProcessDefinitionKey:     instance.GetDefinitionKey(),
-		State:                    processInstanceState,
-		Variables:                vars,
-		ProcessType:              processInstanceType,
-		BpmnProcessId:            instance.ProcessId,
-		ParentProcessInstanceKey: parentProcessInstanceKey,
+		ActiveElementInstances: respActiveElementInstances,
+		ProcessInstancesSimple: public.ProcessInstancesSimple{
+			CreatedAt:                time.UnixMilli(instance.GetCreatedAt()),
+			Key:                      instance.GetKey(),
+			BusinessKey:              instance.BusinessKey,
+			ProcessDefinitionKey:     instance.GetDefinitionKey(),
+			State:                    processInstanceState,
+			Variables:                vars,
+			ProcessType:              processInstanceType,
+			BpmnProcessId:            instance.ProcessId,
+			ParentProcessInstanceKey: parentProcessInstanceKey,
+		},
 	}, nil
 }
 
@@ -1303,7 +1321,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 	totalCount := 0
 	for i, partitionInstances := range partitionedInstances {
 		processInstancesPage.Partitions[i] = public.PartitionProcessInstances{
-			Items:     make([]public.ProcessInstancesListItem, len(partitionInstances.GetInstances())),
+			Items:     make([]public.ProcessInstancesSimple, len(partitionInstances.GetInstances())),
 			Partition: int(partitionInstances.GetPartitionId()),
 		}
 		count += len(partitionInstances.GetInstances())
@@ -1328,7 +1346,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 				return public.GetChildProcessInstances500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
 			}
 
-			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesListItem{
+			processInstancesPage.Partitions[i].Items[k] = public.ProcessInstancesSimple{
 				BpmnProcessId:        instance.ProcessId,
 				BusinessKey:          instance.BusinessKey,
 				CreatedAt:            time.UnixMilli(instance.GetCreatedAt()),
@@ -1853,14 +1871,21 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, request public.Modif
 		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceType).ToApiError()), nil
 	}
 
+	processInstanceState, errInstanceState := getRestProcessInstanceState(runtime.ActivityState(process.GetState()))
+	if errInstanceState != nil {
+		return public.ModifyProcessInstance500JSONResponse(zenerr.TechnicalError(errInstanceState).ToApiError()), nil
+	}
+
 	return public.ModifyProcessInstance201JSONResponse{
 		ProcessInstance: &public.ProcessInstance{
-			CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
-			Key:                  process.GetKey(),
-			ProcessDefinitionKey: process.GetDefinitionKey(),
-			ProcessType:          processInstanceType,
-			State:                public.ProcessInstanceState(runtime.ActivityState(process.GetState()).String()),
-			Variables:            processVars,
+			ProcessInstancesSimple: public.ProcessInstancesSimple{
+				CreatedAt:            time.UnixMilli(process.GetCreatedAt()),
+				Key:                  process.GetKey(),
+				ProcessDefinitionKey: process.GetDefinitionKey(),
+				ProcessType:          processInstanceType,
+				State:                processInstanceState,
+				Variables:            processVars,
+			},
 		},
 		ActiveElementInstances: &respActiveElementInstances,
 	}, nil

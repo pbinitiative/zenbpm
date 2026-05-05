@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_multiline_dmn"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="MultilineDMNBusinessRulesProcess" name="Multiline DMN Business Rules Process" isExecutable="true">
+    <bpmn:startEvent id="start" name="Start">
+      <bpmn:outgoing>Flow_start_to_literal</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_literal" sourceRef="start" targetRef="LiteralExpressionTask" />
+    <bpmn:businessRuleTask id="LiteralExpressionTask" name="Literal Expression Multiline">
+      <bpmn:extensionElements>
+        <zeebe:calledDecision decisionId="decLiteralExpr" resultVariable="literalResult" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_to_literal</bpmn:incoming>
+      <bpmn:outgoing>Flow_literal_to_table</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="Flow_literal_to_table" sourceRef="LiteralExpressionTask" targetRef="DecisionTableTask" />
+    <bpmn:businessRuleTask id="DecisionTableTask" name="Decision Table Multiline Output">
+      <bpmn:extensionElements>
+        <zeebe:calledDecision decisionId="decMultilineOutput" resultVariable="tableResult" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=&quot;A1&quot;" target="code" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_literal_to_table</bpmn:incoming>
+      <bpmn:outgoing>Flow_table_to_end</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="Flow_table_to_end" sourceRef="DecisionTableTask" targetRef="end" />
+    <bpmn:endEvent id="end" name="End">
+      <bpmn:incoming>Flow_table_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="MultilineDMNBusinessRulesProcess">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="LiteralExpressionTask_di" bpmnElement="LiteralExpressionTask">
+        <dc:Bounds x="250" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DecisionTableTask_di" bpmnElement="DecisionTableTask">
+        <dc:Bounds x="420" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_di" bpmnElement="end">
+        <dc:Bounds x="592" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_literal_di" bpmnElement="Flow_start_to_literal">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="250" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_literal_to_table_di" bpmnElement="Flow_literal_to_table">
+        <di:waypoint x="350" y="120" />
+        <di:waypoint x="420" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_table_to_end_di" bpmnElement="Flow_table_to_end">
+        <di:waypoint x="520" y="120" />
+        <di:waypoint x="592" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 )
@@ -13,13 +14,12 @@ func TestRestApiEvaluateDecision(t *testing.T) {
 	var dmnResourceDefinition zenclient.DmnResourceDefinitionSimple
 	_, err := deployDmnResourceDefinition(t, "bulk-evaluation-test/can-autoliquidate-rule.dmn")
 	assert.NoError(t, err)
-	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{})
+	definitions, err := listDecisionDefinitions(t, &zenclient.GetDmnResourceDefinitionsParams{
+		DmnResourceDefinitionId: ptr.To("example_canAutoLiquidate"),
+	})
 	assert.NoError(t, err)
-	for _, def := range definitions {
-		if def.DmnResourceDefinitionId == "example_canAutoLiquidate" {
-			dmnResourceDefinition = def
-			break
-		}
+	if len(definitions) > 0 {
+		dmnResourceDefinition = definitions[0]
 	}
 
 	t.Run("evaluate decision BindingType Latest with DmnResourceDefinitionId", func(t *testing.T) {

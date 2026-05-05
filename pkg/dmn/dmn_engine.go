@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -469,14 +470,28 @@ func (engine *ZenDmnEngine) evaluateContext(decisionContext *dmn.TContext, resul
 	return resultVariable, nil
 }
 
+var stringLiteralRegex = regexp.MustCompile(`"([^"\\]|\\.)*"`)
+
+func normalizeFeelStringLiteral(expr string) string {
+	replacer := strings.NewReplacer("\r\n", "\\n", "\r", "\\n", "\n", "\\n")
+	return stringLiteralRegex.ReplaceAllStringFunc(expr, func(match string) string {
+		return replacer.Replace(match)
+	})
+}
+
 func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLiteralExpression, variable *dmn.TVariable, decisionId string, localVariableContext map[string]interface{}) (map[string]any, error) {
 	var resultValue any
 	var err error
 	switch literalExpression.ExpressionLanguage {
 	case "feel", "":
-		resultValue, err = engine.feelRuntime.(*feel.FeelinRuntime).Evaluate(literalExpression.Text.Text, localVariableContext)
+		original := literalExpression.Text.Text
+		expr := normalizeFeelStringLiteral(original)
+		resultValue, err = engine.feelRuntime.Evaluate(expr, localVariableContext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluated expression \"%s\" with variables %s: %w", literalExpression.Text.Text, localVariableContext, err)
+			if expr != original {
+				return nil, fmt.Errorf("failed to evaluate expression \"%s\" (normalized: \"%s\") with variables %s: %w", original, expr, localVariableContext, err)
+			}
+			return nil, fmt.Errorf("failed to evaluate expression \"%s\" with variables %s: %w", original, localVariableContext, err)
 		}
 		if err, ok := resultValue.(goja.Exception); ok {
 			return nil, fmt.Errorf("%s", err.String())
@@ -555,9 +570,14 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 
 	evaluatedInputs := make([]EvaluatedInput, len(decisionTable.Inputs))
 	for i, input := range decisionTable.Inputs {
-		value, err := engine.feelRuntime.Evaluate(input.InputExpression.Text, localVariableContext)
+		originalInputExpr := input.InputExpression.Text
+		normalizedInputExpr := normalizeFeelStringLiteral(originalInputExpr)
+		value, err := engine.feelRuntime.Evaluate(normalizedInputExpr, localVariableContext)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("error while evaluating epression \"%s\" with variables %s: %v", input.InputExpression.Text, localVariableContext, err)
+			if normalizedInputExpr != originalInputExpr {
+				return nil, nil, nil, fmt.Errorf("error while evaluating expression \"%s\" (normalized: \"%s\") with variables %s: %v", originalInputExpr, normalizedInputExpr, localVariableContext, err)
+			}
+			return nil, nil, nil, fmt.Errorf("error while evaluating expression \"%s\" with variables %s: %v", originalInputExpr, localVariableContext, err)
 		}
 		evaluatedInputs[i] = EvaluatedInput{
 			InputId:         input.Id,
@@ -592,9 +612,14 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 		if allColumnsMatch {
 			evaluatedOutputs := make([]EvaluatedOutput, len(decisionTable.Outputs))
 			for i, output := range decisionTable.Outputs {
-				value, err := engine.feelRuntime.Evaluate(rule.OutputEntry[i].Text, localVariableContext)
+				originalOutputExpr := rule.OutputEntry[i].Text
+				normalizedOutputExpr := normalizeFeelStringLiteral(originalOutputExpr)
+				value, err := engine.feelRuntime.Evaluate(normalizedOutputExpr, localVariableContext)
 				if err != nil {
-					return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" with variables %s: %v", rule.OutputEntry[i].Text, localVariableContext, err)
+					if normalizedOutputExpr != originalOutputExpr {
+						return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" (normalized: \"%s\") with variables %s: %v", originalOutputExpr, normalizedOutputExpr, localVariableContext, err)
+					}
+					return nil, nil, nil, fmt.Errorf("error while evaluating output \"%s\" with variables %s: %v", originalOutputExpr, localVariableContext, err)
 				}
 
 				evaluatedOutputs[i] = EvaluatedOutput{

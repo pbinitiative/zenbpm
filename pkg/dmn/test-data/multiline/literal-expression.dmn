@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="def-le" name="DRD" namespace="http://camunda.org/schema/1.0/dmn">
+  <decision id="decLiteralExpr" name="decLiteralExpr">
+    <variable id="var1" name="result" typeRef="string"/>
+    <literalExpression>
+      <text>"Hello,
+World!"</text>
+    </literalExpression>
+  </decision>
+</definitions>

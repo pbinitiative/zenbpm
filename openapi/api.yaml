@@ -2692,7 +2692,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ProcessInstancesListItem"
+            $ref: "#/components/schemas/ProcessInstancesSimple"
     DmnResourceDefinitionsPage:
       type: object
       allOf:
@@ -3000,43 +3000,17 @@ components:
                 $ref: "#/components/schemas/PartitionProcessInstances"
         - $ref: "#/components/schemas/PartitionedPageMetadata"
     ProcessInstance:
-      type: object
-      required:
-        - key
-        - processDefinitionKey
-        - createdAt
-        - state
-        - variables
-        - activeElementInstances
-        - processType
-      properties:
-        key:
-          type: integer
-          format: int64
-        processDefinitionKey:
-          type: integer
-          format: int64
-        bpmnProcessId:
-          type: string
-        businessKey:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        state:
-          $ref: "#/components/schemas/ProcessInstanceState"
-        parentProcessInstanceKey:
-          type: integer
-          format: int64
-        processType:
-          $ref: "#/components/schemas/ProcessInstanceProcessType"
-        variables:
-          type: object
-        activeElementInstances:
-          type: array
-          items:
-            $ref: "#/components/schemas/ElementInstance"
-    ProcessInstancesListItem:
+      allOf:
+        - $ref: "#/components/schemas/ProcessInstancesSimple"
+        - type: object
+          required:
+            - activeElementInstances
+          properties:
+            activeElementInstances:
+              type: array
+              items:
+                $ref: "#/components/schemas/ElementInstance"
+    ProcessInstancesSimple:
       type: object
       required:
         - key

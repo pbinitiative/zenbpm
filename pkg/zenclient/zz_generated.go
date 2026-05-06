@@ -553,8 +553,8 @@ type PartitionProcessDefinitionStatistics struct {
 
 // PartitionProcessInstances defines model for PartitionProcessInstances.
 type PartitionProcessInstances struct {
-	Items     []ProcessInstancesListItem `json:"items"`
-	Partition int                        `json:"partition"`
+	Items     []ProcessInstancesSimple `json:"items"`
+	Partition int                      `json:"partition"`
 }
 
 // PartitionedPageMetadata defines model for PartitionedPageMetadata.
@@ -668,8 +668,8 @@ type ProcessInstanceProcessType string
 // ProcessInstanceState defines model for ProcessInstanceState.
 type ProcessInstanceState string
 
-// ProcessInstancesListItem defines model for ProcessInstancesListItem.
-type ProcessInstancesListItem struct {
+// ProcessInstancesSimple defines model for ProcessInstancesSimple.
+type ProcessInstancesSimple struct {
 	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
 	BusinessKey              *string                    `json:"businessKey,omitempty"`
 	CreatedAt                time.Time                  `json:"createdAt"`

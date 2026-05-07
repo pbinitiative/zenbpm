@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"go.opentelemetry.io/otel/codes"
@@ -274,12 +275,12 @@ func (engine *Engine) createStartEventSubProcessOnTimerStartEvent(ctx context.Co
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		go func() {
-			err := engine.RunProcessInstance(ctx, subProcessInstance, subTokens)
+		safego.Go("event-subprocess-timer", engine.logger, func() {
+			err := engine.RunProcessInstance(engine.context, subProcessInstance, subTokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to run event subprocess instance %d: %s", subProcessInstance.ProcessInstance().Key, err.Error()))
 			}
-		}()
+		})
 	})
 
 	err = batch.Flush(ctx)

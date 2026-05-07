@@ -699,7 +699,7 @@ func (engine *Engine) processFlowNode(
 		}
 		return tokens, nil
 	default:
-		panic(fmt.Sprintf("[invariant check] unsupported element: id=%s, type=%s", activity.Element().GetId(), activity.Element().GetType()))
+		return nil, fmt.Errorf("unsupported element: id=%s, type=%s", activity.Element().GetId(), activity.Element().GetType())
 	}
 }
 

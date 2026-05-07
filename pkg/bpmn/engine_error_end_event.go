@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
@@ -169,12 +170,12 @@ func (engine *Engine) activateBoundaryErrorHandler(
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		go func() {
+		safego.Go(engine.context, "boundary-error-handler", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, boundaryInstance, parentTokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance after error end event %d: %w", parentScope.instance.ProcessInstance().Key, err)
 			}
-		}()
+		})
 	})
 
 	return nil

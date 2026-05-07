@@ -275,7 +275,7 @@ func (engine *Engine) createStartEventSubProcessOnTimerStartEvent(ctx context.Co
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "event-subprocess-timer", engine.logger, func() {
+		safego.Go("event-subprocess-timer", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, subProcessInstance, subTokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to run event subprocess instance %d: %s", subProcessInstance.ProcessInstance().Key, err.Error()))

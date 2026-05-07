@@ -170,7 +170,7 @@ func (engine *Engine) activateBoundaryErrorHandler(
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "boundary-error-handler", engine.logger, func() {
+		safego.Go("boundary-error-handler", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, boundaryInstance, parentTokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance after error end event %d: %w", parentScope.instance.ProcessInstance().Key, err)

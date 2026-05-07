@@ -60,7 +60,7 @@ func (engine *Engine) createCallActivity(
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "call-activity", engine.logger, func() {
+		safego.Go("call-activity", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, calledProcessInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to run call activity instance %d: %s", calledProcessInstance.ProcessInstance().Key, err.Error()))
@@ -124,7 +124,7 @@ func (engine *Engine) createSubProcess(
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create event subprocess subscriptions in sub process %s: %w", element.Id, err)
 	}
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "sub-process", engine.logger, func() {
+		safego.Go("sub-process", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, subProcessInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to sub process instance %d: %s", subProcessInstance.ProcessInstance().Key, err.Error()))
@@ -305,7 +305,7 @@ func (engine *Engine) startParallelMultiInstance(ctx context.Context, batch *Eng
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "parallel-multi-instance", engine.logger, func() {
+		safego.Go("parallel-multi-instance", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, parallelMultiInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to sub parallel multiInstance instance %d: %s", parallelMultiInstance.ProcessInstance().Key, err.Error()))
@@ -369,7 +369,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "sequential-multi-instance", engine.logger, func() {
+		safego.Go("sequential-multi-instance", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, sequentialMultiInstance, tokens)
 			if err != nil {
 				engine.logger.Error(fmt.Sprintf("failed to start sequential multiInstance instance %d: %s", sequentialMultiInstance.ProcessInstance().Key, err.Error()))
@@ -514,7 +514,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "parent-continuation-subprocess", engine.logger, func() {
+		safego.Go("parent-continuation-subprocess", engine.logger, func() {
 			if parentInstance.ProcessInstance().State == runtime.ActivityStateActive {
 				err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 				if err != nil {
@@ -604,7 +604,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	})
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "parent-continuation-call-activity", engine.logger, func() {
+		safego.Go("parent-continuation-call-activity", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for call activity %d: %w", instance.Key, err)
@@ -700,7 +700,7 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 	})
 
 	batch.AddPostFlushAction(ctx, func() {
-		safego.Go(engine.context, "parent-continuation-multi-instance", engine.logger, func() {
+		safego.Go("parent-continuation-multi-instance", engine.logger, func() {
 			err := engine.RunProcessInstance(engine.context, parentInstance, tokens)
 			if err != nil {
 				engine.logger.Error("failed to continue with parent process instance for multi instance %d: %w", instance.Key, err)

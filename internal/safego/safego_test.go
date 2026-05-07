@@ -1,29 +1,49 @@
 package safego
 
 import (
-	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 )
 
+type logEntry struct {
+	msg  string
+	args []interface{}
+}
+
 type testLogger struct {
-	mu   sync.Mutex
-	msgs []string
+	mu      sync.Mutex
+	entries []logEntry
 }
 
 func (l *testLogger) Error(msg string, args ...interface{}) {
 	l.mu.Lock()
-	l.msgs = append(l.msgs, msg)
+	l.entries = append(l.entries, logEntry{msg: msg, args: args})
 	l.mu.Unlock()
 }
 
-func (l *testLogger) contains(substr string) bool {
+// containsMsg checks whether any log entry message contains substr.
+func (l *testLogger) containsMsg(substr string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for _, m := range l.msgs {
-		if strings.Contains(m, substr) {
+	for _, e := range l.entries {
+		if strings.Contains(e.msg, substr) {
 			return true
+		}
+	}
+	return false
+}
+
+// containsArg checks whether any log entry has an arg whose string representation contains substr.
+func (l *testLogger) containsArg(substr string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.entries {
+		for _, a := range e.args {
+			if strings.Contains(fmt.Sprintf("%v", a), substr) {
+				return true
+			}
 		}
 	}
 	return false
@@ -35,21 +55,21 @@ func TestGo_PanicIsRecoveredAndLogged(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	Go(context.Background(), "test-panic", logger, func() {
+	Go("test-panic", logger, func() {
 		defer wg.Done()
 		panic("boom")
 	})
 
 	wg.Wait()
 
-	if !logger.contains("safego: panic in test-panic") {
-		t.Errorf("expected panic log message, got: %v", logger.msgs)
+	if !logger.containsMsg("safego: panic in test-panic") {
+		t.Errorf("expected panic log message, got: %v", logger.entries)
 	}
-	if !logger.contains("boom") {
-		t.Errorf("expected panic value in log, got: %v", logger.msgs)
+	if !logger.containsArg("boom") {
+		t.Errorf("expected panic value in args, got: %v", logger.entries)
 	}
-	if !logger.contains("goroutine") {
-		t.Errorf("expected stack trace in log, got: %v", logger.msgs)
+	if !logger.containsArg("goroutine") {
+		t.Errorf("expected stack trace in args, got: %v", logger.entries)
 	}
 }
 
@@ -60,7 +80,7 @@ func TestGo_NormalExecutionCompletes(t *testing.T) {
 	wg.Add(1)
 
 	called := false
-	Go(context.Background(), "test-normal", logger, func() {
+	Go("test-normal", logger, func() {
 		defer wg.Done()
 		called = true
 	})
@@ -80,12 +100,12 @@ func TestGo_PanicDoesNotBlockCaller(t *testing.T) {
 
 	completed := false
 
-	Go(context.Background(), "panicking", logger, func() {
+	Go("panicking", logger, func() {
 		defer wg.Done()
 		panic("intentional panic")
 	})
 
-	Go(context.Background(), "normal", logger, func() {
+	Go("normal", logger, func() {
 		defer wg.Done()
 		completed = true
 	})

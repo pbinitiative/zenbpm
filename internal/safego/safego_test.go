@@ -1,6 +1,7 @@
 package safego
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -114,5 +115,54 @@ func TestGo_PanicDoesNotBlockCaller(t *testing.T) {
 
 	if !completed {
 		t.Error("normal goroutine should complete even when another panics")
+	}
+}
+
+func TestRun_PanicIsRecoveredAndReturnedAsError(t *testing.T) {
+	logger := &testLogger{}
+
+	err := Run("test-run-panic", logger, func() error {
+		panic("run-boom")
+	})
+
+	if err == nil {
+		t.Fatal("expected non-nil error from panic recovery")
+	}
+	if !strings.Contains(err.Error(), "run-boom") {
+		t.Errorf("expected panic value in error, got: %v", err)
+	}
+	if !logger.containsMsg("safego: panic in test-run-panic") {
+		t.Errorf("expected panic log message, got: %v", logger.entries)
+	}
+	if !logger.containsArg("goroutine") {
+		t.Errorf("expected stack trace in log args, got: %v", logger.entries)
+	}
+}
+
+func TestRun_NormalExecutionReturnsError(t *testing.T) {
+	logger := &testLogger{}
+	sentinel := errors.New("normal error")
+
+	err := Run("test-run-normal", logger, func() error {
+		return sentinel
+	})
+
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected sentinel error, got: %v", err)
+	}
+	if len(logger.entries) != 0 {
+		t.Errorf("expected no log entries for normal error, got: %v", logger.entries)
+	}
+}
+
+func TestRun_NilReturnOnSuccess(t *testing.T) {
+	logger := &testLogger{}
+
+	err := Run("test-run-success", logger, func() error {
+		return nil
+	})
+
+	if err != nil {
+		t.Errorf("expected nil error on success, got: %v", err)
 	}
 }

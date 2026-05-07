@@ -23,6 +23,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	grpcrecovery "github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -1598,9 +1599,11 @@ func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerReque
 		Handler: nil,
 	}
 
-	go func() {
-		log.Info("%s", s.cpuProfile.Server.ListenAndServe())
-	}()
+	safego.Go("pprof-server", safego.DefaultLogger, func() {
+		if err := s.cpuProfile.Server.ListenAndServe(); err != nil {
+			log.Error("pprof server stopped: %s", err)
+		}
+	})
 
 	s.cpuProfile.Running = true
 

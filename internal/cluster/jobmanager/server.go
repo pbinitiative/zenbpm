@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"go.opentelemetry.io/otel/attribute"
@@ -98,7 +99,9 @@ func newJobServer(
 
 func (s *jobServer) startServer(ctx context.Context) {
 	s.ctx = ctx
-	go s.distributeJobs()
+	safego.Go("jobserver-distribute", s.logger, func() {
+		s.distributeJobs()
+	})
 	s.logger.Info("Started server")
 }
 

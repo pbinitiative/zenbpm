@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/partition"
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
@@ -296,7 +297,7 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 	if !ok {
 		// TODO: add timestamps or something into the state so that this is not necessary
 		// if we dont receive another state change in time rerun the joining procedure
-		go func(context.Context) {
+		safego.Go("partition-join-retry", c.logger, func() {
 			time.Sleep(5 * time.Second)
 			if ctx.Err() != nil {
 				return
@@ -304,7 +305,7 @@ func (c *Controller) handlePartitionStateInitializing(ctx context.Context, parti
 			c.partitionsMu.Lock()
 			c.handlePartitionStateJoining(ctx, partitionId, leaderClient)
 			c.partitionsMu.Unlock()
-		}(ctx)
+		})
 
 		// partition might still be running joining operation
 		return

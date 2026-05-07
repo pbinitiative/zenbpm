@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 
@@ -39,11 +40,10 @@ func startNodeMux(address string, ln net.Listener) (*tcp.Mux, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node-to-node mux: %s", err.Error())
 	}
-	go func() {
+	safego.Go("node-mux", safego.DefaultLogger, func() {
 		if err := mux.Serve(); err != nil {
-			// TODO: make sure the mux is closed correctly
-			_ = err
+			safego.DefaultLogger.Error("node mux stopped", "err", err)
 		}
-	}()
+	})
 	return mux, nil
 }

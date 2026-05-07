@@ -1,6 +1,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -41,8 +42,8 @@ func startNodeMux(address string, ln net.Listener) (*tcp.Mux, error) {
 		return nil, fmt.Errorf("failed to create node-to-node mux: %s", err.Error())
 	}
 	safego.Go("node-mux", safego.DefaultLogger, func() {
-		if err := mux.Serve(); err != nil {
-			safego.DefaultLogger.Error("node mux stopped", "err", err)
+		if err := mux.Serve(); err != nil && !errors.Is(err, net.ErrClosed) {
+			safego.DefaultLogger.Error("node mux stopped unexpectedly", "err", err)
 		}
 	})
 	return mux, nil

@@ -1600,8 +1600,8 @@ func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerReque
 	}
 
 	safego.Go("pprof-server", safego.DefaultLogger, func() {
-		if err := s.cpuProfile.Server.ListenAndServe(); err != nil {
-			log.Error("pprof server stopped: %s", err)
+		if err := s.cpuProfile.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("pprof server stopped unexpectedly: %s", err)
 		}
 	})
 

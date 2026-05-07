@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="def3" name="DRD" namespace="http://camunda.org/schema/1.0/dmn">
+  <decision id="decMultilineOutput" name="decMultilineOutput">
+    <decisionTable id="dt1">
+      <input id="in1" label="code">
+        <inputExpression id="ie1" typeRef="string">
+          <text>code</text>
+        </inputExpression>
+      </input>
+      <output id="out1" name="message" typeRef="string" />
+      <rule id="r1">
+        <inputEntry id="ue1">
+          <text>"A1"</text>
+        </inputEntry>
+        <outputEntry id="oe1">
+          <text>"Hello,
+
+this is a multiline
+message."</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

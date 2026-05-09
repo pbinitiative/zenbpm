@@ -454,7 +454,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
 
 	// use that partitionIdx to create process definition subscriptions always only on that one partitionIdx
-	timerStartEventPartitionId := partitionIds[partitionIdx]
+subscriptionPartitionId := partitionIds[partitionIdx]
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
 		registerProcessDefinitionSubscriptions := timerStartEventPartitionId == partitionId

@@ -637,7 +637,7 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 		err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey())
 		if err != nil {
 			return &proto.DeployProcessDefinitionResponse{
-				Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition for potential TimerStartEvents: %w", err)).ToProtoError(),
+Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition subscriptions: %w", err)).ToProtoError(),
 			}, nil
 		}
 	}

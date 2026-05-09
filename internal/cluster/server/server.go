@@ -627,14 +627,14 @@ func (s *Server) DeployProcessDefinition(ctx context.Context, req *proto.DeployP
 			}, nil
 		}
 	}
-	if req.GetRegisterForPotentialTimerStartEvents() {
+	if req.GetRegisterProcessDefinitionSubscriptions() {
 		engine := s.GetRandomEngine(ctx)
 		if engine == nil {
 			return &proto.DeployProcessDefinitionResponse{
 				Error: zenerr.TechnicalError(fmt.Errorf("no engine available on this node")).ToProtoError(),
 			}, nil
 		}
-		err := engine.RegisterForPotentialTimerStartEvents(ctx, req.GetKey())
+		err := engine.RegisterProcessDefinitionSubscriptions(ctx, req.GetKey())
 		if err != nil {
 			return &proto.DeployProcessDefinitionResponse{
 				Error: zenerr.TechnicalError(fmt.Errorf("failed to register process definition for potential TimerStartEvents: %w", err)).ToProtoError(),
@@ -1326,15 +1326,15 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 	})
 	if err != nil {
 		if isErrNotFound(err) {
-			err = fmt.Errorf("message subscription %s %s was not found in partition %d", req.GetName(), req.GetCorrelationKey(), partitionId)
+			notFoundErr := fmt.Errorf("message subscription %d was not found in partition %d", req.GetMessageSubscriptionKey(), partitionId)
 			return &proto.FindActiveMessageResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
-					Message: ptr.To(err.Error()),
+					Message: ptr.To(notFoundErr.Error()),
 				},
-			}, status.Error(codes.NotFound, err.Error())
+			}, status.Error(codes.NotFound, notFoundErr.Error())
 		}
-		err := fmt.Errorf("failed to find message subscriptions %d", partitionId)
+		err := fmt.Errorf("failed to find message subscription %d in partition %d: %w", req.GetMessageSubscriptionKey(), partitionId, err)
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
@@ -1345,7 +1345,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 	return &proto.FindActiveMessageResponse{
 		Key:                  &messageSub.Key,
 		ElementId:            &messageSub.ElementID,
-		ProcessDefinitionKey: sql.FromNullInt64(messageSub.ProcessDefinitionKey),
+		ProcessDefinitionKey: &messageSub.ProcessDefinitionKey,
 		ProcessInstanceKey:   sql.FromNullInt64(messageSub.ProcessInstanceKey),
 		Name:                 &messageSub.Name,
 		State:                &messageSub.State,

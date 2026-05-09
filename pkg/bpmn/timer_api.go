@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"go.opentelemetry.io/otel/codes"
@@ -48,13 +47,17 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 	}()
 
 	if timer.ProcessInstanceKey == nil { // timer start event creates and starts the new process instance
-		return engine.createStartProcessOnTimerStartEvent(ctx, timer)
+		return engine.processTimerTriggerOnInstanceCreation(ctx, timer)
 	}
 
 	if timer.Token == nil { // timer start event creates and starts the event sub process instance
-		return engine.createStartEventSubProcessOnTimerStartEvent(ctx, timer)
+		return engine.processTimerTriggerOnEventSubprocess(ctx, timer)
 	}
 
+	return engine.processTimerTriggerOnToken(ctx, timer, tokens)
+}
+
+func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer, tokens []runtime.ExecutionToken) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
@@ -141,7 +144,7 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 }
 
 // Creates and starts the process instance activated by the timer start event
-func (engine *Engine) createStartProcessOnTimerStartEvent(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	// Re-fetch the timer to verify it has not already been triggered or cancelled by a concurrent
 	// activity (e.g. an interrupting event subprocess fired in parallel).
 	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
@@ -170,122 +173,6 @@ func (engine *Engine) createStartProcessOnTimerStartEvent(ctx context.Context, t
 	_, err = engine.CreateInstanceWithStartingElements(ctx, timer.ProcessDefinitionKey, []string{timer.ElementId}, make(map[string]interface{}), nil)
 	if err != nil {
 		return nil, nil, errors.Join(newEngineErrorf("failed to create process instance for timer %d: %s", timer.Key, err), err)
-	}
-	return nil, nil, nil
-}
-
-// Creates and starts the event sub process instance activated by the timer start event.
-// Cancels the parent process instance if the event sub process is interrupting.
-// If the event sub process started by the timer contains another event sub process
-// the triggers for that nested event sub process will also be created.
-func (engine *Engine) createStartEventSubProcessOnTimerStartEvent(ctx context.Context, timer runtime.Timer) (
-	retInstance *runtime.ProcessInstance, retToken []runtime.ExecutionToken, retErr error,
-) {
-	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
-	}
-
-	subProcessDef, startEventDef := instance.ProcessInstance().Definition.Definitions.Process.GetSubprocessAndStartEventById(timer.ElementId)
-	if startEventDef == nil {
-		return nil, nil, fmt.Errorf("failed to find a startEvent with id: %s", timer.ElementId)
-	}
-	if subProcessDef == nil {
-		return nil, nil, fmt.Errorf("failed to find a subProcess with id: %s", timer.ElementId)
-	}
-
-	batch, err := engine.NewEngineBatch(ctx, instance)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create engine batch: %w", err)
-	}
-	defer func() {
-		if retErr != nil {
-			batch.Clear(ctx)
-		}
-	}()
-
-	// Re-fetch the timer state now that the parent process instance is locked.
-	// When multiple timer-start events on interrupting event subprocesses fire concurrently,
-	// the first one to be processed cancels all sibling timers on the parent. Without this
-	// check the subsequent timers would race with the first event subprocess' parent-process
-	// continuation for the parent instance lock and produce spurious "failed locking parent
-	// instance" errors (and unnecessary work).
-	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to refresh timer %d: %w", timer.Key, err)
-	}
-	switch timerRefreshed.TimerState {
-	case runtime.TimerStateTriggered:
-		batch.Clear(ctx)
-		return nil, nil, nil
-	case runtime.TimerStateCancelled:
-		batch.Clear(ctx)
-		return nil, nil, nil
-	}
-	timer = timerRefreshed
-
-	if startEventDef.IsInterrupting {
-		_, err = engine.handleProcessInstanceInnerCancel(ctx, instance, &batch)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to cancel parent instance %d for interrupting event subprocess: %w", *timer.ProcessInstanceKey, err)
-		}
-	}
-
-	// Propagate variables to the sub-process instance
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, map[string]interface{}{})
-
-	// Create starting flow nodes from the event subprocess start event
-	startingFlowNodes := make([]bpmn20.FlowNode, 0, 1)
-	startingFlowNodes = append(startingFlowNodes, startEventDef)
-
-	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	if len(tokens) == 0 {
-		return nil, nil, nil // parent process is not active? then no reason to start an event subprocess
-	}
-
-	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
-		ctx,
-		&batch,
-		instance.ProcessInstance().Definition,
-		startingFlowNodes,
-		variableHolder,
-		&runtime.SubProcessInstance{
-			ParentProcessExecutionToken:           tokens[0],                    // TODO: for event sub processes we don't need this, should we make it nullable?
-			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey, // TODO: for event sub processes we don't need this, should we make it nullable?
-			ParentProcessTargetElementId:          subProcessDef.Id,             // the reference to the subprocess definition needed for continuation
-		},
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create event subprocess instance: %w", err)
-	}
-
-	// Create event sub process triggers for event subprocesses nested within this event sub process
-	err = engine.createEventSubProcessTriggers(ctx, &batch, subProcessInstance, &subProcessDef.TFlowElementsContainer)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create event subprocess subscriptions in sub process %s: %w", subProcessDef.Id, err)
-	}
-
-	timer.TimerState = runtime.TimerStateTriggered
-	err = batch.SaveTimer(ctx, timer)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to update timer state for timer %d: %s", timer.Key, err)
-	}
-
-	batch.AddPostFlushAction(ctx, func() {
-		safego.Go("event-subprocess-timer", engine.logger, func() {
-			err := engine.RunProcessInstance(engine.context, subProcessInstance, subTokens)
-			if err != nil {
-				engine.logger.Error(fmt.Sprintf("failed to run event subprocess instance %d: %s", subProcessInstance.ProcessInstance().Key, err.Error()))
-			}
-		})
-	})
-
-	err = batch.Flush(ctx)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to flush batch for timer %d: %s", timer.Key, err), err)
 	}
 	return nil, nil, nil
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
@@ -28,18 +30,12 @@ func (engine *Engine) PublishMessageByKey(ctx context.Context, subscriptionKey i
 func (engine *Engine) PublishMessage(ctx context.Context, message runtime.MessageSubscription, variables map[string]interface{}) (retErr error) {
 	switch message := message.(type) {
 	case *runtime.DefinitionMessageSubscription:
-		_, err := engine.CreateInstanceWithStartingElements(
-			ctx,
-			message.ProcessDefinitionKey,
-			[]string{message.ElementId},
-			variables,
-			nil,
-		)
+		err := engine.publishMessageOnInstanceCreation(ctx, message, variables)
 		if err != nil {
 			return fmt.Errorf("failed to process DefinitionMessageSubscription %+v: %w", message, err)
 		}
 	case *runtime.InstanceMessageSubscription:
-		err := engine.PublishMessageOnEventSubprocess()
+		err := engine.PublishMessageOnEventSubprocess(ctx, message, variables)
 		if err != nil {
 			return fmt.Errorf("failed to process InstanceMessageSubscription %+v: %w", message, err)
 		}
@@ -52,9 +48,47 @@ func (engine *Engine) PublishMessage(ctx context.Context, message runtime.Messag
 		return fmt.Errorf("message type not supported")
 	}
 	return nil
-	// TODO: create something for processing events from API, needs to be able to add tokens to currently running instances or add instance to queue for processing with token updated by API
-	// we need to check if token has any more events waiting
-	// if so we need to handle interrupting/non interrupting boundary events
+}
+
+func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, message *runtime.DefinitionMessageSubscription, variables map[string]interface{}) (reErr error) {
+	engine.runningInstances.lockInstance(message.Key)
+	defer engine.runningInstances.unlockInstance(message.Key)
+
+	// Re-fetch under the lock to confirm we're the winner. If another publisher already consumed this subscription
+	// it will be Completed / Terminated / not found, in which case we silently no-op (BPMN allows
+	// at-least-once message delivery to be deduplicated).
+	refreshed, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
+	}
+	defSub, ok := refreshed.(*runtime.DefinitionMessageSubscription)
+	if !ok {
+		return fmt.Errorf("expected DefinitionMessageSubscription for key %d, got %T", message.Key, refreshed)
+	}
+
+	_, err = engine.CreateInstanceWithStartingElements(
+		ctx,
+		defSub.ProcessDefinitionKey,
+		[]string{defSub.ElementId},
+		variables,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to process DefinitionMessageSubscription %+v: %w", defSub, err)
+	}
+
+	batch := engine.persistence.NewBatch()
+	defSub.State = runtime.ActivityStateCompleted
+	if err := batch.SaveMessageSubscription(ctx, defSub); err != nil {
+		return fmt.Errorf("failed to save message subscription %d: %w", defSub.Key, err)
+	}
+	if err := batch.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush message subscription %d: %w", defSub.Key, err)
+	}
+	return nil
 }
 
 func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtime.TokenMessageSubscription, variables map[string]any) (retErr error) {
@@ -73,7 +107,7 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 		}
 	}()
 
-	//refresh
+	//refresh the subscription state inside the critical section
 	messageSub, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
@@ -144,8 +178,4 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 		engine.logger.Error(msg)
 		return &BpmnEngineError{Msg: msg}
 	}
-}
-
-func (engine *Engine) PublishMessageOnEventSubprocess() {
-
 }

@@ -412,16 +412,18 @@ func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) f
 }
 
 func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.MessageSubscription {
-	return bpmnruntime.MessageSubscription{
-		ElementId:            fmt.Sprintf("message-%d", r),
-		Key:                  r + 400,
-		ProcessDefinitionKey: pdKey,
-		ProcessInstanceKey:   piKey,
-		Name:                 fmt.Sprintf("message-%d", r),
-		CorrelationKey:       fmt.Sprintf("correlation-%d", r),
-		State:                bpmnruntime.ActivityStateActive,
-		CreatedAt:            time.Now().Truncate(time.Millisecond),
-		Token:                token,
+	return &bpmnruntime.TokenMessageSubscription{
+		Token:              token,
+		ProcessInstanceKey: piKey,
+		CorrelationKey:     fmt.Sprintf("correlation-%d", r),
+		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
+			ElementId:            fmt.Sprintf("message-%d", r),
+			Key:                  r + 400,
+			ProcessDefinitionKey: pdKey,
+			Name:                 fmt.Sprintf("message-%d", r),
+			State:                bpmnruntime.ActivityStateActive,
+			CreatedAt:            time.Now().Truncate(time.Millisecond),
+		},
 	}
 }
 
@@ -474,11 +476,15 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 
 		messageSubs, err := s.FindProcessInstanceMessageSubscriptions(t.Context(), st.processInstance.ProcessInstance().Key, bpmnruntime.ActivityStateActive)
 		assert.NoError(t, err)
-		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
+		assert.Truef(t, slices.ContainsFunc(messageSubs, func(sub bpmnruntime.MessageSubscription) bool {
+			return bpmnruntime.EqualTo(messageSub, sub)
+		}), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 
 		messageSubs, err = s.FindTokenMessageSubscriptions(t.Context(), token.Key, bpmnruntime.ActivityStateActive)
 		assert.NoError(t, err)
-		assert.Truef(t, slices.ContainsFunc(messageSubs, messageSub.EqualTo), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
+		assert.Truef(t, slices.ContainsFunc(messageSubs, func(sub bpmnruntime.MessageSubscription) bool {
+			return bpmnruntime.EqualTo(messageSub, sub)
+		}), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
 	}
 }
 

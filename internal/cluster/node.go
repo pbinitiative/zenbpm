@@ -453,11 +453,11 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	}
 	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
 
-	// use that partitionIdx to create potential process timer start events always only on that one partitionIdx
+	// use that partitionIdx to create process definition subscriptions always only on that one partitionIdx
 	timerStartEventPartitionId := partitionIds[partitionIdx]
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
-		registerForPotentialTimerStartEvents := timerStartEventPartitionId == partitionId
+		registerProcessDefinitionSubscriptions := timerStartEventPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
@@ -467,7 +467,7 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 				definitionKey.Int64(),
 				data,
 				resourceName,
-				registerForPotentialTimerStartEvents,
+				registerProcessDefinitionSubscriptions,
 			)
 		})
 	}
@@ -485,7 +485,7 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	definitionKey int64,
 	data []byte,
 	resourceName string,
-	registerForPotentialTimerStartEvents bool,
+	registerProcessDefinitionSubscriptions bool,
 ) error {
 
 	partitionLeader := clusterState.Nodes[partitionLeaderId]
@@ -495,10 +495,10 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	resp, err := zenNodeClient.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-		Key:                                  ptr.To(definitionKey),
-		Data:                                 data,
-		ResourceName:                         &resourceName,
-		RegisterForPotentialTimerStartEvents: &registerForPotentialTimerStartEvents,
+		Key:                                    ptr.To(definitionKey),
+		Data:                                   data,
+		ResourceName:                           &resourceName,
+		RegisterProcessDefinitionSubscriptions: &registerProcessDefinitionSubscriptions,
 	})
 	if err != nil {
 		return zenerr.TechnicalError(fmt.Errorf("client call to deploy process definition failed: %w", err))
@@ -626,21 +626,22 @@ func (node *ZenNode) PublishMessageStartProcessInstance(ctx context.Context, nam
 	}
 	client, err := node.client.For(candidateNode.Addr)
 	if err != nil {
-		return zenerr.TechnicalError(fmt.Errorf("failed to get to publish message to  client to create process instance: %w", err))
+		return zenerr.TechnicalError(fmt.Errorf("failed to get client to publish message to create process instance: %w", err))
 	}
 	vars, err := json.Marshal(variables)
 	if err != nil {
 		return zenerr.BadRequest(fmt.Errorf("failed to marshal variables to create process instance: %w", err))
 	}
-	var timeToLive *types.TTL
+	var historyTTL *int64
 	if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
-		timeToLive = &node.controller.Config.Persistence.InstanceHistoryTTL
+		val := int64(node.controller.Config.Persistence.InstanceHistoryTTL)
+		historyTTL = &val
 	}
 
 	resp, err := client.PublishMessageStartProcessInstance(ctx, &proto.PublishMessageStartProcessInstanceRequest{
 		MessageName: &name,
 		Variables:   vars,
-		HistoryTTL:  (*int64)(timeToLive),
+		HistoryTTL:  historyTTL,
 	})
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("client call to publish message failed: %w", err))
@@ -661,7 +662,7 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	partitionId := node.store.ClusterState().GetPartitionIdFromString(*correlationKey)
 	partitionNode := node.controller.GetPartition(ctx, partitionId)
 	if partitionNode == nil {
-		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey))
+		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, *correlationKey))
 	}
 	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
 		ctx,
@@ -670,9 +671,9 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q and correlationKey %q", name, correlationKey))
+			return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q and correlationKey %q", name, *correlationKey))
 		}
-		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, correlationKey, err))
+		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, *correlationKey, err))
 	}
 
 	partitionId = zenflake.GetPartitionId(msPointer.MessageSubscriptionKey)

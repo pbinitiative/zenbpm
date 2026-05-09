@@ -1,0 +1,52 @@
+PRAGMA foreign_keys = OFF;
+
+-- SQLite does not support ALTER COLUMN/DROP COLUMN reliably, so we recreate both
+-- message_subscription_pointer (removing execution_token_key) and
+-- message_subscription (making process_instance_key, correlation_key and execution_token
+-- nullable, and adding the type column).
+
+CREATE TABLE message_subscription_pointer_new(
+    name text NOT NULL, -- message name from the definition
+    correlation_key text NOT NULL, -- correlation key used to correlate message in the engine
+    state integer NOT NULL, -- reflects message_subscription state
+    created_at integer NOT NULL, -- unix millis of when the pointer of the message subscription was created
+    message_subscription_key integer NOT NULL, -- key of the message_subscription which this points to
+    PRIMARY KEY (name, correlation_key)
+);
+
+INSERT INTO message_subscription_pointer_new
+    SELECT name, correlation_key, state, created_at, message_subscription_key
+    FROM message_subscription_pointer;
+
+DROP TABLE message_subscription_pointer;
+
+ALTER TABLE message_subscription_pointer_new RENAME TO message_subscription_pointer;
+
+-- Recreate message_subscription with nullable process_instance_key, correlation_key,
+-- execution_token and the new type column.
+CREATE TABLE message_subscription_new(
+    key INTEGER PRIMARY KEY, -- int64 snowflake id of the message subscription where node is partition id which handles the process instance
+    element_id text NOT NULL, -- string id of the element from xml definition
+    process_definition_key integer NOT NULL, -- int64 reference to process definition
+    process_instance_key integer, -- int64 reference to process instance
+    name text NOT NULL, -- message name from the definition
+    state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
+    created_at integer NOT NULL, -- unix millis of when the instance of the message subscription was created
+    correlation_key text, -- correlation key used to correlate message in the engine
+    execution_token integer, -- key of the execution_token that created message_subscription
+    type integer NOT NULL, -- pkg/bpmn/runtime/types.go:MessageSubscriptionType
+    FOREIGN KEY (process_instance_key) REFERENCES process_instance(key), -- reference to process instance
+    FOREIGN KEY (process_definition_key) REFERENCES process_definition(key) -- reference to process definition
+);
+
+INSERT INTO message_subscription_new(key, element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type)
+    SELECT key, element_id, process_definition_key, process_instance_key, name, state,
+           created_at, correlation_key, execution_token, 1
+    FROM message_subscription;
+
+DROP TABLE message_subscription;
+
+ALTER TABLE message_subscription_new RENAME TO message_subscription;
+
+PRAGMA foreign_keys = ON;
+

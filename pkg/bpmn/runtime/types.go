@@ -230,11 +230,12 @@ type MessageSubscription interface {
 }
 
 type MessageSubscriptionData struct {
-	Key       int64
-	ElementId string
-	Name      string
-	State     ActivityState
-	CreatedAt time.Time
+	Key                  int64
+	ElementId            string
+	Name                 string
+	State                ActivityState
+	ProcessDefinitionKey int64
+	CreatedAt            time.Time
 }
 
 type TokenMessageSubscription struct {
@@ -274,7 +275,6 @@ func (t *InstanceMessageSubscription) MessageSubscription() *MessageSubscription
 }
 
 type DefinitionMessageSubscription struct {
-	ProcessDefinitionKey int64
 	MessageSubscriptionData
 }
 
@@ -287,15 +287,36 @@ func (t *DefinitionMessageSubscription) MessageSubscription() *MessageSubscripti
 }
 
 func EqualTo(m MessageSubscription, m2 MessageSubscription) bool {
-	if m.Type() == m2.Type() &&
-		m.MessageSubscription().ElementId == m2.MessageSubscription().ElementId &&
-		m.MessageSubscription().Key == m2.MessageSubscription().Key &&
-		m.MessageSubscription().Name == m2.MessageSubscription().Name &&
-		m.MessageSubscription().State == m2.MessageSubscription().State &&
-		m.MessageSubscription().CreatedAt.Truncate(time.Millisecond).Equal(m2.MessageSubscription().CreatedAt.Truncate(time.Millisecond)) {
+	if m == nil || m2 == nil {
+		return m == nil && m2 == nil
+	}
+	if m.Type() != m2.Type() {
+		return false
+	}
+	md := m.MessageSubscription()
+	md2 := m2.MessageSubscription()
+	if md.ElementId != md2.ElementId ||
+		md.Key != md2.Key ||
+		md.ProcessDefinitionKey != md2.ProcessDefinitionKey ||
+		md.Name != md2.Name ||
+		md.State != md2.State ||
+		!md.CreatedAt.Truncate(time.Millisecond).Equal(md2.CreatedAt.Truncate(time.Millisecond)) {
+		return false
+	}
+	switch a := m.(type) {
+	case *TokenMessageSubscription:
+		b := m2.(*TokenMessageSubscription)
+		return a.ProcessInstanceKey == b.ProcessInstanceKey &&
+			a.CorrelationKey == b.CorrelationKey &&
+			a.Token.Key == b.Token.Key
+	case *InstanceMessageSubscription:
+		b := m2.(*InstanceMessageSubscription)
+		return a.ProcessInstanceKey == b.ProcessInstanceKey &&
+			a.CorrelationKey == b.CorrelationKey
+	case *DefinitionMessageSubscription:
 		return true
 	}
-	return false
+	return true
 }
 
 //go:generate go tool stringer -type=ErrorState

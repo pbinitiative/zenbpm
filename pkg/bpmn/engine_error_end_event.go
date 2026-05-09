@@ -189,7 +189,7 @@ func (engine *Engine) failUnhandledEndErrorOnParent(
 	endEventId string,
 	errorCode *string,
 ) ([]runtime.ExecutionToken, error) {
-	if err := engine.cancelBoundarySubscriptions(ctx, batch, parentScope.instance.ProcessInstance().Key, &parentScope.token); err != nil {
+	if err := engine.cancelBoundarySubscriptions(ctx, batch, parentScope.instance.ProcessInstance().Key, parentScope.token); err != nil {
 		return tokens, fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", parentScope.instance.ProcessInstance().Key, err)
 	}
 	parentScope.token.State = runtime.TokenStateCompleted

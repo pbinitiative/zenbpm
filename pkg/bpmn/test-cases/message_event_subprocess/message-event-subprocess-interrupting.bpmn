@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
-  <bpmn:process id="Process_timerEventSubProcessInterrupting" isExecutable="true">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_17aul4z" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="Process_messageEventSubProcessInterrupting" isExecutable="true">
     <bpmn:endEvent id="Event_1mhay4i">
       <bpmn:incoming>Flow_1mibmwr</bpmn:incoming>
     </bpmn:endEvent>
@@ -14,7 +14,7 @@
           <zeebe:output source="=1234" target="orderId" />
           <zeebe:output source="=city" target="dstcity" />
         </zeebe:ioMapping>
-        <zeebe:taskDefinition type="input-task-timer-event-subprocess-interrupting" />
+        <zeebe:taskDefinition type="input-task-message-event-subprocess-interrupting" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1pv0o34</bpmn:incoming>
       <bpmn:outgoing>Flow_1mibmwr</bpmn:outgoing>
@@ -25,26 +25,24 @@
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
       <bpmn:extensionElements>
         <zeebe:ioMapping>
-          <zeebe:output source="=&#34;timer-fired&#34;" target="subProcessResult" />
-          <zeebe:output source="=true" target="timerInterrupted" />
-          <zeebe:output source="=&#34;timer-event-subprocess&#34;" target="interruptedBy" />
+          <zeebe:output source="=&#34;message-fired&#34;" target="subProcessResult" />
+          <zeebe:output source="=true" target="messageInterrupted" />
+          <zeebe:output source="=&#34;message-event-subprocess&#34;" target="interruptedBy" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
-      <bpmn:endEvent id="Event_0a9ph2i">
-        <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
-      </bpmn:endEvent>
-      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="subProcessTimerEvent_12i3m6f" targetRef="Event_0a9ph2i" />
-      <bpmn:startEvent id="subProcessTimerEvent_12i3m6f">
+      <bpmn:startEvent id="subProcessMessageEvent_12i3m6f">
         <bpmn:extensionElements>
           <zeebe:ioMapping>
-            <zeebe:output source="=&#34;PT1S&#34;" target="timerDuration" />
+            <zeebe:output source="=&#34;messageStartEventOutputValue&#34;" target="messageStartEventOutputVar" />
           </zeebe:ioMapping>
         </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
-        <bpmn:timerEventDefinition id="TimerEventDefinition_0j2io9y">
-          <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
-        </bpmn:timerEventDefinition>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_046llxz" messageRef="Message_0d37bgs" />
       </bpmn:startEvent>
+      <bpmn:endEvent id="Event_0a9ph2i">
+        <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="subProcessMessageEvent_12i3m6f" targetRef="Event_0a9ph2i" />
     </bpmn:subProcess>
     <bpmn:sequenceFlow id="Flow_1mibmwr" sourceRef="service-task-1" targetRef="Event_1mhay4i" />
     <bpmn:sequenceFlow id="Flow_1pv0o34" sourceRef="StartEvent_1" targetRef="service-task-1" />
@@ -54,38 +52,39 @@
       <zeebe:subscription correlationKey="=&#34;correlation-key-event-subprocess-1&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
+  <bpmn:message id="Message_1foqdg0" name="Message_1foqdg0" />
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_timerEventSubProcessInterrupting">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_messageEventSubProcessInterrupting">
       <bpmndi:BPMNShape id="Event_1mhay4i_di" bpmnElement="Event_1mhay4i">
-        <dc:Bounds x="642" y="102" width="36" height="36" />
+        <dc:Bounds x="662" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0296s40_di" bpmnElement="service-task-1">
-        <dc:Bounds x="280" y="80" width="100" height="80" />
+        <dc:Bounds x="300" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="142" y="102" width="36" height="36" />
+        <dc:Bounds x="162" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0adcic4_di" bpmnElement="Activity_0adcic4" isExpanded="true">
-        <dc:Bounds x="155" y="280" width="565" height="320" />
+        <dc:Bounds x="175" y="280" width="565" height="320" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1gibpho_di" bpmnElement="subProcessMessageEvent_12i3m6f">
+        <dc:Bounds x="222" y="402" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_0a9ph2i_di" bpmnElement="Event_0a9ph2i">
-        <dc:Bounds x="552" y="402" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_01h922o_di" bpmnElement="subProcessTimerEvent_12i3m6f">
-        <dc:Bounds x="202" y="402" width="36" height="36" />
+        <dc:Bounds x="572" y="402" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0yl0wws_di" bpmnElement="Flow_0yl0wws">
-        <di:waypoint x="238" y="420" />
-        <di:waypoint x="552" y="420" />
+        <di:waypoint x="258" y="420" />
+        <di:waypoint x="572" y="420" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1mibmwr_di" bpmnElement="Flow_1mibmwr">
-        <di:waypoint x="380" y="120" />
-        <di:waypoint x="642" y="120" />
+        <di:waypoint x="400" y="120" />
+        <di:waypoint x="662" y="120" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1pv0o34_di" bpmnElement="Flow_1pv0o34">
-        <di:waypoint x="178" y="120" />
-        <di:waypoint x="280" y="120" />
+        <di:waypoint x="198" y="120" />
+        <di:waypoint x="300" y="120" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

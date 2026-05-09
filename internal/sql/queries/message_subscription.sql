@@ -47,7 +47,7 @@ FROM
 WHERE
     state = @state
     AND name = @name
-    AND correlation_key = @correlation_key;
+    AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key);
 
 -- name: GetMessageSubscriptionByKey :one
 SELECT

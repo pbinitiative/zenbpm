@@ -118,8 +118,8 @@ func (engine *Engine) createSubProcess(
 		return runtime.ActivityStateFailed, err
 	}
 
-	// Create event sub process triggers for event subprocesses nested within this sub process
-	err = engine.createEventSubProcessTriggers(ctx, batch, subProcessInstance, &element.TFlowElementsContainer)
+	// Create event sub process subscriptions for event subprocesses nested within this sub process
+	err = engine.createEventSubProcessSubscriptions(ctx, batch, subProcessInstance, &element.TFlowElementsContainer)
 	if err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to create event subprocess subscriptions in sub process %s: %w", element.Id, err)
 	}

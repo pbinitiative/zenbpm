@@ -33,6 +33,11 @@
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="Event_12i3m6f" targetRef="Event_0a9ph2i" />
       <bpmn:startEvent id="Event_12i3m6f">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_0j2io9y">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -51,6 +56,11 @@
         <bpmn:incoming>Flow_0ktihe3</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:startEvent id="Event_1rx56mi">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0ktihe3</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_04niacv">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -68,6 +78,11 @@
         <bpmn:incoming>Flow_0lbg38q</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:startEvent id="Event_1ko8aa1">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0lbg38q</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_1nr1wt9">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -85,6 +100,11 @@
         <bpmn:incoming>Flow_0cz2z42</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:startEvent id="Event_0onqysj">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0cz2z42</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_0dsqx6g">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>
@@ -102,6 +122,11 @@
         <bpmn:incoming>Flow_1jqc7n3</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:startEvent id="Event_0q10af7">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_1jqc7n3</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_18uv1cm">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT2S</bpmn:timeDuration>
@@ -119,6 +144,11 @@
         <bpmn:incoming>Flow_05xsrey</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:startEvent id="Event_1dqx3qt">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_05xsrey</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_19zv3os">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>

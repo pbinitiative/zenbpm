@@ -1665,19 +1665,23 @@ func (rq *DB) FindMessageSubscriptionByName(ctx context.Context, name string, co
 		CorrelationKey: sql.ToNullString(correlationKey),
 		State:          int64(state),
 	})
+	correlationKeyStr := "<nil>"
+	if correlationKey != nil {
+		correlationKeyStr = *correlationKey
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = storage.ErrNotFound
 		}
 		return nil, fmt.Errorf("can't find message subscription by name %s, correlationKey %s: %w",
-			name, correlationKey, err)
+			name, correlationKeyStr, err)
 
 	}
 
 	res, err := rq.inflateMessageSubscription(ctx, dbMessageSub, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inflate message subscription by name %s, correlationKey %s: %w",
-			name, correlationKey, err)
+			name, correlationKeyStr, err)
 	}
 	return res, nil
 }
@@ -1709,11 +1713,12 @@ func (rq *DB) inflateMessageSubscription(ctx context.Context, dbMessage sql.Mess
 			ProcessInstanceKey: dbMessage.ProcessInstanceKey.Int64,
 			CorrelationKey:     dbMessage.CorrelationKey.String,
 			MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
-				Key:       dbMessage.Key,
-				ElementId: dbMessage.ElementID,
-				Name:      dbMessage.Name,
-				State:     bpmnruntime.ActivityState(dbMessage.State),
-				CreatedAt: time.UnixMilli(dbMessage.CreatedAt),
+				Key:                  dbMessage.Key,
+				ElementId:            dbMessage.ElementID,
+				Name:                 dbMessage.Name,
+				State:                bpmnruntime.ActivityState(dbMessage.State),
+				ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
+				CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 			},
 		}, nil
 	case bpmnruntime.MessageSubscriptionTypeInstance:
@@ -1725,25 +1730,23 @@ func (rq *DB) inflateMessageSubscription(ctx context.Context, dbMessage sql.Mess
 			ProcessInstanceKey: dbMessage.ProcessInstanceKey.Int64,
 			CorrelationKey:     dbMessage.CorrelationKey.String,
 			MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
-				Key:       dbMessage.Key,
-				ElementId: dbMessage.ElementID,
-				Name:      dbMessage.Name,
-				State:     bpmnruntime.ActivityState(dbMessage.State),
-				CreatedAt: time.UnixMilli(dbMessage.CreatedAt),
+				Key:                  dbMessage.Key,
+				ElementId:            dbMessage.ElementID,
+				Name:                 dbMessage.Name,
+				State:                bpmnruntime.ActivityState(dbMessage.State),
+				ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
+				CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 			},
 		}, nil
 	case bpmnruntime.MessageSubscriptionTypeDefinition:
-		if !dbMessage.ProcessDefinitionKey.Valid {
-			return nil, fmt.Errorf("missing required parameters")
-		}
 		return &bpmnruntime.DefinitionMessageSubscription{
-			ProcessDefinitionKey: dbMessage.ProcessDefinitionKey.Int64,
 			MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
-				Key:       dbMessage.Key,
-				ElementId: dbMessage.ElementID,
-				Name:      dbMessage.Name,
-				State:     bpmnruntime.ActivityState(dbMessage.State),
-				CreatedAt: time.UnixMilli(dbMessage.CreatedAt),
+				Key:                  dbMessage.Key,
+				ElementId:            dbMessage.ElementID,
+				Name:                 dbMessage.Name,
+				State:                bpmnruntime.ActivityState(dbMessage.State),
+				ProcessDefinitionKey: dbMessage.ProcessDefinitionKey,
+				CreatedAt:            time.UnixMilli(dbMessage.CreatedAt),
 			},
 		}, nil
 	default:
@@ -1840,6 +1843,9 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 			}
 		}
 		res[i], err = rq.inflateMessageSubscription(ctx, mes, messageToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to inflate message subscription %d: %w", mes.Key, err)
+		}
 	}
 	return res, nil
 }
@@ -1873,13 +1879,13 @@ func (rq *DB) SaveMessageSubscription(ctx context.Context, subscription bpmnrunt
 }
 
 func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscription bpmnruntime.MessageSubscription) error {
-
-	var processDefinitionKey ssql.NullInt64
 	var processInstanceKey ssql.NullInt64
 	var executionTokenKey ssql.NullInt64
 	var correlationKey ssql.NullString
+	var messageSubscriptionType bpmnruntime.MessageSubscriptionType
 	switch subscription := subscription.(type) {
 	case *bpmnruntime.TokenMessageSubscription:
+		messageSubscriptionType = bpmnruntime.MessageSubscriptionTypeToken
 		executionTokenKey = ssql.NullInt64{
 			Int64: subscription.Token.Key,
 			Valid: true,
@@ -1893,6 +1899,7 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 			Valid:  true,
 		}
 	case *bpmnruntime.InstanceMessageSubscription:
+		messageSubscriptionType = bpmnruntime.MessageSubscriptionTypeInstance
 		processInstanceKey = ssql.NullInt64{
 			Int64: subscription.ProcessInstanceKey,
 			Valid: true,
@@ -1902,23 +1909,21 @@ func SaveMessageSubscriptionWith(ctx context.Context, db *sql.Queries, subscript
 			Valid:  true,
 		}
 	case *bpmnruntime.DefinitionMessageSubscription:
-		processDefinitionKey = ssql.NullInt64{
-			Int64: subscription.ProcessDefinitionKey,
-			Valid: true,
-		}
+		messageSubscriptionType = bpmnruntime.MessageSubscriptionTypeDefinition
 	default:
 		return fmt.Errorf("unsupported subscription type: %T", subscription)
 	}
 	err := db.SaveMessageSubscription(ctx, sql.SaveMessageSubscriptionParams{
 		Key:                  subscription.MessageSubscription().Key,
 		ElementID:            subscription.MessageSubscription().ElementId,
-		ProcessDefinitionKey: processDefinitionKey,
+		ProcessDefinitionKey: subscription.MessageSubscription().ProcessDefinitionKey,
 		ProcessInstanceKey:   processInstanceKey,
 		Name:                 subscription.MessageSubscription().Name,
 		State:                int64(subscription.MessageSubscription().State),
 		CreatedAt:            subscription.MessageSubscription().CreatedAt.UnixMilli(),
 		ExecutionToken:       executionTokenKey,
 		CorrelationKey:       correlationKey,
+		Type:                 int64(messageSubscriptionType),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save message subscription %d: %w", subscription.MessageSubscription().Key, err)

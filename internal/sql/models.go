@@ -96,7 +96,7 @@ type Job struct {
 type MessageSubscription struct {
 	Key                  int64          `json:"key"`
 	ElementID            string         `json:"element_id"`
-	ProcessDefinitionKey sql.NullInt64  `json:"process_definition_key"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
 	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
 	Name                 string         `json:"name"`
 	State                int64          `json:"state"`

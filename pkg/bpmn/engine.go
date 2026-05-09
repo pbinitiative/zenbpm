@@ -163,7 +163,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 		return nil, fmt.Errorf("failed to find message subscriptions for instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 
-	for _, messageSubscription := range subscriptions {
+	for _, messageSubscription := range messageSubscriptions {
 		messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
 		err = batch.SaveMessageSubscription(ctx, messageSubscription)
 		if err != nil {
@@ -308,7 +308,7 @@ func (engine *Engine) terminateExecutionToken(
 	activeToken runtime.ExecutionToken,
 ) error {
 
-	err := engine.cancelBoundarySubscriptions(ctx, batch, processInstanceKey, &activeToken)
+	err := engine.cancelBoundarySubscriptions(ctx, batch, processInstanceKey, activeToken)
 	if err != nil {
 		return fmt.Errorf("failed to cancel subscriptions for execution token %d: %w", activeToken.Key, err)
 	}
@@ -418,8 +418,8 @@ func (engine *Engine) createInstance(
 		batch.SaveToken(ctx, token)
 	}
 
-	// Create event sub process triggers for event subprocesses of the process instance
-	err = engine.createEventSubProcessTriggers(ctx, batch, instance, &process.Definitions.Process.TFlowElementsContainer)
+	// Create event sub process subscriptions for event subprocesses of the process instance
+	err = engine.createEventSubProcessSubscriptions(ctx, batch, instance, &process.Definitions.Process.TFlowElementsContainer)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create event subprocess subscriptions: %w", err)
 	}
@@ -479,9 +479,9 @@ func (engine *Engine) createInstanceWithStartingElements(
 	return instance, executionTokens, nil
 }
 
-// createEventSubProcessTriggers scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
-// For each event subprocess that has only 1 StartEvent it creates a trigger to start that event sub process
-func (engine *Engine) createEventSubProcessTriggers(
+// createEventSubProcessSubscriptions scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
+// For each event subprocess that has only 1 StartEvent it creates a subscription to start that event sub process
+func (engine *Engine) createEventSubProcessSubscriptions(
 	ctx context.Context,
 	batch storage.Batch,
 	instance runtime.ProcessInstance,
@@ -492,97 +492,152 @@ func (engine *Engine) createEventSubProcessTriggers(
 		if len(eventSubProcess.StartEvents) != 1 { // event sub process must have exactly one start event according the bpmn 2.0 spec
 			continue
 		}
-		startEvent := eventSubProcess.StartEvents[0]
-		for _, startEventDefinition := range startEvent.EventDefinitions {
-			switch startEventDefinition.(type) {
-			case bpmn20.TTimerEventDefinition:
-				err := engine.createTimerStartEventsTimers(
-					ctx,
-					batch,
-					eventSubProcess.TProcess,
-					instance.ProcessInstance().GetProcessInfo().Key,
-					&instance,
-				)
-				if err != nil {
-					return fmt.Errorf("failed to create timers for timer start event %s of event subprocess %s: %w",
-						startEvent.GetId(), eventSubProcess.GetId(), err)
-				}
-			case bpmn20.TMessageEventDefinition:
-				// ... handle message start event
-			default:
-				continue
-			}
+		err := engine.createStartEventSubscriptions(
+			ctx,
+			batch,
+			eventSubProcess.TProcess,
+			*instance.ProcessInstance().Definition,
+			&instance,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to start event subscriptions for event subprocess %s: %w", eventSubProcess.GetId(), err)
 		}
 	}
 	return nil
 }
 
 /*
-Creates timers for:
+Creates subscriptions for:
 
-  - TimerStartEvents of the main process definition. Those timers are created when the process definition is deployed or
+  - StartEvents of the main process definition. Those subscriptions are created when the process definition is deployed or
     when the engine starts up, and they are responsible for creation and starting process instances when they fire.
 
-  - TimerStartEvents of event sub processes. Those timers are created when a process instance is created, and
+  - StartEvents of event sub processes. Those subscriptions are created when a process instance is created, and
     they are responsible for starting an event sub process instance when they fire.
 */
-func (engine *Engine) createTimerStartEventsTimers(
+func (engine *Engine) createStartEventSubscriptions(
 	ctx context.Context,
 	batch storage.Batch,
 	process bpmn20.TProcess,
-	processDefinitionKey int64,
+	processDefinition runtime.ProcessDefinition,
 	processInstance *runtime.ProcessInstance,
 ) error {
 	for _, startEvent := range process.StartEvents {
 		for _, startEventDefinition := range startEvent.EventDefinitions {
-			if timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition); ok {
-				switch {
-				case timerStartEventDefinition.TimeDate != nil:
-					startTime, err := findStartTime(timerStartEventDefinition)
-					if err != nil {
-						return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
-							startEvent.GetId(), processDefinitionKey, err)
-					}
-					now := time.Now()
-					var processInstanceKey *int64
-					if processInstance != nil {
-						processInstanceKey = &(*processInstance).ProcessInstance().Key
-					}
-					timer := runtime.Timer{
-						ElementId:            startEvent.GetId(),
-						Key:                  engine.generateKey(),
-						ElementInstanceKey:   nil,
-						ProcessDefinitionKey: processDefinitionKey,
-						ProcessInstanceKey:   processInstanceKey,
-						TimerState:           runtime.TimerStateCreated,
-						CreatedAt:            now,
-						DueAt:                startTime,
-						Duration:             startTime.Sub(now),
-						Token:                nil,
-					}
-					err = batch.SaveTimer(ctx, timer)
-					if err != nil {
-						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
-							startEvent.GetId(), processDefinitionKey, err)
-					}
-					engine.timerManager.registerTimer(timer)
-				case timerStartEventDefinition.TimeDuration != nil:
-					if processInstance == nil {
-						return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
-							processDefinitionKey, startEvent.GetId())
-					}
-					timer, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
-					if err != nil {
-						return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
-							startEvent.GetId(), processDefinitionKey, err)
-					}
-					err = batch.SaveTimer(ctx, *timer)
-					if err != nil {
-						return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
-							startEvent.GetId(), processDefinitionKey, err)
-					}
-				}
+			err := engine.createTimerStartEventTimers(ctx, batch, startEventDefinition, startEvent, processDefinition.Key, processInstance)
+			if err != nil {
+				return fmt.Errorf("failed to create timers for timer start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
 			}
+			err = engine.createMessageStartEventMessageSubscriptions(ctx, batch, startEventDefinition, startEvent, processDefinition, processInstance)
+			if err != nil {
+				return fmt.Errorf("failed to create message subscriptions for message start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (engine *Engine) createTimerStartEventTimers(
+	ctx context.Context,
+	batch storage.Batch,
+	startEventDefinition bpmn20.EventDefinition,
+	startEvent bpmn20.TStartEvent,
+	processDefinitionKey int64,
+	processInstance *runtime.ProcessInstance,
+) error {
+	if timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition); ok {
+		switch {
+		case timerStartEventDefinition.TimeDate != nil:
+			startTime, err := findStartTime(timerStartEventDefinition)
+			if err != nil {
+				return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
+					startEvent.GetId(), processDefinitionKey, err)
+			}
+			now := time.Now()
+			var processInstanceKey *int64
+			if processInstance != nil {
+				processInstanceKey = &(*processInstance).ProcessInstance().Key
+			}
+			timer := runtime.Timer{
+				ElementId:            startEvent.GetId(),
+				Key:                  engine.generateKey(),
+				ElementInstanceKey:   nil,
+				ProcessDefinitionKey: processDefinitionKey,
+				ProcessInstanceKey:   processInstanceKey,
+				TimerState:           runtime.TimerStateCreated,
+				CreatedAt:            now,
+				DueAt:                startTime,
+				Duration:             startTime.Sub(now),
+				Token:                nil,
+			}
+			err = batch.SaveTimer(ctx, timer)
+			if err != nil {
+				return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+					startEvent.GetId(), processDefinitionKey, err)
+			}
+			engine.timerManager.registerTimer(timer)
+		case timerStartEventDefinition.TimeDuration != nil:
+			if processInstance == nil {
+				return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
+					processDefinitionKey, startEvent.GetId())
+			}
+			timer, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
+			if err != nil {
+				return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
+					startEvent.GetId(), processDefinitionKey, err)
+			}
+			err = batch.SaveTimer(ctx, *timer)
+			if err != nil {
+				return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+					startEvent.GetId(), processDefinitionKey, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (engine *Engine) createMessageStartEventMessageSubscriptions(
+	ctx context.Context,
+	batch storage.Batch,
+	startEventDefinition bpmn20.EventDefinition,
+	startEvent bpmn20.TStartEvent,
+	processDefinition runtime.ProcessDefinition,
+	processInstance *runtime.ProcessInstance,
+) error {
+	if messageStartEventDefinition, ok := startEventDefinition.(bpmn20.TMessageEventDefinition); ok {
+		correlationKey, messageName, err := engine.getCorrelationKeyAndMessageName(processDefinition, processInstance, messageStartEventDefinition)
+		if err != nil {
+			return fmt.Errorf("failed to evaluate message correlation key: %w", err)
+		}
+		var subscription runtime.MessageSubscription
+		if processInstance != nil {
+			subscription = &runtime.InstanceMessageSubscription{
+				ProcessInstanceKey: (*processInstance).ProcessInstance().Key,
+				CorrelationKey:     correlationKey,
+				MessageSubscriptionData: runtime.MessageSubscriptionData{
+					Key:                  engine.generateKey(),
+					ElementId:            startEvent.GetId(),
+					Name:                 messageName,
+					State:                runtime.ActivityStateActive,
+					ProcessDefinitionKey: processDefinition.Key,
+					CreatedAt:            time.Now(),
+				},
+			}
+		} else {
+			subscription = &runtime.DefinitionMessageSubscription{
+				MessageSubscriptionData: runtime.MessageSubscriptionData{
+					Key:                  engine.generateKey(),
+					ElementId:            startEvent.GetId(),
+					Name:                 messageName,
+					State:                runtime.ActivityStateActive,
+					ProcessDefinitionKey: processDefinition.Key,
+					CreatedAt:            time.Now(),
+				},
+			}
+		}
+		err = batch.SaveMessageSubscription(ctx, subscription)
+		if err != nil {
+			return fmt.Errorf("failed to save new messageStartEvent message subscriptions: %w", err)
 		}
 	}
 	return nil
@@ -1189,16 +1244,11 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load active subscriptions"), err)
 	}
-	if len(activeSubs) > 0 {
-		activeSubscriptions = true
-	}
-
-	readySubs, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateReady)
-	if err != nil {
-		return errors.Join(newEngineErrorf("failed to load ready subscriptions"), err)
-	}
-	if len(readySubs) > 0 {
-		activeSubscriptions = true
+	for _, sub := range activeSubs {
+		if _, isTokenMessageSubscription := sub.(*runtime.TokenMessageSubscription); isTokenMessageSubscription {
+			activeSubscriptions = true
+			break
+		}
 	}
 
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, instance.ProcessInstance().Key)
@@ -1241,6 +1291,19 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 					return errors.Join(newEngineErrorf("failed to cancel timer %d for process instance key: %d", timer.Key, instance.ProcessInstance().Key), err)
 				}
 			}
+
+			// Cancel all active message subscriptions for this process instance
+			messageSubscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, instance.ProcessInstance().Key, runtime.ActivityStateActive)
+			if err != nil {
+				return errors.Join(newEngineErrorf("failed to load active message subscriptions for key: %d", instance.ProcessInstance().Key), err)
+			}
+			for _, messageSubscription := range messageSubscriptions {
+				messageSubscription.MessageSubscription().State = runtime.ActivityStateTerminated
+				if err = batch.SaveMessageSubscription(ctx, messageSubscription); err != nil {
+					return errors.Join(newEngineErrorf("failed to cancel message subscription %d for process instance key: %d", messageSubscription.MessageSubscription().Key, instance.ProcessInstance().Key), err)
+				}
+			}
+
 			instance.ProcessInstance().State = runtime.ActivityStateCompleted
 		}
 	}

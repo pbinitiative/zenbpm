@@ -10,7 +10,7 @@ import (
 )
 
 func TestTimerStartEventParsesFromBpmn(t *testing.T) {
-	xmlData, err := os.ReadFile("../../test-cases/timer-event-subprocess-interrupting.bpmn")
+	xmlData, err := os.ReadFile("../../test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
 
 	var definitions TDefinitions
@@ -248,7 +248,7 @@ func TestTimerEventDefinitionId_NilSafety(t *testing.T) {
 }
 
 func TestFindBaseElementById(t *testing.T) {
-	xmlData, err := os.ReadFile("../../test-cases/timer-event-subprocess-interrupting.bpmn")
+	xmlData, err := os.ReadFile("../../test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
 
 	var definitions TDefinitions

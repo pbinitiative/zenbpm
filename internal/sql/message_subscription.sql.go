@@ -39,13 +39,13 @@ FROM
 WHERE
     state = ?1
     AND name = ?2
-    AND correlation_key = ?3
+    AND ((?3 IS NULL AND correlation_key IS NULL) OR correlation_key = ?3)
 `
 
 type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
-	State          int64          `json:"state"`
-	Name           string         `json:"name"`
-	CorrelationKey sql.NullString `json:"correlation_key"`
+	State          int64       `json:"state"`
+	Name           string      `json:"name"`
+	CorrelationKey interface{} `json:"correlation_key"`
 }
 
 func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
@@ -275,7 +275,7 @@ ON CONFLICT
 type SaveMessageSubscriptionParams struct {
 	Key                  int64          `json:"key"`
 	ElementID            string         `json:"element_id"`
-	ProcessDefinitionKey sql.NullInt64  `json:"process_definition_key"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
 	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
 	Name                 string         `json:"name"`
 	State                int64          `json:"state"`

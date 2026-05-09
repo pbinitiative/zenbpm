@@ -158,8 +158,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	return tokens, nil
 }
 
-// TODO: token *runtime.ExecutionToken or token runtime.ExecutionToken???
-func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, processInstanceKey int64, token *runtime.ExecutionToken) error {
+func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, processInstanceKey int64, token runtime.ExecutionToken) error {
 	// cancel other message subscriptions
 	messageSubscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {
@@ -305,7 +304,7 @@ func (engine *Engine) createMessageCatchEvent(
 	token runtime.ExecutionToken,
 ) (runtime.ExecutionToken, error) {
 	// TODO: handle input variables
-	correlationKey, err := engine.evaluateMessageCorrelationKey(instance, messageDef)
+	correlationKey, messageName, err := engine.getCorrelationKeyAndMessageName(*instance.ProcessInstance().Definition, &instance, messageDef)
 	if err != nil {
 		token.State = runtime.TokenStateFailed
 		return token, fmt.Errorf("failed to evaluate message correlation key: %w", err)
@@ -315,11 +314,12 @@ func (engine *Engine) createMessageCatchEvent(
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		CorrelationKey:     correlationKey,
 		MessageSubscriptionData: runtime.MessageSubscriptionData{
-			Key:       engine.generateKey(),
-			ElementId: element.GetId(),
-			Name:      messageDef.Name,
-			State:     runtime.ActivityStateActive,
-			CreatedAt: time.Now(),
+			Key:                  engine.generateKey(),
+			ElementId:            element.GetId(),
+			Name:                 messageName,
+			State:                runtime.ActivityStateActive,
+			ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+			CreatedAt:            time.Now(),
 		},
 	}
 	err = batch.SaveMessageSubscription(ctx, subscription)
@@ -332,26 +332,32 @@ func (engine *Engine) createMessageCatchEvent(
 	return token, nil
 }
 
-func (engine *Engine) evaluateMessageCorrelationKey(instance runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (string, error) {
-	message, err := instance.ProcessInstance().Definition.Definitions.GetMessageByRef(messageDef.MessageRef)
+func (engine *Engine) getCorrelationKeyAndMessageName(processDefinition runtime.ProcessDefinition, instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (correlationKey string, messageName string, err error) {
+	message, err := processDefinition.Definitions.GetMessageByRef(messageDef.MessageRef)
 	if err != nil {
-		return "", fmt.Errorf("failed to create message subscription: %w", err)
+		return "", "", fmt.Errorf("failed to create message subscription: %w", err)
 	}
 
-	correlationKey := message.Extension.CorrelationKey
+	correlationKey = message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, instance.ProcessInstance().VariableHolder.LocalVariables())
+		var localVars map[string]interface{}
+		if instance != nil {
+			localVars = (*instance).ProcessInstance().VariableHolder.LocalVariables()
+		} else {
+			localVars = map[string]interface{}{}
+		}
+		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, localVars)
 		if err != nil {
-			return "", fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
+			return "", "", fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
 		}
 		ck, ok := correlationKeyResult.(string)
 		if !ok {
-			return "", fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
+			return "", "", fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
 		}
 		correlationKey = ck
 	}
 
-	return correlationKey, nil
+	return correlationKey, message.Name, nil
 }
 
 func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

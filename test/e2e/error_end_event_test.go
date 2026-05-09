@@ -466,7 +466,7 @@ func deleteErrorEndEventProcessInstancesFromDB(t testing.TB, processInstanceKeys
 		require.NoError(t, db.Queries.DeleteProcessInstancesTokens(context.Background(), keys))
 		require.NoError(t, db.Queries.DeleteProcessInstancesJobs(context.Background(), keys))
 		require.NoError(t, db.Queries.DeleteProcessInstancesTimers(context.Background(), nullKeys))
-		require.NoError(t, db.Queries.DeleteProcessInstancesMessageSubscriptions(context.Background(), keys))
+		require.NoError(t, db.Queries.DeleteProcessInstancesMessageSubscriptions(context.Background(), nullKeys))
 		require.NoError(t, db.Queries.DeleteProcessInstancesIncidents(context.Background(), keys))
 		deleteErrorEndEventProcessInstancesErrorSubscriptions(t, db, keys)
 		require.NoError(t, db.Queries.DeleteProcessInstances(context.Background(), keys))

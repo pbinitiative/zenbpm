@@ -82,7 +82,7 @@ func TestTimerEventSubprocessInterrupting_LoadAndParse(t *testing.T) {
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-interrupting.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
 	assert.NotNil(t, process)
 	assert.Equal(t, "Process_timerEventSubProcessInterrupting", process.BpmnProcessId)
@@ -94,7 +94,7 @@ func TestTimerEventSubprocessNonInterrupting_LoadAndParse(t *testing.T) {
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-non-interrupting.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-non-interrupting.bpmn")
 	require.NoError(t, err)
 	assert.NotNil(t, process)
 }
@@ -105,7 +105,7 @@ func TestTimerEventSubprocessNestedInterrupting_LoadAndParse(t *testing.T) {
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-nested-interrupting.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-nested-interrupting.bpmn")
 	require.NoError(t, err)
 	assert.NotNil(t, process)
 }
@@ -116,7 +116,7 @@ func TestTimerStartEventProcess_LoadAndParse(t *testing.T) {
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-start-event-process.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
 	assert.NotNil(t, process)
 }
@@ -215,7 +215,7 @@ func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *test
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	bpmnData, err := os.ReadFile("./test-cases/timer-start-event-process.bpmn")
+	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
 
 	xmlData := []byte(strings.ReplaceAll(
@@ -228,7 +228,7 @@ func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *test
 	require.NoError(t, err)
 	require.NotNil(t, def1)
 
-	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def1.Key)
+	err = engine.RegisterProcessDefinitionSubscriptions(t.Context(), def1.Key)
 	require.NoError(t, err)
 	require.Len(t, store.Timers, 1)
 
@@ -255,7 +255,7 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 	engine.Start(t.Context())
 	defer engine.Stop()
 
-	bpmnData, err := os.ReadFile("./test-cases/timer-start-event-process.bpmn")
+	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
 
 	originalTimeDate := "2026-03-28T10:00:00Z"
@@ -277,7 +277,7 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 	require.NotNil(t, def1)
 	assert.Equal(t, int32(1), def1.Version)
 
-	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def1.Key)
+	err = engine.RegisterProcessDefinitionSubscriptions(t.Context(), def1.Key)
 	require.NoError(t, err)
 
 	// Second load (different content due to nanosecond-precision timestamp)
@@ -288,7 +288,7 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 	require.NotNil(t, def2)
 	assert.Equal(t, int32(2), def2.Version)
 
-	err = engine.RegisterForPotentialTimerStartEvents(t.Context(), def2.Key)
+	err = engine.RegisterProcessDefinitionSubscriptions(t.Context(), def2.Key)
 	require.NoError(t, err)
 
 	// Wait for the timer to fire (timeDate = now+1s, wait 2s)

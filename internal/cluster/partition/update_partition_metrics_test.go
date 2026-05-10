@@ -13,15 +13,14 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-// recordedMeasurement captures a single Record call on the fake gauge.
 type recordedMeasurement struct {
 	value int64
 	attrs []attribute.KeyValue
 }
 
-// fakeGauge is a test double for metric.Int64Gauge that records every call.
-// It embeds noop.Int64Gauge to satisfy the embedded.Int64Gauge marker interface
-// (which contains an unexported method and cannot be implemented externally).
+// fakeGauge embeds noop.Int64Gauge to satisfy the embedded.Int64Gauge marker
+// interface, which contains an unexported method that cannot be implemented
+// externally.
 type fakeGauge struct {
 	noop.Int64Gauge
 	mu           sync.Mutex
@@ -48,8 +47,6 @@ func (g *fakeGauge) recorded() []recordedMeasurement {
 	return out
 }
 
-// injectFakeMetrics replaces the metrics on zpn with controllable fakes and
-// returns them so the test can assert on recorded values.
 func injectFakeMetrics(zpn *ZenPartitionNode) (jobsGauge, instancesGauge *fakeGauge) {
 	jobsGauge = &fakeGauge{}
 	instancesGauge = &fakeGauge{}
@@ -102,8 +99,8 @@ func saveWaitingJob(t *testing.T, zpn *ZenPartitionNode, key int64) {
 	}
 }
 
-// saveActiveProcessInstance inserts a process_definition and process_instance
-// with state=1 (active). No job row is created.
+// saveActiveProcessInstance does not insert a job row; it is used to test
+// instance counts independently from job counts.
 func saveActiveProcessInstance(t *testing.T, zpn *ZenPartitionNode, key int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -217,13 +214,15 @@ func TestUpdatePartitionMetrics_PartitionAttributeIsSet(t *testing.T) {
 
 func TestUpdatePartitionMetrics_RecordsNotCalledOnQueryError(t *testing.T) {
 	zpn, _, _, _, _ := prepareTestSetup(t, false)
-	
+	defer zpn.Stop()
+
+	// Force DB queries to fail; Stop() will attempt Close again, which is harmless.
 	zpn.DB.Store.Close(true)
 
 	jobsGauge, instancesGauge := injectFakeMetrics(zpn)
 
 	zpn.updatePartitionMetrics()
-	
+
 	if len(jobsGauge.recorded()) != 0 || len(instancesGauge.recorded()) != 0 {
 		t.Error("expected no gauge recordings when DB queries fail")
 	}

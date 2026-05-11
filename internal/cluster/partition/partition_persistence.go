@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	grpccode "google.golang.org/grpc/codes"
@@ -107,7 +108,9 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	queries := sql.New(db)
 	db.Queries = queries
 
-	go db.scheduleDataCleanup()
+	safego.Go("partition-data-cleanup", db.logger, func() {
+		db.scheduleDataCleanup()
+	})
 	return db, nil
 }
 

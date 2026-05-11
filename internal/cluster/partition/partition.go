@@ -9,8 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -388,7 +391,7 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 	doneCh = make(chan struct{})
 	ticker := time.NewTicker(5 * time.Second)
 
-	go func() {
+	safego.Go("partition-observer", zpn.logger, func() {
 		defer close(doneCh)
 		for {
 			select {
@@ -461,36 +464,36 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 				return
 			}
 		}
-	}()
+	})
 	return closeCh, doneCh
 }
 
 func (zpn *ZenPartitionNode) updatePartitionMetrics() {
 	ctx := context.Background()
-	wg := sync.WaitGroup{}
+	g, gCtx := errgroup.WithContext(ctx)
 
-	wg.Add(1)
 	var waitingJobs int64
-	go func() {
-		var err error
-		waitingJobs, err = zpn.DB.Queries.CountWaitingJobs(ctx)
-		if err != nil {
-			zpn.logger.Error("Failed to update metrics for partition", "partition", zpn.PartitionId, "err", err)
-		}
-		wg.Done()
-	}()
+	g.Go(func() error {
+		return safego.Run("partition-metrics-waiting-jobs", zpn.logger, func() error {
+			var err error
+			waitingJobs, err = zpn.DB.Queries.CountWaitingJobs(gCtx)
+			return err
+		})
+	})
 
-	wg.Add(1)
 	var activeInstances int64
-	go func() {
-		var err error
-		activeInstances, err = zpn.DB.Queries.CountActiveProcessInstances(ctx)
-		if err != nil {
-			zpn.logger.Error("Failed to update metrics for partition", "partition", zpn.PartitionId, "err", err)
-		}
-		wg.Done()
-	}()
-	wg.Wait()
+	g.Go(func() error {
+		return safego.Run("partition-metrics-active-instances", zpn.logger, func() error {
+			var err error
+			activeInstances, err = zpn.DB.Queries.CountActiveProcessInstances(gCtx)
+			return err
+		})
+	})
+
+	if err := g.Wait(); err != nil {
+		zpn.logger.Error("Failed to update metrics for partition", "partition", zpn.PartitionId, "err", err)
+		return
+	}
 	zpn.metrics.jobsWaiting.Record(ctx, waitingJobs, metric.WithAttributes(
 		attribute.Int64("partition", int64(zpn.PartitionId)),
 	))

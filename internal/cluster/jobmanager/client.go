@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
@@ -149,7 +150,9 @@ func (c *jobClient) subscribeNodeToPartition(ctx context.Context, partition uint
 		nodeID: nodeID,
 	}
 	c.nodeStreams = append(c.nodeStreams, &nodeStream)
-	go c.handleJobStreamRecv(&nodeStream)
+	safego.Go("jobclient-stream-recv", c.logger, func() {
+		c.handleJobStreamRecv(&nodeStream)
+	})
 }
 
 func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
@@ -213,7 +216,9 @@ func (c *jobClient) sendJobToClient(job Job) {
 
 func (c *jobClient) startClient() {
 	c.subscribeNode(c.ctx)
-	go c.distributeToClients()
+	safego.Go("jobclient-distribute", c.logger, func() {
+		c.distributeToClients()
+	})
 	c.logger.Info("Started client")
 }
 

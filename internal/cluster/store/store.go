@@ -13,6 +13,7 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -231,7 +232,7 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 	closeCh = make(chan struct{})
 	doneCh = make(chan struct{})
 
-	go func() {
+	safego.Go("store-observer", s.logger, func() {
 		defer close(doneCh)
 		for {
 			select {
@@ -307,7 +308,7 @@ func (s *Store) observe() (closeCh, doneCh chan struct{}) {
 				return
 			}
 		}
-	}()
+	})
 	return closeCh, doneCh
 }
 

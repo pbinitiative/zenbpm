@@ -103,7 +103,7 @@ func TestGo_NilPanicIsRecoveredAndLogged(t *testing.T) {
 		t.Fatal("panic(nil) was silently swallowed — no log entry produced")
 	}
 	if !logger.containsMsg("safego: panic in nil-panic") {
-		t.Errorf("expected panic log message, got: %v", logger.entries)
+		t.Errorf("expected panic log message, got: %v", logger.snapshot())
 	}
 	if stack := logger.stackValue(); !strings.Contains(stack, "goroutine") {
 		t.Errorf("expected stack trace in log, got: %q", stack)

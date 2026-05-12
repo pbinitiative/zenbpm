@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="StanoveniSchvalovatelu_DodavatelskeFaktury" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+  <decision id="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury" name="Stanovení schvalovatelů dodavatelské faktury">
+    <decisionTable id="DecisionTable_198kpsd" hitPolicy="COLLECT">
+      <input id="Input_1" label="Celková částka faktury bez DPH">
+        <inputExpression id="InputExpression_1" typeRef="number">
+          <text>invoiceTotalNetAmount</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" label="Schvalovatel" typeRef="string" />
+      <rule id="DecisionRule_0qcimck">
+        <description>Tvůrce objednávky</description>
+        <inputEntry id="UnaryTests_15ucnh1">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0cszkx6">
+          <text>"TvurceObjednavky"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_078uc2h">
+        <description>Správce rozpočtu</description>
+        <inputEntry id="UnaryTests_1pgb9qc">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_0czwqhc">
+          <text>"SpravceRozpoctu"</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_0lfw6ra">
+        <description>Jednatel</description>
+        <inputEntry id="UnaryTests_1nqlzj4">
+          <text>&gt; 100000</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1o71o3l">
+          <text>"Jednatel"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury">
+        <dc:Bounds height="80" width="180" x="870" y="380" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

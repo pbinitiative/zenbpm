@@ -156,6 +156,14 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -count=1 -v ./test/e2e/...
 
+.PHONY: test-acceptance
+test-acceptance: ## Run acceptance end to end tests
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
+	go test -count=1 -v -tags=acceptance ./test/acceptance_tests/...
+
 .PHONY: test-dmntest
 test-dmntest:
 	export PROFILE=TEST; \

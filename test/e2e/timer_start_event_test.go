@@ -75,13 +75,8 @@ func TestTimerStartEvent(t *testing.T) {
 				return
 			}
 
-			if !assert.NotEmpty(t, jobsPartitionPage) {
-				return
-			}
-
-			if !assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items) {
-				return
-			}
+			require.NotEmpty(collect, jobsPartitionPage)
+			require.NotEmpty(collect, jobsPartitionPage.Partitions[0].Items)
 
 			jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
 		}, 15*time.Second, 100*time.Millisecond, "timer start event should have at least one job")

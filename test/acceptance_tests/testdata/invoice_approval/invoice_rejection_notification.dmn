@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:biodi="http://bpmn.io/schema/dmn/biodi/2.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+  <decision id="Decision_StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury" name="Stanovení obsahu oznámení o zamítnutí dodavatelské faktury">
+    <decisionTable id="DecisionTable_198kpsd">
+      <input id="Input_1" label="Kód zamítnutí">
+        <inputExpression id="InputExpression_1" typeRef="string">
+          <text>invoiceRejectionReasonCode</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" label="Předmět" name="title" typeRef="string" biodi:width="221" />
+      <output id="OutputClause_0gxkppo" label="Text" name="description" typeRef="string" biodi:width="954" />
+      <rule id="DecisionRule_0gyv6ve">
+        <description></description>
+        <inputEntry id="UnaryTests_04xib0x">
+          <text>"Z1"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_11d9b7d">
+          <text>"Zamítnutí faktury č. &lt;&lt;invoiceNumber&gt;&gt; – chybějící objednávka"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_1ue6rgc">
+          <text>"Dobrý den, vracíme Vám fakturu č. &lt;&lt;invoiceNumber&gt;&gt;, neboť k uvedenému plnění neexistuje v naší evidenci odpovídající objednávka. Naše interní procesy neumožňují proplacení dokladů, které nejsou podloženy řádným objednávkovým řízením. Žádáme Vás o prověření situace, případně o doložení dokumentace, která by oprávněnost fakturace prokazovala. S pozdravem, 4BPM Innovations s.r.o."</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_0uxr3o9">
+        <inputEntry id="UnaryTests_1rhg9h9">
+          <text>"Z2"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1mmk4w9">
+          <text>"Zamítnutí faktury č. &lt;&lt;invoiceNumber&gt;&gt; – neregistrovaný bankovní účet"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_0kk6bl0">
+          <text>"Dobrý den, Vaši fakturu č. &lt;&lt;invoiceNumber&gt;&gt; nemůžeme v současné podobě proplatit. Číslo účtu uvedené na faktuře neodpovídá účtům registrovaným u správce daně. Žádáme Vás o zaslání opravného dokladu s registrovaným bankovním účtem, případně o nápravu v registru plátců DPH. Do té doby je faktura považována za neplatnou. S pozdravem, 4BPM Innovations s.r.o."</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_0v5raxt">
+        <inputEntry id="UnaryTests_1ffkoja">
+          <text>"Z3"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1oz5u5k">
+          <text>"Neuznání faktury č. &lt;&lt;invoiceNumber&gt;&gt;"</text>
+        </outputEntry>
+        <outputEntry id="LiteralExpression_14i6m4q">
+          <text>"Dobrý den, vracíme Vám fakturu č. &lt;&lt;invoiceNumber&gt;&gt; k opravě/stornování. Při interním schvalovacím procesu byl u dokladu shledán tento nedostatek: &lt;&lt;invoiceRejectionReason&gt;&gt; Prosíme o opravu dokladu nebo o vyjádření k uvedenému důvodu zamítnutí. Po odstranění tohoto rozporu bude možné fakturu znovu zařadit do platebního procesu. S pozdravem, 4BPM Innovations s.r.o."</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="Decision_StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury">
+        <dc:Bounds height="80" width="180" x="700" y="300" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

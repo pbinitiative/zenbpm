@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rtls"
 	httpd "github.com/rqlite/rqlite/v8/http"
-	"github.com/rqlite/rqlite/v8/rtls"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 

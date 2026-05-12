@@ -87,6 +87,23 @@ Content-Type: application/json
   "variables": {}
 }
 
+### Message
+@correlationKey=correlation-key-event-subprocess-non-interrupting
+@messageName=messageNonInterruptingRef
+POST {{host}}/v1/messages
+Content-Type: application/json
+
+{
+  "correlationKey": "{{correlationKey}}",
+  "messageName": "{{messageName}}",
+  "variables": {
+    "paymentId": "pay-123-abc",
+    "amount": 1000,
+    "currency": "USD",
+    "receivedAt": "2025-08-22T16:25:10Z"
+  }
+}
+
 ### DeployDmnResourceDefinition
 POST {{host}}/v1/dmn-resource-definitions
 Content-Type: application/xml

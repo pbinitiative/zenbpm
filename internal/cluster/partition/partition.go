@@ -21,7 +21,6 @@ import (
 	"github.com/rqlite/rqlite/v8/auth"
 	"github.com/rqlite/rqlite/v8/auto/backup"
 	"github.com/rqlite/rqlite/v8/auto/restore"
-	"github.com/rqlite/rqlite/v8/aws"
 	"github.com/rqlite/rqlite/v8/cluster"
 	"github.com/rqlite/rqlite/v8/command/proto"
 	httpd "github.com/rqlite/rqlite/v8/http"
@@ -36,7 +35,6 @@ const (
 	observerChanLen = 100
 )
 
-// ZenPartitionNode is part of the rqlite raft cluster (partition of the main cluster)
 type ZenPartitionNode struct {
 	PartitionId     uint32
 	config          *config.RqLite
@@ -55,13 +53,11 @@ type ZenPartitionNode struct {
 
 	Engine *bpmn.Engine
 
-	// Raft changes observer
 	observer      *raft.Observer
 	observerChan  chan raft.Observation
 	observerClose chan struct{}
 	observerDone  chan struct{}
 
-	// callback functions that notify node about changes in the partition cluster
 	stateChangeCallbacks PartitionChangesCallbacks
 }
 
@@ -78,16 +74,11 @@ func (zpn *ZenPartitionNode) createMetrics() {
 }
 
 type PartitionChangesCallbacks struct {
-	// new node has joined the partition raft cluster
-	AddNewNode func(raft.Server) error
-	// node has been removed from partition raft cluster
+	AddNewNode   func(raft.Server) error
 	ShutdownNode func(raft.ServerID) error
-	// leader changed
 	LeaderChange func(raft.ServerID) error
-	// node needs to be removed according to reap settings
-	RemoveNode func(id string) error
-	// partition node has become available
-	ResumeNode func(id string) error
+	RemoveNode   func(id string) error
+	ResumeNode   func(id string) error
 }
 
 type partitionMetrics struct {
@@ -112,7 +103,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 
 	zpn.createMetrics()
 
-	// Raft internode layer
 	raftLn := network.NewRqLiteRaftListener(partition, mux)
 	raftDialer, err := network.NewRqLiteRaftDialer(partition, cfg.NodeX509Cert, cfg.NodeX509Key, cfg.NodeX509CACert,
 		cfg.NodeVerifyServerName, cfg.NoNodeVerify)
@@ -121,7 +111,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	}
 	raftTn := tcp.NewLayer(raftLn, raftDialer)
 
-	// Create the store.
 	str, err := zpn.createStore(cfg, raftTn, partition)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -140,7 +129,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)
 	}
 
-	// Install the auto-restore data, if necessary.
 	if cfg.AutoRestoreFile != "" {
 		hd, err := store.HasData(str.Path())
 		if err != nil {
@@ -171,7 +159,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		}
 	}
 
-	// Get any credential store.
 	credStr, err := zpn.createCredentialStore(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credential store: %w", err)
@@ -186,8 +173,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	zpn.clusterService = clstrServ
 	zpn.logger.Info(fmt.Sprintf("cluster TCP mux Listener registered with byte header %d", network.GetPartitionClusterHeaderByte(partition)))
 
-	// Create the HTTP service.
-	//
 	// We want to start the HTTP server as soon as possible, so the node is responsive and external
 	// systems can see that it's running. We still have to open the Store though, so the node won't
 	// be able to do much until that happens however.
@@ -213,11 +198,9 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	str.RegisterObserver(zpn.observer)
 	zpn.observerClose, zpn.observerDone = zpn.observe()
 
-	// Register remaining status providers.
 	zpn.registerStatus("cluster", clstrServ)
 	zpn.registerStatus("network", tcp.NetworkReporter{})
 
-	// Create the cluster!
 	nodes, err := str.Nodes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes %w", err)
@@ -226,7 +209,6 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 		return nil, fmt.Errorf("clustering failure: %w", err)
 	}
 
-	// Start any requested auto-backups
 	backupSrv, err := zpn.startAutoBackups(ctx, cfg, str)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start auto-ackups: %w", err)
@@ -248,14 +230,14 @@ func (zpn *ZenPartitionNode) Role() zproto.Role {
 	return zproto.Role_ROLE_TYPE_FOLLOWER
 }
 
-// Execute an SQL statement on rqlite partition node
 func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	return zpn.store.Execute(req)
+	res, _, err := zpn.store.Execute(req)
+	return res, err
 }
 
-// Run an SQL query on rqlite partition node
 func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	return zpn.store.Query(req)
+	rows, _, err := zpn.store.Query(req)
+	return rows, err
 }
 
 func (zpn *ZenPartitionNode) WaitForLeader(timeout time.Duration) (string, error) {
@@ -267,7 +249,6 @@ func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 }
 
 func (zpn *ZenPartitionNode) Stop() error {
-	// stop the engine if present
 	if zpn.Engine != nil {
 		zpn.Engine.Stop()
 	}
@@ -293,8 +274,7 @@ func (zpn *ZenPartitionNode) Stop() error {
 			// Don't log a confusing message if (probably) not Leader
 			zpn.logger.Info("stepping down as Leader before shutdown")
 		}
-		// Perform a stepdown, ignore any errors.
-		zpn.store.Stepdown(true)
+		zpn.store.Stepdown(true, "")
 	}
 
 	if err := zpn.store.Close(true); err != nil {
@@ -326,18 +306,11 @@ func (zpn *ZenPartitionNode) startAutoBackups(ctx context.Context, cfg *config.R
 		return nil, fmt.Errorf("failed to read auto-backup file: %s", err.Error())
 	}
 
-	uCfg, s3cfg, err := backup.Unmarshal(b)
+	uCfg, sc, err := backup.NewStorageClient(b)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse auto-backup file: %s", err.Error())
 	}
 	provider := store.NewProvider(str, uCfg.Vacuum, !uCfg.NoCompress)
-	sc, err := aws.NewS3Client(s3cfg.Endpoint, s3cfg.Region, s3cfg.AccessKeyID, s3cfg.SecretAccessKey,
-		s3cfg.Bucket, s3cfg.Path, &aws.S3ClientOpts{
-			ForcePathStyle: s3cfg.ForcePathStyle,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create aws S3 client: %s", err.Error())
-	}
 	u := backup.NewUploader(sc, provider, time.Duration(uCfg.Interval))
 	u.Start(ctx, str.IsLeader)
 	return u, nil
@@ -359,7 +332,6 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 			}),
 	})
 
-	// Set optional parameters on store.
 	str.RaftLogLevel = cfg.RaftLogLevel
 	str.ShutdownOnRemove = cfg.RaftShutdownOnRemove
 	str.SnapshotThreshold = cfg.RaftSnapThreshold
@@ -442,7 +414,6 @@ func (zpn *ZenPartitionNode) observe() (closeCh, doneCh chan struct{}) {
 					}
 					_ = zpn.stateChangeCallbacks.LeaderChange(signal.LeaderID)
 				case raft.PeerObservation:
-					// PeerObservation is invoked only when the raft replication goroutine is started/stoped
 					var err error
 					if signal.Removed && zpn.stateChangeCallbacks.ShutdownNode != nil {
 						if err = zpn.stateChangeCallbacks.ShutdownNode(signal.Peer.ID); err == nil {
@@ -508,7 +479,7 @@ func (zpn *ZenPartitionNode) createCredentialStore(cfg *config.RqLite) (*auth.Cr
 
 func (zpn *ZenPartitionNode) createClusterService(cfg *config.RqLite, ln net.Listener, db cluster.Database, mgr cluster.Manager, credStr *auth.CredentialsStore) (*cluster.Service, error) {
 	c := cluster.New(ln, db, mgr, credStr)
-	c.EnableHTTPS(cfg.HTTPx509Cert != "" && cfg.HTTPx509Key != "") // Conditions met for an HTTPS API
+	c.EnableHTTPS(cfg.HTTPx509Cert != "" && cfg.HTTPx509Key != "")
 	if err := c.Open(); err != nil {
 		return nil, err
 	}
@@ -537,7 +508,6 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 			return fmt.Errorf("cannot create a new non-voting node without joining it to an existing cluster")
 		}
 
-		// Brand new node, told to bootstrap itself. So do it.
 		zpn.logger.Info("bootstrapping single new node")
 		if err := zpn.store.Bootstrap(store.NewServer(zpn.store.ID(), cfg.RaftAdv, true)); err != nil {
 			return fmt.Errorf("failed to bootstrap single new node: %s", err.Error())
@@ -545,7 +515,6 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 		return nil
 	}
 
-	// Prepare definition of being part of a cluster.
 	bootDoneFn := func() bool {
 		leader, _ := zpn.store.LeaderAddr()
 		return leader != ""
@@ -555,7 +524,6 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 	joiner := cluster.NewJoiner(zpn.clusterClient, cfg.JoinAttempts, cfg.JoinInterval)
 	joiner.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
 	if joins != nil && cfg.BootstrapExpect == 0 {
-		// Explicit join operation requested, so do it.
 		j, err := joiner.Do(ctx, joins, zpn.store.ID(), cfg.RaftAdv, clusterSuf)
 		if err != nil {
 			return fmt.Errorf("failed to join cluster: %s", err.Error())
@@ -565,7 +533,6 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 	}
 
 	if joins != nil && cfg.BootstrapExpect > 0 {
-		// Bootstrap with explicit join addresses requests.
 		bs := cluster.NewBootstrapper(cluster.NewAddressProviderString(joins), zpn.clusterClient)
 		bs.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))
 		return bs.Boot(ctx, zpn.store.ID(), cfg.RaftAdv, clusterSuf, bootDoneFn, cfg.BootstrapExpectTimeout)

@@ -15,9 +15,9 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rsync"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	"github.com/rqlite/rqlite/v8/random"
-	"github.com/rqlite/rqlite/v8/rsync"
 	"github.com/rqlite/rqlite/v8/tcp"
 	pb "google.golang.org/protobuf/proto"
 )

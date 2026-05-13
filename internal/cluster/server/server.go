@@ -1404,6 +1404,172 @@ func (s *Server) GetIncidents(ctx context.Context, req *proto.GetIncidentsReques
 	}, nil
 }
 
+func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req *proto.GetProcessInstanceMessageSubscriptionsRequest) (*proto.GetProcessInstanceMessageSubscriptionsResponse, error) {
+	resp := make([]*proto.PartitionedMessageSubscriptions, 0, len(req.Partitions))
+	partitionIds := req.GetPartitions()
+	if len(partitionIds) == 0 {
+		partitionIds = []uint32{zenflake.GetPartitionId(req.GetProcessInstanceKey())}
+	}
+	for _, partitionId := range partitionIds {
+		queries := s.controller.PartitionQueries(ctx, partitionId)
+		if queries == nil {
+			err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+			return &proto.GetProcessInstanceMessageSubscriptionsResponse{Error: err.ToProtoError()}, nil
+		}
+		result, err := queries.FindProcessInstanceMessageSubscriptionsPage(ctx, sql.FindProcessInstanceMessageSubscriptionsPageParams{
+			ProcessInstanceKey: sql.ToNullInt64(req.ProcessInstanceKey),
+			State:              sql.ToNullInt64(req.State),
+			Offset:             int64(req.GetSize()) * int64(max(req.GetPage(), 1)-1),
+			Size:               int64(req.GetSize()),
+		})
+		if err != nil {
+			e := zenerr.TechnicalError(fmt.Errorf("failed to find message subscriptions for instance %d", req.GetProcessInstanceKey()))
+			return &proto.GetProcessInstanceMessageSubscriptionsResponse{Error: e.ToProtoError()}, nil
+		}
+		totalCount := int32(0)
+		items := make([]*proto.ProtoMessageSubscription, len(result))
+		if len(result) > 0 {
+			totalCount = int32(result[0].TotalCount)
+		}
+		for i, sub := range result {
+			var piKey *int64
+			if sub.ProcessInstanceKey.Valid {
+				v := sub.ProcessInstanceKey.Int64
+				piKey = &v
+			}
+			var coKey *string
+			if sub.CorrelationKey.Valid {
+				v := sub.CorrelationKey.String
+				coKey = &v
+			}
+			items[i] = &proto.ProtoMessageSubscription{
+				Key:                  &sub.Key,
+				ElementId:            &sub.ElementID,
+				ProcessDefinitionKey: &sub.ProcessDefinitionKey,
+				ProcessInstanceKey:   piKey,
+				MessageName:          &sub.Name,
+				CorrelationKey:       coKey,
+				State:                ptr.To(sub.State),
+				CreatedAt:            &sub.CreatedAt,
+			}
+		}
+		resp = append(resp, &proto.PartitionedMessageSubscriptions{
+			PartitionId: &partitionId,
+			Items:       items,
+			TotalCount:  ptr.To(totalCount),
+		})
+	}
+	return &proto.GetProcessInstanceMessageSubscriptionsResponse{Partitions: resp}, nil
+}
+
+func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, req *proto.GetProcessInstanceTimerSubscriptionsRequest) (*proto.GetProcessInstanceTimerSubscriptionsResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+		return &proto.GetProcessInstanceTimerSubscriptionsResponse{Error: err.ToProtoError()}, nil
+	}
+	timerStateFilter := req.State
+	stateFilter := sql.ToNullInt64(timerStateFilter)
+	result, err := queries.FindProcessInstanceTimersPage(ctx, sql.FindProcessInstanceTimersPageParams{
+		ProcessInstanceKey: sql.ToNullInt64(req.ProcessInstanceKey),
+		State:              stateFilter,
+		Offset:             int64(req.GetSize()) * int64(max(req.GetPage(), 1)-1),
+		Size:               int64(req.GetSize()),
+	})
+	if err != nil {
+		e := zenerr.TechnicalError(fmt.Errorf("failed to find timer subscriptions for instance %d", req.GetProcessInstanceKey()))
+		return &proto.GetProcessInstanceTimerSubscriptionsResponse{Error: e.ToProtoError()}, nil
+	}
+	var totalCount int32
+	if len(result) > 0 {
+		totalCount = int32(result[0].TotalCount)
+	}
+	items := make([]*proto.ProtoTimerSubscription, len(result))
+	for i, t := range result {
+		activityState, stateErr := timerStateToActivityState(t.State)
+		if stateErr != nil {
+			e := zenerr.TechnicalError(stateErr)
+			return &proto.GetProcessInstanceTimerSubscriptionsResponse{Error: e.ToProtoError()}, nil
+		}
+		var dueAt *int64
+		if t.DueAt != 0 {
+			v := t.DueAt
+			dueAt = &v
+		}
+		var piKey *int64
+		if t.ProcessInstanceKey.Valid {
+			v := t.ProcessInstanceKey.Int64
+			piKey = &v
+		}
+		items[i] = &proto.ProtoTimerSubscription{
+			Key:                  &t.Key,
+			ElementId:            &t.ElementID,
+			ProcessDefinitionKey: &t.ProcessDefinitionKey,
+			ProcessInstanceKey:   piKey,
+			State:                ptr.To(activityState),
+			CreatedAt:            &t.CreatedAt,
+			DueAt:                dueAt,
+		}
+	}
+	return &proto.GetProcessInstanceTimerSubscriptionsResponse{
+		Items:      items,
+		TotalCount: ptr.To(totalCount),
+	}, nil
+}
+
+func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, req *proto.GetProcessInstanceErrorSubscriptionsRequest) (*proto.GetProcessInstanceErrorSubscriptionsResponse, error) {
+	partitionId := zenflake.GetPartitionId(req.GetProcessInstanceKey())
+	queries := s.controller.PartitionQueries(ctx, partitionId)
+	if queries == nil {
+		err := zenerr.TechnicalError(fmt.Errorf("queries for partition %d not found", partitionId))
+		return &proto.GetProcessInstanceErrorSubscriptionsResponse{Error: err.ToProtoError()}, nil
+	}
+	errorStateFilter := req.State
+	stateFilter := sql.ToNullInt64(errorStateFilter)
+	result, err := queries.FindProcessInstanceErrorSubscriptionsPage(ctx, sql.FindProcessInstanceErrorSubscriptionsPageParams{
+		ProcessInstanceKey: req.GetProcessInstanceKey(),
+		State:              stateFilter,
+		Offset:             int64(req.GetSize()) * int64(max(req.GetPage(), 1)-1),
+		Size:               int64(req.GetSize()),
+	})
+	if err != nil {
+		e := zenerr.TechnicalError(fmt.Errorf("failed to find error subscriptions for instance %d", req.GetProcessInstanceKey()))
+		return &proto.GetProcessInstanceErrorSubscriptionsResponse{Error: e.ToProtoError()}, nil
+	}
+	var totalCount int32
+	if len(result) > 0 {
+		totalCount = int32(result[0].TotalCount)
+	}
+	items := make([]*proto.ProtoErrorSubscription, len(result))
+	for i, sub := range result {
+		activityState, stateErr := errorStateToActivityState(sub.State)
+		if stateErr != nil {
+			e := zenerr.TechnicalError(stateErr)
+			return &proto.GetProcessInstanceErrorSubscriptionsResponse{Error: e.ToProtoError()}, nil
+		}
+		var errorCode *string
+		if sub.ErrorCode.Valid {
+			v := sub.ErrorCode.String
+			errorCode = &v
+		}
+		items[i] = &proto.ProtoErrorSubscription{
+			Key:                  &sub.Key,
+			ElementInstanceKey:   &sub.ElementInstanceKey,
+			ElementId:            &sub.ElementID,
+			ProcessDefinitionKey: &sub.ProcessDefinitionKey,
+			ProcessInstanceKey:   &sub.ProcessInstanceKey,
+			ErrorCode:            errorCode,
+			State:                ptr.To(activityState),
+			CreatedAt:            &sub.CreatedAt,
+		}
+	}
+	return &proto.GetProcessInstanceErrorSubscriptionsResponse{
+		Items:      items,
+		TotalCount: ptr.To(totalCount),
+	}, nil
+}
+
 func (s *Server) ResolveIncident(ctx context.Context, req *proto.ResolveIncidentRequest) (*proto.ResolveIncidentResponse, error) {
 	partitionId := zenflake.GetPartitionId(req.GetIncidentKey())
 	engine := s.controller.PartitionEngine(ctx, partitionId)
@@ -1661,4 +1827,30 @@ func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*p
 
 func isErrNotFound(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound)
+}
+
+func timerStateToActivityState(timerState int64) (int64, error) {
+	switch runtime.TimerState(timerState) {
+	case runtime.TimerStateCreated:
+		return int64(runtime.ActivityStateActive), nil
+	case runtime.TimerStateTriggered:
+		return int64(runtime.ActivityStateCompleted), nil
+	case runtime.TimerStateCancelled:
+		return int64(runtime.ActivityStateWithdrawn), nil
+	default:
+		log.Error("unknown timer state: %d", timerState)
+		return 0, fmt.Errorf("unknown timer state %d in DB; cannot map to ActivityState", timerState)
+	}
+}
+
+func errorStateToActivityState(errorState int64) (int64, error) {
+	switch runtime.ErrorState(errorState) {
+	case runtime.ErrorStateCreated:
+		return int64(runtime.ActivityStateActive), nil
+	case runtime.ErrorStateCancelled:
+		return int64(runtime.ActivityStateWithdrawn), nil
+	default:
+		log.Error("errorStateToActivityState: unrecognized ErrorState %d; filtering disabled", errorState)
+		return 0, fmt.Errorf("unknown error state %d in DB; cannot map to ActivityState", errorState)
+	}
 }

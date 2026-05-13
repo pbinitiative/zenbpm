@@ -66,10 +66,13 @@ type Querier interface {
 	FindProcessDefinitionsById(ctx context.Context, bpmnProcessIds string) ([]ProcessDefinition, error)
 	FindProcessDefinitionsByKeys(ctx context.Context, keys []int64) ([]ProcessDefinition, error)
 	FindProcessInstanceErrorSubscriptions(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsParams) ([]ErrorSubscription, error)
+	FindProcessInstanceErrorSubscriptionsPage(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsPageParams) ([]FindProcessInstanceErrorSubscriptionsPageRow, error)
 	FindProcessInstanceJobs(ctx context.Context, arg FindProcessInstanceJobsParams) ([]FindProcessInstanceJobsRow, error)
 	FindProcessInstanceJobsInState(ctx context.Context, arg FindProcessInstanceJobsInStateParams) ([]Job, error)
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
+	FindProcessInstanceMessageSubscriptionsPage(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsPageParams) ([]FindProcessInstanceMessageSubscriptionsPageRow, error)
 	FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error)
+	FindProcessInstanceTimersPage(ctx context.Context, arg FindProcessInstanceTimersPageParams) ([]FindProcessInstanceTimersPageRow, error)
 	// workaround for sqlc which does not replace params in order by
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error)
 	FindProcessesByParentExecutionToken(ctx context.Context, parentProcessExecutionToken sql.NullInt64) ([]ProcessInstance, error)

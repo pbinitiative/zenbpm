@@ -1802,6 +1802,165 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /process-instances/{processInstanceKey}/event-subscriptions/messages:
+    get:
+      operationId: getProcessInstanceMessageSubscriptions
+      tags:
+        - process-instance
+      summary: Get message event subscriptions for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/EventSubscriptionState"
+      responses:
+        200:
+          description: List of message subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSubscriptionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Cluster error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /process-instances/{processInstanceKey}/event-subscriptions/timers:
+    get:
+      operationId: getProcessInstanceTimerSubscriptions
+      tags:
+        - process-instance
+      summary: Get timer event subscriptions for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/EventSubscriptionState"
+      responses:
+        200:
+          description: List of timer subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimerSubscriptionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Cluster error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /process-instances/{processInstanceKey}/event-subscriptions/errors:
+    get:
+      operationId: getProcessInstanceErrorSubscriptions
+      tags:
+        - process-instance
+      summary: Get error event subscriptions for a process instance
+      parameters:
+        - name: processInstanceKey
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: size
+          in: query
+          schema:
+            type: integer
+            format: int32
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/EventSubscriptionState"
+      responses:
+        200:
+          description: List of error subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorSubscriptionPage"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        502:
+          description: Cluster error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /process-instances/{processInstanceKey}/statistics:
     get:
       operationId: getProcessInstanceElementStatistics
@@ -3055,6 +3214,150 @@ components:
         - completed
         - terminated
         - failed
+    EventSubscriptionState:
+      type: string
+      enum:
+        - active
+        - compensated
+        - compensating
+        - completed
+        - completing
+        - failed
+        - failing
+        - ready
+        - terminated
+        - terminating
+        - withdrawn
+    MessageSubscription:
+      type: object
+      required:
+        - key
+        - elementId
+        - processDefinitionKey
+        - processInstanceKey
+        - messageName
+        - state
+        - createdAt
+      properties:
+        key:
+          type: integer
+          format: int64
+        elementId:
+          type: string
+        processDefinitionKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        messageName:
+          type: string
+        correlationKey:
+          type: string
+          nullable: true
+        state:
+          $ref: "#/components/schemas/EventSubscriptionState"
+        createdAt:
+          type: string
+          format: date-time
+    TimerSubscription:
+      type: object
+      required:
+        - key
+        - elementId
+        - processDefinitionKey
+        - processInstanceKey
+        - state
+        - createdAt
+      properties:
+        key:
+          type: integer
+          format: int64
+        elementId:
+          type: string
+        processDefinitionKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        state:
+          $ref: "#/components/schemas/EventSubscriptionState"
+        createdAt:
+          type: string
+          format: date-time
+        dueDate:
+          type: string
+          format: date-time
+    ErrorSubscription:
+      type: object
+      required:
+        - key
+        - elementInstanceKey
+        - elementId
+        - processDefinitionKey
+        - processInstanceKey
+        - state
+        - createdAt
+      properties:
+        key:
+          type: integer
+          format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
+        elementId:
+          type: string
+        processDefinitionKey:
+          type: integer
+          format: int64
+        processInstanceKey:
+          type: integer
+          format: int64
+        errorCode:
+          type: string
+          nullable: true
+        state:
+          $ref: "#/components/schemas/EventSubscriptionState"
+        createdAt:
+          type: string
+          format: date-time
+    MessageSubscriptionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/MessageSubscription"
+        - $ref: "#/components/schemas/PageMetadata"
+    TimerSubscriptionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TimerSubscription"
+        - $ref: "#/components/schemas/PageMetadata"
+    ErrorSubscriptionPage:
+      type: object
+      allOf:
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorSubscription"
+        - $ref: "#/components/schemas/PageMetadata"
     JobPage:
       type: object
       allOf:

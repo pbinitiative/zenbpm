@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_timer_sub_pagination" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="event-sub-timer-pagination-test" name="event-sub-timer-pagination-test" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_to_split" sourceRef="StartEvent_1" targetRef="Gateway_split" />
+    <bpmn:parallelGateway id="Gateway_split">
+      <bpmn:incoming>Flow_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_t1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_t2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_t3</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_to_t1" sourceRef="Gateway_split" targetRef="TimerEvent_1" />
+    <bpmn:sequenceFlow id="Flow_to_t2" sourceRef="Gateway_split" targetRef="TimerEvent_2" />
+    <bpmn:sequenceFlow id="Flow_to_t3" sourceRef="Gateway_split" targetRef="TimerEvent_3" />
+    <bpmn:intermediateCatchEvent id="TimerEvent_1">
+      <bpmn:incoming>Flow_to_t1</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_t1</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerDef_1">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="TimerEvent_2">
+      <bpmn:incoming>Flow_to_t2</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_t2</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerDef_2">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT2H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="TimerEvent_3">
+      <bpmn:incoming>Flow_to_t3</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_t3</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerDef_3">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT3H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:parallelGateway id="Gateway_join">
+      <bpmn:incoming>Flow_from_t1</bpmn:incoming>
+      <bpmn:incoming>Flow_from_t2</bpmn:incoming>
+      <bpmn:incoming>Flow_from_t3</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_end</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_from_t1" sourceRef="TimerEvent_1" targetRef="Gateway_join" />
+    <bpmn:sequenceFlow id="Flow_from_t2" sourceRef="TimerEvent_2" targetRef="Gateway_join" />
+    <bpmn:sequenceFlow id="Flow_from_t3" sourceRef="TimerEvent_3" targetRef="Gateway_join" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_to_end" sourceRef="Gateway_join" targetRef="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>

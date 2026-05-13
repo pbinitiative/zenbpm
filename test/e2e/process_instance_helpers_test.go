@@ -10,6 +10,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -213,4 +214,18 @@ func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {
 	default:
 		assert.Failf(t, "unexpected cleanup response", "process instance %d cleanup returned %s", processInstanceKey, response.Status())
 	}
+}
+
+func requireFirstActiveInstanceWithSingleToken(t testing.TB, processInstances *zenclient.GetProcessInstancesResponse) (zenclient.ProcessInstancesSimple, storage.Storage) {
+	t.Helper()
+	fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
+	assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
+
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(fetchedProcessInstance.Key))
+	require.NoError(t, err)
+	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), fetchedProcessInstance.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(tokens))
+
+	return fetchedProcessInstance, store
 }

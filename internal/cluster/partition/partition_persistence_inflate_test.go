@@ -15,6 +15,102 @@ import (
 func nullInt64(v int64) ssql.NullInt64    { return ssql.NullInt64{Int64: v, Valid: true} }
 func nullString(v string) ssql.NullString { return ssql.NullString{String: v, Valid: true} }
 
+func TestInflateDefinitionMessageSubscription(t *testing.T) {
+	dbm := sql.MessageSubscription{
+		Key:                  10,
+		ElementID:            "elem-def",
+		ProcessDefinitionKey: 200,
+		Name:                 "msg-def",
+		State:                int64(bpmnruntime.ActivityStateActive),
+		CreatedAt:            99999,
+		Type:                 int64(bpmnruntime.MessageSubscriptionTypeDefinition),
+	}
+	got, err := inflateDefinitionMessageSubscription(dbm)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), got.Key)
+	assert.Equal(t, "msg-def", got.Name)
+	assert.Equal(t, int64(200), got.ProcessDefinitionKey)
+}
+
+func TestInflateInstanceMessageSubscription(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		dbm := sql.MessageSubscription{
+			Key:                  20,
+			ElementID:            "elem-inst",
+			ProcessDefinitionKey: 300,
+			ProcessInstanceKey:   nullInt64(55),
+			CorrelationKey:       nullString("ck-inst"),
+			Name:                 "msg-inst",
+			State:                int64(bpmnruntime.ActivityStateActive),
+			CreatedAt:            11111,
+		}
+		got, err := inflateInstanceMessageSubscription(dbm)
+		require.NoError(t, err)
+		assert.Equal(t, int64(55), got.ProcessInstanceKey)
+		assert.Equal(t, "ck-inst", got.CorrelationKey)
+		assert.Equal(t, int64(20), got.Key)
+	})
+
+	t.Run("missing ProcessInstanceKey", func(t *testing.T) {
+		dbm := sql.MessageSubscription{
+			Key:            21,
+			CorrelationKey: nullString("ck"),
+			// ProcessInstanceKey is NULL
+		}
+		_, err := inflateInstanceMessageSubscription(dbm)
+		assert.Error(t, err)
+	})
+
+	t.Run("missing CorrelationKey", func(t *testing.T) {
+		dbm := sql.MessageSubscription{
+			Key:                22,
+			ProcessInstanceKey: nullInt64(1),
+			// CorrelationKey is NULL
+		}
+		_, err := inflateInstanceMessageSubscription(dbm)
+		assert.Error(t, err)
+	})
+}
+
+func TestInflateTokenMessageSubscription(t *testing.T) {
+	rq := &DB{}
+
+	t.Run("valid with preloaded token", func(t *testing.T) {
+		dbm := sql.MessageSubscription{
+			Key:                  30,
+			ElementID:            "elem-tok",
+			ProcessDefinitionKey: 400,
+			ProcessInstanceKey:   nullInt64(77),
+			CorrelationKey:       nullString("ck-tok"),
+			ExecutionToken:       nullInt64(888),
+			Name:                 "msg-tok",
+			State:                int64(bpmnruntime.ActivityStateActive),
+			CreatedAt:            22222,
+		}
+		token := &bpmnruntime.ExecutionToken{
+			Key:                888,
+			ElementInstanceKey: 900,
+			ElementId:          "tok-el",
+			ProcessInstanceKey: 77,
+			State:              bpmnruntime.TokenStateWaiting,
+		}
+		got, err := rq.inflateTokenMessageSubscription(context.Background(), dbm, token)
+		require.NoError(t, err)
+		assert.Equal(t, int64(77), got.ProcessInstanceKey)
+		assert.Equal(t, "ck-tok", got.CorrelationKey)
+		assert.Equal(t, int64(888), got.Token.Key)
+	})
+
+	t.Run("missing required params", func(t *testing.T) {
+		dbm := sql.MessageSubscription{
+			Key: 31,
+			// ExecutionToken / CorrelationKey / ProcessInstanceKey all NULL
+		}
+		_, err := rq.inflateTokenMessageSubscription(context.Background(), dbm, nil)
+		assert.Error(t, err)
+	})
+}
+
 // TestInflateMessageSubscription_Branches exercises every branch of
 // inflateMessageSubscription that does not require the database (Token branch
 // is exercised via the messageToken-already-loaded fast path).

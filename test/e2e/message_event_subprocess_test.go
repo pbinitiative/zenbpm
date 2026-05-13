@@ -33,7 +33,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
-		// Create a process instance
 		instance, err := createProcessInstance(t, &definition.Key, nil)
 		assert.NoError(t, err)
 		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
@@ -43,7 +42,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
 
-		// Before completing the job, the event subprocess message subscription should be active
 		assertMessageSubscriptionActive(t, instance.Key, "subProcessMessageEvent_12i3m6f")
 
 		// Read and complete the active job for the service task
@@ -58,13 +56,8 @@ func TestMessageEventSubProcess(t *testing.T) {
 		err = completeJob(t, jobs.Partitions[0].Items[0].Key, map[string]any{})
 		assert.NoError(t, err)
 
-		// After job completion the process instance should be completed
-		fetchedInstance, err = getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
-			"Process instance should be completed after the service task job is completed")
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 
-		// The event subprocess message subscription should be terminated since the process completed
 		assertMessageSubscriptionTerminated(t, instance.Key, "subProcessMessageEvent_12i3m6f")
 	})
 
@@ -76,7 +69,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
-		// Create a process instance
 		instance, err := createProcessInstance(t, &definition.Key, nil)
 		assert.NoError(t, err)
 		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
@@ -84,37 +76,24 @@ func TestMessageEventSubProcess(t *testing.T) {
 		// Verify the instance is active (service-task-1 is waiting for a job worker)
 		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateActive)
 
-		// before the message is published, the event subprocess message subscription should be active
 		assertMessageSubscriptionActive(t, instance.Key, "subProcessMessageEvent_12i3m6f")
 
-		// Publish the message that triggers the interrupting event subprocess
 		err = publishMessage(t, "globalMessageRef", "correlation-key-event-subprocess-1", &map[string]any{})
 		assert.NoError(t, err)
 
 		// the job of the main service task should be in TERMINATED state as the event subprocess should have interrupted it
 		assertSingleJobState(t, instance.Key, zenclient.JobStateTerminated)
 
-		// Verify the event subprocess child instance was created and completed
 		_ = requireChildEventSubProcessCompleted(t, instance.Key)
 
 		// Verify the parent process instance is also completed
-		var fetchedInstance *zenclient.ProcessInstance
-		assert.Eventually(t, func() bool {
-			processInstance, errGetProcessInstance := getProcessInstance(t, instance.Key)
-			if errGetProcessInstance != nil {
-				return false
-			}
-			if processInstance.State != zenclient.ProcessInstanceStateCompleted {
-				return false
-			}
-			fetchedInstance = &processInstance
-			return true
-		}, 15*time.Second, 100*time.Millisecond, "Parent process instance should be completed as the event subprocess is interrupting and was completed")
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+		fetchedProcessInstance, err := getProcessInstance(t, instance.Key)
+		require.NoError(t, err)
 
-		// after process completion, the event subprocess message subscription should be completed
 		assertMessageSubscriptionCompleted(t, instance.Key, "subProcessMessageEvent_12i3m6f")
 
-		vars := fetchedInstance.Variables
+		vars := fetchedProcessInstance.Variables
 
 		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.Equal(collect, "message-fired", vars["subProcessResult"],
@@ -136,7 +115,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
-		// Create a process instance
 		instance, err := createProcessInstance(t, &definition.Key, nil)
 		assert.NoError(t, err)
 		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
@@ -149,7 +127,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		// before the message is published, the event subprocess message subscription should be active
 		assertMessageSubscriptionActive(t, instance.Key, "eventSubprocessMessageEvent_12i3m6f")
 
-		// Publish the message that triggers the non-interrupting event subprocess
 		err = publishMessage(t, "messageNonInterruptingRef", "correlation-key-event-subprocess-non-interrupting", &map[string]any{})
 		assert.NoError(t, err)
 
@@ -191,7 +168,6 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
-		// Create a process instance
 		instance, err := createProcessInstance(t, &definition.Key, nil)
 		assert.NoError(t, err)
 		assert.NotZero(t, instance.Key, "Process instance key should not be zero")
@@ -229,13 +205,10 @@ func TestMessageEventSubProcess(t *testing.T) {
 		assertSingleJobState(t, instance.Key, zenclient.JobStateTerminated)
 
 		// ROOT parent instance: Verify the parent process instance is also completed and has all level outputs
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 			fetchedInstance, err = getProcessInstance(t, instance.Key)
 			assert.NoError(collect, err)
-			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State,
-				"Parent process instance should be completed as the event subprocess is interrupting and was completed")
-
-			// verify that event subprocess output variables were propagated through all levels to root
 			assert.Equal(collect, "l1-completed", fetchedInstance.Variables["l1Result"],
 				"l1Result should be propagated from L1 event subprocess to root")
 			assert.Equal(collect, "l2-completed", fetchedInstance.Variables["l2Result"],
@@ -296,22 +269,16 @@ func TestMessageEventSubProcess(t *testing.T) {
 	})
 }
 
-// assertMessageSubscriptionActive verifies that an InstanceMessageSubscription with the given
-// elementId exists in ActivityStateActive for the given process instance.
 func assertMessageSubscriptionActive(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	assertMessageSubscriptionInState(t, instanceKey, elementId, bpmnruntime.ActivityStateActive)
 }
 
-// assertMessageSubscriptionTerminated verifies that an InstanceMessageSubscription with the given
-// elementId exists in ActivityStateTerminated for the given process instance.
 func assertMessageSubscriptionTerminated(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	assertMessageSubscriptionInState(t, instanceKey, elementId, bpmnruntime.ActivityStateTerminated)
 }
 
-// assertMessageSubscriptionCompleted verifies that an InstanceMessageSubscription with the given
-// elementId exists in ActivityStateCompleted for the given process instance.
 func assertMessageSubscriptionCompleted(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	assertMessageSubscriptionInState(t, instanceKey, elementId, bpmnruntime.ActivityStateCompleted)

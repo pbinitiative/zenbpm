@@ -7,7 +7,33 @@ package sql
 
 import (
 	"context"
+	"strings"
 )
+
+const deleteProcessDefinitionsMessageSubscriptionPointers = `-- name: DeleteProcessDefinitionsMessageSubscriptionPointers :exec
+DELETE FROM message_subscription_pointer
+WHERE message_subscription_key IN (
+    SELECT key FROM message_subscription
+    WHERE process_definition_key IN (/*SLICE:processDefinitionKeys*/?)
+        AND process_instance_key IS NULL
+        AND execution_token IS NULL
+)
+`
+
+func (q *Queries) DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error {
+	query := deleteProcessDefinitionsMessageSubscriptionPointers
+	var queryParams []interface{}
+	if len(processdefinitionkeys) > 0 {
+		for _, v := range processdefinitionkeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", strings.Repeat(",?", len(processdefinitionkeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
 
 const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
 SELECT

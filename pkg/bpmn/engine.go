@@ -275,19 +275,6 @@ func (engine *Engine) terminateExecutionTokens(
 	for _, activeToken := range activeTokens {
 		for _, elementInstanceKey := range elementInstanceKeysToTerminate {
 			if activeToken.ElementInstanceKey == elementInstanceKey {
-				// Cancel all message subscriptions
-				subscriptions, err := engine.persistence.FindTokenMessageSubscriptions(ctx, activeToken.Key, runtime.ActivityStateActive)
-				if err != nil {
-					return nil, fmt.Errorf("failed to find message subscriptions for execution token %d: %w", activeToken.Key, err)
-				}
-				for _, sub := range subscriptions {
-					sub.MessageSubscription().State = runtime.ActivityStateTerminated
-					err = batch.SaveMessageSubscription(ctx, sub)
-					if err != nil {
-						return nil, fmt.Errorf("failed to save changes to message subscription %d: %w", sub.MessageSubscription().Key, err)
-					}
-				}
-
 				err = engine.terminateExecutionToken(ctx, batch, processInstanceKey, activeToken)
 				if err != nil {
 					return nil, fmt.Errorf("failed to terminate execution token %d: %w", activeToken.Key, err)

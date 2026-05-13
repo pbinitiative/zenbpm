@@ -757,6 +757,25 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 	return nil
 }
 
+func (mem *Storage) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
+	for _, k := range processDefinitionKeys {
+		keySet[k] = struct{}{}
+	}
+	for key, subscription := range mem.MessageSubscriptions {
+		if _, ok := keySet[subscription.MessageSubscription().ProcessDefinitionKey]; !ok {
+			continue
+		}
+		if subscription.Type() != bpmnruntime.MessageSubscriptionTypeDefinition {
+			continue
+		}
+		delete(mem.MessageSubscriptions, key)
+	}
+	return nil
+}
+
 var _ storage.TokenStorageReader = &Storage{}
 
 func (mem *Storage) GetCompletedTokensForProcessInstance(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.ExecutionToken, error) {
@@ -1036,6 +1055,13 @@ var _ storage.MessageStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveMessageSubscription(ctx, subscription)
+	})
+	return nil
+}
+
+func (b *StorageBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
 	})
 	return nil
 }

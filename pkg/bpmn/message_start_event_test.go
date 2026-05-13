@@ -1,9 +1,11 @@
 package bpmn
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
@@ -56,7 +58,6 @@ func TestLoadFromBytes_MessageStartEvent_IdenticalReloadKeepsExistingSubscriptio
 	assert.Equal(t, def1.Key, def2.Key)
 	assert.Equal(t, def1.Version, def2.Version)
 
-	// Identical reload must not deploy a new version → no extra subscriptions are created.
 	if assert.Len(t, definitionMessageSubscriptionsForDefinition(store, def1.Key), 1,
 		"expected identical reload to keep the existing message start event subscription") {
 		for _, sub := range store.MessageSubscriptions {
@@ -114,7 +115,6 @@ func TestPublishMessage_OnDefinitionSubscription_CreatesActiveProcessInstance(t 
 			"variables published with the message must be propagated to the new process instance")
 	}
 
-	// The definition-level subscription must have been transitioned to Completed.
 	for _, sub := range store.MessageSubscriptions {
 		if defSub, ok := sub.(*runtime.DefinitionMessageSubscription); ok &&
 			defSub.MessageSubscription().ProcessDefinitionKey == def.Key {
@@ -215,8 +215,6 @@ func TestPublishMessage_OnDefinitionSubscription_NotFound_NoOp(t *testing.T) {
 	original.State = runtime.ActivityStateCompleted
 	require.NoError(t, store.SaveMessageSubscription(t.Context(), original))
 
-	// Calling publishMessageOnInstanceCreation directly with the cached subscription
-	// pointer must succeed without panicking and without creating any process instance.
 	err = engine.publishMessageOnInstanceCreation(t.Context(), original, map[string]any{})
 	assert.NoError(t, err, "publishing onto an already-consumed definition subscription must be a silent no-op")
 
@@ -266,4 +264,144 @@ func definitionMessageSubscriptionsForDefinition(store *inmemory.Storage, proces
 		out = append(out, defSub)
 	}
 	return out
+}
+
+// TestLoadFromBytes_MessageStartEvent_ReloadCreatesExactlyOneSubscription is the
+// message-start-event analog of TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer.
+//
+// It loads the same BPMN process id twice (versioning the definition v1 → v2) with
+// non-identical XML content so that the engine creates a new definition version on
+// the second load. After registering the definition subscriptions for both versions
+// and publishing the message, it asserts that:
+//   - exactly one DefinitionMessageSubscription exists for v2 in the storage
+//   - no DefinitionMessageSubscription exists for v1 (the v1 sub was deleted when v2 was deployed)
+//   - exactly one active process instance was created for v2
+//   - no process instance exists for v1
+func TestLoadFromBytes_MessageStartEvent_ReloadCreatesExactlyOneSubscription(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	engine.Start(t.Context())
+	defer engine.Stop()
+
+	// Keep service-task jobs Active so the spawned instance stays in Active state for assertions.
+	h := engine.NewTaskHandler().
+		Type("input-task-for-message-start-event-test").
+		Handler(func(job ActivatedJob) {
+			// intentionally left blank
+		})
+	defer engine.RemoveHandler(h)
+
+	bpmnData, err := os.ReadFile("./test-cases/process_definition_start_event/message-start-event-process.bpmn")
+	require.NoError(t, err)
+
+	// Helper: produce BPMN bytes whose content is unique on every call (so md5 differs and
+	// the engine treats the load as a new version) but with the same bpmn process id and
+	// same message name (so PublishMessageByName targets the latest version).
+	callCount := 0
+	buildBpmn := func() []byte {
+		callCount++
+		marker := fmt.Sprintf("<!-- version-marker-%d-%s -->", callCount, time.Now().UTC().Format(time.RFC3339Nano))
+		// Inject a comment right after the opening definitions tag - this changes the md5
+		// without altering the parsed semantics (id, name, message name remain identical).
+		return []byte(strings.Replace(string(bpmnData),
+			`<bpmn:process id="message-start-event-process-1"`,
+			marker+`<bpmn:process id="message-start-event-process-1"`,
+			1))
+	}
+
+	// First load (v1)
+	v1Bytes := buildBpmn()
+	def1, err := engine.LoadFromBytes(t.Context(), v1Bytes, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def1)
+	assert.Equal(t, int32(1), def1.Version)
+
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def1.Key))
+	require.Len(t, definitionMessageSubscriptionsForDefinition(store, def1.Key), 1,
+		"v1 should have exactly one definition message subscription after registration")
+
+	// Second load (v2) - different content, same process id and same message name.
+	time.Sleep(10 * time.Millisecond) // ensure different wall-clock time
+	v2Bytes := buildBpmn()
+	def2, err := engine.LoadFromBytes(t.Context(), v2Bytes, engine.generateKey())
+	require.NoError(t, err)
+	require.NotNil(t, def2)
+	assert.Equal(t, int32(2), def2.Version)
+	require.NotEqual(t, def1.Key, def2.Key)
+
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def2.Key))
+
+	assert.Empty(t, definitionMessageSubscriptionsForDefinition(store, def1.Key),
+		"expected no definition message subscription for v1 after v2 was deployed")
+	v2Subs := definitionMessageSubscriptionsForDefinition(store, def2.Key)
+	assert.Len(t, v2Subs, 1, "expected exactly one definition message subscription for v2")
+
+	// Publish the message - it must be routed to v2 (the only Active subscription).
+	require.NoError(t, engine.PublishMessageByName(t.Context(), "messageStartEventProcessRef", nil, nil))
+
+	// Assert: exactly one active process instance exists for v2 and none for v1.
+	activeForV1, activeForV2 := 0, 0
+	for _, pi := range store.ProcessInstances {
+		piData := pi.ProcessInstance()
+		if piData.Definition == nil || piData.GetState() != runtime.ActivityStateActive {
+			continue
+		}
+		switch piData.Definition.Key {
+		case def1.Key:
+			activeForV1++
+		case def2.Key:
+			activeForV2++
+		}
+	}
+	assert.Equal(t, 0, activeForV1, "no process instance should be created for v1")
+	assert.Equal(t, 1, activeForV2, "exactly one active process instance should exist for v2")
+
+	// Assert: no process instance was ever created for v1 (in any state).
+	for _, pi := range store.ProcessInstances {
+		piData := pi.ProcessInstance()
+		if piData.Definition != nil {
+			assert.NotEqual(t, def1.Key, piData.Definition.Key,
+				"expected no process instance for v1 process definition")
+		}
+	}
+}
+
+// TestPublishMessageOnDefinitionSubscription_SubscriptionMarkedCompletedBeforeInstanceCreation
+// is the message-start-event analog of
+// TestCreateStartProcessOnTimerStartEvent_TimerMarkedTriggeredBeforeInstanceCreation.
+//
+// It verifies that the DefinitionMessageSubscription is persisted as Completed BEFORE
+// CreateInstanceWithStartingElements is invoked. If instance creation fails, the
+// subscription must NOT remain Active (which would cause the same message to be
+// consumed again on the next publish, producing duplicate instances).
+func TestPublishMessageOnDefinitionSubscription_SubscriptionMarkedCompletedBeforeInstanceCreation(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+
+	// Use a non-existent process definition key so that CreateInstanceWithStartingElements
+	// returns an error.
+	nonExistentPDKey := engine.generateKey()
+	subKey := engine.generateKey()
+
+	defSub := &runtime.DefinitionMessageSubscription{
+		MessageSubscriptionData: runtime.MessageSubscriptionData{
+			Key:                  subKey,
+			ElementId:            "messageStartEvent_orphan",
+			ProcessDefinitionKey: nonExistentPDKey,
+			Name:                 "orphan-message-name",
+			State:                runtime.ActivityStateActive,
+			CreatedAt:            time.Now(),
+		},
+	}
+	require.NoError(t, store.SaveMessageSubscription(t.Context(), defSub))
+
+	// publishMessageOnInstanceCreation → CreateInstanceWithStartingElements fails because
+	// there is no matching process definition.
+	err := engine.publishMessageOnInstanceCreation(t.Context(), defSub, map[string]any{})
+	require.Error(t, err, "expected an error because the process definition does not exist")
+
+	persisted, getErr := store.FindMessageSubscriptionByKey(t.Context(), subKey, runtime.ActivityStateCompleted)
+	require.NoError(t, getErr,
+		"definition message subscription must be Completed even when subsequent instance creation fails")
+	assert.Equal(t, runtime.ActivityStateCompleted, persisted.MessageSubscription().State)
 }

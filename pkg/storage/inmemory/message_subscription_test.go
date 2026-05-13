@@ -300,3 +300,78 @@ func TestFindMessageSubscriptionByKey(t *testing.T) {
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }
+
+func TestDeleteProcessDefinitionsMessageSubscriptions(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("deletes definition-level subscriptions for given process definition keys", func(t *testing.T) {
+		store := inmemory.NewStorage()
+
+		defSubA := newDefinitionSub(1, "msg-start-a", bpmnruntime.ActivityStateActive)
+		defSubA.ProcessDefinitionKey = 1000
+		defSubB := newDefinitionSub(2, "msg-start-b", bpmnruntime.ActivityStateActive)
+		defSubB.ProcessDefinitionKey = 1000
+		defSubOther := newDefinitionSub(3, "msg-start-other", bpmnruntime.ActivityStateActive)
+		defSubOther.ProcessDefinitionKey = 2000
+
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSubA))
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSubB))
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSubOther))
+
+		require.NoError(t, store.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{1000}))
+
+		_, err := store.FindMessageSubscriptionByKey(ctx, 1, bpmnruntime.ActivityStateActive)
+		assert.ErrorIs(t, err, storage.ErrNotFound)
+		_, err = store.FindMessageSubscriptionByKey(ctx, 2, bpmnruntime.ActivityStateActive)
+		assert.ErrorIs(t, err, storage.ErrNotFound)
+
+		other, err := store.FindMessageSubscriptionByKey(ctx, 3, bpmnruntime.ActivityStateActive)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), other.MessageSubscription().Key)
+	})
+
+	t.Run("only deletes definition-level subscriptions and preserves token/instance subscriptions", func(t *testing.T) {
+		store := inmemory.NewStorage()
+
+		tokenSub := newTokenSub(10, 100, 200, "msg-tok", "ck-t", bpmnruntime.ActivityStateActive)
+		tokenSub.ProcessDefinitionKey = 1000
+		instSub := newInstanceSub(11, 200, "msg-inst", "ck-i", bpmnruntime.ActivityStateActive)
+		instSub.ProcessDefinitionKey = 1000
+		defSub := newDefinitionSub(12, "msg-def", bpmnruntime.ActivityStateActive)
+		defSub.ProcessDefinitionKey = 1000
+		// subscription on a different process definition must be preserved
+		otherSub := newTokenSub(20, 101, 201, "msg-other", "ck-o", bpmnruntime.ActivityStateActive)
+		otherSub.ProcessDefinitionKey = 2000
+
+		require.NoError(t, store.SaveMessageSubscription(ctx, tokenSub))
+		require.NoError(t, store.SaveMessageSubscription(ctx, instSub))
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSub))
+		require.NoError(t, store.SaveMessageSubscription(ctx, otherSub))
+
+		require.NoError(t, store.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{1000}))
+
+		// Only the definition-level subscription should be removed
+		_, err := store.FindMessageSubscriptionByKey(ctx, 12, bpmnruntime.ActivityStateActive)
+		assert.ErrorIs(t, err, storage.ErrNotFound)
+
+		// Token and instance subscriptions for the same process definition must remain
+		for _, key := range []int64{10, 11, 20} {
+			got, err := store.FindMessageSubscriptionByKey(ctx, key, bpmnruntime.ActivityStateActive)
+			require.NoError(t, err)
+			assert.Equal(t, key, got.MessageSubscription().Key)
+		}
+	})
+
+	t.Run("noop with empty key list", func(t *testing.T) {
+		store := inmemory.NewStorage()
+
+		defSub := newDefinitionSub(1, "msg-def", bpmnruntime.ActivityStateActive)
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSub))
+
+		require.NoError(t, store.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{}))
+
+		got, err := store.FindMessageSubscriptionByKey(ctx, 1, bpmnruntime.ActivityStateActive)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), got.MessageSubscription().Key)
+	})
+}

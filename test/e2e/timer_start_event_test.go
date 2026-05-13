@@ -42,15 +42,8 @@ func TestTimerStartEvent(t *testing.T) {
 			}
 			return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
 		}, 20*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
-		fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
-
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(fetchedProcessInstance.Key))
-		require.NoError(t, err)
 		// there should be only 1 token as the process should start only from timer start event and not from other start events
-		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), fetchedProcessInstance.Key)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(tokens))
+		fetchedProcessInstance, store := requireFirstActiveInstanceWithSingleToken(t, processInstances)
 
 		// verify that only the timer start event element was executed, not the plain start event
 		assertStartEventExecuted(t, store, fetchedProcessInstance.Key, "timerStartEvent_1234", "plainStartEvent_0mtr7my")

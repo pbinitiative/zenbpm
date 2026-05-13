@@ -22,6 +22,10 @@ DROP TABLE message_subscription_pointer;
 
 ALTER TABLE message_subscription_pointer_new RENAME TO message_subscription_pointer;
 
+CREATE UNIQUE INDEX IF NOT EXISTS unique_name_correlation_key_waiting ON message_subscription_pointer(name, correlation_key)
+WHERE
+    state = 1;
+
 -- Recreate message_subscription with nullable process_instance_key, correlation_key,
 -- execution_token and the new type column.
 CREATE TABLE message_subscription_new(
@@ -47,6 +51,9 @@ INSERT INTO message_subscription_new(key, element_id, process_definition_key, pr
 DROP TABLE message_subscription;
 
 ALTER TABLE message_subscription_new RENAME TO message_subscription;
+
+CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_instance_key ON message_subscription(process_instance_key);
+CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_definition_key ON message_subscription(process_definition_key);
 
 PRAGMA foreign_keys = ON;
 

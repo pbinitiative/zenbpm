@@ -193,6 +193,10 @@ func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription 
 	return b.b.SaveMessageSubscription(ctx, subscription)
 }
 
+func (b *EngineBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
+}
+
 func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {
 	return b.b.SaveToken(ctx, token)
 }

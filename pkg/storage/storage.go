@@ -192,6 +192,8 @@ type MessageStorageWriter interface {
 	// SaveMessageSubscription persists the MessageSubscription
 	// returns an error if there is already an active conflicting message present.
 	SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error
+
+	DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error
 }
 
 type TokenStorageReader interface {

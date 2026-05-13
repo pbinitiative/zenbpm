@@ -59,25 +59,16 @@ func TestMessageStartEvent(t *testing.T) {
 			}
 			return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
 		}, 20*time.Second, 100*time.Millisecond, "publishing the message should create one active process instance")
-		fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
-
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(fetchedProcessInstance.Key))
-		require.NoError(t, err)
 		// there should be only 1 token as the process should start only from the message
 		// start event branch and not from the plain start event branch
-		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), fetchedProcessInstance.Key)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(tokens))
+		fetchedProcessInstance, store := requireFirstActiveInstanceWithSingleToken(t, processInstances)
 
 		// verify that only the message start event element was executed, not the plain start event
 		assertStartEventExecuted(t, store, fetchedProcessInstance.Key, "messageStartEvent_1234", "plainStartEvent_0mtr7my")
 
-		// the message variables should have been propagated to the new process instance
 		assert.Equal(t, "messagePayloadValue", fetchedProcessInstance.Variables["messagePayloadVar"],
 			"variables published with the message must be propagated to the new process instance")
 
-		// the definition-level message subscription must have transitioned to Completed
 		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 			sub, errSub := store.FindMessageSubscriptionByName(t.Context(), "messageStartEventProcessRef", nil, bpmnruntime.ActivityStateCompleted)
 			if !assert.NoError(collect, errSub) {
@@ -103,13 +94,8 @@ func TestMessageStartEvent(t *testing.T) {
 				return
 			}
 
-			if !assert.NotEmpty(t, jobsPartitionPage) {
-				return
-			}
-
-			if !assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items) {
-				return
-			}
+			require.NotEmpty(collect, jobsPartitionPage)
+			require.NotEmpty(collect, jobsPartitionPage.Partitions[0].Items)
 
 			jobToComplete = jobsPartitionPage.Partitions[0].Items[0]
 		}, 15*time.Second, 100*time.Millisecond, "message start event should have at least one job")
@@ -261,21 +247,14 @@ func TestMessageEventSubprocessNonInterruptingNested(t *testing.T) {
 	})
 
 	t.Run("verify subprocess Subprocess_15s23yn is completed and process is completed", func(t *testing.T) {
-		var fetchedInstance zenclient.ProcessInstance
-		require.Eventually(t, func() bool {
-			fi, gerr := getProcessInstance(t, instance.Key)
-			if gerr != nil {
-				return false
-			}
-			fetchedInstance = fi
-			return fi.State == zenclient.ProcessInstanceStateCompleted
-		}, 2*time.Second, 25*time.Millisecond, "process instance did not reach Completed state in time")
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
 
 		// after process completion, the non-interrupting event subprocess message subscription
 		// should be Completed
 		assertMessageSubscriptionCompleted(t, subProcessChild.Key, "eventSubprocessMessageEvent_010eof4")
 
-		// verify that the event subprocess output variable was propagated to the main process
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		require.NoError(t, err)
 		assert.Equal(t, "nested-event-subprocess-done", fetchedInstance.Variables["eventSubProcessVariable"],
 			"eventSubProcessVariable should be propagated from the nested event subprocess through the subprocess to the root process")
 		// the message-start event has an io-mapping setting messageStartEventVar = "messageStartEventValue".
@@ -362,16 +341,7 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 
 		// After completing msgEventSubprocessBtype, EventSubprocessA_00bugpj should complete
 		// but the process should still be active because msgEventSubprocessType (service task1) is still waiting
-		var fetchedInstance zenclient.ProcessInstance
-		require.Eventually(t, func() bool {
-			fi, gerr := getProcessInstance(t, instance.Key)
-			if gerr != nil {
-				return false
-			}
-			fetchedInstance = fi
-			return fi.State == zenclient.ProcessInstanceStateActive
-		}, 2*time.Second, 25*time.Millisecond)
-		_ = fetchedInstance
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateActive)
 
 		fetchedEventSubprocessA, err := getProcessInstance(t, eventSubprocessAChild.Key)
 		assert.NoError(t, err)
@@ -389,17 +359,10 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 		err = completeJob(t, eventSubprocessJob.Key, map[string]any{})
 		assert.NoError(t, err)
 
-		var fetchedInstance zenclient.ProcessInstance
-		require.Eventually(t, func() bool {
-			fi, gerr := getProcessInstance(t, instance.Key)
-			if gerr != nil {
-				return false
-			}
-			fetchedInstance = fi
-			return fi.State == zenclient.ProcessInstanceStateCompleted
-		}, 2*time.Second, 25*time.Millisecond, "process instance did not reach Completed state in time")
+		waitForProcessInstanceState(t, instance.Key, zenclient.ProcessInstanceStateCompleted)
+		fetchedInstance, err := getProcessInstance(t, instance.Key)
+		require.NoError(t, err)
 
-		// verify that event subprocess output variables were propagated to the root process
 		assert.Equal(t, "event-subprocess-a-done", fetchedInstance.Variables["eventSubProcessAVariable"],
 			"eventSubProcessAVariable should be propagated from EventSubprocessA through SubProcess to root")
 		assert.Equal(t, "event-subprocess-b-done", fetchedInstance.Variables["eventSubProcessBVariable"],

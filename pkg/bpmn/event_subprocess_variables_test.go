@@ -36,14 +36,7 @@ func TestInterruptingTimerEventSubprocess_PropagatesStartEventOutputVariables(t 
 
 	// Wait for the PT1S timer to fire, the interrupting event subprocess to run
 	// to completion and the parent process instance to be completed.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		pi, err := store.FindProcessInstanceByKey(t.Context(), piKey)
-		if err == nil && pi.ProcessInstance().GetState() == runtime.ActivityStateCompleted {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitForProcessInstanceState(t, store, piKey, runtime.ActivityStateCompleted)
 
 	persistedParent, err := store.FindProcessInstanceByKey(t.Context(), piKey)
 	require.NoError(t, err)
@@ -129,14 +122,7 @@ func TestInterruptingMessageEventSubprocess_PropagatesStartEventOutputVariables(
 
 	// Wait for the interrupting event subprocess to run to completion and the
 	// parent process instance to be completed.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		pi, err := store.FindProcessInstanceByKey(t.Context(), piKey)
-		if err == nil && pi.ProcessInstance().GetState() == runtime.ActivityStateCompleted {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitForProcessInstanceState(t, store, piKey, runtime.ActivityStateCompleted)
 
 	persistedParent, err := store.FindProcessInstanceByKey(t.Context(), piKey)
 	require.NoError(t, err)

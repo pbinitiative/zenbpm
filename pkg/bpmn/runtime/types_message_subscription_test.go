@@ -188,3 +188,23 @@ func TestEqualTo_DifferentConcreteTypes(t *testing.T) {
 	m2 := &InstanceMessageSubscription{MessageSubscriptionData: data}
 	assert.False(t, EqualTo(m1, m2), "different concrete types must not be equal")
 }
+
+// unknownMessageSubscription is a type that satisfies the MessageSubscription interface
+// but is not one of the three known concrete types, exercising the default fallback.
+type unknownMessageSubscription struct {
+	MessageSubscriptionData
+}
+
+func (u *unknownMessageSubscription) Type() MessageSubscriptionType {
+	return MessageSubscriptionType(999)
+}
+func (u *unknownMessageSubscription) MessageSubscription() *MessageSubscriptionData {
+	return &u.MessageSubscriptionData
+}
+
+func TestEqualTo_UnknownTypeFallbackReturnsFalse(t *testing.T) {
+	data := baseMessageSubscriptionData()
+	m1 := &unknownMessageSubscription{MessageSubscriptionData: data}
+	m2 := &unknownMessageSubscription{MessageSubscriptionData: data}
+	assert.False(t, EqualTo(m1, m2), "unknown concrete type should return false")
+}

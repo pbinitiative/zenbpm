@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
-  <bpmn:process id="Process_timerEventSubProcessInterrupting_multiple" isExecutable="true">
+  <bpmn:process id="Process_messageEventSubProcessInterrupting_multiple" isExecutable="true">
     <bpmn:endEvent id="Event_1mhay4i">
       <bpmn:incoming>Flow_1mibmwr</bpmn:incoming>
     </bpmn:endEvent>
@@ -14,7 +14,7 @@
           <zeebe:output source="=1234" target="orderId" />
           <zeebe:output source="=city" target="dstcity" />
         </zeebe:ioMapping>
-        <zeebe:taskDefinition type="input-task-timer-event-subprocess-interrupting" />
+        <zeebe:taskDefinition type="input-task-message-event-subprocess-interrupting" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1pv0o34</bpmn:incoming>
       <bpmn:outgoing>Flow_1mibmwr</bpmn:outgoing>
@@ -176,7 +176,7 @@
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_timerEventSubProcessInterrupting_multiple">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_messageEventSubProcessInterrupting_multiple">
       <bpmndi:BPMNShape id="Event_1mhay4i_di" bpmnElement="Event_1mhay4i">
         <dc:Bounds x="642" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>

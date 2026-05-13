@@ -69,6 +69,19 @@ func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, mess
 		return fmt.Errorf("expected DefinitionMessageSubscription for key %d, got %T", message.Key, refreshed)
 	}
 
+	// Mark the subscription as Completed BEFORE attempting to create the process instance.
+	// This mirrors the timer-start-event behavior (see processTimerTriggerOnInstanceCreation)
+	// and prevents the same message from being consumed twice if a concurrent publisher
+	// races with us, or if the publish is retried after instance creation fails.
+	batch := engine.persistence.NewBatch()
+	defSub.State = runtime.ActivityStateCompleted
+	if err := batch.SaveMessageSubscription(ctx, defSub); err != nil {
+		return fmt.Errorf("failed to save message subscription %d: %w", defSub.Key, err)
+	}
+	if err := batch.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush message subscription %d: %w", defSub.Key, err)
+	}
+
 	_, err = engine.CreateInstanceWithStartingElements(
 		ctx,
 		defSub.ProcessDefinitionKey,
@@ -78,15 +91,6 @@ func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, mess
 	)
 	if err != nil {
 		return fmt.Errorf("failed to process DefinitionMessageSubscription %+v: %w", defSub, err)
-	}
-
-	batch := engine.persistence.NewBatch()
-	defSub.State = runtime.ActivityStateCompleted
-	if err := batch.SaveMessageSubscription(ctx, defSub); err != nil {
-		return fmt.Errorf("failed to save message subscription %d: %w", defSub.Key, err)
-	}
-	if err := batch.Flush(ctx); err != nil {
-		return fmt.Errorf("failed to flush message subscription %d: %w", defSub.Key, err)
 	}
 	return nil
 }

@@ -453,6 +453,36 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 
 		err = s.SaveMessageSubscription(t.Context(), message)
 		assert.NoError(t, err)
+
+		t.Run("Create and delete process definition message subscriptions", func(t *testing.T) {
+			defSubKey := s.GenerateId()
+			defSub := &bpmnruntime.DefinitionMessageSubscription{
+				MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
+					ElementId:            fmt.Sprintf("message-start-%d", defSubKey),
+					Key:                  defSubKey,
+					ProcessDefinitionKey: st.processDefinition.Key,
+					Name:                 fmt.Sprintf("message-start-%d", defSubKey),
+					State:                bpmnruntime.ActivityStateActive,
+					CreatedAt:            time.Now().Truncate(time.Millisecond),
+				},
+			}
+			err = s.SaveMessageSubscription(t.Context(), defSub)
+			assert.NoError(t, err)
+
+			err = s.DeleteProcessDefinitionsMessageSubscriptions(t.Context(), []int64{st.processDefinition.Key})
+			assert.NoError(t, err)
+
+			// definition-level subscription should be gone
+			_, err = s.FindMessageSubscriptionByKey(t.Context(), defSubKey, bpmnruntime.ActivityStateActive)
+			assert.ErrorIs(t, err, storage.ErrNotFound, "definition-level message subscription should have been deleted")
+
+			// token/process-instance level subscriptions for the same process definition
+			// must be preserved (only subscriptions without a process_instance_key and
+			// execution_token are deleted).
+			gotMsg, err := s.FindMessageSubscriptionByKey(t.Context(), message.MessageSubscription().Key, bpmnruntime.ActivityStateActive)
+			assert.NoError(t, err, "token-level message subscription should not have been deleted")
+			assert.Equal(t, message.MessageSubscription().Key, gotMsg.MessageSubscription().Key)
+		})
 	}
 }
 

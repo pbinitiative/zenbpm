@@ -10,6 +10,12 @@ ON CONFLICT
 DELETE FROM message_subscription
 WHERE process_instance_key IN (sqlc.slice('keys'));
 
+-- name: DeleteProcessDefinitionsMessageSubscriptions :exec
+DELETE FROM message_subscription
+WHERE process_definition_key IN (sqlc.slice('processDefinitionKeys'))
+    AND process_instance_key IS NULL
+    AND execution_token IS NULL;
+
 -- name: FindMessageSubscriptions :many
 SELECT
     *

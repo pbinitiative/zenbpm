@@ -28,6 +28,10 @@ DROP TABLE message_subscription_pointer;
 
 ALTER TABLE message_subscription_pointer_new RENAME TO message_subscription_pointer;
 
+CREATE UNIQUE INDEX IF NOT EXISTS unique_name_correlation_key_waiting ON message_subscription_pointer(name, correlation_key)
+WHERE
+    state = 1;
+
 -- Restore message_subscription without the type column and with NOT NULL constraints.
 CREATE TABLE message_subscription_new(
     key INTEGER PRIMARY KEY, -- int64 snowflake id of the message subscription where node is partition id which handles the process instance

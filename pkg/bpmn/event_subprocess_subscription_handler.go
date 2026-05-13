@@ -38,12 +38,9 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return errors.Join(newEngineErrorf("no process instance with key: %d", t.processInstanceKey), err)
 	}
 
-	subProcessDef, startEventDef := instance.ProcessInstance().Definition.Definitions.Process.GetSubprocessAndStartEventById(t.elementId)
-	if startEventDef == nil {
-		return fmt.Errorf("failed to find a startEvent with id: %s", t.elementId)
-	}
-	if subProcessDef == nil {
-		return fmt.Errorf("failed to find a subProcess for start element id: %s", t.elementId)
+	subProcessDef, startEventDef, err := resolveEventSubprocessDefs(instance, t.elementId)
+	if err != nil {
+		return err
 	}
 
 	batch, err := engine.NewEngineBatch(ctx, instance)
@@ -74,57 +71,18 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return nil
 	}
 
-	if startEventDef.IsInterrupting {
-		_, err = engine.handleProcessInstanceInnerCancel(ctx, instance, &batch)
-		if err != nil {
-			return fmt.Errorf("failed to cancel parent instance %d for interrupting event subprocess: %w", t.processInstanceKey, err)
-		}
-	}
-
-	// Propagate trigger variables to the parent process instance.
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	propagatedVariables, err := variableHolder.PropagateOutputVariablesToParent(startEventDef.GetOutputMapping(), t.inputVariables, engine.evaluateExpression)
+	variableHolder, tokens, err := engine.prepareParentForEventSubprocess(ctx, &batch, instance, startEventDef, t.inputVariables)
 	if err != nil {
-		return fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	// Make sure the propagated variables are also visible inside the event subprocess itself.
-	for k, v := range propagatedVariables {
-		variableHolder.SetLocalVariable(k, v)
-	}
-	if err := batch.SaveProcessInstance(ctx, instance); err != nil {
-		return fmt.Errorf("failed to save parent process instance %d after propagating trigger variables: %w", instance.ProcessInstance().Key, err)
-	}
-
-	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
-	if err != nil {
-		return fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
+		return err
 	}
 	if len(tokens) == 0 { // Parent process is not active anymore — nothing to start.
 		batch.Clear(ctx)
 		return nil
 	}
 
-	startingFlowNodes := []bpmn20.FlowNode{startEventDef}
-	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
-		ctx,
-		&batch,
-		instance.ProcessInstance().Definition,
-		startingFlowNodes,
-		variableHolder,
-		&runtime.SubProcessInstance{
-			ParentProcessExecutionToken:           tokens[0],
-			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey,
-			// Reference to the subprocess definition needed for continuation.
-			ParentProcessTargetElementId: subProcessDef.Id,
-		},
-	)
+	subProcessInstance, subTokens, err := engine.buildEventSubprocessInstance(ctx, &batch, instance, subProcessDef, startEventDef, variableHolder, tokens)
 	if err != nil {
-		return fmt.Errorf("failed to create event subprocess instance: %w", err)
-	}
-
-	// Create event sub process subscriptions for event subprocesses nested within this event sub process.
-	if err := engine.createEventSubProcessSubscriptions(ctx, &batch, subProcessInstance, &subProcessDef.TFlowElementsContainer); err != nil {
-		return fmt.Errorf("failed to create event subprocess subscriptions in sub process %s: %w", subProcessDef.Id, err)
+		return err
 	}
 
 	if err := t.markConsumed(ctx, &batch); err != nil {
@@ -143,6 +101,89 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return errors.Join(newEngineErrorf("failed to flush event subprocess activation batch: %s", err), err)
 	}
 	return nil
+}
+
+// resolveEventSubprocessDefs looks up the subprocess definition and its start event from the process instance model.
+// It performs no I/O and returns an error when either definition cannot be found.
+func resolveEventSubprocessDefs(instance runtime.ProcessInstance, elementId string) (*bpmn20.TSubProcess, *bpmn20.TStartEvent, error) {
+	subProcessDef, startEventDef := instance.ProcessInstance().Definition.Definitions.Process.GetSubprocessAndStartEventById(elementId)
+	if startEventDef == nil {
+		return nil, nil, fmt.Errorf("failed to find a startEvent with id: %s", elementId)
+	}
+	if subProcessDef == nil {
+		return nil, nil, fmt.Errorf("failed to find a subProcess for start element id: %s", elementId)
+	}
+	return subProcessDef, startEventDef, nil
+}
+
+// prepareParentForEventSubprocess handles all mutations to the parent process instance that must happen before the
+// event subprocess can be created: optionally interrupts the parent, propagates trigger variables and saves the
+// updated parent instance. It also fetches and returns the parent's currently active tokens.
+func (engine *Engine) prepareParentForEventSubprocess(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	startEventDef *bpmn20.TStartEvent,
+	inputVariables map[string]any,
+) (runtime.VariableHolder, []runtime.ExecutionToken, error) {
+	if startEventDef.IsInterrupting {
+		if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch); err != nil {
+			return runtime.VariableHolder{}, nil, fmt.Errorf("failed to cancel parent instance %d for interrupting event subprocess: %w", instance.ProcessInstance().Key, err)
+		}
+	}
+
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	propagatedVariables, err := variableHolder.PropagateOutputVariablesToParent(startEventDef.GetOutputMapping(), inputVariables, engine.evaluateExpression)
+	if err != nil {
+		return runtime.VariableHolder{}, nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	// Make sure the propagated variables are also visible inside the event subprocess itself.
+	for k, v := range propagatedVariables {
+		variableHolder.SetLocalVariable(k, v)
+	}
+	if err := batch.SaveProcessInstance(ctx, instance); err != nil {
+		return runtime.VariableHolder{}, nil, fmt.Errorf("failed to save parent process instance %d after propagating trigger variables: %w", instance.ProcessInstance().Key, err)
+	}
+
+	tokens, err := engine.persistence.GetActiveTokensForProcessInstance(ctx, instance.ProcessInstance().Key)
+	if err != nil {
+		return runtime.VariableHolder{}, nil, fmt.Errorf("failed to get active tokens for process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	return variableHolder, tokens, nil
+}
+
+// buildEventSubprocessInstance creates the event subprocess process instance together with its execution tokens and
+// registers any nested event-subprocess subscriptions on the new instance.
+func (engine *Engine) buildEventSubprocessInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	subProcessDef *bpmn20.TSubProcess,
+	startEventDef *bpmn20.TStartEvent,
+	variableHolder runtime.VariableHolder,
+	tokens []runtime.ExecutionToken,
+) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	startingFlowNodes := []bpmn20.FlowNode{startEventDef}
+	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
+		ctx,
+		batch,
+		instance.ProcessInstance().Definition,
+		startingFlowNodes,
+		variableHolder,
+		&runtime.SubProcessInstance{
+			ParentProcessExecutionToken:           tokens[0],
+			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey,
+			ParentProcessTargetElementId:          subProcessDef.Id,
+		},
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create event subprocess instance: %w", err)
+	}
+
+	if err := engine.createEventSubProcessSubscriptions(ctx, batch, subProcessInstance, &subProcessDef.TFlowElementsContainer); err != nil {
+		return nil, nil, fmt.Errorf("failed to create event subprocess subscriptions in sub process %s: %w", subProcessDef.Id, err)
+	}
+	return subProcessInstance, subTokens, nil
 }
 
 // PublishMessageOnEventSubprocess activates a (possibly interrupting) message start event subprocess on the

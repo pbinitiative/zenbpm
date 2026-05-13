@@ -316,7 +316,7 @@ func EqualTo(m MessageSubscription, m2 MessageSubscription) bool {
 	case *DefinitionMessageSubscription:
 		return true
 	}
-	return true
+	return false
 }
 
 //go:generate go tool stringer -type=ErrorState

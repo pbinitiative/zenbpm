@@ -35,7 +35,7 @@ func TestConcurrentInterruptingMessageEventSubProcesses_NoLockContention(t *test
 	// No-op handler for the service task so the main token sits at the service task
 	// while the message-triggered event subprocesses fire.
 	h := engine.NewTaskHandler().
-		Type("input-task-timer-event-subprocess-interrupting").
+		Type("input-task-message-event-subprocess-interrupting").
 		Handler(func(job ActivatedJob) {
 			// do nothing - leave the job pending until an interrupting event subprocess fires
 		})

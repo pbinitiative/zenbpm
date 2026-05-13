@@ -97,15 +97,6 @@ FROM
 WHERE
     key IN (sqlc.slice('keys'));
 
--- name: GetDefinitionKeyByChecksum :one
-SELECT
-    key
-FROM
-    process_definition
-WHERE
-    bpmn_checksum = @bpmn_checksum
-LIMIT 1;
-
 -- name: GetElementStatisticsByProcessDefinitionKey :many
 WITH active_tokens AS (
     SELECT

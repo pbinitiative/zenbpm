@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/json"
@@ -420,41 +421,46 @@ func (node *ZenNode) EvaluateDecision(ctx context.Context, bindingType string, d
 }
 
 // DeployProcessDefinitionToAllPartitions deploys a BPMN process definition.
-// The alreadyExisted return is true when an identical definition (matched by
-// content checksum) is already deployed; in that case the existing key is
+// The alreadyExisted return is true when the latest version of the same BPMN
+// process definition has identical content; in that case the existing key is
 // returned and no new deployment is performed, so callers can treat this as
 // success (idempotent deploy).
 func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context, data []byte, resourceName string) (int64, bool, error) {
-	key, err := node.GetDefinitionKeyByBytes(ctx, data)
+
+	processId, err := getProcessIdFromDefinition(data)
 	if err != nil {
-		return key, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
+		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition id: %w", err))
 	}
-	if key != 0 {
-		return key, true, nil
+
+	existingDefinitionKey, err := node.GetDefinitionKeyByProcessId(ctx, processId, data)
+
+	if err != nil {
+		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition key by bytes: %w", err))
 	}
-	definitionKey := node.idGen.Generate()
+
+	if existingDefinitionKey != 0 {
+		return existingDefinitionKey, true, nil
+	}
+
+	hash := fnv.New32a()
+	_, err = hash.Write([]byte(processId))
+	if err != nil {
+		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to hash process definition id: %w", err))
+	}
+
 	clusterState := node.store.ClusterState()
 	partitionIds := sortedPartitionIds(clusterState)
-	group, groupCtx := errgroup.WithContext(ctx)
 
-	// determine partitionIdx using incoming process definition id
-	var definitions bpmn20.TDefinitions
-	err = xml.Unmarshal(data, &definitions)
-	if err != nil {
-		return key, false, fmt.Errorf("failed to unmarshal xml data: %w", err)
-	}
-	h := fnv.New32a()
-	_, err = h.Write([]byte(definitions.Process.Id))
-	if err != nil {
-		return key, false, fmt.Errorf("failed to hash process definition id: %w", err)
-	}
 	if len(partitionIds) == 0 {
-		return key, false, fmt.Errorf("no partitions available in cluster state")
+		return 0, false, zenerr.ClusterError(fmt.Errorf("no partitions available in cluster state"))
 	}
-	partitionIdx := int(h.Sum32() % uint32(len(partitionIds)))
+
+	partitionIdx := int(hash.Sum32() % uint32(len(partitionIds)))
+	definitionKey := node.idGen.Generate()
 
 	// use that partitionIdx to create process definition subscriptions always only on that one partitionIdx
 	subscriptionPartitionId := partitionIds[partitionIdx]
+	group, groupCtx := errgroup.WithContext(ctx)
 	for _, partitionId := range partitionIds {
 		leaderId := clusterState.Partitions[partitionId].LeaderId
 		registerProcessDefinitionSubscriptions := subscriptionPartitionId == partitionId
@@ -476,6 +482,37 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 		return definitionKey.Int64(), false, waitErr
 	}
 	return definitionKey.Int64(), false, nil
+}
+
+func getProcessIdFromDefinition(data []byte) (string, error) {
+	var definitions bpmn20.TDefinitions
+	err := xml.Unmarshal(data, &definitions)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal xml data: %w", err)
+	}
+	return definitions.Process.Id, nil
+}
+
+func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId string, newDefinitionData []byte) (int64, error) {
+	db, err := node.GetReadOnlyDB(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
+	}
+
+	latestDefinition, err := db.Queries.FindLatestProcessDefinitionById(ctx, processId)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to find latest process definition by id %s: %w", processId, err)
+	}
+
+	newDefinitionMD5Sum := md5.Sum(newDefinitionData)
+
+	if bytes.Equal(latestDefinition.BpmnChecksum, newDefinitionMD5Sum[:]) {
+		return latestDefinition.Key, nil
+	}
+	return 0, nil
 }
 
 func (node *ZenNode) deployProcessDefinitionToPartition(
@@ -513,19 +550,6 @@ func (node *ZenNode) deployProcessDefinitionToPartition(
 	}
 
 	return nil
-}
-
-func (node *ZenNode) GetDefinitionKeyByBytes(ctx context.Context, data []byte) (int64, error) {
-	db, err := node.GetReadOnlyDB(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get database for definition key lookup: %w", err)
-	}
-	md5sum := md5.Sum(data)
-	key, err := db.Queries.GetDefinitionKeyByChecksum(ctx, md5sum[:])
-	if err != nil && err.Error() != "No result row" {
-		return 0, fmt.Errorf("failed to find process definition by checksum: %w", err)
-	}
-	return key, nil
 }
 
 func (node *ZenNode) CompleteJob(ctx context.Context, key int64, variables map[string]any) error {

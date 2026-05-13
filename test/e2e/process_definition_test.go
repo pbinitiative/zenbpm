@@ -217,6 +217,29 @@ func TestRestApiProcessDefinition(t *testing.T) {
 	})
 }
 
+func TestRestApiProcessDefinitionRedeployOlderContentCreatesNewVersion(t *testing.T) {
+	processID := fmt.Sprintf("redeploy_older_content-%d", time.Now().UnixNano())
+	version1Definition := versioningTestProcessDefinition(t, processID, "version 1")
+	version2Definition := versioningTestProcessDefinition(t, processID, "version 2")
+
+	version1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusCreated)
+	version2Key := deployDefinitionFromBytesExpectingStatus(t, version2Definition, "redeploy_older_content-v2.bpmn", http.StatusCreated)
+	redeployedVersion1Key := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusCreated)
+	duplicateLatestKey := deployDefinitionFromBytesExpectingStatus(t, version1Definition, "redeploy_older_content-v1.bpmn", http.StatusOK)
+
+	require.NotEqual(t, version1Key, version2Key)
+	require.NotEqual(t, version1Key, redeployedVersion1Key)
+	require.NotEqual(t, version2Key, redeployedVersion1Key)
+	require.Equal(t, redeployedVersion1Key, duplicateLatestKey)
+
+	assertProcessDefinitionVersions(t, processID, []expectedProcessDefinitionVersion{
+		{version: 1, key: version1Key},
+		{version: 2, key: version2Key},
+		{version: 3, key: redeployedVersion1Key},
+	})
+	assertLatestProcessDefinitionVersion(t, processID, 3, redeployedVersion1Key)
+}
+
 func getDefinitionDetail(t testing.TB, key int64) (public.ProcessDefinitionDetail, error) {
 	var detail public.ProcessDefinitionDetail
 	resp, err := app.NewRequest(t).
@@ -427,6 +450,26 @@ func deployDefinitionFromBytes(t testing.TB, content []byte, filename string) (*
 	return resp, nil
 }
 
+func deployDefinitionFromBytesExpectingStatus(t testing.TB, content []byte, filename string, expectedStatus int) int64 {
+	t.Helper()
+
+	resp, err := deployDefinitionFromBytes(t, content, filename)
+	require.NoError(t, err)
+	require.Equal(t, expectedStatus, resp.StatusCode())
+
+	switch expectedStatus {
+	case http.StatusCreated:
+		require.NotNil(t, resp.JSON201)
+		return resp.JSON201.ProcessDefinitionKey
+	case http.StatusOK:
+		require.NotNil(t, resp.JSON200)
+		return resp.JSON200.ProcessDefinitionKey
+	default:
+		t.Fatalf("unsupported expected status %d", expectedStatus)
+		return 0
+	}
+}
+
 func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProcessDefinitionResponse, error) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -452,6 +495,62 @@ func deployDefinitionRaw(t testing.TB, filename string) (*zenclient.CreateProces
 	}
 
 	return app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+}
+
+type expectedProcessDefinitionVersion struct {
+	version int
+	key     int64
+}
+
+func assertProcessDefinitionVersions(t testing.TB, processID string, expectedVersions []expectedProcessDefinitionVersion) {
+	t.Helper()
+
+	definitions := getProcessDefinitionVersions(t, processID, false)
+	require.Len(t, definitions, len(expectedVersions))
+
+	for i, expected := range expectedVersions {
+		assert.Equal(t, expected.version, definitions[i].Version)
+		assert.Equal(t, expected.key, definitions[i].Key)
+	}
+}
+
+func assertLatestProcessDefinitionVersion(t testing.TB, processID string, expectedVersion int, expectedKey int64) {
+	t.Helper()
+
+	definitions := getProcessDefinitionVersions(t, processID, true)
+	require.Len(t, definitions, 1)
+	assert.Equal(t, expectedVersion, definitions[0].Version)
+	assert.Equal(t, expectedKey, definitions[0].Key)
+}
+
+func getProcessDefinitionVersions(t testing.TB, processID string, onlyLatest bool) []zenclient.ProcessDefinitionSimple {
+	t.Helper()
+
+	sortBy := zenclient.GetProcessDefinitionsParamsSortByVersion
+	sortOrder := zenclient.GetProcessDefinitionsParamsSortOrderAsc
+	response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
+		BpmnProcessId: &processID,
+		OnlyLatest:    &onlyLatest,
+		SortBy:        &sortBy,
+		SortOrder:     &sortOrder,
+		Size:          ptr.To(int32(10)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.StatusCode())
+	require.NotNil(t, response.JSON200)
+	require.Equal(t, len(response.JSON200.Items), response.JSON200.TotalCount)
+	return response.JSON200.Items
+}
+
+func versioningTestProcessDefinition(t testing.TB, processID string, taskName string) []byte {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join("testdata", "process_definition", "redeploy_older_content.bpmn"))
+	require.NoError(t, err)
+
+	definition := strings.ReplaceAll(string(data), "{{PROCESS_ID}}", processID)
+	definition = strings.ReplaceAll(definition, "{{TASK_NAME}}", taskName)
+	return []byte(definition)
 }
 
 func TestRestApiProcessDefinitionErrors(t *testing.T) {

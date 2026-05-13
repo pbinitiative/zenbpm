@@ -13,7 +13,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
-	"github.com/rqlite/rqlite/v8/random"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/rqlite/rqlite/v8/tcp"
 )
 

@@ -9,8 +9,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/rqlite/rqlite/v8/cluster"
-	"github.com/rqlite/rqlite/v8/random"
 )
 
 const (

@@ -10,8 +10,8 @@ import (
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/config"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	"github.com/rqlite/rqlite/v8/random"
 )
 
 func TestMultiNodeVerifyLeader(t *testing.T) {

@@ -183,7 +183,7 @@ func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Stateme
 		Timings: false,
 	}
 
-	results, resultsErr := rq.Store.Execute(er)
+	results, _, resultsErr := rq.Store.Execute(er)
 
 	if resultsErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -297,7 +297,7 @@ func (rq *DB) queryDatabase(query string, parameters ...interface{}) ([]*proto.Q
 		Level:   proto.QueryRequest_QUERY_REQUEST_LEVEL_NONE,
 	}
 
-	results, resultsErr := rq.Store.Query(qr)
+	results, _, resultsErr := rq.Store.Query(qr)
 	if resultsErr != nil {
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
 		return nil, resultsErr

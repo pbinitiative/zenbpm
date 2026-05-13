@@ -13,7 +13,7 @@ import (
 	zproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
-	"github.com/rqlite/rqlite/v8/rsync"
+	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rsync"
 )
 
 // Open opens the store and configures underlying raft communication and storage

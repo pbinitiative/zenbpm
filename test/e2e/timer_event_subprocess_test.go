@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEventSubProcess(t *testing.T) {
+func TestTimerEventSubProcess(t *testing.T) {
 	cleanProcessInstances(t)
 
 	t.Run("test job completion cancels event subprocess timer", func(t *testing.T) {
@@ -22,8 +22,8 @@ func TestEventSubProcess(t *testing.T) {
 		// When the main service task job is completed before the timer fires, the event subprocess
 		// timer start event should be cancelled.
 
-		// Deploy timer-event-subprocess-interrupting.bpmn
-		definition, err := deployGetDefinition(t, "timer-event-subprocess-interrupting.bpmn", "Process_timerEventSubProcessInterrupting")
+		// Deploy timer_event_subprocess/timer-event-subprocess-interrupting.bpmn
+		definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-interrupting.bpmn", "Process_timerEventSubProcessInterrupting")
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
@@ -66,8 +66,8 @@ func TestEventSubProcess(t *testing.T) {
 		// parent process definition: (plain start event) -> (service task) -> (end event)
 		// timer event sub process definition: (timer start event with 1s duration) -> (end event)
 
-		// Deploy timer-event-subprocess-interrupting.bpmn
-		definition, err := deployGetDefinition(t, "timer-event-subprocess-interrupting.bpmn", "Process_timerEventSubProcessInterrupting")
+		// Deploy timer_event_subprocess/timer-event-subprocess-interrupting.bpmn
+		definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-interrupting.bpmn", "Process_timerEventSubProcessInterrupting")
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
@@ -119,6 +119,8 @@ func TestEventSubProcess(t *testing.T) {
 				"timerInterrupted should be set by the event subprocess output mapping")
 			assert.Equal(collect, "timer-event-subprocess", vars["interruptedBy"],
 				"interruptedBy should be set by the event subprocess output mapping")
+			assert.Equal(collect, "timerStartEventValue", vars["timerStartEventVar"],
+				"timer start event output variable timerStartEventVar must be persisted on the parent process instance")
 		}, 15*time.Second, 100*time.Millisecond, "Should have triggered a timer event")
 	})
 
@@ -126,8 +128,8 @@ func TestEventSubProcess(t *testing.T) {
 		// parent process definition: (plain start event) -> (service task) -> (end event)
 		// timer event sub process definition: (timer start event with 1s duration) -> (end event)
 
-		// Deploy timer-event-subprocess-non-interrupting.bpmn
-		definition, err := deployGetDefinition(t, "timer-event-subprocess-non-interrupting.bpmn", "Process_timerEventSubProcessNonInterrupting")
+		// Deploy timer_event_subprocess/timer-event-subprocess-non-interrupting.bpmn
+		definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-non-interrupting.bpmn", "Process_timerEventSubProcessNonInterrupting")
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
@@ -167,6 +169,8 @@ func TestEventSubProcess(t *testing.T) {
 				"eventSubProcessResult should be propagated from the non-interrupting event subprocess to the parent")
 			assert.Equal(collect, true, fetchedInstance.Variables["nonInterruptingExecuted"],
 				"nonInterruptingExecuted should be propagated from the non-interrupting event subprocess to the parent")
+			assert.Equal(collect, "timerStartEventValue", fetchedInstance.Variables["timerStartEventVar"],
+				"timerStartEventVar should be propagated from the non-interrupting timer-start event to the parent")
 		}, 15*time.Second, 100*time.Millisecond, "the event subprocess output variables should be propagated to the still-active parent instance")
 	})
 
@@ -176,8 +180,8 @@ func TestEventSubProcess(t *testing.T) {
 		// event sub process L2: (timer start event with 1s duration) -> (service task 3) -> (end event)
 		// event sub process L3: (timer start event with 1s duration) -> (end event)
 
-		// Deploy timer-event-subprocess-nested-interrupting.bpmn
-		definition, err := deployGetDefinition(t, "timer-event-subprocess-nested-interrupting.bpmn", "Process_timerEventSubProcessInterruptingNested")
+		// Deploy timer_event_subprocess/timer-event-subprocess-nested-interrupting.bpmn
+		definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-nested-interrupting.bpmn", "Process_timerEventSubProcessInterruptingNested")
 		assert.NoError(t, err)
 		assert.NotZero(t, definition.Key, "Definition key should not be zero")
 
@@ -219,6 +223,12 @@ func TestEventSubProcess(t *testing.T) {
 				"l2Result should be propagated through L1 from L2 event subprocess to root")
 			assert.Equal(collect, "l3-completed", fetchedInstance.Variables["l3Result"],
 				"l3Result should be propagated through L2 and L1 from L3 event subprocess to root")
+			// Each level's timer-start event sets timerStartEventVar = "timerStartEventValue" on its
+			// own subprocess scope, and each subprocess io-mapping appends "-l3", "-l2", "-l1"
+			// respectively as it propagates the variable up. The final concatenated value must end
+			// up on the root parent.
+			assert.Equal(collect, "timerStartEventValue-l3-l2-l1", fetchedInstance.Variables["timerStartEventVar"],
+				"timerStartEventVar must cascade L3 -> L2 -> L1 -> root with each level appending its suffix")
 		}, 15*time.Second, 100*time.Millisecond, "Parent process instance should be completed with output variables as the event subprocess is interrupting and was completed")
 
 		// after process completion, root instance timers should be in TimerStateTriggered

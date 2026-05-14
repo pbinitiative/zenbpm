@@ -37,7 +37,7 @@ func TestConcurrentInterruptingTimerEventSubProcesses_NoLockContention(t *testin
 		})
 	defer engine.RemoveHandler(h)
 
-	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-interrupting-multiple-concurrent.bpmn")
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-interrupting-multiple-concurrent.bpmn")
 	require.NoError(t, err)
 	require.NotNil(t, process)
 
@@ -79,6 +79,11 @@ func TestConcurrentInterruptingTimerEventSubProcesses_NoLockContention(t *testin
 	vars := pi.ProcessInstance().VariableHolder
 	assert.Equal(t, "concurrent-event-subprocess-fired", vars.GetLocalVariable("eventSubProcessResult"),
 		"eventSubProcessResult should be propagated from the winning event subprocess to the parent")
+	// The winning timer-start event also has an io-mapping setting timerStartEventVar; the engine
+	// writes start-event output variables straight to the parent variable holder before instantiating
+	// the event subprocess, so the parent must see this value as well.
+	assert.Equal(t, "timerStartEventValue", vars.GetLocalVariable("timerStartEventVar"),
+		"timerStartEventVar should be propagated from the winning timer-start event to the parent")
 }
 
 // TestCreateStartEventSubProcessOnTimerStartEvent_TimerAlreadyCancelled exercises the fast-path
@@ -97,7 +102,7 @@ func TestCreateStartEventSubProcessOnTimerStartEvent_TimerAlreadyCancelled(t *te
 		Handler(func(job ActivatedJob) {})
 	defer engine.RemoveHandler(h)
 
-	process, err := engine.LoadFromFile(context.Background(), "./test-cases/timer-event-subprocess-interrupting-multiple-concurrent.bpmn")
+	process, err := engine.LoadFromFile(context.Background(), "./test-cases/timer_event_subprocess/timer-event-subprocess-interrupting-multiple-concurrent.bpmn")
 	require.NoError(t, err)
 
 	instance, err := engine.CreateInstanceByKey(context.Background(), process.Key, nil)

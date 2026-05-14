@@ -1,7 +1,7 @@
 -- name: SaveMessageSubscription :exec
 INSERT INTO message_subscription(key, element_id, process_definition_key, process_instance_key, name, state,
-    created_at, correlation_key, execution_token)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, correlation_key, execution_token, type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state;
@@ -9,6 +9,12 @@ ON CONFLICT
 -- name: DeleteProcessInstancesMessageSubscriptions :exec
 DELETE FROM message_subscription
 WHERE process_instance_key IN (sqlc.slice('keys'));
+
+-- name: DeleteProcessDefinitionsMessageSubscriptions :exec
+DELETE FROM message_subscription
+WHERE process_definition_key IN (sqlc.slice('processDefinitionKeys'))
+    AND process_instance_key IS NULL
+    AND execution_token IS NULL;
 
 -- name: FindMessageSubscriptions :many
 SELECT
@@ -45,11 +51,11 @@ SELECT
 FROM
     message_subscription
 WHERE
-    correlation_key = @correlation_key
+    state = @state
     AND name = @name
-    AND state = @state;
+    AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key);
 
--- name: GetMessageSubscriptionById :one
+-- name: GetMessageSubscriptionByKey :one
 SELECT
     *
 FROM

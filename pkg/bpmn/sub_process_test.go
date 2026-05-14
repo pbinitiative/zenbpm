@@ -126,9 +126,9 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	variableContext := make(map[string]interface{}, 2)
 	variableContext[variableName] = "oldVal"
 
-	randomCorellationKey := rand.Int63()
+	randomCorellationKey := fmt.Sprint(rand.Int63())
 
-	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+	variableContext["correlationKey"] = randomCorellationKey
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
@@ -148,7 +148,7 @@ func TestCallActivityCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	}
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &randomCorellationKey, variables)
 	assert.NoError(t, err)
 
 	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
@@ -202,7 +202,8 @@ func TestCallActivityCorrelateBoundaryEvent(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", "message-boundary-event-interruptingCorrelationKey", variables)
+	correlationKey := "message-boundary-event-interruptingCorrelationKey"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
@@ -368,7 +369,8 @@ func TestSubProcessCancelsOnInterruptingBoundaryEvent(t *testing.T) {
 	}
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "OuterTestMessage", "testMessage", variables)
+	correlationKey := "testMessage"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "OuterTestMessage", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	subscriptions, err := bpmnEngine.persistence.FindProcessInstanceMessageSubscriptions(t.Context(), instance.ProcessInstance().Key, runtime.ActivityStateActive)
@@ -416,7 +418,8 @@ func TestSubProcessCorrelateBoundaryEvent(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "InnerTestMessage", "testMessage", variables)
+	correlationKey := "testMessage"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "InnerTestMessage", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
@@ -485,7 +488,8 @@ func TestMultiInstanceSubprocessCancelsOnInterruptingBoundaryEvent(t *testing.T)
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "boundary message", "1234", variables)
+	correlationKey := "1234"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "boundary message", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
@@ -1158,7 +1162,8 @@ func TestMultiInstanceSubProcessCorrelateBoundaryEvent(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_1r7iviyMessage", "1234", variables)
+	correlationKey := "1234"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_1r7iviyMessage", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	var foundChildInstance runtime.ProcessInstance
@@ -1173,7 +1178,8 @@ func TestMultiInstanceSubProcessCorrelateBoundaryEvent(t *testing.T) {
 	}, 500*time.Millisecond, 100*time.Millisecond)
 	time.Sleep(1 * time.Second)
 
-	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_1r7iviyMessage", "1234", variables)
+	correlationKey = "1234"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_1r7iviyMessage", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
@@ -1307,7 +1313,8 @@ func TestMultiInstanceParallelSubProcessCorrelateBoundaryEventFailsToCreateParal
 	time.Sleep(1 * time.Second)
 
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_0g0g0nbMessage", "1324", variables)
+	correlationKey := "1324"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "Event_0g0g0nbMessage", &correlationKey, variables)
 	assert.NoError(t, err)
 
 	var foundChildInstance runtime.ProcessInstance

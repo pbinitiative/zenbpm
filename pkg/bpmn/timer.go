@@ -124,7 +124,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			}
 		}
 
-		err = engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, &token)
+		err = engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, token)
 		if err != nil {
 			return nil, err
 		}

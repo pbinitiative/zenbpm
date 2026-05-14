@@ -172,7 +172,7 @@ func (engine *Engine) handleBoundaryError(
 		}
 	}
 
-	if err := engine.cancelBoundarySubscriptions(ctx, batch, scope.instance.ProcessInstance().Key, &scope.token); err != nil {
+	if err := engine.cancelBoundarySubscriptions(ctx, batch, scope.instance.ProcessInstance().Key, scope.token); err != nil {
 		return nil, nil, fmt.Errorf("failed to cancel boundary subscriptions for process instance %d: %w", scope.instance.ProcessInstance().Key, err)
 	}
 

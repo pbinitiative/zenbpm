@@ -253,16 +253,18 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveToken(t.Context(), token)
 		assert.NoError(t, err)
 
-		messageSub := runtime.MessageSubscription{
-			Key:                  r + 70,
-			ElementId:            "message-sub",
-			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.ProcessInstance().Key,
-			Name:                 "name",
-			CorrelationKey:       "cor-1",
-			State:                runtime.ActivityStateActive,
-			CreatedAt:            time.Now(),
-			Token:                token,
+		messageSub := &runtime.TokenMessageSubscription{
+			Token:              token,
+			ProcessInstanceKey: inst1.ProcessInstance().Key,
+			CorrelationKey:     "cor-1",
+			MessageSubscriptionData: runtime.MessageSubscriptionData{
+				Key:                  r + 70,
+				ElementId:            "message-sub",
+				ProcessDefinitionKey: pd.Key,
+				Name:                 "name",
+				State:                runtime.ActivityStateActive,
+				CreatedAt:            time.Now(),
+			},
 		}
 		err = db.SaveMessageSubscription(ctx, messageSub)
 		assert.NoError(t, err)
@@ -486,65 +488,65 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 	assert.NoError(t, err)
 
 	t.Run("test message subscription db save", func(t *testing.T) {
-		err = db.SaveMessageSubscription(t.Context(), runtime.MessageSubscription{
-			Key:                  db.GenerateId(),
-			ElementId:            "123",
-			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.ProcessInstance().Key,
-			Name:                 "test-message",
-			CorrelationKey:       "duplicate_correlation_key",
-			State:                runtime.ActivityStateActive,
-			CreatedAt:            time.Now(),
-			Token: runtime.ExecutionToken{
-				Key: 46465132,
+		err = db.SaveMessageSubscription(t.Context(), &runtime.TokenMessageSubscription{
+			Token:              runtime.ExecutionToken{Key: 46465132},
+			ProcessInstanceKey: inst1.ProcessInstance().Key,
+			CorrelationKey:     "duplicate_correlation_key",
+			MessageSubscriptionData: runtime.MessageSubscriptionData{
+				Key:                  db.GenerateId(),
+				ElementId:            "123",
+				ProcessDefinitionKey: pd.Key,
+				Name:                 "test-message",
+				State:                runtime.ActivityStateActive,
+				CreatedAt:            time.Now(),
 			},
 		})
 		assert.NoError(t, err)
 
-		err = db.SaveMessageSubscription(t.Context(), runtime.MessageSubscription{
-			Key:                  db.GenerateId(),
-			ElementId:            "123",
-			ProcessDefinitionKey: 1,
-			ProcessInstanceKey:   1,
-			Name:                 "test-message",
-			CorrelationKey:       "duplicate_correlation_key",
-			State:                runtime.ActivityStateActive,
-			CreatedAt:            time.Now(),
-			Token: runtime.ExecutionToken{
-				Key: 16465133,
+		err = db.SaveMessageSubscription(t.Context(), &runtime.TokenMessageSubscription{
+			Token:              runtime.ExecutionToken{Key: 16465133},
+			ProcessInstanceKey: 1,
+			CorrelationKey:     "duplicate_correlation_key",
+			MessageSubscriptionData: runtime.MessageSubscriptionData{
+				Key:                  db.GenerateId(),
+				ElementId:            "123",
+				ProcessDefinitionKey: 1,
+				Name:                 "test-message",
+				State:                runtime.ActivityStateActive,
+				CreatedAt:            time.Now(),
 			},
 		})
 		assert.Error(t, err)
 	})
 	t.Run("test message subscription batch save", func(t *testing.T) {
-		err = db.SaveMessageSubscription(t.Context(), runtime.MessageSubscription{
-			Key:                  db.GenerateId(),
-			ElementId:            "124",
-			ProcessDefinitionKey: pd.Key,
-			ProcessInstanceKey:   inst1.ProcessInstance().Key,
-			Name:                 "test-message",
-			CorrelationKey:       "duplicate_correlation_key_batch",
-			State:                runtime.ActivityStateActive,
-			CreatedAt:            time.Now(),
-			Token: runtime.ExecutionToken{
-				Key: 46465132,
+		err = db.SaveMessageSubscription(t.Context(), &runtime.TokenMessageSubscription{
+			Token:              runtime.ExecutionToken{Key: 46465132},
+			ProcessInstanceKey: inst1.ProcessInstance().Key,
+			CorrelationKey:     "duplicate_correlation_key_batch",
+			MessageSubscriptionData: runtime.MessageSubscriptionData{
+				Key:                  db.GenerateId(),
+				ElementId:            "124",
+				ProcessDefinitionKey: pd.Key,
+				Name:                 "test-message",
+				State:                runtime.ActivityStateActive,
+				CreatedAt:            time.Now(),
 			},
 		})
 		assert.NoError(t, err)
 
 		pointer, err := db.FindActiveMessageSubscriptionPointer(t.Context(), "test-message", "duplicate_correlation_key_batch")
 		batch := db.NewBatch()
-		err = batch.SaveMessageSubscription(t.Context(), runtime.MessageSubscription{
-			Key:                  db.GenerateId(),
-			ElementId:            "124",
-			ProcessDefinitionKey: 3,
-			ProcessInstanceKey:   3,
-			Name:                 "test-message",
-			CorrelationKey:       "duplicate_correlation_key_batch",
-			State:                runtime.ActivityStateActive,
-			CreatedAt:            time.Now(),
-			Token: runtime.ExecutionToken{
-				Key: 16465133,
+		err = batch.SaveMessageSubscription(t.Context(), &runtime.TokenMessageSubscription{
+			Token:              runtime.ExecutionToken{Key: 16465133},
+			ProcessInstanceKey: 3,
+			CorrelationKey:     "duplicate_correlation_key_batch",
+			MessageSubscriptionData: runtime.MessageSubscriptionData{
+				Key:                  db.GenerateId(),
+				ElementId:            "124",
+				ProcessDefinitionKey: 3,
+				Name:                 "test-message",
+				State:                runtime.ActivityStateActive,
+				CreatedAt:            time.Now(),
 			},
 		})
 		assert.NoError(t, err)
@@ -557,7 +559,7 @@ func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
 				Name:                 &pointer.Name,
 				State:                &pointer.State,
 				CorrelationKey:       &pointer.CorrelationKey,
-				ExecutionToken:       &pointer.ExecutionTokenKey,
+				ExecutionToken:       &pointer.MessageSubscriptionKey,
 			}, nil
 		}
 		err = batch.Flush(t.Context())

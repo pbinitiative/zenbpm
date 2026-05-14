@@ -64,9 +64,9 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		if latest.BpmnChecksum == md5sum {
 			return latest, nil
 		}
-		err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key})
+		definition, err := engine.deleteProcessDefinitionSubscriptions(ctx, latest)
 		if err != nil {
-			return nil, fmt.Errorf("failed to delete process definitions timers: %w", err)
+			return definition, err
 		}
 		processInfo.Version = latest.Version + 1
 	}
@@ -77,4 +77,16 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 
 	engine.exportNewProcessEvent(processInfo, xmlData, hex.EncodeToString(md5sum[:]))
 	return &processInfo, nil
+}
+
+func (engine *Engine) deleteProcessDefinitionSubscriptions(ctx context.Context, latest *runtime.ProcessDefinition) (*runtime.ProcessDefinition, error) {
+	err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key})
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete process definitions timers: %w", err)
+	}
+	err = engine.persistence.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{latest.Key})
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete process definitions message subscriptions: %w", err)
+	}
+	return nil, nil
 }

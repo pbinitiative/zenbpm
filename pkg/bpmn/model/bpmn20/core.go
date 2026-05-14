@@ -91,7 +91,7 @@ func (d *TDefinitions) GetMessageByRef(ref string) (TMessage, error) {
 			return mes, nil
 		}
 	}
-	return TMessage{}, fmt.Errorf("failed to find message among process messages")
+	return TMessage{}, fmt.Errorf("failed to find message reference %s among process messages", ref)
 }
 
 func (d *TDefinitions) GetErrorByRef(ref string) (TError, error) {

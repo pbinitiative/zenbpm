@@ -178,9 +178,9 @@ type JobStorageWriter interface {
 }
 
 type MessageStorageReader interface {
-	FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+	FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
-	FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error)
+	FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
 	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
@@ -192,6 +192,8 @@ type MessageStorageWriter interface {
 	// SaveMessageSubscription persists the MessageSubscription
 	// returns an error if there is already an active conflicting message present.
 	SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error
+
+	DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error
 }
 
 type TokenStorageReader interface {

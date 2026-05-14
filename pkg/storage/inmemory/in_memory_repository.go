@@ -606,7 +606,7 @@ func (mem *Storage) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 var _ storage.MessageStorageReader = &Storage{}
 
-func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+func (mem *Storage) FindMessageSubscriptionByKey(ctx context.Context, key int64, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
 	var res bpmnruntime.MessageSubscription
@@ -614,10 +614,34 @@ func (mem *Storage) FindMessageSubscriptionById(ctx context.Context, key int64, 
 	if !ok {
 		return res, storage.ErrNotFound
 	}
-	if res.State == state {
+	if res.MessageSubscription().State == state {
 		return res, nil
 	}
 	return res, storage.ErrNotFound
+}
+
+// getMessageSubscriptionProcessInstanceKey returns ProcessInstanceKey and true for subscription types that have one.
+func getMessageSubscriptionProcessInstanceKey(sub bpmnruntime.MessageSubscription) (int64, bool) {
+	switch s := sub.(type) {
+	case *bpmnruntime.TokenMessageSubscription:
+		return s.ProcessInstanceKey, true
+	case *bpmnruntime.InstanceMessageSubscription:
+		return s.ProcessInstanceKey, true
+	default:
+		return 0, false
+	}
+}
+
+// getMessageSubscriptionCorrelationKey returns CorrelationKey for subscription types that have one.
+func getMessageSubscriptionCorrelationKey(sub bpmnruntime.MessageSubscription) (string, bool) {
+	switch s := sub.(type) {
+	case *bpmnruntime.TokenMessageSubscription:
+		return s.CorrelationKey, true
+	case *bpmnruntime.InstanceMessageSubscription:
+		return s.CorrelationKey, true
+	default:
+		return "", false
+	}
 }
 
 // FindTokenMessageSubscriptions implements storage.Storage.
@@ -626,7 +650,11 @@ func (mem *Storage) FindTokenMessageSubscriptions(ctx context.Context, tokenKey 
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.Token.Key == tokenKey && sub.State == state {
+		tokenSub, ok := sub.(*bpmnruntime.TokenMessageSubscription)
+		if !ok {
+			continue
+		}
+		if tokenSub.Token.Key == tokenKey && tokenSub.MessageSubscription().State == state {
 			res = append(res, sub)
 		}
 	}
@@ -638,10 +666,11 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	defer mem.mu.RUnlock()
 	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.ProcessInstanceKey != processInstanceKey {
+		subProcessInstanceKey, ok := getMessageSubscriptionProcessInstanceKey(sub)
+		if !ok || subProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		if sub.GetState() != state {
+		if sub.MessageSubscription().State != state {
 			continue
 		}
 		res = append(res, sub)
@@ -649,22 +678,25 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 	return res, nil
 }
 
-func (mem *Storage) FindActiveMessageSubscriptionKey(ctx context.Context, name string, correlationKey string) (int64, error) {
+func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	res := make([]bpmnruntime.MessageSubscription, 0)
 	for _, sub := range mem.MessageSubscriptions {
-		if sub.GetState() != bpmnruntime.ActivityStateActive {
+		if sub.MessageSubscription().State != state {
 			continue
 		}
-		if sub.Name == name && sub.CorrelationKey == correlationKey {
-			res = append(res, sub)
+		if sub.MessageSubscription().Name != name {
+			continue
+		}
+		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(sub)
+		if correlationKey == nil && subCorrelationKey == "" {
+			return sub, nil
+		}
+		if correlationKey != nil && subCorrelationKey == *correlationKey {
+			return sub, nil
 		}
 	}
-	if len(res) == 0 {
-		return 0, storage.ErrNotFound
-	}
-	return res[0].Key, nil
+	return nil, storage.ErrNotFound
 }
 
 func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
@@ -710,14 +742,37 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	for _, message := range mem.MessageSubscriptions {
-		if subscription.Key == message.Key {
+		if subscription.MessageSubscription().Key == message.MessageSubscription().Key {
 			break
 		}
-		if message.State == bpmnruntime.ActivityStateActive && message.Name == subscription.Name && message.CorrelationKey == subscription.CorrelationKey {
+		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(subscription)
+		messageCorrelationKey, _ := getMessageSubscriptionCorrelationKey(message)
+		if message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+			message.MessageSubscription().Name == subscription.MessageSubscription().Name &&
+			messageCorrelationKey == subCorrelationKey {
 			return fmt.Errorf("active message with the same correlationKey and name already exists")
 		}
 	}
-	mem.MessageSubscriptions[subscription.GetKey()] = subscription
+	mem.MessageSubscriptions[subscription.MessageSubscription().Key] = subscription
+	return nil
+}
+
+func (mem *Storage) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+	keySet := make(map[int64]struct{}, len(processDefinitionKeys))
+	for _, k := range processDefinitionKeys {
+		keySet[k] = struct{}{}
+	}
+	for key, subscription := range mem.MessageSubscriptions {
+		if _, ok := keySet[subscription.MessageSubscription().ProcessDefinitionKey]; !ok {
+			continue
+		}
+		if subscription.Type() != bpmnruntime.MessageSubscriptionTypeDefinition {
+			continue
+		}
+		delete(mem.MessageSubscriptions, key)
+	}
 	return nil
 }
 
@@ -1000,6 +1055,13 @@ var _ storage.MessageStorageWriter = &StorageBatch{}
 func (b *StorageBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	b.stmtToRun = append(b.stmtToRun, func() error {
 		return b.db.SaveMessageSubscription(ctx, subscription)
+	})
+	return nil
+}
+
+func (b *StorageBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	b.stmtToRun = append(b.stmtToRun, func() error {
+		return b.db.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
 	})
 	return nil
 }

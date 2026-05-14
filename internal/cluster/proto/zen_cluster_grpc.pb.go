@@ -42,6 +42,7 @@ const (
 	ZenService_DeployProcessDefinition_FullMethodName               = "/cluster.ZenService/DeployProcessDefinition"
 	ZenService_ActivateJob_FullMethodName                           = "/cluster.ZenService/ActivateJob"
 	ZenService_PublishMessage_FullMethodName                        = "/cluster.ZenService/PublishMessage"
+	ZenService_PublishMessageStartProcessInstance_FullMethodName    = "/cluster.ZenService/PublishMessageStartProcessInstance"
 	ZenService_SetMessageSubscriptionPointer_FullMethodName         = "/cluster.ZenService/SetMessageSubscriptionPointer"
 	ZenService_FindActiveMessage_FullMethodName                     = "/cluster.ZenService/FindActiveMessage"
 	ZenService_CreateInstance_FullMethodName                        = "/cluster.ZenService/CreateInstance"
@@ -111,6 +112,7 @@ type ZenServiceClient interface {
 	ActivateJob(ctx context.Context, in *ActivateJobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ActivateJobResponse], error)
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(ctx context.Context, in *PublishMessageRequest, opts ...grpc.CallOption) (*PublishMessageResponse, error)
+	PublishMessageStartProcessInstance(ctx context.Context, in *PublishMessageStartProcessInstanceRequest, opts ...grpc.CallOption) (*PublishMessageStartProcessInstanceResponse, error)
 	SetMessageSubscriptionPointer(ctx context.Context, in *SetMessageSubscriptionPointerRequest, opts ...grpc.CallOption) (*SetMessageSubscriptionPointerResponse, error)
 	FindActiveMessage(ctx context.Context, in *FindActiveMessageRequest, opts ...grpc.CallOption) (*FindActiveMessageResponse, error)
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
@@ -372,6 +374,16 @@ func (c *zenServiceClient) PublishMessage(ctx context.Context, in *PublishMessag
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PublishMessageResponse)
 	err := c.cc.Invoke(ctx, ZenService_PublishMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *zenServiceClient) PublishMessageStartProcessInstance(ctx context.Context, in *PublishMessageStartProcessInstanceRequest, opts ...grpc.CallOption) (*PublishMessageStartProcessInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishMessageStartProcessInstanceResponse)
+	err := c.cc.Invoke(ctx, ZenService_PublishMessageStartProcessInstance_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -682,6 +694,7 @@ type ZenServiceServer interface {
 	ActivateJob(*ActivateJobRequest, grpc.ServerStreamingServer[ActivateJobResponse]) error
 	// PublishMessage requests a message publish on the engine running on a leader node of partition
 	PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error)
+	PublishMessageStartProcessInstance(context.Context, *PublishMessageStartProcessInstanceRequest) (*PublishMessageStartProcessInstanceResponse, error)
 	SetMessageSubscriptionPointer(context.Context, *SetMessageSubscriptionPointerRequest) (*SetMessageSubscriptionPointerResponse, error)
 	FindActiveMessage(context.Context, *FindActiveMessageRequest) (*FindActiveMessageResponse, error)
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
@@ -785,6 +798,9 @@ func (UnimplementedZenServiceServer) ActivateJob(*ActivateJobRequest, grpc.Serve
 }
 func (UnimplementedZenServiceServer) PublishMessage(context.Context, *PublishMessageRequest) (*PublishMessageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
+}
+func (UnimplementedZenServiceServer) PublishMessageStartProcessInstance(context.Context, *PublishMessageStartProcessInstanceRequest) (*PublishMessageStartProcessInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishMessageStartProcessInstance not implemented")
 }
 func (UnimplementedZenServiceServer) SetMessageSubscriptionPointer(context.Context, *SetMessageSubscriptionPointerRequest) (*SetMessageSubscriptionPointerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetMessageSubscriptionPointer not implemented")
@@ -1270,6 +1286,24 @@ func _ZenService_PublishMessage_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ZenServiceServer).PublishMessage(ctx, req.(*PublishMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ZenService_PublishMessageStartProcessInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishMessageStartProcessInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZenServiceServer).PublishMessageStartProcessInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ZenService_PublishMessageStartProcessInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZenServiceServer).PublishMessageStartProcessInstance(ctx, req.(*PublishMessageStartProcessInstanceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1821,6 +1855,10 @@ var ZenService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishMessage",
 			Handler:    _ZenService_PublishMessage_Handler,
+		},
+		{
+			MethodName: "PublishMessageStartProcessInstance",
+			Handler:    _ZenService_PublishMessageStartProcessInstance_Handler,
 		},
 		{
 			MethodName: "SetMessageSubscriptionPointer",

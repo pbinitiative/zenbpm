@@ -18,6 +18,12 @@ type EngineBatch struct {
 	postFlushActions []func()
 }
 
+// ErrInstanceAlreadyTerminal is returned by NewEngineBatch when the process instance being batched against
+// has already reached a terminal state (Completed or Terminated). Callers that race against a concurrent
+// cancellation/completion (e.g. multiple interrupting event-subprocess publishes on the same parent)
+// can detect this with errors.Is and treat the situation as a clean no-op.
+var ErrInstanceAlreadyTerminal = fmt.Errorf("process instance is already in a terminal state")
+
 // NewEngineBatch TODO: optimize usage of FindProcessInstanceByKey
 // NewEngineBatch - Use this method only in public engine methods in _api files
 func (engine *Engine) NewEngineBatch(ctx context.Context, instance bpmnruntime.ProcessInstance) (EngineBatch, error) {
@@ -29,7 +35,7 @@ func (engine *Engine) NewEngineBatch(ctx context.Context, instance bpmnruntime.P
 	}
 	if instance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted || instance.ProcessInstance().State == bpmnruntime.ActivityStateTerminated {
 		engine.runningInstances.unlockInstance(instance.ProcessInstance().Key)
-		return EngineBatch{}, fmt.Errorf("process instance %d is already completed", instance.ProcessInstance().Key)
+		return EngineBatch{}, fmt.Errorf("process instance %d is already completed: %w", instance.ProcessInstance().Key, ErrInstanceAlreadyTerminal)
 	}
 	return EngineBatch{
 		b:                engine.persistence.NewBatch(),
@@ -185,6 +191,10 @@ func (b *EngineBatch) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 
 func (b *EngineBatch) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	return b.b.SaveMessageSubscription(ctx, subscription)
+}
+
+func (b *EngineBatch) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processDefinitionKeys []int64) error {
+	return b.b.DeleteProcessDefinitionsMessageSubscriptions(ctx, processDefinitionKeys)
 }
 
 func (b *EngineBatch) SaveToken(ctx context.Context, token bpmnruntime.ExecutionToken) error {

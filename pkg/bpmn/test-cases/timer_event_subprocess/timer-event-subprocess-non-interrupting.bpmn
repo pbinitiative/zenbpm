@@ -34,6 +34,11 @@
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="eventSubprocessTimerEvent_12i3m6f" targetRef="end_event_non_interrupting" />
       <bpmn:startEvent id="eventSubprocessTimerEvent_12i3m6f" isInterrupting="false">
+        <bpmn:extensionElements>
+          <zeebe:ioMapping>
+            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_1uuh2ke">
           <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>

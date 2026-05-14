@@ -41,6 +41,11 @@
           <bpmn:outgoing>Flow_1jx8d33</bpmn:outgoing>
         </bpmn:serviceTask>
         <bpmn:startEvent id="eventSubprocessTimerEvent_010eof4" isInterrupting="false">
+          <bpmn:extensionElements>
+            <zeebe:ioMapping>
+              <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+            </zeebe:ioMapping>
+          </bpmn:extensionElements>
           <bpmn:outgoing>Flow_1j5omak</bpmn:outgoing>
           <bpmn:timerEventDefinition id="TimerEventDefinition_0a3vnpv">
             <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1S</bpmn:timeDuration>

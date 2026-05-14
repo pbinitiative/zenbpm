@@ -2215,7 +2215,6 @@ paths:
             schema:
               type: object
               required:
-                - correlationKey
                 - messageName
               properties:
                 correlationKey:

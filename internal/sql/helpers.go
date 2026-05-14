@@ -2,7 +2,6 @@ package sql
 
 import (
 	"database/sql"
-
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
@@ -29,6 +28,20 @@ func ToNullInt64[I ~int64](p *I) sql.NullInt64 {
 		Int64: int64(ptr.Deref(p, 0)),
 		Valid: true,
 	}
+}
+
+func FromNullInt64(p sql.NullInt64) *int64 {
+	if p.Valid {
+		return &p.Int64
+	}
+	return nil
+}
+
+func FromNullString(p sql.NullString) *string {
+	if p.Valid {
+		return &p.String
+	}
+	return nil
 }
 
 type Sort string

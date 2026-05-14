@@ -25,10 +25,15 @@ type TStartEvent struct {
 	IsInterrupting   bool `xml:"isInterrupting,attr"`
 	ParallelMultiple bool `xml:"parallelMultiple,attr"`
 	EventDefinitions []EventDefinition
+	Output           []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 
 func (startEvent TStartEvent) GetType() ElementType {
 	return ElementTypeStartEvent
+}
+
+func (startEvent TStartEvent) GetOutputMapping() []extensions.TIoMapping {
+	return startEvent.Output
 }
 
 func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -38,6 +43,7 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 		TimerEventDefinition   *TTimerEventDefinition   `xml:"timerEventDefinition"`
 		IsInterrupting         *bool                    `xml:"isInterrupting,attr"`
 		ParallelMultiple       bool                     `xml:"parallelMultiple,attr"`
+		Output                 []extensions.TIoMapping  `xml:"extensionElements>ioMapping>output"`
 	}{}
 	err := d.DecodeElement(&tempStruct, &start)
 	if err != nil {
@@ -51,9 +57,11 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 	startEvent.EventDefinitions = make([]EventDefinition, 0)
 	if tempStruct.TimerEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.TimerEventDefinition)
+		startEvent.Output = tempStruct.Output
 	}
 	if tempStruct.MessageEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.MessageEventDefinition)
+		startEvent.Output = tempStruct.Output
 	}
 	return nil
 }

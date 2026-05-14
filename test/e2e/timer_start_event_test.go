@@ -26,7 +26,7 @@ func TestTimerStartEvent(t *testing.T) {
 	var err error
 
 	t.Run("create timer-start-event-process.bpmn process definition", func(t *testing.T) {
-		definition, err = deployGetDefinition(t, "timer-start-event-process.bpmn", "timer-start-event-process-1")
+		definition, err = deployGetDefinition(t, "process_definition_start_event/timer-start-event-process.bpmn", "timer-start-event-process-1")
 		assert.NoError(t, err)
 
 		// No process instance creation is needed. Timer start event should create the instance itself after definition deployment and timer activation duration
@@ -42,15 +42,8 @@ func TestTimerStartEvent(t *testing.T) {
 			}
 			return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
 		}, 20*time.Second, 100*time.Millisecond, "timer start event should create one active process instance")
-		fetchedProcessInstance := processInstances.JSON200.Partitions[0].Items[0]
-		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedProcessInstance.State)
-
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(fetchedProcessInstance.Key))
-		require.NoError(t, err)
 		// there should be only 1 token as the process should start only from timer start event and not from other start events
-		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), fetchedProcessInstance.Key)
-		require.NoError(t, err)
-		assert.Equal(t, 1, len(tokens))
+		fetchedProcessInstance, store := requireFirstActiveInstanceWithSingleToken(t, processInstances)
 
 		// verify that only the timer start event element was executed, not the plain start event
 		assertStartEventExecuted(t, store, fetchedProcessInstance.Key, "timerStartEvent_1234", "plainStartEvent_0mtr7my")
@@ -113,7 +106,7 @@ func TestPlainStartEvent_WithFutureTimerStartEvent(t *testing.T) {
 	// Because the timer date is in the future, only the plain start event fires
 	// when the process instance is created manually. There should be exactly 1 active token.
 
-	bpmnData, err := os.ReadFile("../../pkg/bpmn/test-cases/timer-start-event-process.bpmn")
+	bpmnData, err := os.ReadFile("../../pkg/bpmn/test-cases/process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
 
 	futureTimerDate := time.Now().Add(1 * time.Hour).UTC().Format(time.RFC3339)
@@ -124,7 +117,7 @@ func TestPlainStartEvent_WithFutureTimerStartEvent(t *testing.T) {
 		"timer-start-event-process-1", uniqueProcessId,
 	).Replace(string(bpmnData)))
 
-	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "timer-start-event-process.bpmn")
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/timer-start-event-process.bpmn")
 	require.NoError(t, err)
 
 	var definitionKey int64
@@ -157,7 +150,7 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 	//   - taskA (job type "subProcessJobType")
 	//   - non-interrupting event subprocess with timer PT1S containing taskB (job type "eventSubProcessJobType")
 
-	definition, err := deployGetDefinition(t, "timer-event-subprocess-non-interrupting-nested.bpmn", "Process_1c1lgem")
+	definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-non-interrupting-nested.bpmn", "Process_1c1lgem")
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
@@ -233,6 +226,11 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		// verify that the event subprocess output variable was propagated to the main process
 		assert.Equal(t, "nested-event-subprocess-done", fetchedInstance.Variables["eventSubProcessVariable"],
 			"eventSubProcessVariable should be propagated from the nested event subprocess through the subprocess to the root process")
+		// the timer-start event has an io-mapping setting timerStartEventVar = "timerStartEventValue".
+		// The engine writes that straight to the parent of the event subprocess (Subprocess_15s23yn);
+		// Subprocess_15s23yn has no io-mapping so it propagates everything to the root process.
+		assert.Equal(t, "timerStartEventValue", fetchedInstance.Variables["timerStartEventVar"],
+			"timerStartEventVar from the nested timer start event must reach the root process")
 	})
 }
 
@@ -245,7 +243,7 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 	//       - EventSubprocessB_16e6pei (non-interrupting timer PT1S):
 	//           - timer start -> service task2 (job type "EventSubprocessBtype") -> EndEventB_1pttfqp
 
-	definition, err := deployGetDefinition(t, "timer-event-subprocess-non-interrupting-nested-2.bpmn", "Process_0383xaq")
+	definition, err := deployGetDefinition(t, "timer_event_subprocess/timer-event-subprocess-non-interrupting-nested-2.bpmn", "Process_0383xaq")
 	assert.NoError(t, err)
 
 	var instance zenclient.ProcessInstance
@@ -327,6 +325,15 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 			"eventSubProcessAVariable should be propagated from EventSubprocessA through SubProcess to root")
 		assert.Equal(t, "event-subprocess-b-done", fetchedInstance.Variables["eventSubProcessBVariable"],
 			"eventSubProcessBVariable should be propagated from EventSubprocessB through EventSubprocessA and SubProcess to root")
+		// Timer-start event A writes timerStartEventVarA directly onto SubProcess_0rohbe2 (the
+		// parent of EventSubprocessA). 0rohbe2 has no io-mapping → propagates everything to root.
+		assert.Equal(t, "timerStartEventValueA", fetchedInstance.Variables["timerStartEventVarA"],
+			"timerStartEventVarA from EventSubprocessA's timer-start event must reach the root process")
+		// Timer-start event B writes timerStartEventVarB onto EventSubprocessA's holder. A's
+		// io-mapping explicitly passes timerStartEventVarB through to 0rohbe2, which then
+		// propagates it to root.
+		assert.Equal(t, "timerStartEventValueB", fetchedInstance.Variables["timerStartEventVarB"],
+			"timerStartEventVarB from EventSubprocessB's timer-start event must reach the root process")
 	})
 }
 

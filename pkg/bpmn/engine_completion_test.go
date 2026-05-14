@@ -83,7 +83,7 @@ func TestProcessWaitingForUserTaskRemainsActive(t *testing.T) {
 // belonging to event subprocess timer start events are transitioned to
 // TimerStateCancelled.
 func TestJobCompletionCancelsEventSubprocessTimer(t *testing.T) {
-	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-event-subprocess-interrupting.bpmn")
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer_event_subprocess/timer-event-subprocess-interrupting.bpmn")
 	require.NoError(t, err)
 
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)

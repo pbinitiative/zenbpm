@@ -7,27 +7,53 @@ package sql
 
 import (
 	"context"
+	"strings"
 )
+
+const deleteProcessDefinitionsMessageSubscriptionPointers = `-- name: DeleteProcessDefinitionsMessageSubscriptionPointers :exec
+DELETE FROM message_subscription_pointer
+WHERE message_subscription_key IN (
+    SELECT key FROM message_subscription
+    WHERE process_definition_key IN (/*SLICE:processDefinitionKeys*/?)
+        AND process_instance_key IS NULL
+        AND execution_token IS NULL
+)
+`
+
+func (q *Queries) DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error {
+	query := deleteProcessDefinitionsMessageSubscriptionPointers
+	var queryParams []interface{}
+	if len(processdefinitionkeys) > 0 {
+		for _, v := range processdefinitionkeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", strings.Repeat(",?", len(processdefinitionkeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:processDefinitionKeys*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
 
 const findMessageSubscriptionPointer = `-- name: FindMessageSubscriptionPointer :one
 SELECT
-    name, correlation_key, state, created_at, message_subscription_key, execution_token_key
+    name, correlation_key, state, created_at, message_subscription_key
 FROM
     message_subscription_pointer
 WHERE
-    correlation_key = ?1
-    AND name = ?2
-    AND state = ?3
+    state = ?1
+    AND correlation_key = ?2
+    AND name = ?3
 `
 
 type FindMessageSubscriptionPointerParams struct {
+	FilterState    int64  `json:"filter_state"`
 	CorrelationKey string `json:"correlation_key"`
 	Name           string `json:"name"`
-	FilterState    int64  `json:"filter_state"`
 }
 
 func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error) {
-	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.CorrelationKey, arg.Name, arg.FilterState)
+	row := q.db.QueryRowContext(ctx, findMessageSubscriptionPointer, arg.FilterState, arg.CorrelationKey, arg.Name)
 	var i MessageSubscriptionPointer
 	err := row.Scan(
 		&i.Name,
@@ -35,20 +61,18 @@ func (q *Queries) FindMessageSubscriptionPointer(ctx context.Context, arg FindMe
 		&i.State,
 		&i.CreatedAt,
 		&i.MessageSubscriptionKey,
-		&i.ExecutionTokenKey,
 	)
 	return i, err
 }
 
 const saveMessageSubscriptionPointer = `-- name: SaveMessageSubscriptionPointer :exec
-INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key, execution_token_key)
-    VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO message_subscription_pointer(state, created_at, name, correlation_key, message_subscription_key)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(name,correlation_key)
         DO UPDATE SET
             state = excluded.state,
 						created_at = excluded.created_at,
-						message_subscription_key = excluded.message_subscription_key,
-						execution_token_key = excluded.execution_token_key
+						message_subscription_key = excluded.message_subscription_key
 `
 
 type SaveMessageSubscriptionPointerParams struct {
@@ -57,7 +81,6 @@ type SaveMessageSubscriptionPointerParams struct {
 	Name                   string `json:"name"`
 	CorrelationKey         string `json:"correlation_key"`
 	MessageSubscriptionKey int64  `json:"message_subscription_key"`
-	ExecutionTokenKey      int64  `json:"execution_token_key"`
 }
 
 func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMessageSubscriptionPointerParams) error {
@@ -67,7 +90,6 @@ func (q *Queries) SaveMessageSubscriptionPointer(ctx context.Context, arg SaveMe
 		arg.Name,
 		arg.CorrelationKey,
 		arg.MessageSubscriptionKey,
-		arg.ExecutionTokenKey,
 	)
 	return err
 }

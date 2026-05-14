@@ -39,8 +39,8 @@ func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T)
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "globalMsgRef" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "globalMsgRef" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -62,15 +62,15 @@ func TestIntermediateCatchEventACatchEventProducesAnActiveSubscription(t *testin
 	subscriptions := engineStorage.MessageSubscriptions
 	var subscription runtime.MessageSubscription
 	for _, sub := range subscriptions {
-		if sub.ProcessInstanceKey == pi.ProcessInstance().Key {
+		if sub, ok := sub.(*runtime.TokenMessageSubscription); ok && sub.ProcessInstanceKey == pi.ProcessInstance().Key {
 			subscription = sub
 			break
 		}
 	}
-
-	assert.Equal(t, "globalMsgRef", subscription.Name)
-	assert.Equal(t, "id-1", subscription.ElementId)
-	assert.Equal(t, runtime.ActivityStateActive, subscription.State)
+	assert.NotNil(t, subscription)
+	assert.Equal(t, "globalMsgRef", subscription.MessageSubscription().Name)
+	assert.Equal(t, "id-1", subscription.MessageSubscription().ElementId)
+	assert.Equal(t, runtime.ActivityStateActive, subscription.MessageSubscription().State)
 }
 
 func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing.T) {
@@ -86,10 +86,10 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 	assert.Error(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "globalMsgRef" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "globalMsgRef" {
+			err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.Error(t, err)
 		}
 	}
@@ -111,8 +111,8 @@ func TestIntermediateCatchEventMultipleInstancesWithSameMessageAndKey(t *testing
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "globalMsgRef" && message.State == runtime.ActivityStateActive {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "globalMsgRef" && message.MessageSubscription().State == runtime.ActivityStateActive {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -145,8 +145,8 @@ func TestHavingIntermediateCatchEventAndServiceTaskInParallelTheProcessStateIsMa
 	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().GetState())
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "event-1" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -176,8 +176,8 @@ func TestMultipleIntermediateCatchEventsPossible(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-2" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-2" {
+			err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -200,22 +200,22 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndMergedCOMPLETED(t *testin
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-1" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-2" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-3" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-3" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -235,8 +235,8 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndMergedACTIVE(t *testing.T
 	assert.NoError(t, err)
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-2" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -255,26 +255,26 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayCOMPLETED(
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.State != runtime.ActivityStateActive {
+		if message.MessageSubscription().State != runtime.ActivityStateActive {
 			continue
 		}
-		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.State != runtime.ActivityStateActive {
+		if message.MessageSubscription().State != runtime.ActivityStateActive {
 			continue
 		}
-		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.State != runtime.ActivityStateActive {
+		if message.MessageSubscription().State != runtime.ActivityStateActive {
 			continue
 		}
-		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 
@@ -295,7 +295,7 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndParallelGatewayACTIVE(t *
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 		assert.NoError(t, err)
 	}
 
@@ -313,21 +313,21 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayCOMPLETED
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-1" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-1" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-2" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-2" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
 
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-3" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-3" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -349,8 +349,8 @@ func TestMultipleIntermediateCatchEventsImplicitForkAndExclusiveGatewayACTIVE(t 
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-event-2" {
-			err := bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-event-2" {
+			err := bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -372,8 +372,8 @@ func TestPublishingARandomMessageDoesNoHarm(t *testing.T) {
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "random-message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "random-message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -400,8 +400,8 @@ func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg-b" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg-b" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -424,9 +424,9 @@ func TestIntermediateMessageCatchEventPublishesVariablesIntoInstance(t *testing.
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg" {
+		if message.MessageSubscription().Name == "msg" {
 			vars := map[string]interface{}{"foo": "bar"}
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, vars)
+			err = bpmnEngine.PublishMessage(t.Context(), message, vars)
 			assert.NoError(t, err)
 		}
 	}
@@ -449,8 +449,8 @@ func TestIntermediateMessageCatchEventOutputMappingReturnsEmpty(t *testing.T) {
 
 	// when
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "msg" && message.State == runtime.ActivityStateActive {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "msg" && message.MessageSubscription().State == runtime.ActivityStateActive {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 		}
 	}
@@ -464,7 +464,7 @@ func TestIntermediateMessageCatchEventOutputMappingReturnsEmpty(t *testing.T) {
 
 	assert.Equal(t, instance.ProcessInstance().GetState(), runtime.ActivityStateCompleted)
 	assert.Nil(t, instance.ProcessInstance().GetVariable("mappedFoo"))
-	assert.Equal(t, message[0].GetState(), runtime.ActivityStateCompleted)
+	assert.Equal(t, message[0].MessageSubscription().State, runtime.ActivityStateCompleted)
 }
 
 func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
@@ -496,7 +496,7 @@ func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &randomCorellationKey, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -519,8 +519,8 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-boundary-event-noninterrupting.bpmn")
 	assert.NoError(t, err)
 	variableContext := make(map[string]interface{}, 1)
-	randomCorellationKey := rand.Int63()
-	variableContext["correlationKey"] = fmt.Sprint(randomCorellationKey)
+	randomCorellationKey := fmt.Sprint(rand.Int63())
+	variableContext["correlationKey"] = randomCorellationKey
 	// when
 	instance, err := bpmnEngine.CreateInstance(t.Context(), process, variableContext)
 	assert.NoError(t, err)
@@ -536,15 +536,15 @@ func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 
 	// when
 	variables := map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &randomCorellationKey, variables)
 	assert.NoError(t, err)
 
 	variables = map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &randomCorellationKey, variables)
 	assert.NoError(t, err)
 
 	variables = map[string]interface{}{"payload": "message payload"}
-	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", fmt.Sprint(randomCorellationKey), variables)
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &randomCorellationKey, variables)
 	assert.NoError(t, err)
 
 	// then
@@ -626,8 +626,8 @@ func TestMessageEventMultiInstanceBusinessRule(t *testing.T) {
 	// when
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "boundary message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 			count++
 		}
@@ -671,8 +671,8 @@ func TestMessageEventMultiInstanceParallelBusinessRule(t *testing.T) {
 	// when
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "boundary message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 			count++
 		}
@@ -723,8 +723,8 @@ func TestMessageEventMultiInstance(t *testing.T) {
 			// when
 			count := 0
 			for _, message := range engineStorage.MessageSubscriptions {
-				if message.Name == "boundary message" {
-					err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+				if message.MessageSubscription().Name == "boundary message" {
+					err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 					assert.NoError(t, err)
 					count++
 				}
@@ -770,8 +770,8 @@ func TestMessageEventMultiInstanceCallActivity(t *testing.T) {
 
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "boundary message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 			count++
 		}
@@ -816,8 +816,8 @@ func TestMessageEventMultiInstanceParallelCallActivity(t *testing.T) {
 	// when
 	count := 0
 	for _, message := range engineStorage.MessageSubscriptions {
-		if message.Name == "boundary message" {
-			err = bpmnEngine.PublishMessage(t.Context(), message.Key, nil)
+		if message.MessageSubscription().Name == "boundary message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 			assert.NoError(t, err)
 			count++
 		}

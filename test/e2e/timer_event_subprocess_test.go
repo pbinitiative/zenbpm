@@ -146,7 +146,7 @@ func TestTimerEventSubProcess(t *testing.T) {
 		// before the timer fires, the event subprocess timer should be in TimerStateCreated
 		assertTimerCreated(t, instance.Key, "eventSubprocessTimerEvent_12i3m6f")
 
-		subProcessInstanceWithTimer := waitForChildProcessInstance(t, instance.Key)
+		subProcessInstanceWithTimer := waitForChildProcessInstance(t, instance.Key, 0)
 		assertProcessInstanceTokenState(t, subProcessInstanceWithTimer.Key, "end_event_non_interrupting", bpmnruntime.TokenStateCompleted)
 		waitForProcessInstanceState(t, subProcessInstanceWithTimer.Key, zenclient.ProcessInstanceStateCompleted)
 

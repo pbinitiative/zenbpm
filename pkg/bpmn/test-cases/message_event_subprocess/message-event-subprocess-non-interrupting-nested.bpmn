@@ -5,6 +5,11 @@
       <bpmn:outgoing>Flow_0ygq7kv</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="Subprocess_15s23yn">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=eventSubProcessVariable" target="eventSubProcessVariable" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_0ygq7kv</bpmn:incoming>
       <bpmn:outgoing>Flow_1g6xvlb</bpmn:outgoing>
       <bpmn:startEvent id="Event_0w7k593">

@@ -407,9 +407,8 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		assertProcessInstanceTokenState(t, processInstance.Key, "Event_11axlot", bpmnruntime.TokenStateCompleted)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
-			"testInputCollection":   []any{"test1", "test2", "test3"},
-			"variable_from_request": "request_variable",
-			"variable_name":         "test-value",
+			"testInputCollection": []any{"test1", "test2", "test3"},
+			"variable_name":       "test-value",
 		})
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
@@ -454,7 +453,7 @@ func createMultiInstanceProcessInstance(t testing.TB, definitionKey int64) (zenc
 	})
 	assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-	multiInstanceProcess := waitForChildProcessInstance(t, processInstance.Key)
+	multiInstanceProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
 	assertProcessInstanceErrorSubscriptionsCountIsZero(t, multiInstanceProcess.Key)
 
 	return processInstance, multiInstanceProcess

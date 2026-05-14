@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
@@ -39,6 +40,7 @@ type Worker struct {
 	f        WorkerFunc
 	ctx      context.Context
 	stream   grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse]
+	sendMu   sync.Mutex
 	logger   Logger
 	clientID string
 }
@@ -115,7 +117,7 @@ func (w *Worker) performWork() {
 					w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
 				}
 
-				err = w.stream.Send(&proto.JobStreamRequest{
+				err = w.send(&proto.JobStreamRequest{
 					Request: &proto.JobStreamRequest_Fail{
 						Fail: &proto.JobFailRequest{
 							Key:       jobToComplete.Job.Key,
@@ -133,7 +135,7 @@ func (w *Worker) performWork() {
 				if err != nil {
 					w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
 				}
-				err = w.stream.Send(&proto.JobStreamRequest{
+				err = w.send(&proto.JobStreamRequest{
 					Request: &proto.JobStreamRequest_Complete{
 						Complete: &proto.JobCompleteRequest{
 							Key:       jobToComplete.Job.Key,
@@ -149,8 +151,14 @@ func (w *Worker) performWork() {
 	}
 }
 
+func (w *Worker) send(req *proto.JobStreamRequest) error {
+	w.sendMu.Lock()
+	defer w.sendMu.Unlock()
+	return w.stream.Send(req)
+}
+
 func (w *Worker) AddJobSubscription(jobType string) error {
-	err := w.stream.Send(&proto.JobStreamRequest{
+	err := w.send(&proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Subscription{
 			Subscription: &proto.StreamSubscriptionRequest{
 				JobType: ptr.To(jobType),
@@ -165,7 +173,7 @@ func (w *Worker) AddJobSubscription(jobType string) error {
 }
 
 func (w *Worker) RemoveJobSubscription(jobType string) error {
-	err := w.stream.Send(&proto.JobStreamRequest{
+	err := w.send(&proto.JobStreamRequest{
 		Request: &proto.JobStreamRequest_Subscription{
 			Subscription: &proto.StreamSubscriptionRequest{
 				JobType: ptr.To(jobType),

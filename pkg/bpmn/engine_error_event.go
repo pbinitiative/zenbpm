@@ -203,7 +203,7 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 	}
 
 	variableHolder := runtime.NewVariableHolder(&boundaryInstance.ProcessInstance().VariableHolder, nil)
-	propagatedVariables, err := variableHolder.PropagateOutputVariablesToParent(match.event.GetOutputMapping(), variables, engine.evaluateExpression)
+	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(match.event.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to propagate boundary error variables to process instance %d: %w", boundaryInstance.ProcessInstance().Key, err)
 	}

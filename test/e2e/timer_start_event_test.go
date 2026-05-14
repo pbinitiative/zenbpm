@@ -83,13 +83,13 @@ func TestTimerStartEvent(t *testing.T) {
 
 		assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 			errCompleteJob := completeJob(t, jobToComplete.Key, map[string]any{})
-			assert.NoError(t, errCompleteJob)
+			assert.NoError(collect, errCompleteJob)
 
 			processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
 				BpmnProcessId: &definition.BpmnProcessId,
 			})
-			assert.NoError(t, err)
-			assert.Equal(t, zenclient.ProcessInstanceStateCompleted, processInstances.JSON200.Partitions[0].Items[0].State)
+			assert.NoError(collect, err)
+			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, processInstances.JSON200.Partitions[0].Items[0].State)
 		}, 15*time.Second, 100*time.Millisecond, "timer start event should have completed")
 	})
 
@@ -226,11 +226,11 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		// verify that the event subprocess output variable was propagated to the main process
 		assert.Equal(t, "nested-event-subprocess-done", fetchedInstance.Variables["eventSubProcessVariable"],
 			"eventSubProcessVariable should be propagated from the nested event subprocess through the subprocess to the root process")
-		// the timer-start event has an io-mapping setting timerStartEventVar = "timerStartEventValue".
-		// The engine writes that straight to the parent of the event subprocess (Subprocess_15s23yn);
-		// Subprocess_15s23yn has no io-mapping so it propagates everything to the root process.
-		assert.Equal(t, "timerStartEventValue", fetchedInstance.Variables["timerStartEventVar"],
-			"timerStartEventVar from the nested timer start event must reach the root process")
+		// The timer-start event's io-mapping writes timerStartEventVar onto Subprocess_15s23yn's
+		// holder. Subprocess_15s23yn has an explicit io-mapping that only exposes
+		// eventSubProcessVariable, so timerStartEventVar is not propagated further to the root.
+		assert.Nil(t, fetchedInstance.Variables["timerStartEventVar"],
+			"timerStartEventVar must not leak to the root process because Subprocess_15s23yn does not map it")
 	})
 }
 
@@ -325,15 +325,14 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 			"eventSubProcessAVariable should be propagated from EventSubprocessA through SubProcess to root")
 		assert.Equal(t, "event-subprocess-b-done", fetchedInstance.Variables["eventSubProcessBVariable"],
 			"eventSubProcessBVariable should be propagated from EventSubprocessB through EventSubprocessA and SubProcess to root")
-		// Timer-start event A writes timerStartEventVarA directly onto SubProcess_0rohbe2 (the
-		// parent of EventSubprocessA). 0rohbe2 has no io-mapping → propagates everything to root.
-		assert.Equal(t, "timerStartEventValueA", fetchedInstance.Variables["timerStartEventVarA"],
-			"timerStartEventVarA from EventSubprocessA's timer-start event must reach the root process")
-		// Timer-start event B writes timerStartEventVarB onto EventSubprocessA's holder. A's
-		// io-mapping explicitly passes timerStartEventVarB through to 0rohbe2, which then
-		// propagates it to root.
-		assert.Equal(t, "timerStartEventValueB", fetchedInstance.Variables["timerStartEventVarB"],
-			"timerStartEventVarB from EventSubprocessB's timer-start event must reach the root process")
+		// SubProcess_0rohbe2's io-mapping only exposes eventSubProcessAVariable and
+		// eventSubProcessBVariable; under the new activity propagation rules, only mapped
+		// variables reach the parent scope, so neither timerStartEventVarA nor
+		// timerStartEventVarB make it to the root process.
+		assert.Nil(t, fetchedInstance.Variables["timerStartEventVarA"],
+			"timerStartEventVarA must not leak to the root process because SubProcess_0rohbe2 does not map it")
+		assert.Nil(t, fetchedInstance.Variables["timerStartEventVarB"],
+			"timerStartEventVarB must not leak to the root process because SubProcess_0rohbe2 does not map it")
 	})
 }
 

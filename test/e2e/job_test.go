@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -130,37 +129,4 @@ func TestRestApiJobBadRequestResponse(t *testing.T) {
 			response.JSON400.Message,
 		)
 	})
-}
-
-func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {
-	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: ptr.To(zenclient.JobStateActive)})
-}
-
-func getJobs(t testing.TB, params zenclient.GetJobsParams) (zenclient.JobPartitionPage, error) {
-	jobs, err := app.restClient.GetJobsWithResponse(t.Context(), &params)
-
-	if err != nil {
-		return zenclient.JobPartitionPage{}, fmt.Errorf("failed to get jobs: %w", err)
-	}
-
-	if jobs.StatusCode() != 200 {
-		return zenclient.JobPartitionPage{}, fmt.Errorf("failed to get jobs: %s", jobs.Status())
-	}
-
-	return ptr.Deref(jobs.JSON200, zenclient.JobPartitionPage{}), nil
-
-}
-
-func completeJob(t testing.TB, jobKey int64, vars map[string]any) error {
-	response, err := app.restClient.CompleteJobWithResponse(t.Context(), jobKey, zenclient.CompleteJobJSONRequestBody{
-		Variables: &vars,
-	})
-	assert.NoError(t, err)
-	if response.StatusCode() != 201 {
-		return fmt.Errorf("status should be 201")
-	}
-	if err != nil {
-		return fmt.Errorf("failed to complete job: %w", err)
-	}
-	return nil
 }

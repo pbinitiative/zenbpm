@@ -26,6 +26,7 @@ func TestMultilineDMNBusinessRules(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
+			"code":          "A1",
 			"literalResult": "Hello,\nWorld!",
 			"tableResult":   map[string]interface{}{"message": "Hello,\n\nthis is a multiline\nmessage."},
 		})
@@ -40,6 +41,7 @@ func TestMultilineDMNBusinessRules(t *testing.T) {
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
+			"code":          "A1",
 			"literalResult": "Hello,\nWorld!",
 			"tableResult":   map[string]interface{}{"message": "Hello,\n\nthis is a multiline\nmessage."},
 		})

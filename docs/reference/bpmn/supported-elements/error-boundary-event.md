@@ -80,5 +80,7 @@ A catch-all error boundary event has an `errorEventDefinition` without `errorRef
 
 When a job is failed with an `errorCode`, the fail request can also include variables. These variables are available to the catching boundary event and can be mapped using output mappings.
 
-- **With output mappings** — only explicitly mapped variables are propagated to the parent scope. Each mapping evaluates its source expression against the error variables and writes the result to the target variable.
-- **Without output mappings** — all variables from the error are propagated to the parent scope as-is.
+- **With output mappings** — only explicitly mapped variables are propagated to the catching scope. Each mapping evaluates its source expression against the local context and error variables, then writes the result to the target variable.
+- **Without output mappings** — all variables from the error are propagated to the catching scope as-is.
+
+This is the catch event behavior. Activities use stricter output propagation: without output mappings, activity output variables are not propagated. See [Variables](/reference/bpmn/variables).

@@ -80,6 +80,51 @@ Upon completion **Output Elements** are collected and aggregated to **Output Col
 Input and Output parameters still belong to its task, subprocess or call activity. These mappings control the variable
 scope at the start and end of the task, subprocess or call activity that is run in Multi Instance.
 
+### Output element with output mappings
+
+The Multi-Instance `outputElement` is evaluated after each iteration completes. Its expression can read:
+
+- the iteration input variables, such as the `inputElement`
+- the variables produced by the wrapped activity's output mappings
+
+Raw variables returned by a job or created inside the wrapped activity are not automatically available to `outputElement`. If `outputElement` should use a value returned by the activity, map that value with an output mapping first.
+
+```xml
+<bpmn:userTask id="review_task">
+  <bpmn:extensionElements>
+    <zeebe:ioMapping>
+      <zeebe:output source="=approver" target="reviewer" />
+      <zeebe:output source="=approved" target="approved" />
+    </zeebe:ioMapping>
+  </bpmn:extensionElements>
+
+  <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+    <bpmn:extensionElements>
+      <zeebe:loopCharacteristics
+        inputCollection="=approvers"
+        inputElement="approver"
+        outputCollection="approvalResults"
+        outputElement="={ reviewer: reviewer, approved: approved }" />
+    </bpmn:extensionElements>
+  </bpmn:multiInstanceLoopCharacteristics>
+</bpmn:userTask>
+```
+
+In this example, each iteration receives one `approver`. When the user task completes, the task output mappings create `reviewer` and `approved` in the iteration output. The Multi-Instance `outputElement` then uses those mapped variables to append one object to `approvalResults`.
+
+For example, with `approvers = ["alice", "bob"]` and task completions that return `approved = true` and `approved = false`, the parent process receives:
+
+```json
+{
+  "approvalResults": [
+    { "reviewer": "alice", "approved": true },
+    { "reviewer": "bob", "approved": false }
+  ]
+}
+```
+
+For parallel Multi-Instance activities, `approvalResults` still contains one item per completed iteration, but the item order is not guaranteed.
+
 ## Supported activity types
 
 Multi-instance behavior can be applied to the following activity types:

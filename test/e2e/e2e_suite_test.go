@@ -50,6 +50,12 @@ type ClusterStatus struct {
 
 func TestMain(m *testing.M) {
 	log.Init()
+	if os.Getenv("POLL_TIMER_DELAY_SECONDS") == "" {
+		if err := os.Setenv("POLL_TIMER_DELAY_SECONDS", "1"); err != nil {
+			log.Error("Failed to set POLL_TIMER_DELAY_SECONDS: %s", err)
+			os.Exit(1)
+		}
+	}
 	appContext, ctxCancel := context.WithCancel(context.Background())
 	conf := config.InitConfig()
 	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("zenbpm-e2e-test-%d", rand.Int()))

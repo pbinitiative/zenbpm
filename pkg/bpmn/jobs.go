@@ -118,7 +118,7 @@ func (engine *Engine) createInternalTask(
 			job.State = runtime.ActivityStateFailed
 			jobError = newEngineErrorf("failing internal job with message: %s", failReason)
 		case runtime.ActivityStateCompleting:
-			output, err := jobVarHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), activatedJob.GetOutputVariables(), engine.evaluateExpression)
+			output, err := jobVarHolder.PropagateOnlyMappedOutputs(element.GetOutputMapping(), activatedJob.GetOutputVariables(), engine.evaluateExpression)
 			if err != nil {
 				job.State = runtime.ActivityStateFailed
 				jobError = newEngineErrorf("failing internal job with message: %s", err)

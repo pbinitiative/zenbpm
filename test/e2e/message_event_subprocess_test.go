@@ -130,7 +130,7 @@ func TestMessageEventSubProcess(t *testing.T) {
 		err = publishMessage(t, "messageNonInterruptingRef", "correlation-key-event-subprocess-non-interrupting", &map[string]any{})
 		assert.NoError(t, err)
 
-		subProcessInstanceWithMessage := waitForChildProcessInstance(t, instance.Key)
+		subProcessInstanceWithMessage := waitForChildProcessInstance(t, instance.Key, 0)
 		assertProcessInstanceTokenState(t, subProcessInstanceWithMessage.Key, "end_event_non_interrupting", bpmnruntime.TokenStateCompleted)
 		waitForProcessInstanceState(t, subProcessInstanceWithMessage.Key, zenclient.ProcessInstanceStateCompleted)
 

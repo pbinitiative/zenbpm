@@ -732,18 +732,3 @@ func deployGetDefinition(t *testing.T, filename string, bpmnProcessId string) (z
 	}
 	return definition, err
 }
-
-func deployGetUniqueDefinition(t *testing.T, filename string) (zenclient.ProcessDefinitionSimple, error) {
-	var definition zenclient.ProcessDefinitionSimple
-	uniqueDefinitionName, err := deployUniqueDefinition(t, filename)
-	assert.NoError(t, err)
-	definitions, err := listProcessDefinitions(t)
-	assert.NoError(t, err)
-	for _, def := range definitions {
-		if def.BpmnProcessId == *uniqueDefinitionName {
-			definition = def
-			break
-		}
-	}
-	return definition, err
-}

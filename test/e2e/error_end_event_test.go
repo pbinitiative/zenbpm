@@ -27,7 +27,7 @@ func TestErrorEndEventInSubprocess(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, instance.Key)
 
-		childInstance := waitForChildProcessInstance(t, instance.Key)
+		childInstance := waitForChildProcessInstance(t, instance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, instance.Key, childInstance.Key)
 		})
@@ -73,7 +73,7 @@ func TestErrorEndEventInSubprocess(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, instance.Key)
 
-		childInstance := waitForChildProcessInstance(t, instance.Key)
+		childInstance := waitForChildProcessInstance(t, instance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, instance.Key, childInstance.Key)
 		})
@@ -121,7 +121,7 @@ func TestErrorEndEventInSubprocess(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, instance.Key)
 
-		childInstance := waitForChildProcessInstance(t, instance.Key)
+		childInstance := waitForChildProcessInstance(t, instance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, instance.Key, childInstance.Key)
 		})
@@ -191,13 +191,13 @@ func TestErrorEndEventInNestedCallActivity(t *testing.T) {
 		assertProcessInstanceTokenElements(t, parentInstanceWithBoundaryEvent.Key, []string{"root-handled-end"}, []string{"should-not-happen-end"})
 		assertProcessInstanceHistory(t, parentInstanceWithBoundaryEvent.Key, []string{"StartEvent_1", "Flow_02zurb9", "Activity_01fl3mz", "Event_01dci9j", "Flow_054m4do", "root-handled-end"})
 
-		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key)
+		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key, 0)
 		waitForProcessInstanceState(t, middleInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceIncidentsLength(t, middleInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, middleInstance.Key)
 		assertProcessInstanceHistory(t, middleInstance.Key, []string{"StartEvent_1", "Flow_12ikk5x", "call_activity"})
 
-		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key)
+		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, parentInstanceWithBoundaryEvent.Key, middleInstance.Key, leafInstanceWithErrorEndEvent.Key)
 		})
@@ -220,13 +220,13 @@ func TestErrorEndEventInNestedCallActivity(t *testing.T) {
 		assertProcessInstanceTokenElements(t, parentInstanceWithBoundaryEvent.Key, []string{"root-handled-end"}, []string{"should-not-happen-end"})
 		assertProcessInstanceHistory(t, parentInstanceWithBoundaryEvent.Key, []string{"StartEvent_1", "Flow_02zurb9", "Activity_01fl3mz", "Event_01dci9j", "Flow_054m4do", "root-handled-end"})
 
-		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key)
+		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key, 0)
 		waitForProcessInstanceState(t, middleInstance.Key, zenclient.ProcessInstanceStateTerminated)
 		assertProcessInstanceIncidentsLength(t, middleInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, middleInstance.Key)
 		assertProcessInstanceHistory(t, middleInstance.Key, []string{"StartEvent_1", "Flow_12ikk5x", "call_activity"})
 
-		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key)
+		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, parentInstanceWithBoundaryEvent.Key, middleInstance.Key, leafInstanceWithErrorEndEvent.Key)
 		})
@@ -249,13 +249,13 @@ func TestErrorEndEventInNestedCallActivity(t *testing.T) {
 		assertProcessInstanceTokenElements(t, parentInstanceWithBoundaryEvent.Key, []string{"call_activity"}, nil)
 		assertProcessInstanceHistory(t, parentInstanceWithBoundaryEvent.Key, []string{"StartEvent_1", "Flow_02zurb9", "call_activity"})
 
-		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key)
+		middleInstance := waitForChildProcessInstance(t, parentInstanceWithBoundaryEvent.Key, 0)
 		waitForProcessInstanceState(t, middleInstance.Key, zenclient.ProcessInstanceStateActive)
 		assertProcessInstanceIncidentsLength(t, middleInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, middleInstance.Key)
 		assertProcessInstanceHistory(t, middleInstance.Key, []string{"StartEvent_1", "Flow_12ikk5x", "call_activity"})
 
-		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key)
+		leafInstanceWithErrorEndEvent := waitForChildProcessInstance(t, middleInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, parentInstanceWithBoundaryEvent.Key, middleInstance.Key, leafInstanceWithErrorEndEvent.Key)
 		})
@@ -325,7 +325,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
-		childInstance := waitForChildProcessInstance(t, processInstance.Key)
+		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
@@ -350,7 +350,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
-		childInstance := waitForChildProcessInstance(t, processInstance.Key)
+		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
@@ -375,7 +375,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
-		childInstance := waitForChildProcessInstance(t, processInstance.Key)
+		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
@@ -398,7 +398,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		processInstance := createProcessInstanceWithDefaultVariables(t, definitionKey)
 
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
-		childInstance := waitForChildProcessInstance(t, processInstance.Key)
+		childInstance := waitForChildProcessInstance(t, processInstance.Key, 0)
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})

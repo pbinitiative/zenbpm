@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"testing"
 	"time"
 
@@ -17,7 +18,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Deprecated: use deployAndGetUniqueDefinition instead.
+func deployGetUniqueDefinition(t *testing.T, filename string) (zenclient.ProcessDefinitionSimple, error) {
+	t.Helper()
+
+	uniqueDefinitionName, err := deployUniqueDefinition(t, filename)
+	assert.NoError(t, err)
+
+	definitions, err := listProcessDefinitions(t)
+	assert.NoError(t, err)
+
+	var definition zenclient.ProcessDefinitionSimple
+	for _, def := range definitions {
+		if def.BpmnProcessId == *uniqueDefinitionName {
+			definition = def
+			break
+		}
+	}
+	return definition, err
+}
+
+func deployAndGetUniqueProcessDefinition(t *testing.T, filepath string) zenclient.ProcessDefinitionSimple {
+	t.Helper()
+
+	deployedProcessDefinition := deployUniqueProcessDefinition(t, filepath)
+	definitions, err := listProcessDefinitions(t)
+	require.NoError(t, err)
+
+	var processDefinition zenclient.ProcessDefinitionSimple
+	for _, def := range definitions {
+		if def.BpmnProcessId == *deployedProcessDefinition {
+			processDefinition = def
+			break
+		}
+	}
+
+	return processDefinition
+}
+
+func deployAndCreateUniqueProcessDefinition(t *testing.T, filepath string, variables map[string]any) zenclient.ProcessInstance {
+	t.Helper()
+
+	deployedProcessDefinition := deployAndGetUniqueProcessDefinition(t, filepath)
+	processInstance, err := createProcessInstance(t, &deployedProcessDefinition.Key, variables)
+	require.NoError(t, err)
+
+	return processInstance
+}
+
 func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables map[string]any) (zenclient.ProcessInstance, error) {
+	t.Helper()
 	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
 		BpmnProcessId:        nil,
 		BusinessKey:          nil,
@@ -25,13 +75,16 @@ func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables 
 		ProcessDefinitionKey: processDefinitionKey,
 		Variables:            &variables,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
-	assert.NotNil(t, resp.JSON201)
+	require.NotNil(t, resp.JSON201)
+
 	return *resp.JSON201, nil
 }
 
 func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
+	t.Helper()
+
 	resp, err := app.NewRequest(t).
 		WithPath(fmt.Sprintf("/v1/process-instances/%d", key)).
 		DoOk()
@@ -48,6 +101,8 @@ func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, err
 }
 
 func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, error) {
+	t.Helper()
+
 	resp, err := app.NewRequest(t).
 		WithPath(fmt.Sprintf("/v1/process-instances?parentProcessInstanceKey=%d&includeChildProcesses=true", key)).
 		DoOk()
@@ -63,20 +118,40 @@ func getChildInstances(t testing.TB, key int64) (zenclient.ProcessInstancePage, 
 	return page, nil
 }
 
-func getProcessInstanceJobs(t testing.TB, key int64) ([]public.Job, error) {
-	resp, err := app.NewRequest(t).
-		WithPath(fmt.Sprintf("/v1/process-instances/%d/jobs", key)).
-		DoOk()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read process instance jobs: %w", err)
-	}
-	jobPage := public.JobPage{}
+func assertChildProcessInstancesCount(t testing.TB, parentProcessInstanceKey int64, expectedCount int) {
+	t.Helper()
 
-	err = json.Unmarshal(resp, &jobPage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job page: %w", err)
-	}
-	return jobPage.Items, nil
+	require.Eventually(t, func() bool {
+		page, err := getChildInstances(t, parentProcessInstanceKey)
+
+		if err != nil {
+			return false
+		}
+
+		if len(page.Partitions) == 0 || len(page.Partitions[0].Items) != expectedCount {
+			return false
+		}
+
+		return true
+	}, 1*time.Second, 100*time.Millisecond, "process instance %d should create a child process instances", parentProcessInstanceKey)
+}
+
+func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64, childIndex int) zenclient.ProcessInstancesSimple {
+	t.Helper()
+
+	var child zenclient.ProcessInstancesSimple
+	require.Eventually(t, func() bool {
+		page, err := getChildInstances(t, parentProcessInstanceKey)
+		if err != nil {
+			return false
+		}
+		if len(page.Partitions) == 0 || len(page.Partitions[0].Items) <= childIndex {
+			return false
+		}
+		child = page.Partitions[0].Items[childIndex]
+		return true
+	}, 15*time.Second, 100*time.Millisecond, "process instance %d should create a child process instances with index: %d", parentProcessInstanceKey, childIndex)
+	return child
 }
 
 func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, error) {
@@ -98,33 +173,13 @@ func getProcessInstanceIncidents(t testing.TB, key int64) ([]public.Incident, er
 func waitForProcessInstanceState(t testing.TB, processInstanceKey int64, expectedState zenclient.ProcessInstanceState) {
 	t.Helper()
 
-	assert.Eventually(t, func() bool {
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		current, err := getProcessInstance(t, processInstanceKey)
-		if err != nil {
-			return false
+		if !assert.NoError(c, err) {
+			return
 		}
-		return current.State == expectedState
+		assert.Equal(c, expectedState, current.State, "process instance %d should reach state %s", processInstanceKey, expectedState)
 	}, 15*time.Second, 100*time.Millisecond, "process instance %d should reach state %s", processInstanceKey, expectedState)
-}
-
-func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64, elementId string) public.Job {
-	t.Helper()
-
-	var foundJob public.Job
-	require.Eventually(t, func() bool {
-		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
-		if err != nil {
-			return false
-		}
-		for _, job := range jobs {
-			if job.ElementId == elementId && job.State == public.JobStateActive {
-				foundJob = job
-				return true
-			}
-		}
-		return false
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should expose active job for element %s", processInstanceKey, elementId)
-	return foundJob
 }
 
 func assertProcessInstanceVariables(t testing.TB, processInstanceKey int64, expected map[string]any) {
@@ -164,25 +219,33 @@ func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, 
 func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState) {
 	t.Helper()
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
-		if err != nil {
-			return false
+		if !assert.NoError(collect, err) {
+			return
 		}
 
 		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
-		if err != nil {
-			return false
+		if !assert.NoError(collect, err) {
+			return
 		}
 
 		for _, token := range tokens {
-			if token.ElementId == elementId && token.State == expectedState {
-				return true
+			if token.ElementId == elementId {
+				assert.Equal(collect, expectedState, token.State, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
+				return
 			}
 		}
 
-		return false
-	}, 1*time.Second, 100*time.Millisecond, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
+		assert.Fail(collect, "Token not found", "process instance %d does not expose token on element %s", processInstanceKey, elementId)
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
+}
+
+func assertProcessInstanceIsCompleted(t testing.TB, processInstanceKey int64, tokenElementId string) {
+	t.Helper()
+
+	waitForProcessInstanceState(t, processInstanceKey, zenclient.ProcessInstanceStateCompleted)
+	assertProcessInstanceTokenState(t, processInstanceKey, tokenElementId, bpmnruntime.TokenStateCompleted)
 }
 
 func assertProcessInstanceHistory(t testing.TB, processInstanceKey int64, expectedHistoryElements []string) {
@@ -228,4 +291,39 @@ func requireFirstActiveInstanceWithSingleToken(t testing.TB, processInstances *z
 	assert.Equal(t, 1, len(tokens))
 
 	return fetchedProcessInstance, store
+}
+
+func getFlowElementInstancesByElementId(t testing.TB, processInstanceKey int64, elementId string) []bpmnruntime.FlowElementInstance {
+	t.Helper()
+
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+	require.NoError(t, err)
+
+	flowElementInstances, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+	require.NoError(t, err)
+
+	matchedFlowElementInstances := make([]bpmnruntime.FlowElementInstance, 0)
+	for _, flowElementInstance := range flowElementInstances {
+		if flowElementInstance.ElementId == elementId {
+			matchedFlowElementInstances = append(matchedFlowElementInstances, flowElementInstance)
+		}
+	}
+	sort.Slice(matchedFlowElementInstances, func(i, j int) bool {
+		if matchedFlowElementInstances[i].CreatedAt.Equal(matchedFlowElementInstances[j].CreatedAt) {
+			return matchedFlowElementInstances[i].Key < matchedFlowElementInstances[j].Key
+		}
+		return matchedFlowElementInstances[i].CreatedAt.Before(matchedFlowElementInstances[j].CreatedAt)
+	})
+	return matchedFlowElementInstances
+}
+
+func assertFlowElementInputVariablesAt(t testing.TB, processInstanceKey int64, elementId string, iteration int, expected map[string]any) {
+	t.Helper()
+
+	instances := getFlowElementInstancesByElementId(t, processInstanceKey, elementId)
+
+	require.Greaterf(t, len(instances), iteration,
+		"expected at least %d flow element instance(s) for %s on process instance %d, got %d", iteration+1, elementId, processInstanceKey, len(instances))
+	require.Equalf(t, expected, instances[iteration].InputVariables,
+		"input variables of iteration %d on element %s mismatch", iteration, elementId)
 }

@@ -89,6 +89,15 @@ The following Message Catch Event types are supported:
 - **Message Start Event:**  
   Starts a new process instance when a message is received.
 
+## Variable propagation
+
+Published message variables are available to the Message Catch Event as payload variables.
+
+- **With output mappings** — only explicitly mapped variables are propagated to the catching scope.
+- **Without output mappings** — all published message variables are propagated to the catching scope as-is.
+
+See [Variables](/reference/bpmn/variables) for the general activity vs. catch event rules.
+
 ## Graphic Notation
 ![Message catch event usage example](./../../assets/bpmn/message_catch.svg)
 
@@ -100,4 +109,4 @@ Messages can be published through API or by triggering [Intermediate throw event
 <!-- <ApiOperation id="api" pointer="#/paths/~1messages/post" example={true} />-->
 
 Future plans:
-We plan to implement message start event along with timer start events in the future.
+We plan to implement the message start event in the future.

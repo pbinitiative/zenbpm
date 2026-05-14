@@ -18,6 +18,9 @@
         <bpmn:serviceTask id="ServiceTask_KontrolaSpolehlivostiPlatceDPH" name="(3) Kontrola spolehlivosti plátce DPH">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="KontrolaSpolehlivostiPlatceDPH" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_02dkz6e</bpmn:incoming>
             <bpmn:outgoing>Flow_07lk8qn</bpmn:outgoing>
@@ -37,6 +40,9 @@
         <bpmn:serviceTask id="ServiceTask_AktualizaceDatDodavatele" name="(4) Aktualizace dat o dodavateli">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="AktualizaceDatDodavatele" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_NespolehlivyPlatceDPH</bpmn:incoming>
             <bpmn:outgoing>Flow_1bej1of</bpmn:outgoing>
@@ -57,6 +63,9 @@
         <bpmn:serviceTask id="ServiceTask_OvereniExistenceObjednavky" name="(1) Ověření existence korespondující objednávky">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="KontrolaExistenceKorespondujiciObjednavky" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=orderExists" target="orderExists" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_10ndnwp</bpmn:incoming>
             <bpmn:outgoing>Flow_01fv9oy</bpmn:outgoing>
@@ -75,6 +84,9 @@
         <bpmn:serviceTask id="ServiceTask_KontrolaRegistraceBankovnihoUctu" name="(5) Kontrola účtu z faktury v registru plátců DPH">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="KontrolaShodnostiBankUctuNaFaktureVuciEvidenci" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_0t74lzp</bpmn:incoming>
             <bpmn:outgoing>Flow_1keknwe</bpmn:outgoing>
@@ -91,6 +103,9 @@
         <bpmn:serviceTask id="ServiceTask_OvereniUdajuDodavatele" name="(2) Ověření údajů o dodavateli vůči interní evidenci">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="KontrolaShodnostiUdajuDodavateleNaFaktureVuciInterniEvidenci" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=supplierDataMatches" target="supplierDataMatches" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_01lpj58</bpmn:incoming>
             <bpmn:outgoing>Flow_1l46wvn</bpmn:outgoing>
@@ -103,6 +118,9 @@
         <bpmn:serviceTask id="ServiceTask_MatematickaKontrolaFaktury" name="(6) Matematická kontrola faktury">
             <bpmn:extensionElements>
                 <zeebe:taskDefinition type="MatematickaKontrolaObsahuFaktury" />
+                <zeebe:ioMapping>
+                    <zeebe:output source="=hasAmountMatch" target="hasAmountMatch" />
+                </zeebe:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_1ptdbeo</bpmn:incoming>
             <bpmn:outgoing>Flow_0nqdm5z</bpmn:outgoing>

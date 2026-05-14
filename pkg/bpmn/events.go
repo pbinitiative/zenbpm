@@ -21,7 +21,7 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch *Engin
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	_, err = variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression)
+	_, err = variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -74,7 +74,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	outputVariables, err := variableHolder.PropagateOutputVariablesToParent(listener.Output, variables, engine.evaluateExpression)
+	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
@@ -239,7 +239,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		}
 		token = message.Token
 		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		if _, err = variableHolder.PropagateOutputVariablesToParent(catchEvent.Output, variables, engine.evaluateExpression); err != nil {
+		if _, err = variableHolder.PropagateMappedOutputsOrAll(catchEvent.Output, variables, engine.evaluateExpression); err != nil {
 			return nil, err
 		}
 		err = batch.SaveProcessInstance(ctx, instance)

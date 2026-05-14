@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
@@ -90,12 +91,13 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 	if err != nil {
 		return fmt.Errorf("failed to add client: %w", err)
 	}
-	go s.recvClientRequests(stream, clientID)
-	s.sendClientJobs(stream, clientCh, clientID)
+	sendMu := &sync.Mutex{}
+	go s.recvClientRequests(stream, clientID, sendMu)
+	s.sendClientJobs(stream, clientCh, clientID, sendMu)
 	return nil
 }
 
-func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID) {
+func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientID jobmanager.ClientID, sendMu *sync.Mutex) {
 	for {
 		clientReq, err := stream.Recv()
 		if err == io.EOF {
@@ -115,7 +117,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Complete:
 			vars, err := decodeVariables(req.Complete.Variables)
 			if err != nil {
-				_ = stream.Send(&proto.JobStreamResponse{
+				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
@@ -128,7 +130,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.node.JobManager.CompleteJobReq(stream.Context(), clientID, req.Complete.GetKey(), vars)
 			if err != nil {
-				_ = stream.Send(&proto.JobStreamResponse{
+				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to complete job: %s", err)),
@@ -142,7 +144,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 		case *proto.JobStreamRequest_Fail:
 			vars, err := decodeVariables(req.Fail.Variables)
 			if err != nil {
-				_ = stream.Send(&proto.JobStreamResponse{
+				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to unmarshal variables: %s", err)),
@@ -155,7 +157,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 			}
 			err = s.node.JobManager.FailJobReq(stream.Context(), clientID, req.Fail.GetKey(), req.Fail.GetMessage(), req.Fail.ErrorCode, vars)
 			if err != nil {
-				_ = stream.Send(&proto.JobStreamResponse{
+				_ = sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 					Error: &proto.ErrorResult{
 						Code:    nil,
 						Message: ptr.To(fmt.Sprintf("Failed to fail job: %s", err)),
@@ -184,7 +186,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 	}
 }
 
-func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, clientID jobmanager.ClientID) {
+func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], clientCh chan jobmanager.Job, clientID jobmanager.ClientID, sendMu *sync.Mutex) {
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -193,7 +195,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			s.node.JobManager.RemoveClient(s.ctx, clientID)
 			return
 		case job := <-clientCh:
-			err := stream.Send(&proto.JobStreamResponse{
+			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 				Job: &proto.WaitingJob{
 					Key:         &job.Key,
 					InstanceKey: &job.InstanceKey,
@@ -209,6 +211,12 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 			}
 		}
 	}
+}
+
+func sendJobStreamResponse(stream grpc.BidiStreamingServer[proto.JobStreamRequest, proto.JobStreamResponse], sendMu *sync.Mutex, resp *proto.JobStreamResponse) error {
+	sendMu.Lock()
+	defer sendMu.Unlock()
+	return stream.Send(resp)
 }
 
 func getClientID(ctx context.Context) jobmanager.ClientID {

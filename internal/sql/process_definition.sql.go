@@ -444,23 +444,6 @@ func (q *Queries) FindProcessDefinitionsByKeys(ctx context.Context, keys []int64
 	return items, nil
 }
 
-const getDefinitionKeyByChecksum = `-- name: GetDefinitionKeyByChecksum :one
-SELECT
-    key
-FROM
-    process_definition
-WHERE
-    bpmn_checksum = ?1
-LIMIT 1
-`
-
-func (q *Queries) GetDefinitionKeyByChecksum(ctx context.Context, bpmnChecksum []byte) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getDefinitionKeyByChecksum, bpmnChecksum)
-	var key int64
-	err := row.Scan(&key)
-	return key, err
-}
-
 const getElementStatisticsByProcessDefinitionKey = `-- name: GetElementStatisticsByProcessDefinitionKey :many
 WITH active_tokens AS (
     SELECT

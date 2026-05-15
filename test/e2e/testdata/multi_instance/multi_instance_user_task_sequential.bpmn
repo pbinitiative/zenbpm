@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="MultiInstance_Sequential_User_Task_Process" name="MultiInstance_Sequential_User_Task_Process" isExecutable="true">
+    <bpmn:userTask id="user_task">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:ioMapping>
+          <zeebe:input source="=&#34;{\&#34;components\&#34;:[{\&#34;label\&#34;:\&#34;Určený schvalovatel\&#34;,\&#34;type\&#34;:\&#34;textfield\&#34;,\&#34;layout\&#34;:{\&#34;row\&#34;:\&#34;Row_1nxg21u\&#34;,\&#34;columns\&#34;:null},\&#34;id\&#34;:\&#34;Field_1r5fr3u\&#34;,\&#34;key\&#34;:\&#34;approver\&#34;,\&#34;description\&#34;:\&#34;Název role, která schvaluje tento task\&#34;,\&#34;readonly\&#34;:\&#34;false\&#34;},{\&#34;label\&#34;:\&#34;Typ provize\&#34;,\&#34;values\&#34;:[{\&#34;label\&#34;:\&#34;Regular\&#34;,\&#34;value\&#34;:\&#34;Regular\&#34;},{\&#34;label\&#34;:\&#34;VIP\&#34;,\&#34;value\&#34;:\&#34;VIP\&#34;}],\&#34;type\&#34;:\&#34;select\&#34;,\&#34;layout\&#34;:{\&#34;row\&#34;:\&#34;Row_05vg62g\&#34;,\&#34;columns\&#34;:null},\&#34;id\&#34;:\&#34;Field_0128q2e\&#34;,\&#34;key\&#34;:\&#34;type\&#34;,\&#34;readonly\&#34;:true,\&#34;description\&#34;:\&#34;Zvolte konkrétní typ provize\&#34;},{\&#34;label\&#34;:\&#34;Výše provize\&#34;,\&#34;type\&#34;:\&#34;number\&#34;,\&#34;layout\&#34;:{\&#34;row\&#34;:\&#34;Row_0255jjp\&#34;,\&#34;columns\&#34;:null},\&#34;id\&#34;:\&#34;Field_17yuibl\&#34;,\&#34;key\&#34;:\&#34;amount\&#34;,\&#34;description\&#34;:\&#34;Zadejte výši požadované provize\&#34;,\&#34;readonly\&#34;:true},{\&#34;label\&#34;:\&#34;Schválit výplatu\&#34;,\&#34;type\&#34;:\&#34;checkbox\&#34;,\&#34;layout\&#34;:{\&#34;row\&#34;:\&#34;Row_1q99o1t\&#34;,\&#34;columns\&#34;:null},\&#34;id\&#34;:\&#34;Field_0k8r1vt\&#34;,\&#34;key\&#34;:\&#34;approved\&#34;,\&#34;readonly\&#34;:false}],\&#34;type\&#34;:\&#34;default\&#34;,\&#34;id\&#34;:\&#34;Form_0nv96i6\&#34;,\&#34;schemaVersion\&#34;:19}&#34;" target="ZEN_FORM" />
+          <zeebe:input source="=amount" target="amount" />
+          <zeebe:output source="=approver" target="kdo" />
+          <zeebe:output source="=approved" target="approved" />
+        </zeebe:ioMapping>
+        <zeebe:properties>
+          <zeebe:property name="ZEN_FORM" value="{&#10;  &#34;components&#34;: [&#10;    {&#10;      &#34;label&#34;: &#34;Určený schvalovatel&#34;,&#10;      &#34;type&#34;: &#34;textfield&#34;,&#10;      &#34;layout&#34;: {&#10;        &#34;row&#34;: &#34;Row_1nxg21u&#34;,&#10;        &#34;columns&#34;: null&#10;      },&#10;      &#34;id&#34;: &#34;Field_1r5fr3u&#34;,&#10;      &#34;key&#34;: &#34;approver&#34;,&#10;      &#34;description&#34;: &#34;Název role, která schvaluje tento task&#34;,&#10;      &#34;readonly&#34;: &#34;false&#34;&#10;    },&#10;    {&#10;      &#34;label&#34;: &#34;Typ provize&#34;,&#10;      &#34;values&#34;: [&#10;        {&#10;          &#34;label&#34;: &#34;Regular&#34;,&#10;          &#34;value&#34;: &#34;Regular&#34;&#10;        },&#10;        {&#10;          &#34;label&#34;: &#34;VIP&#34;,&#10;          &#34;value&#34;: &#34;VIP&#34;&#10;        }&#10;      ],&#10;      &#34;type&#34;: &#34;select&#34;,&#10;      &#34;layout&#34;: {&#10;        &#34;row&#34;: &#34;Row_05vg62g&#34;,&#10;        &#34;columns&#34;: null&#10;      },&#10;      &#34;id&#34;: &#34;Field_0128q2e&#34;,&#10;      &#34;key&#34;: &#34;type&#34;,&#10;      &#34;readonly&#34;: true,&#10;      &#34;description&#34;: &#34;Zvolte konkrétní typ provize&#34;&#10;    },&#10;    {&#10;      &#34;label&#34;: &#34;Výše provize&#34;,&#10;      &#34;type&#34;: &#34;number&#34;,&#10;      &#34;layout&#34;: {&#10;        &#34;row&#34;: &#34;Row_0255jjp&#34;,&#10;        &#34;columns&#34;: null&#10;      },&#10;      &#34;id&#34;: &#34;Field_17yuibl&#34;,&#10;      &#34;key&#34;: &#34;amount&#34;,&#10;      &#34;description&#34;: &#34;Zadejte výši požadované provize&#34;,&#10;      &#34;readonly&#34;: true&#10;    },&#10;    {&#10;      &#34;label&#34;: &#34;Schválit výplatu&#34;,&#10;      &#34;type&#34;: &#34;checkbox&#34;,&#10;      &#34;layout&#34;: {&#10;        &#34;row&#34;: &#34;Row_1q99o1t&#34;,&#10;        &#34;columns&#34;: null&#10;      },&#10;      &#34;id&#34;: &#34;Field_0k8r1vt&#34;,&#10;      &#34;key&#34;: &#34;approved&#34;,&#10;      &#34;readonly&#34;: false&#10;    }&#10;  ],&#10;  &#34;type&#34;: &#34;default&#34;,&#10;  &#34;id&#34;: &#34;Form_0nv96i6&#34;,&#10;  &#34;schemaVersion&#34;: 19&#10;}" />
+        </zeebe:properties>
+        <zeebe:assignmentDefinition assignee="=approver" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0wx99am</bpmn:incoming>
+      <bpmn:outgoing>Flow_16enmkq</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=approvers" inputElement="approver" outputCollection="vystupSchvaleni" outputElement="={ &#10;    &#34;kdo&#34;: kdo, &#10;    &#34;vysledek&#34;: approved&#10;  }" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_16enmkq</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_16enmkq" sourceRef="user_task" targetRef="end_event" />
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_0wx99am</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_0wx99am" sourceRef="start_event" targetRef="user_task" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="MultiInstance_Sequential_User_Task_Process">
+      <bpmndi:BPMNShape id="Activity_050ye0k_di" bpmnElement="user_task">
+        <dc:Bounds x="250" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1mp10fa_di" bpmnElement="end_event">
+        <dc:Bounds x="402" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0mqlf7t_di" bpmnElement="start_event">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_16enmkq_di" bpmnElement="Flow_16enmkq">
+        <di:waypoint x="350" y="120" />
+        <di:waypoint x="402" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0wx99am_di" bpmnElement="Flow_0wx99am">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="250" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

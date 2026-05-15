@@ -354,7 +354,7 @@ func TestAssigneeAndCandidateGroupsAreAssignedToHandler(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().GetState())
 }
 
-func TestTaskDefaultAllOutputVariablesMapToProcessInstance(t *testing.T) {
+func TestTaskWithoutOutputMappingDoesNotMapOutputVariablesToProcessInstance(t *testing.T) {
 	// setup
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task-no_output_mapping.bpmn")
 	assert.NoError(t, err)
@@ -367,7 +367,7 @@ func TestTaskDefaultAllOutputVariablesMapToProcessInstance(t *testing.T) {
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 
-	assert.True(t, instance.ProcessInstance().GetVariable("aVariable").(bool))
+	assert.Nil(t, instance.ProcessInstance().GetVariable("aVariable"))
 }
 
 func TestTaskNoOutputVariablesMappingOnFailure(t *testing.T) {
@@ -496,14 +496,14 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 
 	// id from input should not exist in instance scope
 	assert.Nil(t, pi.ProcessInstance().GetVariable("id"))
-	// output should exist in instance scope
+	// explicitly output-mapped variables should exist in instance scope
 	assert.Equal(t, "beijing", pi.ProcessInstance().GetVariable("dstcity"))
 	assert.Equal(t, pi.ProcessInstance().GetVariable("order"), map[string]interface{}{
 		"name": "order1",
 		"id":   "1234",
 	})
 	assert.Equal(t, int64(1234), pi.ProcessInstance().GetVariable("orderId"))
-	assert.Equal(t, "order1", pi.ProcessInstance().GetVariable("orderName"))
+	assert.Nil(t, pi.ProcessInstance().GetVariable("orderName"))
 	assert.Equal(t, runtime.ActivityStateCompleted, pi.ProcessInstance().State)
 }
 

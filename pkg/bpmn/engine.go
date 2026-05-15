@@ -904,26 +904,19 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 
 	// TODO persist relation between result.DecisionInstanceKey and flow_element_instance
 
-	if len(element.GetOutputMapping()) > 0 {
-		outputVariables, err := localBusinessRuleVarHolder.PropagateOutputVariablesToParent(element.GetOutputMapping(), map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput}, engine.evaluateExpression)
-		if err != nil {
-			instance.ProcessInstance().State = runtime.ActivityStateFailed
-			return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
-		}
-		batch.UpdateOutputFlowElementInstance(ctx,
-			runtime.FlowElementInstance{
-				Key:             currentToken.ElementInstanceKey,
-				OutputVariables: outputVariables,
-			},
-		)
-		return runtime.ActivityStateCompleted, nil
+	outputVariables, err := localBusinessRuleVarHolder.PropagateOnlyMappedOutputs(
+		element.GetOutputMapping(),
+		map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput},
+		engine.evaluateExpression,
+	)
+	if err != nil {
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to propagate variables back to parent for business rule %s : %w", element.TTask.Id, err)
 	}
-
-	localBusinessRuleVarHolder.PropagateVariable(implementation.CalledDecision.ResultVariable, result.DecisionOutput)
 	batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:             currentToken.ElementInstanceKey,
-			OutputVariables: map[string]any{implementation.CalledDecision.ResultVariable: result.DecisionOutput},
+			OutputVariables: outputVariables,
 		},
 	)
 
@@ -1127,6 +1120,7 @@ func (engine *Engine) handleDefaultElementTransition(
 
 	for i, flow := range element.GetOutgoingAssociation() {
 		// TODO: handle condition expressions
+		seqFlowKey := engine.generateKey()
 		if i == 0 {
 			resTokens[0].ElementId = flow.GetTargetRef().GetId()
 			resTokens[0].ElementInstanceKey = engine.generateKey()
@@ -1144,7 +1138,7 @@ func (engine *Engine) handleDefaultElementTransition(
 		//this saves only transitions between nodes
 		batch.SaveFlowElementInstance(ctx,
 			runtime.FlowElementInstance{
-				Key:                engine.generateKey(),
+				Key:                seqFlowKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),

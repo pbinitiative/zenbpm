@@ -282,6 +282,8 @@ func deployDefinition(t testing.TB, filename string) (*zenclient.CreateProcessDe
 }
 
 func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId *string, err error) {
+	t.Helper()
+
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -336,6 +338,59 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 		return nil, fmt.Errorf("failed to unmarshal create definition response: %w", err)
 	}
 	return replacedDefinitionId, nil
+}
+
+func deployUniqueProcessDefinition(t testing.TB, filepathn string) (replacedDefinitionId *string) {
+	t.Helper()
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	loc := filepath.Join(wd, filepathn)
+
+	return deployProcessDefinition(t, loc)
+}
+
+func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionId *string) {
+	t.Helper()
+
+	file, err := os.ReadFile(filepath)
+	require.NoError(t, err)
+
+	stringFile := string(file)
+	oldDefinitionId, found := getStringInBetweenTwoString(stringFile, "bpmn:process id=\"", "\"")
+
+	require.True(t, found, "didn't find BPMN process id for filename %v", filepath)
+
+	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
+	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
+	file = []byte(fileString)
+
+	// Create multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Create the resource field as required by the OpenAPI spec
+	part, err := writer.CreateFormFile("resource", filepath)
+	require.NoError(t, err, fmt.Errorf("failed to create form file: %w", err))
+
+	_, err = part.Write(file)
+	require.NoError(t, err, fmt.Errorf("failed to write file to multipart form: %w", err))
+
+	err = writer.Close()
+	require.NoError(t, err, fmt.Errorf("failed to close multipart writer: %w", err))
+
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	require.NoError(t, err, fmt.Errorf("failed to deploy process definition: %w", err))
+
+	isErrorResponse := resp.StatusCode() >= 400
+	require.False(t, isErrorResponse, "failed to deploy process definition: %s", string(resp.Body))
+
+	definition := public.CreateProcessDefinition201JSONResponse{}
+	err = json.Unmarshal(resp.Body, &definition)
+	require.NoError(t, err, fmt.Errorf("failed to unmarshal create definition response: %w", err))
+
+	return replacedDefinitionId
 }
 
 func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, error) {

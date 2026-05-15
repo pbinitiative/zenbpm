@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_mi_seq_min" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="MultiInstance_Sequential_User_Task_Minimal" name="MultiInstance_Sequential_User_Task_Minimal" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_to_user_task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_to_user_task" sourceRef="start_event" targetRef="user_task" />
+    <bpmn:userTask id="user_task">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_user_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=approvers" inputElement="approver" outputCollection="results" outputElement="=approver" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_to_end" sourceRef="user_task" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="MultiInstance_Sequential_User_Task_Minimal">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="start_event">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_1_di" bpmnElement="user_task">
+        <dc:Bounds x="250" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="end_event">
+        <dc:Bounds x="402" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_to_user_task_di" bpmnElement="Flow_to_user_task">
+        <di:waypoint x="188" y="120" />
+        <di:waypoint x="250" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_end_di" bpmnElement="Flow_to_end">
+        <di:waypoint x="350" y="120" />
+        <di:waypoint x="402" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

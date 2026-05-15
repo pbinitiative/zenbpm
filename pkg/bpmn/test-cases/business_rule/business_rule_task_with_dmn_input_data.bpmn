@@ -11,6 +11,7 @@
         <zeebe:ioMapping>
           <zeebe:input source="=row.is" target="append_data" />
           <zeebe:input source="=row.as" target="append_data_2" />
+          <zeebe:output source="=output" target="output" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0izhgrm</bpmn:incoming>

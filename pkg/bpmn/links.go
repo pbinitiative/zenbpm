@@ -14,7 +14,7 @@ func (engine *Engine) handleIntermediateThrowLinkEvent(ctx context.Context, inst
 	linkDef := ite.EventDefinition.(bpmn20.TLinkEventDefinition)
 	linkName := linkDef.Name
 	elementVarHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	if _, err := elementVarHolder.PropagateOutputVariablesToParent(ite.Output, nil, engine.evaluateExpression); err != nil {
+	if _, err := elementVarHolder.PropagateMappedOutputsOrAll(ite.Output, nil, engine.evaluateExpression); err != nil {
 		msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ite.Id, ite.Name)
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, &ExpressionEvaluationError{Msg: msg, Err: err}
@@ -29,7 +29,7 @@ func (engine *Engine) handleIntermediateThrowLinkEvent(ctx context.Context, inst
 			continue
 		}
 		elementVarHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		if _, err := elementVarHolder.PropagateOutputVariablesToParent(ice.Output, nil, engine.evaluateExpression); err != nil {
+		if _, err := elementVarHolder.PropagateMappedOutputsOrAll(ice.Output, nil, engine.evaluateExpression); err != nil {
 			msg := fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ice.Id, ice.Name)
 			currentToken.State = runtime.TokenStateFailed
 			return currentToken, &ExpressionEvaluationError{Msg: msg, Err: err}

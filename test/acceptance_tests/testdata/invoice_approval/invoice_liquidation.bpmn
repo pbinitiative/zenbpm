@@ -58,6 +58,11 @@
         <zeebe:calledElement processId="KontrolaDodavatelskeFaktury" propagateAllChildVariables="true" />
         <zeebe:ioMapping>
           <zeebe:input source="=invoiceOrderReference" target="invoiceOrderReference" />
+          <zeebe:output source="=orderExists" target="orderExists" />
+          <zeebe:output source="=supplierDataMatches" target="supplierDataMatches" />
+          <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+          <zeebe:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+          <zeebe:output source="=hasAmountMatch" target="hasAmountMatch" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0f8o3sl</bpmn:incoming>
@@ -118,6 +123,8 @@
         <zeebe:userTask />
         <zeebe:ioMapping>
           <zeebe:input source="=&#34;konfigurace-uctovani-form&#34;" target="4BPM_FORM_KEY" />
+          <zeebe:output source="=payPrevodem" target="payPrevodem" />
+          <zeebe:output source="=payZapoctem" target="payZapoctem" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0mb5wmf</bpmn:incoming>
@@ -170,6 +177,9 @@
         <zeebe:userTask />
         <zeebe:ioMapping>
           <zeebe:input source="=&#34;invoice-upload-form&#34;" target="4BPM_FORM_KEY" />
+          <zeebe:output source="=invoiceNumber" target="invoiceNumber" />
+          <zeebe:output source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
+          <zeebe:output source="=invoiceOrderReference" target="invoiceOrderReference" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ezu2nf</bpmn:incoming>
@@ -211,6 +221,8 @@
         <zeebe:userTask />
         <zeebe:ioMapping>
           <zeebe:input source="=&#34;manual-overeni-form&#34;" target="4BPM_FORM_KEY" />
+          <zeebe:output source="=poslatKeSchvaleni" target="poslatKeSchvaleni" />
+          <zeebe:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_ManualneOverit</bpmn:incoming>
@@ -241,6 +253,8 @@
         <zeebe:userTask />
         <zeebe:ioMapping>
           <zeebe:input source="=&#34;invoice-approval-form&#34;" target="4BPM_FORM_KEY" />
+          <zeebe:output source="=schvaleno" target="schvaleno" />
+          <zeebe:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ila9f9</bpmn:incoming>

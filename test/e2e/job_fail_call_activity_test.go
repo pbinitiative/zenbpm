@@ -32,7 +32,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -62,7 +62,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -91,7 +91,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -123,7 +123,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -152,7 +152,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -217,7 +217,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, parentInstance.Key, 1, 0)
 
-		childInstance := waitForChildProcessInstance(t, parentInstance.Key)
+		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
 		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
@@ -249,13 +249,13 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, rootProcessInstance.Key)
 
-		parentTwoInstance := waitForChildProcessInstance(t, rootProcessInstance.Key)
+		parentTwoInstance := waitForChildProcessInstance(t, rootProcessInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, parentTwoInstance.Key, 1, 0)
 
-		parentOneInstance := waitForChildProcessInstance(t, parentTwoInstance.Key)
+		parentOneInstance := waitForChildProcessInstance(t, parentTwoInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, parentOneInstance.Key)
 
-		leafInstance := waitForChildProcessInstance(t, parentOneInstance.Key)
+		leafInstance := waitForChildProcessInstance(t, parentOneInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, leafInstance.Key)
 
 		job := waitForProcessInstanceJobByElementId(t, leafInstance.Key, "id")
@@ -311,24 +311,6 @@ func waitForTwoProcessInstanceStates(t testing.TB, firstKey int64, firstExpected
 		}
 		return first.State == firstExpected && second.State == secondExpected
 	}, 10*time.Second, 100*time.Millisecond, "process instances %d and %d should reach states %s and %s", firstKey, secondKey, firstExpected, secondExpected)
-}
-
-func waitForChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstancesSimple {
-	t.Helper()
-
-	var child zenclient.ProcessInstancesSimple
-	require.Eventually(t, func() bool {
-		page, err := getChildInstances(t, parentProcessInstanceKey)
-		if err != nil {
-			return false
-		}
-		if len(page.Partitions) == 0 || len(page.Partitions[0].Items) == 0 {
-			return false
-		}
-		child = page.Partitions[0].Items[0]
-		return true
-	}, 15*time.Second, 100*time.Millisecond, "process instance %d should create a child process instance", parentProcessInstanceKey)
-	return child
 }
 
 func waitForDirectChildProcessInstance(t testing.TB, parentProcessInstanceKey int64) zenclient.ProcessInstancesSimple {

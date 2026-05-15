@@ -277,11 +277,13 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	variableHolder.SetLocalVariables(job.Variables)
+
 	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
 		return errors.Join(newEngineErrorf("failed to find task element for job: %+v", job))
 	}
-	outputVariables, err := variableHolder.PropagateOutputVariablesToParent(task.GetOutputMapping(), variables, engine.evaluateExpression)
+	outputVariables, err := variableHolder.PropagateOnlyMappedOutputs(task.GetOutputMapping(), variables, engine.evaluateExpression)
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}

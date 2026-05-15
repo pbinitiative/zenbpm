@@ -85,9 +85,19 @@ func (vh *VariableHolder) PropagateVariables(variables map[string]interface{}) {
 	}
 }
 
-// PropagateOutputVariablesToParent propagates local variables to the parent VariableHolder according to mappings
-// uses a replaceable evaluateExpression() function eg. engine.evaluateExpression()
-func (vh *VariableHolder) PropagateOutputVariablesToParent(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) (map[string]any, error) {
+func (vh *VariableHolder) PropagateOnlyMappedOutputs(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) (map[string]any, error) {
+	if vh.parent == nil {
+		return nil, nil
+	}
+
+	if len(mappings) == 0 {
+		return map[string]any{}, nil
+	}
+
+	return vh.evaluateAndPropagateMappings(mappings, outputVariables, evaluateExpression)
+}
+
+func (vh *VariableHolder) PropagateMappedOutputsOrAll(mappings []extensions.TIoMapping, outputVariables map[string]any, evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error)) (map[string]any, error) {
 	if vh.parent == nil {
 		return nil, nil
 	}
@@ -96,6 +106,15 @@ func (vh *VariableHolder) PropagateOutputVariablesToParent(mappings []extensions
 		vh.parent.SetLocalVariables(outputVariables)
 		return outputVariables, nil
 	}
+
+	return vh.evaluateAndPropagateMappings(mappings, outputVariables, evaluateExpression)
+}
+
+func (vh *VariableHolder) evaluateAndPropagateMappings(
+	mappings []extensions.TIoMapping,
+	outputVariables map[string]any,
+	evaluateExpression func(expression string, variableContext map[string]interface{}) (interface{}, error),
+) (map[string]any, error) {
 
 	localScope := mergeLocalVariablesWithOutputVariables(vh.LocalVariables(), outputVariables)
 	outputVariablesWithOutputMappings := make(map[string]interface{})

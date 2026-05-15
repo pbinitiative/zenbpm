@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
-                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                  id="Definitions_multiline_dmn"
-                  targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_multiline_dmn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0">
   <bpmn:process id="MultilineDMNBusinessRulesProcess" name="Multiline DMN Business Rules Process" isExecutable="true">
     <bpmn:startEvent id="start" name="Start">
       <bpmn:outgoing>Flow_start_to_literal</bpmn:outgoing>
@@ -14,6 +8,9 @@
     <bpmn:businessRuleTask id="LiteralExpressionTask" name="Literal Expression Multiline">
       <bpmn:extensionElements>
         <zeebe:calledDecision decisionId="decLiteralExpr" resultVariable="literalResult" />
+        <zeebe:ioMapping>
+          <zeebe:output source="=literalResult" target="literalResult" />
+        </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_start_to_literal</bpmn:incoming>
       <bpmn:outgoing>Flow_literal_to_table</bpmn:outgoing>
@@ -23,7 +20,9 @@
       <bpmn:extensionElements>
         <zeebe:calledDecision decisionId="decMultilineOutput" resultVariable="tableResult" />
         <zeebe:ioMapping>
-          <zeebe:input source="=&quot;A1&quot;" target="code" />
+          <zeebe:input source="=&#34;A1&#34;" target="code" />
+          <zeebe:output source="=&#34;A1&#34;" target="code" />
+          <zeebe:output source="=tableResult" target="tableResult" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_literal_to_table</bpmn:incoming>

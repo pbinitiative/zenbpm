@@ -257,11 +257,11 @@ func TestMessageEventSubprocessNonInterruptingNested(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "nested-event-subprocess-done", fetchedInstance.Variables["eventSubProcessVariable"],
 			"eventSubProcessVariable should be propagated from the nested event subprocess through the subprocess to the root process")
-		// the message-start event has an io-mapping setting messageStartEventVar = "messageStartEventValue".
-		// The engine writes that straight to the parent of the event subprocess (Subprocess_15s23yn);
-		// Subprocess_15s23yn has no io-mapping so it propagates everything to the root process.
-		assert.Equal(t, "messageStartEventValue", fetchedInstance.Variables["messageStartEventVar"],
-			"messageStartEventVar from the nested message start event must reach the root process")
+		// The message-start event's io-mapping writes messageStartEventVar onto Subprocess_15s23yn's
+		// holder. Subprocess_15s23yn has an explicit io-mapping that only exposes
+		// eventSubProcessVariable, so messageStartEventVar is not propagated further to the root.
+		assert.Nil(t, fetchedInstance.Variables["messageStartEventVar"],
+			"messageStartEventVar must not leak to the root process because Subprocess_15s23yn does not map it")
 	})
 }
 
@@ -367,14 +367,13 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 			"eventSubProcessAVariable should be propagated from EventSubprocessA through SubProcess to root")
 		assert.Equal(t, "event-subprocess-b-done", fetchedInstance.Variables["eventSubProcessBVariable"],
 			"eventSubProcessBVariable should be propagated from EventSubprocessB through EventSubprocessA and SubProcess to root")
-		// Message-start event A writes messageStartEventVarA directly onto SubProcess_0rohbe2 (the
-		// parent of EventSubprocessA). 0rohbe2 has no io-mapping → propagates everything to root.
-		assert.Equal(t, "messageStartEventValueA", fetchedInstance.Variables["messageStartEventVarA"],
-			"messageStartEventVarA from EventSubprocessA's message-start event must reach the root process")
-		// Message-start event B writes messageStartEventVarB onto EventSubprocessA's holder. A's
-		// io-mapping explicitly passes messageStartEventVarB through to 0rohbe2, which then
-		// propagates it to root.
-		assert.Equal(t, "messageStartEventValueB", fetchedInstance.Variables["messageStartEventVarB"],
-			"messageStartEventVarB from EventSubprocessB's message-start event must reach the root process")
+		// SubProcess_0rohbe2's io-mapping only exposes eventSubProcessAVariable and
+		// eventSubProcessBVariable; under the new activity propagation rules, only mapped
+		// variables reach the parent scope, so neither messageStartEventVarA nor
+		// messageStartEventVarB make it to the root process.
+		assert.Nil(t, fetchedInstance.Variables["messageStartEventVarA"],
+			"messageStartEventVarA must not leak to the root process because SubProcess_0rohbe2 does not map it")
+		assert.Nil(t, fetchedInstance.Variables["messageStartEventVarB"],
+			"messageStartEventVarB must not leak to the root process because SubProcess_0rohbe2 does not map it")
 	})
 }

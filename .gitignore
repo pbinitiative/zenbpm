@@ -8,7 +8,10 @@ temp.*.json
 .run
 _
 cmd/__debug*
-./zenbpm
+/zenbpm
+/deepcopy-gen
+/stringer
+/identifier.sqlite
 partition-*/
 sqlite-test-data-*/
 cmd/zenbpm/__debug_*

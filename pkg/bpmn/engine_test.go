@@ -535,10 +535,30 @@ func TestBusinessRuleTaskInternalInputOutputExecutionCompleted(t *testing.T) {
 	instance, _ := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
 
 	assert.NotEmpty(t, instance.ProcessInstance().VariableHolder.LocalVariables())
-	assert.Equal(t, true, (instance.ProcessInstance().VariableHolder.LocalVariables()["testResultVariable"]).(map[string]interface{})["canAutoLiquidate"])
 	assert.Equal(t, true, instance.ProcessInstance().VariableHolder.LocalVariables()["OutputTestResultVariable"])
+	assert.NotContains(t, instance.ProcessInstance().VariableHolder.LocalVariables(), "testResultVariable")
 	assert.Nil(t, instance.ProcessInstance().VariableHolder.LocalVariables()["testResultVariable2"])
-	assert.Equal(t, true, (instance.ProcessInstance().VariableHolder.LocalVariables()["testResultVariable3"]).(map[string]interface{})["canAutoLiquidate"])
+	assert.NotContains(t, instance.ProcessInstance().VariableHolder.LocalVariables(), "testResultVariable3")
+
+	flowElementInstances, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, false)
+	assert.NoError(t, err)
+	expectedFlowElementOutputs := map[string]map[string]any{
+		"BusinessRuleTask1": {},
+		"BusinessRuleTask2": {"OutputTestResultVariable": true},
+		"BusinessRuleTask3": {},
+	}
+	seenFlowElementOutputs := map[string]bool{}
+	for _, flowElementInstance := range flowElementInstances {
+		expectedOutput, ok := expectedFlowElementOutputs[flowElementInstance.ElementId]
+		if !ok {
+			continue
+		}
+		seenFlowElementOutputs[flowElementInstance.ElementId] = true
+		assert.Equal(t, expectedOutput, flowElementInstance.OutputVariables)
+	}
+	for elementId := range expectedFlowElementOutputs {
+		assert.True(t, seenFlowElementOutputs[elementId], "expected flow element output snapshot for %s", elementId)
+	}
 
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 }

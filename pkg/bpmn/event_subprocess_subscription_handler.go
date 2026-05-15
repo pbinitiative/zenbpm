@@ -133,7 +133,7 @@ func (engine *Engine) prepareParentForEventSubprocess(
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	propagatedVariables, err := variableHolder.PropagateOutputVariablesToParent(startEventDef.GetOutputMapping(), inputVariables, engine.evaluateExpression)
+	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(startEventDef.GetOutputMapping(), inputVariables, engine.evaluateExpression)
 	if err != nil {
 		return runtime.VariableHolder{}, nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}

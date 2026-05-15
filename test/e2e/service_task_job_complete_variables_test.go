@@ -3,48 +3,36 @@ package e2e
 import (
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/stretchr/testify/require"
 )
 
 func TestServiceTaskJobCompleteVariables(t *testing.T) {
 
 	t.Run("Job completion variables are local without output mapping", func(t *testing.T) {
-		createInstanceVariables := map[string]any{
-			"variable_from_create_instance_1": "var1",
-			"variable_from_create_instance_2": "var2",
-		}
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_job_complete_minimal.bpmn", createInstanceVariables)
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_minimal.bpmn", nil)
 
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		serviceTaskJob := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task")
-		completeJobVariables := map[string]any{
-			"variable_from_create_instance_1": "overwritten",
-		}
-		err := completeJob(t, serviceTaskJob.Key, completeJobVariables)
-		require.NoError(t, err)
+		completeJobVariables := map[string]any{"variable_without_output_mapping": "value"}
+		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
 
-		expectedProcessVariables := map[string]any{
-			"variable_from_create_instance_1": "var1",
-			"variable_from_create_instance_2": "var2",
-		}
-		assertProcessInstanceVariables(t, processInstance.Key, expectedProcessVariables)
-		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
+		assertProcessInstanceVariables(t, processInstance.Key, map[string]interface{}{})
 	})
 
 	t.Run("Job completion variables with non-string types are local without output mapping", func(t *testing.T) {
-		createInstanceVariables := map[string]any{
-			"variable_from_create_instance_1": "var1",
-		}
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_job_complete_minimal.bpmn", createInstanceVariables)
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_minimal.bpmn", nil)
 
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		serviceTaskJob := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task")
 		completeJobVariables := map[string]any{
 			"number_value":  float64(42),
 			"boolean_value": true,
@@ -54,10 +42,73 @@ func TestServiceTaskJobCompleteVariables(t *testing.T) {
 				"nested_key": "nested_value",
 			},
 		}
-		err := completeJob(t, serviceTaskJob.Key, completeJobVariables)
-		require.NoError(t, err)
+		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 
-		assertProcessInstanceVariables(t, processInstance.Key, createInstanceVariables)
-		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
+		assertProcessInstanceVariables(t, processInstance.Key, map[string]interface{}{})
+	})
+
+	t.Run("Job completion variables should not be propagated to job on job complete", func(t *testing.T) {
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_minimal.bpmn", nil)
+
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		completeJobForElementId(t, processInstance.Key, "service_task", map[string]any{"variable_without_output_mapping": "value"})
+
+		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateCompleted)
+		require.Equal(t, job.Variables, map[string]interface{}{}, "variables for jobs should not be propagated to job after job completion, its expected behaviour")
+	})
+
+	t.Run("Only job completion variables referenced by output mappings are propagated", func(t *testing.T) {
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_output_mapping.bpmn", nil)
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+		completeJobVariables := map[string]any{
+			"complete_job_variable": "mapped_value",
+			"ignored_variable":      "ignored_value",
+		}
+		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
+
+		expectedVariables := map[string]any{"output_variable_from_service_task": "mapped_value"}
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", expectedVariables)
+		assertProcessInstanceVariables(t, processInstance.Key, expectedVariables)
+	})
+
+	t.Run("Job completion variables override local variables with the same name in output mapping scope", func(t *testing.T) {
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_job_replace_local_variable.bpmn", map[string]any{"process_variable": "input_value"})
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		completeJobForElementId(t, processInstance.Key, "service_task", map[string]any{"local_variable": "complete_value"})
+
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]any{"output_variable": "complete_value"})
+		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
+			"process_variable": "input_value",
+			"output_variable":  "complete_value",
+		})
+	})
+
+	t.Run("Job completion variables override process variables with the same name in output mapping scope", func(t *testing.T) {
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_job_replace_process_variable.bpmn", map[string]any{"process_variable": "input_value"})
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		completeJobForElementId(t, processInstance.Key, "service_task", map[string]any{"local_variable": "complete_value"})
+
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]any{"process_variable": "complete_value"})
+		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{
+			"process_variable": "complete_value",
+		})
 	})
 }

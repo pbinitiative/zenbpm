@@ -9,6 +9,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIncidentStateFilter(t *testing.T) {
@@ -44,8 +45,7 @@ func TestIncidentStateFilter(t *testing.T) {
 		"price": 50, // Fix the condition that caused the incident
 	})
 	assert.NoError(t, err)
-	err = resolveIncident(t, incidents[0].Key)
-	assert.NoError(t, err)
+	resolveIncident(t, incidents[0].Key)
 
 	resolvedIncidentKey := incidents[0].Key
 
@@ -171,15 +171,8 @@ func updateProcessInstanceVariables(t testing.TB, processInstanceKey int64, vari
 	return nil
 }
 
-func resolveIncident(t testing.TB, key int64) error {
+func resolveIncident(t testing.TB, key int64) {
 	r, err := app.restClient.ResolveIncidentWithResponse(t.Context(), key)
-
-	if err != nil {
-		return fmt.Errorf("failed to resolve incident: %w", err)
-	}
-	if r.StatusCode() != http.StatusCreated {
-		return fmt.Errorf("failed to resolve incident: %s data: %s", r.Status(), r.Body)
-	}
-
-	return nil
+	require.NoError(t, err, "failed to resolve incident: %w", err)
+	require.Equal(t, r.StatusCode(), http.StatusCreated)
 }

@@ -285,7 +285,7 @@ func TestJobFailOnCallActivityWithNonMatchingErrorBoundaryIsIncident(t *testing.
 
 	childProcess, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), childInstance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateFailed, childProcess.ProcessInstance().State)
+	assert.Equal(t, runtime.ActivityStateActive, childProcess.ProcessInstance().State)
 
 	assertJobState(t, job, runtime.ActivityStateFailed)
 	assertIncidentCount(t, parentProcessInstance, 0)
@@ -311,7 +311,7 @@ func TestJobFailOnCallActivityWithNonMatchingErrorBoundaryIsIncident(t *testing.
 
 	childToken, found := findTokenByElementID(childTokens, "id")
 	require.True(t, found, "expected to find failed child service task token")
-	assert.Equal(t, runtime.TokenStateFailed, childToken.State)
+	assert.Equal(t, runtime.TokenStateWaiting, childToken.State)
 }
 
 func TestJobFailOnNestedCallActivityBoundaryIsCaughtInAncestor(t *testing.T) {
@@ -688,7 +688,7 @@ func assertProcessInstanceWithIncident(t testing.TB, createdProcessInstance runt
 
 	processInstance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), createdProcessInstance.ProcessInstance().Key)
 	assert.NoError(t, err)
-	assert.Equal(t, runtime.ActivityStateFailed, processInstance.ProcessInstance().State)
+	assert.Equal(t, runtime.ActivityStateActive, processInstance.ProcessInstance().State)
 
 	assertJobState(t, job, runtime.ActivityStateFailed)
 	assertIncidentCount(t, processInstance, 1)

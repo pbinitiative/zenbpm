@@ -118,7 +118,7 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 		}
 	}
 
-	err = engine.failJobWithIncident(ctx, &batch, job, instance, message, errorCode)
+	err = engine.failJobWithIncident(ctx, &batch, job, message, errorCode, variables)
 	if err != nil {
 		return fmt.Errorf("failed to fail job %+v: %w", job, err)
 	}
@@ -155,19 +155,30 @@ func (engine *Engine) failJobWithIncident(
 	ctx context.Context,
 	batch *EngineBatch,
 	job runtime.Job,
-	instance runtime.ProcessInstance,
 	message string,
 	errorCode *string,
+	variables map[string]interface{},
 ) error {
 
 	job.State = runtime.ActivityStateFailed
+	if variables != nil {
+		if job.Variables == nil {
+			job.Variables = make(map[string]interface{}, len(variables))
+		}
+		for key, value := range variables {
+			job.Variables[key] = value
+		}
+	}
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
 		return err
 	}
 
 	code := ptr.Deref(errorCode, "")
-	if err := engine.markTokenAndInstanceFailed(ctx, batch, instance, &job.Token, fmt.Errorf("%s: %s", message, code)); err != nil {
+
+	incident := createNewIncidentFromToken(fmt.Errorf("%s: %s", message, code), job.Token, engine)
+
+	if err := batch.SaveIncident(ctx, incident); err != nil {
 		return err
 	}
 

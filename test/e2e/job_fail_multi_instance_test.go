@@ -21,7 +21,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc service task catch all", ptr.To("any-error"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -44,7 +44,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc service task catch by error code", ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -67,7 +67,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc service task catch by error code", ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandledWithPropagatedVariables(
@@ -90,7 +90,7 @@ func TestGrpcJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc service task incident", ptr.To("99"))
 
 		assertMultiInstanceUnmatchedIncident(
@@ -116,7 +116,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -139,7 +139,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -162,7 +162,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandledWithPropagatedVariables(
@@ -185,7 +185,7 @@ func TestRestJobFailOnParallelMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
 		assertMultiInstanceUnmatchedIncident(
@@ -211,7 +211,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sequential service task catch all", ptr.To("any-error"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -234,7 +234,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sequential service task catch by error code", ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -257,7 +257,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sequential service task catch by error code", ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandledWithPropagatedVariables(
@@ -280,7 +280,7 @@ func TestGrpcJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sequential service task incident", ptr.To("99"))
 
 		assertMultiInstanceUnmatchedIncident(
@@ -306,7 +306,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -329,7 +329,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandled(
@@ -352,7 +352,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		assertMultiInstanceBoundaryHandledWithPropagatedVariables(
@@ -387,7 +387,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 		multiInstanceProcess := waitForChildProcessInstanceByType(t, subProcessInstance.Key, zenclient.ProcessInstanceProcessTypeMultiInstance)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, multiInstanceProcess.Key)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("44"))
 
 		waitForTwoProcessInstanceStates(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted, multiInstanceProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -425,7 +425,7 @@ func TestRestJobFailOnSequentialMultiInstance(t *testing.T) {
 
 		processInstance, multiInstanceProcess := createMultiInstanceProcessInstance(t, definition.ProcessDefinitionKey)
 
-		job := waitForProcessInstanceJobByElementId(t, multiInstanceProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, multiInstanceProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
 		assertMultiInstanceUnmatchedIncident(
@@ -501,8 +501,8 @@ func assertMultiInstanceBoundaryHandledWithPropagatedVariables(t testing.TB, par
 func assertMultiInstanceUnmatchedIncident(t testing.TB, parentKey int64, childKey int64, childElementId string, parentElementId string, handledEndId string, defaultEndId string) {
 	t.Helper()
 
-	waitForTwoProcessInstanceStates(t, parentKey, zenclient.ProcessInstanceStateActive, childKey, zenclient.ProcessInstanceStateFailed)
-	assertProcessInstanceTokenState(t, childKey, childElementId, bpmnruntime.TokenStateFailed)
+	waitForTwoProcessInstanceStates(t, parentKey, zenclient.ProcessInstanceStateActive, childKey, zenclient.ProcessInstanceStateActive)
+	assertProcessInstanceTokenState(t, childKey, childElementId, bpmnruntime.TokenStateWaiting)
 	assertProcessInstanceIncidentsLength(t, childKey, 1)
 	assertProcessInstanceErrorSubscriptionsCountIsZero(t, childKey)
 	assertProcessInstanceTokenElements(t, childKey, []string{childElementId}, []string{handledEndId, defaultEndId})

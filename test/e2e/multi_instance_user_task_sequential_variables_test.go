@@ -55,12 +55,12 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
-		firstJob := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+		firstJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 		require.Equal(t, "alice", firstJob.Variables["approver"], "first iteration job should bind input element to first collection entry")
 		err := completeJob(t, firstJob.Key, nil)
 		require.NoError(t, err)
 
-		secondJob := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+		secondJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 		require.Equal(t, "bob", secondJob.Variables["approver"], "second iteration job should bind input element to second collection entry")
 		err = completeJob(t, secondJob.Key, nil)
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		for i := 0; i < len(approvers); i++ {
-			job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
 
@@ -105,7 +105,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		for i := 0; i < len(approvers); i++ {
-			job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
 
@@ -131,7 +131,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		for i := 0; i < len(approvers); i++ {
-			job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
 
@@ -153,7 +153,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		})
 
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 		require.NoError(t, completeJob(t, job.Key, nil))
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
@@ -177,7 +177,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 		seen := make([]any, 0, 3)
 		for i := 0; i < 3; i++ {
-			job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 			seen = append(seen, job.Variables["approver"])
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
@@ -203,11 +203,11 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
-		firstJob := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+		firstJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 		require.Equal(t, "alice", firstJob.Variables["approver"], "iteration scope must shadow same-named parent variable")
 		require.NoError(t, completeJob(t, firstJob.Key, nil))
 
-		secondJob := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+		secondJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 		require.Equal(t, "bob", secondJob.Variables["approver"], "iteration scope must shadow same-named parent variable across iterations")
 		require.NoError(t, completeJob(t, secondJob.Key, nil))
 

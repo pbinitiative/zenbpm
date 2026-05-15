@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_job_fail_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+  <bpmn:process id="job-fail-error-boundary" name="Job Fail Error Boundary" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="service-task-error-boundary" />
+    <bpmn:serviceTask id="service-task-error-boundary" name="Main task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="TestType" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="service-task-error-boundary" targetRef="should-not-happen-end" />
+    <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_main_success</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="service-task-error-boundary">
+      <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_main_task" errorRef="Error_fail_test" />
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=variable_name" target="variable_name" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_boundary_handled" sourceRef="boundary-error-main-task" targetRef="handled-end" />
+    <bpmn:endEvent id="handled-end" name="Handled end">
+      <bpmn:incoming>Flow_boundary_handled</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="job-fail-error-boundary">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="main_task_di" bpmnElement="service-task-error-boundary">
+        <dc:Bounds x="270" y="77" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="success_end_di" bpmnElement="should-not-happen-end">
+        <dc:Bounds x="482" y="99" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="441" y="135" width="121" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="handled_end_di" bpmnElement="handled-end">
+        <dc:Bounds x="482" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="469" y="258" width="63" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="boundary_error_main_task_di" bpmnElement="boundary-error-main-task">
+        <dc:Bounds x="352" y="139" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="215" y="117" />
+        <di:waypoint x="270" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_success_di" bpmnElement="Flow_main_success">
+        <di:waypoint x="370" y="117" />
+        <di:waypoint x="482" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_boundary_handled_di" bpmnElement="Flow_boundary_handled">
+        <di:waypoint x="388" y="157" />
+        <di:waypoint x="435" y="157" />
+        <di:waypoint x="435" y="240" />
+        <di:waypoint x="482" y="240" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

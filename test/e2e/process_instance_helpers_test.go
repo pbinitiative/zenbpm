@@ -188,7 +188,7 @@ func assertProcessInstanceVariables(t testing.TB, processInstanceKey int64, expe
 	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
 		instance, err := getProcessInstance(t, processInstanceKey)
 		require.NoError(collect, err)
-		assert.Equal(collect, expected, instance.Variables)
+		require.Equal(collect, expected, instance.Variables)
 	}, 5*time.Second, 100*time.Millisecond, "process instance %d variables should match", processInstanceKey)
 }
 
@@ -263,6 +263,34 @@ func assertProcessInstanceHistory(t testing.TB, processInstanceKey int64, expect
 	}
 
 	assert.ElementsMatch(t, expectedHistoryElements, elementIds, fmt.Sprintf("History elements should match, History elements: %v", elementIds))
+}
+
+func assertExactProcessInstanceHistory(t testing.TB, processInstanceKey int64, expectedHistoryElements []string) {
+	t.Helper()
+
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+	require.NoError(t, err)
+
+	flowElements, err := store.GetFlowElementInstancesByProcessInstanceKey(t.Context(), processInstanceKey, false)
+	require.NoError(t, err)
+
+	require.Len(t, flowElements, len(expectedHistoryElements))
+
+	sort.Slice(flowElements, func(i, j int) bool {
+		if flowElements[i].CreatedAt.Equal(flowElements[j].CreatedAt) {
+			return flowElements[i].Key < flowElements[j].Key
+		}
+		return flowElements[i].CreatedAt.Before(flowElements[j].CreatedAt)
+	})
+
+	elementIds := make([]string, 0, len(flowElements))
+	for _, flowElement := range flowElements {
+		elementIds = append(elementIds, flowElement.ElementId)
+	}
+
+	for i := 0; i < len(expectedHistoryElements); i++ {
+		require.Equal(t, expectedHistoryElements[i], elementIds[i], fmt.Sprintf("History elements should match, History elements: %v", elementIds))
+	}
 }
 
 func cleanupOwnedProcessInstance(t testing.TB, processInstanceKey int64) {

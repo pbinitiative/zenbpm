@@ -9,58 +9,58 @@ import (
 )
 
 var (
-	serviceTaskErrorBoundaryHistoryBeforeFailure = []string{
+	userTaskErrorBoundaryHistoryBeforeFailure = []string{
 		"StartEvent_1",
 		"Flow_start_main",
-		"service-task-error-boundary",
+		"user-task-error-boundary",
 	}
-	serviceTaskErrorBoundaryHistoryAfterHandledFailure = []string{
+	userTaskErrorBoundaryHistoryAfterHandledFailure = []string{
 		"StartEvent_1",
 		"Flow_start_main",
-		"service-task-error-boundary",
+		"user-task-error-boundary",
 		"Flow_boundary_handled",
 		"boundary-error-main-task",
 		"handled-end",
 	}
 )
 
-func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
-	t.Run("Matching error boundary moves activity token to handled path and completes flow", func(t *testing.T) {
+func TestUserTaskErrorBoundaryFlow(t *testing.T) {
+	t.Run("Matching error boundary moves activity token to handled path", func(t *testing.T) {
 
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_error_boundary_event.bpmn", nil)
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_error_boundary_event.bpmn", nil)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
-		assertProcessInstanceTokenState(t, processInstance.Key, "service-task-error-boundary", runtime.TokenStateWaiting)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", runtime.TokenStateWaiting)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
-		assertExactProcessInstanceHistory(t, processInstance.Key, serviceTaskErrorBoundaryHistoryBeforeFailure)
+		assertExactProcessInstanceHistory(t, processInstance.Key, userTaskErrorBoundaryHistoryBeforeFailure)
 
 		failJob(t, job.Key, ptr.To("42"), nil)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertProcessInstanceTokenState(t, processInstance.Key, "handled-end", runtime.TokenStateCompleted)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 0, 1)
-		assertExactProcessInstanceHistory(t, processInstance.Key, serviceTaskErrorBoundaryHistoryAfterHandledFailure)
+		assertExactProcessInstanceHistory(t, processInstance.Key, userTaskErrorBoundaryHistoryAfterHandledFailure)
 	})
 
 	t.Run("Catch-all error boundary catches any code and completes handled path", func(t *testing.T) {
 
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_catch_all_error_boundary_event.bpmn", nil)
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_catch_all_error_boundary_event.bpmn", nil)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user_task")
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
-		assertProcessInstanceTokenState(t, processInstance.Key, "service_task", runtime.TokenStateWaiting)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user_task", runtime.TokenStateWaiting)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
-			"service_task",
+			"user_task",
 		})
 
 		failJob(t, job.Key, ptr.To("any-error"), nil)
@@ -71,7 +71,7 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
-			"service_task",
+			"user_task",
 			"Flow_boundary_handled",
 			"boundary-error-main-task",
 			"handled-end",
@@ -80,26 +80,26 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 
 	t.Run("Non-matching error boundary keeps the token on job and token with activity in active state", func(t *testing.T) {
 
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_error_boundary_event.bpmn", nil)
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_error_boundary_event.bpmn", nil)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
-		assertProcessInstanceTokenState(t, processInstance.Key, "service-task-error-boundary", runtime.TokenStateWaiting)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", runtime.TokenStateWaiting)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
-		assertExactProcessInstanceHistory(t, processInstance.Key, serviceTaskErrorBoundaryHistoryBeforeFailure)
+		assertExactProcessInstanceHistory(t, processInstance.Key, userTaskErrorBoundaryHistoryBeforeFailure)
 
 		failJob(t, job.Key, ptr.To("56"), nil)
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
-		assertProcessInstanceTokenState(t, processInstance.Key, "service-task-error-boundary", runtime.TokenStateWaiting)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", runtime.TokenStateWaiting)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
 			"StartEvent_1",
 			"Flow_start_main",
-			"service-task-error-boundary",
+			"user-task-error-boundary",
 		})
 	})
 }

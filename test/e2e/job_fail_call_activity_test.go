@@ -35,7 +35,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailActiveJobViaGrpc(t, job, "grpc call activity catch all", ptr.To("any-error"))
 
 		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
@@ -65,7 +65,7 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailActiveJobViaGrpc(t, job, "grpc call activity catch by error code", ptr.To("42"))
 
 		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
@@ -94,11 +94,11 @@ func TestGrpcJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailActiveJobViaGrpc(t, job, "grpc call activity incident", ptr.To("99"))
 
-		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateActive, childInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateFailed)
+		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateActive, childInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
 		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id"})
@@ -126,7 +126,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
@@ -155,7 +155,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailJobViaRest(t, job.Key, ptr.To("42"))
 
 		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted, childInstance.Key, zenclient.ProcessInstanceStateTerminated)
@@ -220,11 +220,11 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		childInstance := waitForChildProcessInstance(t, parentInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionCount(t, childInstance.Key, 0, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "id")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
-		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateActive, childInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateFailed)
+		waitForTwoProcessInstanceStates(t, parentInstance.Key, zenclient.ProcessInstanceStateActive, childInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, childInstance.Key, "id", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceIncidentsLength(t, childInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, childInstance.Key)
 		assertProcessInstanceHistory(t, childInstance.Key, []string{"Flow_0xt1d7q", "StartEvent_1", "id"})
@@ -258,7 +258,7 @@ func TestRestJobFailOnCallActivity(t *testing.T) {
 		leafInstance := waitForChildProcessInstance(t, parentOneInstance.Key, 0)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, leafInstance.Key)
 
-		job := waitForProcessInstanceJobByElementId(t, leafInstance.Key, "id")
+		job := waitForProcessInstanceActiveJobByElementId(t, leafInstance.Key, "id")
 		callFailJobViaRest(t, job.Key, ptr.To("42"))
 
 		waitForProcessInstanceState(t, leafInstance.Key, zenclient.ProcessInstanceStateTerminated)

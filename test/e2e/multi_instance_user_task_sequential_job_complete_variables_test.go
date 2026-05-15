@@ -22,7 +22,7 @@ func TestSequentialMultiInstanceUserTaskJobCompleteVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		for i := range approvers {
-			job := waitForProcessInstanceJobByElementId(t, firstChild.Key, "user_task")
+			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
 			require.NoError(t, completeJob(t, job.Key, map[string]any{"approved": approvals[i]}))
 		}
 

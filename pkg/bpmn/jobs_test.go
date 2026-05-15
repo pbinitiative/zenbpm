@@ -6,6 +6,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -541,6 +542,35 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 	assert.Len(t, incidents, 1)
 	assert.Contains(t, incidents[0].Message, "testing fail job")
 
+}
+
+func TestFailJobWithIncidentPreservesNilJobVariablesWhenNoVariablesProvided(t *testing.T) {
+	store := inmemory.NewStorage()
+	bpmnEngine := NewEngine(EngineWithStorage(store))
+	batch, err := bpmnEngine.NewEngineBatchClean()
+	require.NoError(t, err)
+
+	job := runtime.Job{
+		Key:                1,
+		ElementId:          "task",
+		ElementInstanceKey: 2,
+		ProcessInstanceKey: 3,
+		State:              runtime.ActivityStateActive,
+		Token: runtime.ExecutionToken{
+			Key:                4,
+			ElementId:          "task",
+			ElementInstanceKey: 2,
+			ProcessInstanceKey: 3,
+		},
+	}
+
+	err = bpmnEngine.failJobWithIncident(t.Context(), &batch, job, "testing fail job", nil, nil)
+	require.NoError(t, err)
+
+	savedJob, err := store.FindJobByJobKey(t.Context(), job.Key)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateFailed, savedJob.State)
+	assert.Nil(t, savedJob.Variables)
 }
 
 func TestBusinessRuleTaskExternalActivated(t *testing.T) {

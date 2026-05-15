@@ -133,7 +133,7 @@ func TestServiceTaskVariables(t *testing.T) {
 			"variable_from_create_instance_to_be_changed": "var1",
 			"variable_from_create_instance_2":             "var2",
 		}
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_output_mapping_replace_variable.bpmn", createInstanceVariables)
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_output_mapping_replace_process_variable.bpmn", createInstanceVariables)
 
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)

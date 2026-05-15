@@ -21,7 +21,7 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailActiveJobViaGrpc(t, job, "grpc user task catch all", ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -42,7 +42,7 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailActiveJobViaGrpc(t, job, "grpc user task catch by error code", ptr.To("42"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -62,11 +62,11 @@ func TestGrpcJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailActiveJobViaGrpc(t, job, "grpc user task incident", ptr.To("99"))
 
-		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
@@ -87,7 +87,7 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -108,7 +108,7 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailJobViaRest(t, job.Key, ptr.To("42"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -129,11 +129,11 @@ func TestRestJobFailOnUserTask(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user-task-error-boundary")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user-task-error-boundary")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
-		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, processInstance.Key, "user-task-error-boundary", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)

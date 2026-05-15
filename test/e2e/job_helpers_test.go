@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ func getProcessInstanceJobs(t testing.TB, key int64) ([]public.Job, error) {
 	return jobPage.Items, nil
 }
 
-func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64, elementId string) public.Job {
+func waitForProcessInstanceActiveJobByElementId(t testing.TB, processInstanceKey int64, elementId string) public.Job {
 	t.Helper()
 
 	var foundJob public.Job
@@ -50,30 +51,23 @@ func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64
 	return foundJob
 }
 
-func waitForProcessInstanceJobState(t testing.TB, processInstanceKey int64, jobKey int64, expectedState public.JobState) public.Job {
+func waitForProcessInstanceJobByElementId(t testing.TB, processInstanceKey int64, elementId string, expectedState public.JobState) public.Job {
 	t.Helper()
 
 	var foundJob public.Job
-
-	assert.EventuallyWithT(t, func(collect *assert.CollectT) {
+	require.Eventually(t, func() bool {
 		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
-		if !assert.NoError(collect, err) {
-			return
+		if err != nil {
+			return false
 		}
-
 		for _, job := range jobs {
-			if job.Key == jobKey {
-				assert.Equal(collect, expectedState, job.State, "process instance %d job %s has unexpected state", processInstanceKey, jobKey)
-
-				if job.State == expectedState {
-					foundJob = job
-				}
-				return
+			if job.ElementId == elementId && job.State == expectedState {
+				foundJob = job
+				return true
 			}
 		}
-
-		assert.Fail(collect, "job not found", "process instance %d does not expose job for key %s", processInstanceKey, jobKey)
-	}, 5*time.Second, 100*time.Millisecond)
+		return false
+	}, 10*time.Second, 100*time.Millisecond, "process instance %d should expose %s job for element %s", processInstanceKey, expectedState, elementId)
 
 	return foundJob
 }
@@ -134,7 +128,30 @@ func completeJob(t testing.TB, jobKey int64, vars map[string]any) error {
 }
 
 func completeJobForElementId(t testing.TB, processInstanceKey int64, elementId string, vars map[string]any) {
-	job := waitForProcessInstanceJobByElementId(t, processInstanceKey, elementId)
+	job := waitForProcessInstanceActiveJobByElementId(t, processInstanceKey, elementId)
 	err := completeJob(t, job.Key, vars)
 	require.NoError(t, err)
+}
+
+func failJob(t testing.TB, jobKey int64, errorCode *string, vars map[string]any) {
+	t.Helper()
+
+	body := zenclient.FailJobJSONRequestBody{}
+	if errorCode != nil {
+		body.ErrorCode = errorCode
+	}
+	if vars != nil {
+		body.Variables = &vars
+	}
+
+	response, err := app.restClient.FailJobWithResponse(t.Context(), jobKey, body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, response.StatusCode(), "unexpected fail job response: %s body: %s", response.Status(), string(response.Body))
+	require.Nil(t, response.JSON400)
+	require.Nil(t, response.JSON502)
+}
+
+func failJobForElementId(t testing.TB, processInstanceKey int64, elementId string, errorCode *string, vars map[string]any) {
+	job := waitForProcessInstanceActiveJobByElementId(t, processInstanceKey, elementId)
+	failJob(t, job.Key, errorCode, vars)
 }

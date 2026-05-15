@@ -282,7 +282,7 @@ func TestErrorEndEventWithUserTask(t *testing.T) {
 		})
 
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 
@@ -306,7 +306,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		})
 
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, processInstance.Key)
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 
@@ -329,7 +329,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 
@@ -354,7 +354,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 
@@ -379,7 +379,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 
@@ -402,7 +402,7 @@ func TestErrorEndEventWithParallelGateway(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupErrorEndEventProcessInstances(t, processInstance.Key, childInstance.Key)
 		})
-		job := waitForProcessInstanceJobByElementId(t, childInstance.Key, "user_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, childInstance.Key, "user_task")
 		err := completeJob(t, job.Key, nil)
 		assert.NoError(t, err)
 

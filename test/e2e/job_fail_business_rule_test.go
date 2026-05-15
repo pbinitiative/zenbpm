@@ -18,7 +18,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailActiveJobViaGrpc(t, job, "grpc business rule catch all", ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -38,7 +38,7 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailActiveJobViaGrpc(t, job, "grpc business rule catch by error code", ptr.To("42"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -59,11 +59,11 @@ func TestGrpcJobFailOnBusinessRule(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailActiveJobViaGrpc(t, job, "grpc business rule incident", ptr.To("99"))
 
-		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, processInstance.Key, "boundary-error-business-rule-external", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, processInstance.Key, "boundary-error-business-rule-external", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
@@ -82,7 +82,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -103,7 +103,7 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailJobViaRest(t, job.Key, ptr.To("42"))
 
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
@@ -124,11 +124,11 @@ func TestRestJobFailOnBusinessRule(t *testing.T) {
 		})
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
-		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "boundary-error-business-rule-external")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
-		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, processInstance.Key, "boundary-error-business-rule-external", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, processInstance.Key, "boundary-error-business-rule-external", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 1)
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)

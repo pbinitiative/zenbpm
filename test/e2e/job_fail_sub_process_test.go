@@ -20,7 +20,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sub process catch all", ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -50,7 +50,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sub process matched error with output mapping", ptr.To("54"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -80,7 +80,7 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sub process matched error", ptr.To("54"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -110,11 +110,11 @@ func TestGrpcJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailActiveJobViaGrpc(t, job, "grpc sub process unmatched error", ptr.To("99"))
 
-		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
@@ -142,7 +142,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("any-error"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -172,7 +172,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("54"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -202,7 +202,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("54"))
 
 		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateTerminated)
@@ -233,11 +233,11 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionCount(t, processInstance.Key, 1, 0)
 
 		innerProcess := waitForChildProcessInstance(t, processInstance.Key, 0)
-		job := waitForProcessInstanceJobByElementId(t, innerProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, innerProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("99"))
 
-		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateFailed)
-		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateFailed)
+		waitForProcessInstanceState(t, innerProcess.Key, zenclient.ProcessInstanceStateActive)
+		assertProcessInstanceTokenState(t, innerProcess.Key, "service_task", bpmnruntime.TokenStateWaiting)
 		assertProcessInstanceVariables(t, innerProcess.Key, map[string]interface{}{"variable_name": "test-value"})
 		assertProcessInstanceIncidentsLength(t, innerProcess.Key, 1)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, innerProcess.Key)
@@ -270,7 +270,7 @@ func TestRestJobFailOnSubProcess(t *testing.T) {
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, secondChildProcess.Key)
 		assertProcessInstanceErrorSubscriptionsCountIsZero(t, serviceTaskProcess.Key)
 
-		job := waitForProcessInstanceJobByElementId(t, serviceTaskProcess.Key, "service_task")
+		job := waitForProcessInstanceActiveJobByElementId(t, serviceTaskProcess.Key, "service_task")
 		callFailJobViaRest(t, job.Key, ptr.To("54"))
 
 		waitForProcessInstanceState(t, serviceTaskProcess.Key, zenclient.ProcessInstanceStateTerminated)

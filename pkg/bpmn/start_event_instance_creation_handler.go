@@ -92,21 +92,8 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return fmt.Errorf("failed to find start event %q on process definition %d", t.elementId, t.processDefinitionKey)
 	}
 
-	processInstance, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, t.inputVariables, nil)
-	if err != nil {
+	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, t.inputVariables, nil); err != nil {
 		return fmt.Errorf("failed to create process instance for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
-	}
-
-	// Create the event-subprocess subscriptions for the freshly-created top-level process instance.
-	// (createInstanceWithStartingElements does NOT do this itself because the same function is
-	// reused for event-subprocess child instances — see the comment there.) The original batch has
-	// already been flushed above, so we use a fresh batch here.
-	subBatch := engine.persistence.NewBatch()
-	if err := engine.createEventSubProcessSubscriptions(ctx, subBatch, processInstance, &processDefinition.Definitions.Process.TFlowElementsContainer); err != nil {
-		return fmt.Errorf("failed to create event subprocess subscriptions for process instance %d: %w", processInstance.ProcessInstance().Key, err)
-	}
-	if err := subBatch.Flush(ctx); err != nil {
-		return fmt.Errorf("failed to flush event subprocess subscriptions batch for process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 
 	return nil
@@ -202,6 +189,11 @@ func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context,
 		refresh: func(ctx context.Context) (bool, error) {
 			refreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					// Timer was deleted (e.g. process definition updated/deleted) between being
+					// picked up by the timer manager and reaching here. Silently skip.
+					return true, nil
+				}
 				return false, errors.Join(newEngineErrorf("failed to find timer %d", timer.Key), err)
 			}
 			switch refreshed.TimerState {

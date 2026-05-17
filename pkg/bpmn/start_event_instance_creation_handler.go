@@ -190,8 +190,6 @@ func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context,
 			refreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
-					// Timer was deleted (e.g. process definition updated/deleted) between being
-					// picked up by the timer manager and reaching here. Silently skip.
 					return true, nil
 				}
 				return false, errors.Join(newEngineErrorf("failed to find timer %d", timer.Key), err)

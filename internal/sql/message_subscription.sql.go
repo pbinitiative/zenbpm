@@ -14,10 +14,11 @@ import (
 const deleteProcessDefinitionsMessageSubscriptions = `-- name: DeleteProcessDefinitionsMessageSubscriptions :exec
 DELETE FROM message_subscription
 WHERE process_definition_key IN (/*SLICE:processDefinitionKeys*/?)
-    AND process_instance_key IS NULL
-    AND execution_token IS NULL
+    AND type = 3
 `
 
+// Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+// See pkg/bpmn/runtime/types.go for the discriminator constants.
 func (q *Queries) DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processdefinitionkeys []int64) error {
 	query := deleteProcessDefinitionsMessageSubscriptions
 	var queryParams []interface{}
@@ -86,72 +87,6 @@ func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx con
 		&i.Type,
 	)
 	return i, err
-}
-
-const findMessageSubscriptions = `-- name: FindMessageSubscriptions :many
-SELECT
-    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
-FROM
-    message_subscription
-WHERE
-    COALESCE(?1, "execution_token") = "execution_token"
-    AND COALESCE(?2, process_instance_key) = process_instance_key
-    AND COALESCE(?3, element_id) = element_id
-    AND state IN /*SLICE:states*/?
-`
-
-type FindMessageSubscriptionsParams struct {
-	ExecutionToken     sql.NullInt64  `json:"execution_token"`
-	ProcessInstanceKey sql.NullInt64  `json:"process_instance_key"`
-	ElementID          sql.NullString `json:"element_id"`
-	States             []int64        `json:"states"`
-}
-
-func (q *Queries) FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error) {
-	query := findMessageSubscriptions
-	var queryParams []interface{}
-	queryParams = append(queryParams, arg.ExecutionToken)
-	queryParams = append(queryParams, arg.ProcessInstanceKey)
-	queryParams = append(queryParams, arg.ElementID)
-	if len(arg.States) > 0 {
-		for _, v := range arg.States {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:states*/?", strings.Repeat(",?", len(arg.States))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MessageSubscription{}
-	for rows.Next() {
-		var i MessageSubscription
-		if err := rows.Scan(
-			&i.Key,
-			&i.ElementID,
-			&i.ProcessDefinitionKey,
-			&i.ProcessInstanceKey,
-			&i.Name,
-			&i.State,
-			&i.CreatedAt,
-			&i.CorrelationKey,
-			&i.ExecutionToken,
-			&i.Type,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const findProcessInstanceMessageSubscriptions = `-- name: FindProcessInstanceMessageSubscriptions :many

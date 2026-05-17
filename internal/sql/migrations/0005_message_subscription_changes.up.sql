@@ -54,6 +54,19 @@ ALTER TABLE message_subscription_new RENAME TO message_subscription;
 
 CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_instance_key ON message_subscription(process_instance_key);
 CREATE INDEX IF NOT EXISTS idx_fk_message_subscription_process_definition_key ON message_subscription(process_definition_key);
+-- Hot-path index for FindMessageSubscriptionByNameAndCorrelationKeyAndState: every inbound
+-- message is correlated by (name, state) — avoid a full table scan.
+CREATE INDEX IF NOT EXISTS idx_message_subscription_name_state ON message_subscription(name, state);
+
+-- Verify no FK violations were introduced by the recreate (we ran under foreign_keys = OFF).
+-- SQLite's RAISE() only works inside triggers, so we abort the migration via a CHECK
+-- constraint on a temporary assertion table: pragma_foreign_key_check returns one row per
+-- violation, so a non-zero count fails the CHECK(ok = 0) and rolls the migration back.
+CREATE TEMP TABLE _migration_0005_fk_check(
+    ok INTEGER NOT NULL CHECK (ok = 0)
+);
+INSERT INTO _migration_0005_fk_check(ok) SELECT COUNT(*) FROM pragma_foreign_key_check;
+DROP TABLE _migration_0005_fk_check;
 
 PRAGMA foreign_keys = ON;
 

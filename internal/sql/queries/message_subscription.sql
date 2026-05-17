@@ -11,21 +11,12 @@ DELETE FROM message_subscription
 WHERE process_instance_key IN (sqlc.slice('keys'));
 
 -- name: DeleteProcessDefinitionsMessageSubscriptions :exec
+-- Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+-- See pkg/bpmn/runtime/types.go for the discriminator constants.
 DELETE FROM message_subscription
 WHERE process_definition_key IN (sqlc.slice('processDefinitionKeys'))
-    AND process_instance_key IS NULL
-    AND execution_token IS NULL;
+    AND type = 3;
 
--- name: FindMessageSubscriptions :many
-SELECT
-    *
-FROM
-    message_subscription
-WHERE
-    COALESCE(sqlc.narg('execution_token'), "execution_token") = "execution_token"
-    AND COALESCE(sqlc.narg('process_instance_key'), process_instance_key) = process_instance_key
-    AND COALESCE(sqlc.narg('element_id'), element_id) = element_id
-    AND state IN sqlc.slice('states');
 
 -- name: FindTokenMessageSubscriptions :many
 SELECT

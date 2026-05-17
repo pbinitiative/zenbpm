@@ -125,4 +125,47 @@ func TestConcurrentInterruptingMessageEventSubProcesses_NoLockContention(t *test
 	finalSubs, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), piKey, runtime.ActivityStateActive)
 	require.NoError(t, err)
 	assert.Empty(t, finalSubs, "no message subscription should remain Active after the parent has been interrupted")
+
+	// Exactly ONE event subprocess instance must have been spawned by the 6 concurrent
+	// publishes — duplicate spawns would silently overwrite the same parent variable
+	// with the same value and hide the bug, so we count child instances directly.
+	var spawnedEventSubProcesses int
+	for _, child := range store.ProcessInstances {
+		sub, ok := child.(*runtime.SubProcessInstance)
+		if !ok {
+			continue
+		}
+		if sub.ParentProcessExecutionToken.ProcessInstanceKey == piKey {
+			spawnedEventSubProcesses++
+		}
+	}
+	assert.Equal(t, 1, spawnedEventSubProcesses,
+		"exactly one interrupting event subprocess instance must be spawned by the 6 concurrent publishes")
+
+	// Exactly one of the 6 InstanceMessageSubscriptions must have been Completed; the
+	// remaining 5 must be Terminated (the parent was interrupted, and they were cancelled).
+	var completedSubs, terminatedSubs int
+	for _, sub := range instanceSubs {
+		refreshed, err := store.FindMessageSubscriptionByKey(t.Context(), sub.MessageSubscription().Key, sub.MessageSubscription().State)
+		if err != nil {
+			// search across other states
+			for _, s := range store.MessageSubscriptions {
+				if s.MessageSubscription().Key == sub.MessageSubscription().Key {
+					refreshed = s
+					break
+				}
+			}
+		}
+		if refreshed == nil {
+			continue
+		}
+		switch refreshed.MessageSubscription().State {
+		case runtime.ActivityStateCompleted:
+			completedSubs++
+		case runtime.ActivityStateTerminated:
+			terminatedSubs++
+		}
+	}
+	assert.Equal(t, 1, completedSubs, "exactly one of the 6 subscriptions must be Completed (the winning publish)")
+	assert.Equal(t, 5, terminatedSubs, "the 5 losing subscriptions must be Terminated by the parent cancellation")
 }

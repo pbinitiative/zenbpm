@@ -64,9 +64,8 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 		if latest.BpmnChecksum == md5sum {
 			return latest, nil
 		}
-		definition, err := engine.deleteProcessDefinitionSubscriptions(ctx, latest)
-		if err != nil {
-			return definition, err
+		if err := engine.deleteProcessDefinitionSubscriptions(ctx, latest); err != nil {
+			return nil, err
 		}
 		processInfo.Version = latest.Version + 1
 	}
@@ -79,14 +78,12 @@ func (engine *Engine) load(ctx context.Context, xmlData []byte, key int64) (*run
 	return &processInfo, nil
 }
 
-func (engine *Engine) deleteProcessDefinitionSubscriptions(ctx context.Context, latest *runtime.ProcessDefinition) (*runtime.ProcessDefinition, error) {
-	err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key})
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete process definitions timers: %w", err)
+func (engine *Engine) deleteProcessDefinitionSubscriptions(ctx context.Context, latest *runtime.ProcessDefinition) error {
+	if err := engine.persistence.DeleteProcessDefinitionsTimers(ctx, []int64{latest.Key}); err != nil {
+		return fmt.Errorf("failed to delete process definitions timers: %w", err)
 	}
-	err = engine.persistence.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{latest.Key})
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete process definitions message subscriptions: %w", err)
+	if err := engine.persistence.DeleteProcessDefinitionsMessageSubscriptions(ctx, []int64{latest.Key}); err != nil {
+		return fmt.Errorf("failed to delete process definitions message subscriptions: %w", err)
 	}
-	return nil, nil
+	return nil
 }

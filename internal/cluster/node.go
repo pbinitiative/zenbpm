@@ -695,7 +695,19 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q and correlationKey %q", name, *correlationKey))
+			node.logger.Warn(fmt.Sprintf(
+				"no instance-level message subscription for name=%q correlationKey=%q; falling back to definition-level start (correlationKey ignored)",
+				name, *correlationKey,
+			))
+			err = node.PublishMessageStartProcessInstance(ctx, name, variables)
+			if err != nil {
+				var zerr *zenerr.ZenError
+				if errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode {
+					return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q (and correlationKey %q)", name, *correlationKey))
+				}
+				return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q (and correlationKey %q): %w", name, *correlationKey, err))
+			}
+			return nil
 		}
 		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, *correlationKey, err))
 	}

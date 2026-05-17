@@ -8,18 +8,19 @@ func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
+	_ = x[MessageSubscriptionTypeUnknown-0]
 	_ = x[MessageSubscriptionTypeToken-1]
 	_ = x[MessageSubscriptionTypeInstance-2]
 	_ = x[MessageSubscriptionTypeDefinition-3]
 }
 
-const _MessageSubscriptionType_name = "MessageSubscriptionTypeTokenMessageSubscriptionTypeInstanceMessageSubscriptionTypeDefinition"
+const _MessageSubscriptionType_name = "MessageSubscriptionTypeUnknownMessageSubscriptionTypeTokenMessageSubscriptionTypeInstanceMessageSubscriptionTypeDefinition"
 
-var _MessageSubscriptionType_index = [...]uint8{0, 28, 59, 92}
+var _MessageSubscriptionType_index = [...]uint8{0, 30, 58, 89, 122}
 
 func (i MessageSubscriptionType) String() string {
-	idx := int(i) - 1
-	if i < 1 || idx >= len(_MessageSubscriptionType_index)-1 {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_MessageSubscriptionType_index)-1 {
 		return "MessageSubscriptionType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _MessageSubscriptionType_name[_MessageSubscriptionType_index[idx]:_MessageSubscriptionType_index[idx+1]]

@@ -7,7 +7,6 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/storage"
 )
 
 func (engine *Engine) PublishMessageByName(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
@@ -50,51 +49,6 @@ func (engine *Engine) PublishMessage(ctx context.Context, message runtime.Messag
 	return nil
 }
 
-func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, message *runtime.DefinitionMessageSubscription, variables map[string]interface{}) (reErr error) {
-	engine.runningInstances.lockInstance(message.Key)
-	defer engine.runningInstances.unlockInstance(message.Key)
-
-	// Re-fetch under the lock to confirm we're the winner. If another publisher already consumed this subscription
-	// it will be Completed / Terminated / not found, in which case we silently no-op (BPMN allows
-	// at-least-once message delivery to be deduplicated).
-	refreshed, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
-		return errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
-	}
-	defSub, ok := refreshed.(*runtime.DefinitionMessageSubscription)
-	if !ok {
-		return fmt.Errorf("expected DefinitionMessageSubscription for key %d, got %T", message.Key, refreshed)
-	}
-
-	// Mark the subscription as Completed BEFORE attempting to create the process instance.
-	// This mirrors the timer-start-event behavior (see processTimerTriggerOnInstanceCreation)
-	// and prevents the same message from being consumed twice if a concurrent publisher
-	// races with us, or if the publish is retried after instance creation fails.
-	batch := engine.persistence.NewBatch()
-	defSub.State = runtime.ActivityStateCompleted
-	if err := batch.SaveMessageSubscription(ctx, defSub); err != nil {
-		return fmt.Errorf("failed to save message subscription %d: %w", defSub.Key, err)
-	}
-	if err := batch.Flush(ctx); err != nil {
-		return fmt.Errorf("failed to flush message subscription %d: %w", defSub.Key, err)
-	}
-
-	_, err = engine.CreateInstanceWithStartingElements(
-		ctx,
-		defSub.ProcessDefinitionKey,
-		[]string{defSub.ElementId},
-		variables,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to process DefinitionMessageSubscription %+v: %w", defSub, err)
-	}
-	return nil
-}
-
 func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtime.TokenMessageSubscription, variables map[string]any) (retErr error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
 	if err != nil {
@@ -119,14 +73,6 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 	message, ok := messageSub.(*runtime.TokenMessageSubscription)
 	if !ok {
 		return fmt.Errorf("message type after refresh not supported")
-	}
-	switch message.State {
-	case runtime.ActivityStateCompleted:
-		return errors.Join(newEngineErrorf("message subscription already completed: %d", message.Key), err)
-	case runtime.ActivityStateTerminated:
-		return errors.Join(newEngineErrorf("message subscription already terminated: %d", message.Key), err)
-	default:
-		// do nothing
 	}
 
 	// Token points either to message listener or event based gateway

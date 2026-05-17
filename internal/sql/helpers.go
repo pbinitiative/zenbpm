@@ -2,6 +2,7 @@ package sql
 
 import (
 	"database/sql"
+
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
@@ -13,7 +14,7 @@ func ToNullString[S ~string](p *S) sql.NullString {
 		}
 	}
 	return sql.NullString{
-		String: string(ptr.Deref(p, "")),
+		String: string(*p),
 		Valid:  true,
 	}
 }
@@ -25,7 +26,7 @@ func ToNullInt64[I ~int64](p *I) sql.NullInt64 {
 		}
 	}
 	return sql.NullInt64{
-		Int64: int64(ptr.Deref(p, 0)),
+		Int64: int64(*p),
 		Valid: true,
 	}
 }

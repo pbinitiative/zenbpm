@@ -164,6 +164,12 @@ func (engine *Engine) buildEventSubprocessInstance(
 	tokens []runtime.ExecutionToken,
 ) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	startingFlowNodes := []bpmn20.FlowNode{startEventDef}
+	if len(tokens) == 0 {
+		return nil, nil, fmt.Errorf(
+			"cannot build event subprocess instance for %q: parent process instance %d has no active tokens",
+			subProcessDef.Id, instance.ProcessInstance().Key,
+		)
+	}
 	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
 		ctx,
 		batch,

@@ -1,0 +1,223 @@
+package bpmn
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
+)
+
+// startEventInstanceCreationTrigger captures the per-trigger (message subscription or timer)
+// variations of activating a process-definition-level start event that creates a brand-new
+// process instance. The shared activation flow is implemented in
+// (*Engine).handleStartEventInstanceCreation.
+type startEventInstanceCreationTrigger struct {
+	// triggerKey is the unique key of the subscription/timer that fired. It is used to
+	// serialize concurrent activations of the same trigger via runningInstances.lockInstance.
+	triggerKey int64
+	// processDefinitionKey is the process definition that owns the start event.
+	processDefinitionKey int64
+	// elementId is the BPMN id of the start event that owns the trigger.
+	elementId string
+	// inputVariables are the variables passed to the newly created process instance
+	// (e.g. message payload). For timers this is empty.
+	inputVariables map[string]any
+	// refresh re-reads the trigger state under the trigger lock and reports whether activation
+	// should be skipped (because a concurrent publisher/timer-fire has already consumed it).
+	// It must NOT mutate the batch.
+	refresh func(ctx context.Context) (skip bool, err error)
+	// markConsumed records the trigger as consumed (timer Triggered / subscription Completed)
+	// on the batch.
+	markConsumed func(ctx context.Context, batch storage.Batch) error
+}
+
+// handleStartEventInstanceCreation is the shared implementation for activating a
+// process-definition-level start event (message or timer). It:
+//  1. serializes concurrent fires of the same trigger,
+//  2. re-validates the trigger via t.refresh (silently no-ops if already consumed),
+//  3. marks the original trigger as consumed in a batch,
+//  4. re-creates a fresh subscription/timer (Active/Created state) for the same start event so that the next event can fire another process instance,
+//  5. flushes the batch (so that even if instance creation later fails the trigger is not re-fired and the renewal is persisted), and
+//  6. creates the new process instance.
+func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t startEventInstanceCreationTrigger) error {
+	engine.runningInstances.lockInstance(t.triggerKey)
+	defer engine.runningInstances.unlockInstance(t.triggerKey)
+
+	skip, err := t.refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if skip {
+		return nil
+	}
+
+	batch := engine.persistence.NewBatch()
+
+	// Mark the original trigger as consumed BEFORE attempting to create the process instance.
+	// This prevents the same trigger from being processed twice if a concurrent
+	// publisher races with us, or if instance creation later fails.
+	if err := t.markConsumed(ctx, batch); err != nil {
+		return err
+	}
+
+	// Look up the process definition + start event so we can renew the trigger. If either lookup fails we still
+	// flush the consumption above so that the original trigger does not get re-fired forever.
+	processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, t.processDefinitionKey)
+	var startEvent *bpmn20.TStartEvent
+	if pdErr == nil {
+		startEvent = findStartEventById(&processDefinition.Definitions.Process, t.elementId)
+		if startEvent != nil {
+			if renewErr := engine.renewStartEventTrigger(ctx, batch, processDefinition, *startEvent); renewErr != nil {
+				return renewErr
+			}
+		}
+	}
+
+	if err := batch.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush start event trigger consumption batch (trigger=%d, definition=%d): %w", t.triggerKey, t.processDefinitionKey, err)
+	}
+
+	// NOTE: from this point on the original trigger has been persisted as "consumed" and the renewed
+	// trigger (if any) has been persisted as Active. If the lookups below or the instance creation
+	// itself fail we return an error to the caller, but the consumption is intentionally not rolled
+	// back — re-firing the trigger would risk duplicate process instances. Callers (REST/gRPC) will
+	// surface the error to the client even though the subscription/timer state has advanced.
+	if pdErr != nil {
+		return errors.Join(newEngineErrorf("no process definition with key %d", t.processDefinitionKey), pdErr)
+	}
+	if startEvent == nil {
+		return fmt.Errorf("failed to find start event %q on process definition %d", t.elementId, t.processDefinitionKey)
+	}
+
+	processInstance, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, t.inputVariables, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create process instance for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
+	}
+
+	// Create the event-subprocess subscriptions for the freshly-created top-level process instance.
+	// (createInstanceWithStartingElements does NOT do this itself because the same function is
+	// reused for event-subprocess child instances — see the comment there.) The original batch has
+	// already been flushed above, so we use a fresh batch here.
+	subBatch := engine.persistence.NewBatch()
+	if err := engine.createEventSubProcessSubscriptions(ctx, subBatch, processInstance, &processDefinition.Definitions.Process.TFlowElementsContainer); err != nil {
+		return fmt.Errorf("failed to create event subprocess subscriptions for process instance %d: %w", processInstance.ProcessInstance().Key, err)
+	}
+	if err := subBatch.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush event subprocess subscriptions batch for process instance %d: %w", processInstance.ProcessInstance().Key, err)
+	}
+
+	return nil
+}
+
+// renewStartEventTrigger re-creates the message subscription on the given start event so that subsequent published
+// messages can spawn additional process instances. The new subscription is persisted via the batch and is independent
+// of the just-consumed one (different key, Active state).
+//
+// Note: timer start events are NOT renewed here. Recurring `timeCycle` timers would be the only case where renewal is
+// meaningful, and they are not yet implemented in createTimerStartEventTimers. Any other (signal/error/...) event
+// definitions are also intentionally not renewed.
+func (engine *Engine) renewStartEventTrigger(
+	ctx context.Context,
+	batch storage.Batch,
+	processDefinition runtime.ProcessDefinition,
+	startEvent bpmn20.TStartEvent,
+) error {
+	for _, eventDef := range startEvent.EventDefinitions {
+		switch eventDef.(type) {
+		case bpmn20.TMessageEventDefinition:
+			if err := engine.createMessageStartEventMessageSubscriptions(ctx, batch, eventDef, startEvent, processDefinition, nil); err != nil {
+				return fmt.Errorf("failed to re-create message subscription for start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
+			}
+		case bpmn20.TTimerEventDefinition:
+			// TODO: when TimeCycle timer start events are supported, createTimerStartEventTimers
+			// should be called here to re-create the timer trigger. timeDate / timeDuration timers
+			// are one-shot per BPMN semantics and must NOT be renewed.
+		default:
+			// Other event definitions (signal/error/...) are not supported as definition-level
+			// start-event triggers yet; nothing to renew.
+		}
+	}
+	return nil
+}
+
+func findStartEventById(process *bpmn20.TProcess, id string) *bpmn20.TStartEvent {
+	for i := range process.StartEvents {
+		if process.StartEvents[i].GetId() == id {
+			return &process.StartEvents[i]
+		}
+	}
+	return nil
+}
+
+// publishMessageOnInstanceCreation activates a (definition-level) message start event by consuming the given DefinitionMessageSubscription,
+// registering a fresh subscription for follow-up messages and creating a new process instance.
+func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, message *runtime.DefinitionMessageSubscription, variables map[string]any) error {
+	// Refreshed subscription is captured here so markConsumed below can save the up-to-date pointer.
+	current := message
+	return engine.handleStartEventInstanceCreation(ctx, startEventInstanceCreationTrigger{
+		triggerKey:           message.Key,
+		processDefinitionKey: message.ProcessDefinitionKey,
+		elementId:            message.ElementId,
+		inputVariables:       variables,
+		refresh: func(ctx context.Context) (bool, error) {
+			// Re-fetch under the trigger lock to confirm we're the winner. If another publisher already
+			// consumed this subscription it will be Completed / Terminated / not found, in which case we
+			// silently no-op (BPMN allows at-least-once message delivery to be deduplicated).
+			refreshed, err := engine.persistence.FindMessageSubscriptionByKey(ctx, message.Key, runtime.ActivityStateActive)
+			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					return true, nil
+				}
+				return false, errors.Join(newEngineErrorf("failed to find active message subscription: %d", message.Key), err)
+			}
+			defSub, ok := refreshed.(*runtime.DefinitionMessageSubscription)
+			if !ok {
+				return false, fmt.Errorf("expected DefinitionMessageSubscription for key %d, got %T", message.Key, refreshed)
+			}
+			current = defSub
+			return false, nil
+		},
+		markConsumed: func(ctx context.Context, batch storage.Batch) error {
+			current.State = runtime.ActivityStateCompleted
+			if err := batch.SaveMessageSubscription(ctx, current); err != nil {
+				return fmt.Errorf("failed to save message subscription %d: %w", current.Key, err)
+			}
+			return nil
+		},
+	})
+}
+
+// processTimerTriggerOnInstanceCreation activates a (definition-level) timer start event by consuming the given timer,
+// registering a fresh timer for follow-up firings and creating a new process instance.
+func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	current := timer
+	err := engine.handleStartEventInstanceCreation(ctx, startEventInstanceCreationTrigger{
+		triggerKey:           timer.Key,
+		processDefinitionKey: timer.ProcessDefinitionKey,
+		elementId:            timer.ElementId,
+		inputVariables:       map[string]any{},
+		refresh: func(ctx context.Context) (bool, error) {
+			refreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
+			if err != nil {
+				return false, errors.Join(newEngineErrorf("failed to find timer %d", timer.Key), err)
+			}
+			switch refreshed.TimerState {
+			case runtime.TimerStateTriggered, runtime.TimerStateCancelled:
+				return true, nil
+			}
+			current = refreshed
+			return false, nil
+		},
+		markConsumed: func(ctx context.Context, batch storage.Batch) error {
+			current.TimerState = runtime.TimerStateTriggered
+			if err := batch.SaveTimer(ctx, current); err != nil {
+				return fmt.Errorf("failed to update timer state for timer %d: %w", current.Key, err)
+			}
+			return nil
+		},
+	})
+	return nil, nil, err
+}

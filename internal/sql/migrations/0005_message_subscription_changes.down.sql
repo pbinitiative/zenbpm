@@ -3,12 +3,27 @@ PRAGMA foreign_keys = OFF;
 -- Revert changes from 0005: restore execution_token_key in message_subscription_pointer
 -- and restore NOT NULL constraints on process_instance_key, correlation_key, execution_token
 -- in message_subscription while removing the type column.
+--
+-- WARNING: This down migration is LOSSY:
+--   * Definition-level message subscriptions (type = 3) have NULL process_instance_key,
+--     NULL correlation_key and NULL execution_token, which are incompatible with the
+--     NOT-NULL + FK columns of the pre-0005 schema. We DELETE them outright rather than
+--     coercing them to 0 / '' (which would leave FK-violating orphan rows once
+--     foreign_keys is re-enabled).
+--     Callers must re-deploy their process definitions after rolling back to recreate the
+--     definition-level subscriptions for message start events.
+--   * The type discriminator column is dropped, so the Token / Instance / Definition
+--     distinction is irrecoverably lost. Re-applying 0005.up.sql will assign type = 1
+--     (Token) to every surviving row.
 
-UPDATE message_subscription SET execution_token = 0 WHERE execution_token IS NULL;
+DELETE FROM message_subscription WHERE type = 3;
 
-UPDATE message_subscription SET correlation_key = "" WHERE correlation_key IS NULL;
-
-UPDATE message_subscription SET process_instance_key = 0 WHERE process_instance_key IS NULL;
+-- Defensive cleanup: any remaining row with NULLs in newly-restored NOT NULL columns is
+-- orphaned and unsafe to keep — drop it rather than masking with 0 / ''.
+DELETE FROM message_subscription
+WHERE execution_token IS NULL
+   OR correlation_key IS NULL
+   OR process_instance_key IS NULL;
 
 CREATE TABLE message_subscription_pointer_new(
     name text NOT NULL, -- message name from the definition

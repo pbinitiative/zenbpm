@@ -592,12 +592,16 @@ func (engine *Engine) createMessageStartEventMessageSubscriptions(
 	processInstance *runtime.ProcessInstance,
 ) error {
 	if messageStartEventDefinition, ok := startEventDefinition.(bpmn20.TMessageEventDefinition); ok {
-		correlationKey, messageName, err := engine.getCorrelationKeyAndMessageName(processDefinition, processInstance, messageStartEventDefinition)
+		messageName, err := engine.getMessageName(processDefinition, messageStartEventDefinition)
 		if err != nil {
-			return fmt.Errorf("failed to evaluate message correlation key: %w", err)
+			return fmt.Errorf("failed to get message name: %w", err)
 		}
 		var subscription runtime.MessageSubscription
 		if processInstance != nil {
+			correlationKey, err := engine.getMessageCorrelationKey(processDefinition, processInstance, messageStartEventDefinition)
+			if err != nil {
+				return fmt.Errorf("failed to evaluate message correlation key: %w", err)
+			}
 			subscription = &runtime.InstanceMessageSubscription{
 				ProcessInstanceKey: (*processInstance).ProcessInstance().Key,
 				CorrelationKey:     correlationKey,

@@ -2,7 +2,6 @@ package bpmn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime/debug"
 
@@ -54,10 +53,11 @@ func (engine *Engine) TriggerTimer(ctx context.Context, timer runtime.Timer) (
 		return engine.processTimerTriggerOnEventSubprocess(ctx, timer)
 	}
 
-	return engine.processTimerTriggerOnToken(ctx, timer, tokens)
+	return engine.processTimerTriggerOnToken(ctx, timer)
 }
 
-func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer, tokens []runtime.ExecutionToken) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	var tokens []runtime.ExecutionToken
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, *timer.ProcessInstanceKey)
 	if err != nil {
 		return nil, nil, newEngineErrorf("failed to find process instance with key: %d", *timer.ProcessInstanceKey)
@@ -141,38 +141,4 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 	}
 
 	return &instance, tokens, nil
-}
-
-// Creates and starts the process instance activated by the timer start event
-func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
-	// Re-fetch the timer to verify it has not already been triggered or cancelled by a concurrent
-	// activity (e.g. an interrupting event subprocess fired in parallel).
-	timerRefreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
-	if err != nil {
-		return nil, nil, newEngineErrorf("failed to find timer %d: %s", timer.Key, err)
-	}
-	switch timerRefreshed.TimerState {
-	case runtime.TimerStateTriggered:
-		return nil, nil, nil
-	case runtime.TimerStateCancelled:
-		return nil, nil, nil
-	}
-	timer = timerRefreshed
-
-	batch := engine.persistence.NewBatch()
-	timer.TimerState = runtime.TimerStateTriggered
-	err = batch.SaveTimer(ctx, timer)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to update timer state for timer %d: %s", timer.Key, err), err)
-	}
-	err = batch.Flush(ctx)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to flush batch for timer %d: %s", timer.Key, err), err)
-	}
-
-	_, err = engine.CreateInstanceWithStartingElements(ctx, timer.ProcessDefinitionKey, []string{timer.ElementId}, make(map[string]interface{}), nil)
-	if err != nil {
-		return nil, nil, errors.Join(newEngineErrorf("failed to create process instance for timer %d: %s", timer.Key, err), err)
-	}
-	return nil, nil, nil
 }

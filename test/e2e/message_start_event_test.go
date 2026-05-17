@@ -8,6 +8,7 @@ import (
 	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func TestMessageStartEvent(t *testing.T) {
 
 		// No process instance creation is needed yet. The definition-level message
 		// subscription is registered on deployment; publishing the message creates the instance.
-		// CorrelationKey must be nil so the engine routes the publish to the
+		// CorrelationKey must be nil so the engine routes the publishing to the
 		// DefinitionMessageSubscription (top-level message start event).
 		publishResp, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
 			CorrelationKey: nil,
@@ -376,4 +377,148 @@ func TestMessageEventSubprocessNonInterruptingNested2(t *testing.T) {
 		assert.Nil(t, fetchedInstance.Variables["messageStartEventVarB"],
 			"messageStartEventVarB must not leak to the root process because SubProcess_0rohbe2 does not map it")
 	})
+}
+
+// TestMessageStartEvent_SameMessageForInstanceAndSubprocess verifies behavior of a BPMN with a definition level message start event and
+// event subprocess level message start event.
+func TestMessageStartEvent_SameMessageForInstanceAndSubprocess(t *testing.T) {
+	bpmnData, err := os.ReadFile("../../pkg/bpmn/test-cases/process_definition_start_event/message-start-event-same-message-for-instance-and-subprocess.bpmn")
+	require.NoError(t, err)
+	// Make the deployment unique so this test does not interfere with other e2e tests that may
+	// share the same BPMN file. Use a single timestamp so the two derived ids are guaranteed
+	// to come from the same instant (and therefore stay paired even if the clock is coarse).
+	stamp := time.Now().UnixNano()
+	uniqueProcessId := fmt.Sprintf("process-msgSameRefInstanceAndSubprocess-%d", stamp)
+	uniqueMessageName := fmt.Sprintf("globalMessageRef-sameRef-%d", stamp)
+	modifiedBpmn := []byte(strings.NewReplacer(
+		"Process_messageEventSubProcessInterrupting2", uniqueProcessId,
+		"globalMessageRef", uniqueMessageName,
+	).Replace(string(bpmnData)))
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/message-start-event-same-message-for-instance-and-subprocess.bpmn")
+	require.NoError(t, err)
+	var definitionKey int64
+	if deployResp.JSON201 != nil {
+		definitionKey = deployResp.JSON201.ProcessDefinitionKey
+	} else {
+		require.NotNil(t, deployResp.JSON200, "expected either 200 or 201 response from deploy")
+		definitionKey = deployResp.JSON200.ProcessDefinitionKey
+	}
+	// Publish on the definition-level subscription. Pass key="myKey" so the correlation expression "=key" on the
+	// event-subprocess message start event resolves to "myKey" once the new instance is created.
+	publishResp, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
+		// instance should be started even on not-null correlation-key because the definition-level subscription should ignore the correlation key for routing
+		CorrelationKey: ptr.To("some-non-existing-correlation-key"),
+		MessageName:    uniqueMessageName,
+		Variables: &map[string]any{
+			"key": "myKey",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 201, publishResp.StatusCode(), "publishing the definition-level message must succeed")
+
+	// Wait for the new process instance to be created and become Active.
+	var processInstances *zenclient.GetProcessInstancesResponse
+	require.Eventually(t, func() bool {
+		processInstances, err = app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: &uniqueProcessId,
+		})
+		if err != nil || processInstances == nil || processInstances.JSON200 == nil {
+			return false
+		}
+		if processInstances.JSON200.TotalCount != 1 {
+			return false
+		}
+		return processInstances.JSON200.Partitions[0].Items[0].State == zenclient.ProcessInstanceStateActive
+	}, 20*time.Second, 100*time.Millisecond, "publishing the definition-level message must create exactly one Active process instance")
+	parentInstance := processInstances.JSON200.Partitions[0].Items[0]
+	parentStore, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(parentInstance.Key))
+	require.NoError(t, err)
+
+	// The original definition-level subscription that existed in Active state right after deployment must now be Completed
+	var completedDefSubKey int64
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		completedSub, errSub := parentStore.FindMessageSubscriptionByName(t.Context(), uniqueMessageName, nil, bpmnruntime.ActivityStateCompleted)
+		if !assert.NoError(collect, errSub) {
+			return
+		}
+		if !assert.NotNil(collect, completedSub, "expected the original DefinitionMessageSubscription to be Completed after publish") {
+			return
+		}
+		_, isDef := completedSub.(*bpmnruntime.DefinitionMessageSubscription)
+		assert.True(collect, isDef, "completed subscription must be a DefinitionMessageSubscription")
+		assert.Equal(collect, definitionKey, completedSub.MessageSubscription().ProcessDefinitionKey)
+		completedDefSubKey = completedSub.MessageSubscription().Key
+	}, 10*time.Second, 100*time.Millisecond, "original DefinitionMessageSubscription must be Completed after publish")
+
+	// A fresh definition-level subscription must be created in Active state for the next instance.
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		activeSub, errSub := parentStore.FindMessageSubscriptionByName(t.Context(), uniqueMessageName, nil, bpmnruntime.ActivityStateActive)
+		if !assert.NoError(collect, errSub) {
+			return
+		}
+		if !assert.NotNil(collect, activeSub, "expected a new Active DefinitionMessageSubscription after publish") {
+			return
+		}
+		_, isDef := activeSub.(*bpmnruntime.DefinitionMessageSubscription)
+		assert.True(collect, isDef, "newly Active subscription must be a DefinitionMessageSubscription")
+		assert.NotEqual(collect, completedDefSubKey, activeSub.MessageSubscription().Key,
+			"the new Active DefinitionMessageSubscription must be different from the original (Completed) one")
+		assert.Equal(collect, definitionKey, activeSub.MessageSubscription().ProcessDefinitionKey)
+	}, 10*time.Second, 100*time.Millisecond, "a fresh DefinitionMessageSubscription must be Active after publish")
+
+	//  Event-subprocess-level message subscription must exist on the parent process instance in Active state with correlation key "myKey".
+	assertMessageSubscriptionActive(t, parentInstance.Key, "subProcessMessageEvent_12i3m6f")
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		ck := "myKey"
+		sub, errSub := parentStore.FindMessageSubscriptionByName(t.Context(), uniqueMessageName, &ck, bpmnruntime.ActivityStateActive)
+		if !assert.NoError(collect, errSub) {
+			return
+		}
+		if !assert.NotNil(collect, sub, "expected an Active event-subprocess InstanceMessageSubscription with correlation key 'myKey'") {
+			return
+		}
+		_, isInstance := sub.(*bpmnruntime.InstanceMessageSubscription)
+		assert.True(collect, isInstance, "event-subprocess subscription must be an InstanceMessageSubscription")
+		assert.Equal(collect, "subProcessMessageEvent_12i3m6f", sub.MessageSubscription().ElementId)
+	}, 10*time.Second, 100*time.Millisecond, "event-subprocess InstanceMessageSubscription must exist in Active state with correlation key 'myKey'")
+
+	// Publish on the event-subprocess subscription using correlationKey="myKey" and the same unique message name.
+	ck := "myKey"
+	publishResp2, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
+		CorrelationKey: &ck,
+		MessageName:    uniqueMessageName,
+		Variables:      &map[string]any{},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 201, publishResp2.StatusCode(), "publishing on the event-subprocess subscription must succeed")
+
+	waitForProcessInstanceState(t, parentInstance.Key, zenclient.ProcessInstanceStateCompleted)
+	assertMessageSubscriptionCompleted(t, parentInstance.Key, "subProcessMessageEvent_12i3m6f")
+	eventSubprocessChild := getFirstChildInstance(t, parentInstance.Key)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		fetched, errFetch := getProcessInstance(t, eventSubprocessChild.Key)
+		if !assert.NoError(collect, errFetch) {
+			return
+		}
+		assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetched.State,
+			"event subprocess child instance must be Completed")
+	}, 10*time.Second, 100*time.Millisecond, "event subprocess child instance must be Completed")
+	assertNoLiveTokensForInstance(t, parentInstance.Key, "parent process")
+	assertNoLiveTokensForInstance(t, eventSubprocessChild.Key, "event subprocess child")
+}
+
+// assertNoLiveTokensForInstance asserts that the given process instance has no tokens left in
+// Running or Waiting state. Terminal token states (Completed/Canceled/Failed) are allowed.
+func assertNoLiveTokensForInstance(t *testing.T, processInstanceKey int64, label string) {
+	t.Helper()
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+	require.NoError(t, err)
+	tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+	require.NoError(t, err)
+	for _, tok := range tokens {
+		assert.NotEqualf(t, bpmnruntime.TokenStateRunning, tok.State,
+			"%s (instance %d) must not have Running tokens, found: %+v", label, processInstanceKey, tok)
+		assert.NotEqualf(t, bpmnruntime.TokenStateWaiting, tok.State,
+			"%s (instance %d) must not have Waiting tokens, found: %+v", label, processInstanceKey, tok)
+	}
 }

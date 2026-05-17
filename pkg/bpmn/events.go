@@ -304,10 +304,15 @@ func (engine *Engine) createMessageCatchEvent(
 	token runtime.ExecutionToken,
 ) (runtime.ExecutionToken, error) {
 	// TODO: handle input variables
-	correlationKey, messageName, err := engine.getCorrelationKeyAndMessageName(*instance.ProcessInstance().Definition, &instance, messageDef)
+	correlationKey, err := engine.getMessageCorrelationKey(*instance.ProcessInstance().Definition, &instance, messageDef)
 	if err != nil {
 		token.State = runtime.TokenStateFailed
 		return token, fmt.Errorf("failed to evaluate message correlation key: %w", err)
+	}
+	messageName, err := engine.getMessageName(*instance.ProcessInstance().Definition, messageDef)
+	if err != nil {
+		token.State = runtime.TokenStateFailed
+		return token, fmt.Errorf("failed to evaluate message name: %w", err)
 	}
 	subscription := &runtime.TokenMessageSubscription{
 		Token:              token,
@@ -332,13 +337,13 @@ func (engine *Engine) createMessageCatchEvent(
 	return token, nil
 }
 
-func (engine *Engine) getCorrelationKeyAndMessageName(processDefinition runtime.ProcessDefinition, instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (correlationKey string, messageName string, err error) {
+func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.ProcessDefinition, instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (string, error) {
 	message, err := processDefinition.Definitions.GetMessageByRef(messageDef.MessageRef)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create message subscription: %w", err)
+		return "", fmt.Errorf("failed to create message subscription: %w", err)
 	}
 
-	correlationKey = message.Extension.CorrelationKey
+	correlationKey := message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
 		var localVars map[string]interface{}
 		if instance != nil {
@@ -348,16 +353,24 @@ func (engine *Engine) getCorrelationKeyAndMessageName(processDefinition runtime.
 		}
 		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, localVars)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
+			return "", fmt.Errorf("failed to evaluate correlation key in message subscription: %w", err)
 		}
 		ck, ok := correlationKeyResult.(string)
 		if !ok {
-			return "", "", fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
+			return "", fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
 		}
 		correlationKey = ck
 	}
 
-	return correlationKey, message.Name, nil
+	return correlationKey, nil
+}
+
+func (engine *Engine) getMessageName(processDefinition runtime.ProcessDefinition, messageDef bpmn20.TMessageEventDefinition) (string, error) {
+	message, err := processDefinition.Definitions.GetMessageByRef(messageDef.MessageRef)
+	if err != nil {
+		return "", fmt.Errorf("failed to get message name: %w", err)
+	}
+	return message.Name, nil
 }
 
 func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

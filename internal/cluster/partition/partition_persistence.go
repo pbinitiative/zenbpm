@@ -1840,19 +1840,20 @@ func (rq *DB) FindProcessInstanceMessageSubscriptions(ctx context.Context, proce
 	if err != nil {
 		return nil, fmt.Errorf("failed to load message subscriptions tokens: %w", err)
 	}
+	tokensByKey := make(map[int64]sql.ExecutionToken, len(loadedTokens))
+	for _, token := range loadedTokens {
+		tokensByKey[token.Key] = token
+	}
 	for i, mes := range dbMessages {
 		var messageToken *bpmnruntime.ExecutionToken
 		if mes.ExecutionToken.Valid {
-			for _, token := range loadedTokens {
-				if mes.ExecutionToken.Int64 == token.Key {
-					messageToken = &bpmnruntime.ExecutionToken{
-						Key:                token.Key,
-						ElementInstanceKey: token.ElementInstanceKey,
-						ElementId:          token.ElementID,
-						ProcessInstanceKey: token.ProcessInstanceKey,
-						State:              bpmnruntime.TokenState(token.State),
-					}
-					break
+			if token, ok := tokensByKey[mes.ExecutionToken.Int64]; ok {
+				messageToken = &bpmnruntime.ExecutionToken{
+					Key:                token.Key,
+					ElementInstanceKey: token.ElementInstanceKey,
+					ElementId:          token.ElementID,
+					ProcessInstanceKey: token.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(token.State),
 				}
 			}
 		}

@@ -166,15 +166,25 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 		assertTimerCreated(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
 	})
 
-	// Wait for the non-interrupting timer (PT1S) to fire
-	time.Sleep(2 * time.Second)
+	// Wait for the non-interrupting event-subprocess timer (PT1S) to fire
+	assertTimerTriggered(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
 
 	var subProcessJob zenclient.Job
 	t.Run("find and complete subProcessJobType job", func(t *testing.T) {
-		jobsPartitionPage, err := readWaitingJobs(t, "subProcessJobType")
-		assert.NoError(t, err)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions)
-		assert.NotEmpty(t, jobsPartitionPage.Partitions[0].Items)
+		var jobsPartitionPage zenclient.JobPartitionPage
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			page, err := readWaitingJobs(t, "subProcessJobType")
+			if !assert.NoError(collect, err) {
+				return
+			}
+			if !assert.NotEmpty(collect, page.Partitions) {
+				return
+			}
+			if !assert.NotEmpty(collect, page.Partitions[0].Items) {
+				return
+			}
+			jobsPartitionPage = page
+		}, 20*time.Second, 100*time.Millisecond, "subProcessJobType job should be Active")
 		subProcessJob = jobsPartitionPage.Partitions[0].Items[0]
 		assert.Equal(t, zenclient.JobStateActive, subProcessJob.State)
 
@@ -239,7 +249,7 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 	// SubProcess_0rohbe2 contains:
 	//   - service task1 (job type "EventSubprocessType")
 	//   - EventSubprocessA_00bugpj (non-interrupting timer PT1S):
-	//       - timer start -> intermediate catch timer PT2S -> EndEventA_0evifiy
+	//       - timer start -> Event_1u5vukv intermediate catch timer PT2S -> EndEventA_0evifiy
 	//       - EventSubprocessB_16e6pei (non-interrupting timer PT1S):
 	//           - timer start -> service task2 (job type "EventSubprocessBtype") -> EndEventB_1pttfqp
 
@@ -259,15 +269,16 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		assertTimerCreated(t, subProcessChild.Key, "eventSubProcessATimerEvent_1i1fx2b")
 	})
 
-	// timer to start EventSubprocessB_16e6pei should be created, timer to start EventSubprocessA_00bugpj should be triggered
-	time.Sleep(1500 * time.Millisecond)
+	// timer to start EventSubprocessB_16e6pei should be created, timer to start EventSubprocessA_00bugpj should be triggered.
 	eventSubprocessAChild := getFirstChildInstance(t, subProcessChild.Key)
 	assertTimerCreated(t, eventSubprocessAChild.Key, "eventSubProcessBTimerEvent_0a3aipv")
 	assertTimerTriggered(t, subProcessChild.Key, "eventSubProcessATimerEvent_1i1fx2b")
 
-	// Wait for timers to fire: EventSubprocessA PT1S, then EventSubprocessB PT1S, then intermediate catch PT2S
-	time.Sleep(2500 * time.Millisecond)
+	// Wait for EventSubprocessB's start-event timer (PT1S) to fire — that spawns the EventSubprocessBtype job.
 	assertTimerTriggered(t, eventSubprocessAChild.Key, "eventSubProcessBTimerEvent_0a3aipv")
+
+	// Wait for EventSubprocessA's intermediate catch timer (PT2S, id=Event_1u5vukv) to fire.
+	assertTimerTriggered(t, eventSubprocessAChild.Key, "Event_1u5vukv")
 
 	t.Run("verify EventSubprocessA_00bugpj is not completed because EventSubprocessB is waiting", func(t *testing.T) {
 		fetchedInstance, err := getProcessInstance(t, instance.Key)

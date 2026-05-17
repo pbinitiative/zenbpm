@@ -1229,6 +1229,7 @@ func (engine *Engine) handlePlainEndEvent(ctx context.Context, batch *EngineBatc
 	if err != nil {
 		return errors.Join(newEngineErrorf("failed to load active subscriptions"), err)
 	}
+	// Only TokenMessageSubscriptions can keep the process instance alive at a plain end event:
 	for _, sub := range activeSubs {
 		if _, isTokenMessageSubscription := sub.(*runtime.TokenMessageSubscription); isTokenMessageSubscription {
 			activeSubscriptions = true

@@ -223,12 +223,16 @@ func TestTimerEventSubprocessNonInterruptingNested(t *testing.T) {
 	})
 
 	t.Run("verify subprocess Subprocess_15s23yn is completed and process is completed", func(t *testing.T) {
-		// Give a moment for completion to propagate
-		time.Sleep(100 * time.Millisecond)
-
-		fetchedInstance, err := getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+		// Poll until completion propagates rather than relying on a fixed sleep.
+		var fetchedInstance zenclient.ProcessInstance
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			var err error
+			fetchedInstance, err = getProcessInstance(t, instance.Key)
+			if !assert.NoError(collect, err) {
+				return
+			}
+			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+		}, 5*time.Second, 100*time.Millisecond, "process instance should reach Completed state after the event subprocess job is completed")
 
 		// after process completion, the non-interrupting event subprocess timer should be in TimerStateTriggered
 		assertTimerTriggered(t, subProcessChild.Key, "eventSubprocessTimerEvent_010eof4")
@@ -301,17 +305,20 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		err = completeJob(t, eventSubprocessBJob.Key, map[string]any{})
 		assert.NoError(t, err)
 
-		time.Sleep(100 * time.Millisecond)
-
 		// After completing EventSubprocessBtype, EventSubprocessA_00bugpj should complete
 		// but the process should still be active because EventSubprocessType (service task1) is still waiting
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			fetchedEventSubprocessA, err := getProcessInstance(t, eventSubprocessAChild.Key)
+			if !assert.NoError(collect, err) {
+				return
+			}
+			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetchedEventSubprocessA.State,
+				"EventSubprocessA_00bugpj should be completed after EventSubprocessBtype job completion")
+		}, 5*time.Second, 100*time.Millisecond)
+
 		fetchedInstance, err := getProcessInstance(t, instance.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, zenclient.ProcessInstanceStateActive, fetchedInstance.State)
-
-		fetchedEventSubprocessA, err := getProcessInstance(t, eventSubprocessAChild.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedEventSubprocessA.State, "EventSubprocessA_00bugpj should be completed after EventSubprocessBtype job completion")
 	})
 
 	t.Run("complete EventSubprocessType job and verify process is completed", func(t *testing.T) {
@@ -325,11 +332,15 @@ func TestTimerEventSubprocessNonInterruptingNested2(t *testing.T) {
 		err = completeJob(t, eventSubprocessJob.Key, map[string]any{})
 		assert.NoError(t, err)
 
-		time.Sleep(100 * time.Millisecond)
-
-		fetchedInstance, err := getProcessInstance(t, instance.Key)
-		assert.NoError(t, err)
-		assert.Equal(t, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+		var fetchedInstance zenclient.ProcessInstance
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			var err error
+			fetchedInstance, err = getProcessInstance(t, instance.Key)
+			if !assert.NoError(collect, err) {
+				return
+			}
+			assert.Equal(collect, zenclient.ProcessInstanceStateCompleted, fetchedInstance.State)
+		}, 5*time.Second, 100*time.Millisecond, "process instance should reach Completed state after the EventSubprocessType job is completed")
 
 		// verify that event subprocess output variables were propagated to the root process
 		assert.Equal(t, "event-subprocess-a-done", fetchedInstance.Variables["eventSubProcessAVariable"],

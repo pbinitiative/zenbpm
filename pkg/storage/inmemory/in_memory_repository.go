@@ -741,10 +741,14 @@ var _ storage.MessageStorageWriter = &Storage{}
 func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bpmnruntime.MessageSubscription) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
+	// Match the SQL backend's semantics:
+	//   INSERT ... ON CONFLICT DO UPDATE SET state = excluded.state
+	if existing, ok := mem.MessageSubscriptions[subscription.MessageSubscription().Key]; ok {
+		existing.MessageSubscription().State = subscription.MessageSubscription().State
+		return nil
+	}
+	// New insert: reject if it would collide on (state=Active, name, correlationKey) with another already-active subscription.
 	for _, message := range mem.MessageSubscriptions {
-		if subscription.MessageSubscription().Key == message.MessageSubscription().Key {
-			break
-		}
 		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(subscription)
 		messageCorrelationKey, _ := getMessageSubscriptionCorrelationKey(message)
 		if message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&

@@ -11,6 +11,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -145,4 +146,181 @@ func (s *testStore) WritePartitionChange(change *protoc.NodePartitionChange) err
 }
 func (s *testStore) ClusterState() state.Cluster {
 	return state.Cluster{}
+}
+
+func TestTimerStateToActivityState(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     int64
+		wantState int64
+		wantErr   bool
+	}{
+		{"created→active", int64(runtime.TimerStateCreated), int64(runtime.ActivityStateActive), false},
+		{"triggered→completed", int64(runtime.TimerStateTriggered), int64(runtime.ActivityStateCompleted), false},
+		{"cancelled→withdrawn", int64(runtime.TimerStateCancelled), int64(runtime.ActivityStateWithdrawn), false},
+		{"unknown→error", 999, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := timerStateToActivityState(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if got != tt.wantState {
+				t.Errorf("got %d, want %d", got, tt.wantState)
+			}
+		})
+	}
+}
+
+func TestActivityStateToTimerState(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     *int64
+		wantState *int64
+		wantErr   bool
+	}{
+		{"nil→nil", nil, nil, false},
+		{"active→created", ptr.To(int64(runtime.ActivityStateActive)), ptr.To(int64(runtime.TimerStateCreated)), false},
+		{"completed→triggered", ptr.To(int64(runtime.ActivityStateCompleted)), ptr.To(int64(runtime.TimerStateTriggered)), false},
+		{"withdrawn→cancelled", ptr.To(int64(runtime.ActivityStateWithdrawn)), ptr.To(int64(runtime.TimerStateCancelled)), false},
+		{"unknown→error", ptr.To(int64(999)), nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := activityStateToTimerState(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if tt.wantState == nil && got != nil {
+				t.Errorf("expected nil, got %d", *got)
+			} else if tt.wantState != nil && (got == nil || *got != *tt.wantState) {
+				t.Errorf("got %v, want %d", got, *tt.wantState)
+			}
+		})
+	}
+}
+
+func TestErrorStateToActivityState(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     int64
+		wantState int64
+		wantErr   bool
+	}{
+		{"created→active", int64(runtime.ErrorStateCreated), int64(runtime.ActivityStateActive), false},
+		{"cancelled→withdrawn", int64(runtime.ErrorStateCancelled), int64(runtime.ActivityStateWithdrawn), false},
+		{"unknown→error", 999, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := errorStateToActivityState(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if got != tt.wantState {
+				t.Errorf("got %d, want %d", got, tt.wantState)
+			}
+		})
+	}
+}
+
+func TestActivityStateToErrorState(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     *int64
+		wantState *int64
+		wantErr   bool
+	}{
+		{"nil→nil", nil, nil, false},
+		{"active→created", ptr.To(int64(runtime.ActivityStateActive)), ptr.To(int64(runtime.ErrorStateCreated)), false},
+		{"withdrawn→cancelled", ptr.To(int64(runtime.ActivityStateWithdrawn)), ptr.To(int64(runtime.ErrorStateCancelled)), false},
+		{"unknown→error", ptr.To(int64(999)), nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := activityStateToErrorState(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if tt.wantState == nil && got != nil {
+				t.Errorf("expected nil, got %d", *got)
+			} else if tt.wantState != nil && (got == nil || *got != *tt.wantState) {
+				t.Errorf("got %v, want %d", got, *tt.wantState)
+			}
+		})
+	}
+}
+
+// TestTimerStateRoundTrip verifies that DB timer states survive a round-trip through ActivityState.
+func TestTimerStateRoundTrip(t *testing.T) {
+	cases := []struct {
+		timer    runtime.TimerState
+		activity runtime.ActivityState
+	}{
+		{runtime.TimerStateCreated, runtime.ActivityStateActive},
+		{runtime.TimerStateTriggered, runtime.ActivityStateCompleted},
+		{runtime.TimerStateCancelled, runtime.ActivityStateWithdrawn},
+	}
+	for _, c := range cases {
+		actState, err := timerStateToActivityState(int64(c.timer))
+		if err != nil {
+			t.Fatalf("timerStateToActivityState(%v): %v", c.timer, err)
+		}
+		back, err := activityStateToTimerState(ptr.To(actState))
+		if err != nil {
+			t.Fatalf("activityStateToTimerState(%v): %v", actState, err)
+		}
+		if back == nil || *back != int64(c.timer) {
+			t.Errorf("round-trip %v: got %v, want %d", c.timer, back, c.timer)
+		}
+	}
+}
+
+// TestErrorStateRoundTrip verifies that DB error states survive a round-trip through ActivityState.
+func TestErrorStateRoundTrip(t *testing.T) {
+	cases := []struct {
+		errState runtime.ErrorState
+		activity runtime.ActivityState
+	}{
+		{runtime.ErrorStateCreated, runtime.ActivityStateActive},
+		{runtime.ErrorStateCancelled, runtime.ActivityStateWithdrawn},
+	}
+	for _, c := range cases {
+		actState, err := errorStateToActivityState(int64(c.errState))
+		if err != nil {
+			t.Fatalf("errorStateToActivityState(%v): %v", c.errState, err)
+		}
+		back, err := activityStateToErrorState(ptr.To(actState))
+		if err != nil {
+			t.Fatalf("activityStateToErrorState(%v): %v", actState, err)
+		}
+		if back == nil || *back != int64(c.errState) {
+			t.Errorf("round-trip %v: got %v, want %d", c.errState, back, c.errState)
+		}
+	}
 }

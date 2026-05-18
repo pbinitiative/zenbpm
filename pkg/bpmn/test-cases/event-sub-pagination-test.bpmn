@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_event_sub_pagination" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="event-sub-pagination-test" name="event-sub-pagination-test" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_to_split" sourceRef="StartEvent_1" targetRef="Gateway_split" />
+    <bpmn:parallelGateway id="Gateway_split">
+      <bpmn:incoming>Flow_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_msg1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_msg2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_msg3</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_to_msg1" sourceRef="Gateway_split" targetRef="MsgEvent_1" />
+    <bpmn:sequenceFlow id="Flow_to_msg2" sourceRef="Gateway_split" targetRef="MsgEvent_2" />
+    <bpmn:sequenceFlow id="Flow_to_msg3" sourceRef="Gateway_split" targetRef="MsgEvent_3" />
+    <bpmn:intermediateCatchEvent id="MsgEvent_1" name="msg-page-1">
+      <bpmn:incoming>Flow_to_msg1</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_msg1</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_1" messageRef="Message_page_1" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="MsgEvent_2" name="msg-page-2">
+      <bpmn:incoming>Flow_to_msg2</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_msg2</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_2" messageRef="Message_page_2" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="MsgEvent_3" name="msg-page-3">
+      <bpmn:incoming>Flow_to_msg3</bpmn:incoming>
+      <bpmn:outgoing>Flow_from_msg3</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_3" messageRef="Message_page_3" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_from_msg1" sourceRef="MsgEvent_1" targetRef="Gateway_join" />
+    <bpmn:sequenceFlow id="Flow_from_msg2" sourceRef="MsgEvent_2" targetRef="Gateway_join" />
+    <bpmn:sequenceFlow id="Flow_from_msg3" sourceRef="MsgEvent_3" targetRef="Gateway_join" />
+    <bpmn:parallelGateway id="Gateway_join">
+      <bpmn:incoming>Flow_from_msg1</bpmn:incoming>
+      <bpmn:incoming>Flow_from_msg2</bpmn:incoming>
+      <bpmn:incoming>Flow_from_msg3</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_end</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_to_end" sourceRef="Gateway_join" targetRef="EndEvent_1" />
+  </bpmn:process>
+  <!-- Each message uses a process variable as the correlation key so parallel test instances
+       can use unique correlation keys and avoid engine-level subscription conflicts. -->
+  <bpmn:message id="Message_page_1" name="msg-page-1">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_page_2" name="msg-page-2">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_page_3" name="msg-page-3">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="event-sub-pagination-test">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_split_di" bpmnElement="Gateway_split">
+        <dc:Bounds x="250" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="MsgEvent_1_di" bpmnElement="MsgEvent_1">
+        <dc:Bounds x="370" y="79" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="MsgEvent_2_di" bpmnElement="MsgEvent_2">
+        <dc:Bounds x="370" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="MsgEvent_3_di" bpmnElement="MsgEvent_3">
+        <dc:Bounds x="370" y="305" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_join_di" bpmnElement="Gateway_join">
+        <dc:Bounds x="470" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="572" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_to_split_di" bpmnElement="Flow_to_split">
+        <di:waypoint x="188" y="210" />
+        <di:waypoint x="250" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_msg1_di" bpmnElement="Flow_to_msg1">
+        <di:waypoint x="275" y="185" />
+        <di:waypoint x="275" y="97" />
+        <di:waypoint x="370" y="97" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_msg2_di" bpmnElement="Flow_to_msg2">
+        <di:waypoint x="300" y="210" />
+        <di:waypoint x="370" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_msg3_di" bpmnElement="Flow_to_msg3">
+        <di:waypoint x="275" y="235" />
+        <di:waypoint x="275" y="323" />
+        <di:waypoint x="370" y="323" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_from_msg1_di" bpmnElement="Flow_from_msg1">
+        <di:waypoint x="406" y="97" />
+        <di:waypoint x="495" y="97" />
+        <di:waypoint x="495" y="185" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_from_msg2_di" bpmnElement="Flow_from_msg2">
+        <di:waypoint x="406" y="210" />
+        <di:waypoint x="470" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_from_msg3_di" bpmnElement="Flow_from_msg3">
+        <di:waypoint x="406" y="323" />
+        <di:waypoint x="495" y="323" />
+        <di:waypoint x="495" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_end_di" bpmnElement="Flow_to_end">
+        <di:waypoint x="520" y="210" />
+        <di:waypoint x="572" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

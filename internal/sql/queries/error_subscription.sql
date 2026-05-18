@@ -23,3 +23,15 @@ FROM
 WHERE
     process_instance_key = @process_instance_key
   AND state = @state;
+
+-- name: FindProcessInstanceErrorSubscriptionsPage :many
+SELECT
+    *,
+    COUNT(*) OVER () AS total_count
+FROM
+    error_subscription
+WHERE
+    process_instance_key = @process_instance_key
+    AND COALESCE(sqlc.narg('state'), state) = state
+ORDER BY key ASC
+LIMIT @size OFFSET @offset;

@@ -77,3 +77,15 @@ FROM
 WHERE
     due_at < @due_at
     AND state = @state;
+
+-- name: FindProcessInstanceTimersPage :many
+SELECT
+    *,
+    COUNT(*) OVER () AS total_count
+FROM
+    timer
+WHERE
+    process_instance_key = @process_instance_key
+    AND COALESCE(sqlc.narg('state'), state) = state
+ORDER BY key ASC
+LIMIT @size OFFSET @offset;

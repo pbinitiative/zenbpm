@@ -1635,6 +1635,154 @@ func (node *ZenNode) GetProcessInstanceJobs(ctx context.Context, page int32, siz
 	return resp, nil
 }
 
+func (node *ZenNode) GetProcessInstanceMessageSubscriptions(
+	ctx context.Context,
+	page int32,
+	size int32,
+	processInstanceKey int64,
+	state *int64,
+) ([]*proto.PartitionedMessageSubscriptions, error) {
+	clusterState := node.store.ClusterState()
+	partitionIds := sortedPartitionIds(clusterState)
+
+	partitionResults := make([][]*proto.PartitionedMessageSubscriptions, len(partitionIds))
+	group, groupCtx := errgroup.WithContext(ctx)
+
+	for idx, partitionId := range partitionIds {
+		group.Go(func() error {
+			partitions, err := node.getProcessInstanceMessageSubscriptionsForPartition(
+				groupCtx,
+				clusterState,
+				page,
+				size,
+				processInstanceKey,
+				state,
+				partitionId,
+			)
+			if err != nil {
+				return err
+			}
+
+			partitionResults[idx] = partitions
+			return nil
+		})
+	}
+
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	return slices.Concat(partitionResults...), nil
+}
+
+func (node *ZenNode) getProcessInstanceMessageSubscriptionsForPartition(
+	ctx context.Context,
+	clusterState state.Cluster,
+	page int32,
+	size int32,
+	processInstanceKey int64,
+	state *int64,
+	partitionId uint32,
+) ([]*proto.PartitionedMessageSubscriptions, error) {
+	follower, err := clusterState.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node for partition %d: %w", partitionId, err))
+	}
+
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get message subscriptions: %w", err))
+	}
+
+	req := &proto.GetProcessInstanceMessageSubscriptionsRequest{
+		Partitions:         []uint32{partitionId},
+		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
+	}
+	if state != nil {
+		req.State = state
+	}
+
+	resp, err := client.GetProcessInstanceMessageSubscriptions(ctx, req)
+	if err != nil {
+		e := fmt.Errorf("failed to get message subscriptions from partition %d %w", partitionId, err)
+		return nil, zenerr.TechnicalError(e)
+	}
+	if resp == nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get message subscriptions from partition %d: response is nil", partitionId))
+	}
+	if resp.Error != nil {
+		e := fmt.Errorf("failed to get message subscriptions from partition %d", partitionId)
+		return nil, zenerr.ToZenError(resp.Error, e)
+	}
+	return resp.Partitions, nil
+}
+
+// GetProcessInstanceTimerSubscriptions will contact follower node of partition that contains the process instance timer subscriptions
+func (node *ZenNode) GetProcessInstanceTimerSubscriptions(ctx context.Context, page int32, size int32, processInstanceKey int64, state *int64) (*proto.GetProcessInstanceTimerSubscriptionsResponse, error) {
+	clusterState := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(processInstanceKey)
+	follower, err := clusterState.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get timer subscriptions: %w", err))
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get timer subscriptions: %w", err))
+	}
+	req := &proto.GetProcessInstanceTimerSubscriptionsRequest{
+		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
+	}
+	if state != nil {
+		req.State = state
+	}
+	resp, err := client.GetProcessInstanceTimerSubscriptions(ctx, req)
+	if err != nil {
+		e := fmt.Errorf("failed to get timer subscriptions from partition %d %w", partitionId, err)
+		return nil, zenerr.TechnicalError(e)
+	}
+	if resp.Error != nil {
+		e := fmt.Errorf("failed to get timer subscriptions from partition %d", partitionId)
+		return nil, zenerr.ToZenError(resp.Error, e)
+	}
+	return resp, nil
+}
+
+// GetProcessInstanceErrorSubscriptions will contact follower node of partition that contains the process instance error subscriptions
+func (node *ZenNode) GetProcessInstanceErrorSubscriptions(ctx context.Context, page int32, size int32, processInstanceKey int64, state *int64) (*proto.GetProcessInstanceErrorSubscriptionsResponse, error) {
+	clusterState := node.store.ClusterState()
+	partitionId := zenflake.GetPartitionId(processInstanceKey)
+	follower, err := clusterState.GetPartitionFollower(partitionId)
+	if err != nil {
+		return nil, zenerr.ClusterError(fmt.Errorf("failed to get follower node to get error subscriptions: %w", err))
+	}
+	client, err := node.client.For(follower.Addr)
+	if err != nil {
+		return nil, zenerr.TechnicalError(fmt.Errorf("failed to get client to get error subscriptions: %w", err))
+	}
+	req := &proto.GetProcessInstanceErrorSubscriptionsRequest{
+		ProcessInstanceKey: &processInstanceKey,
+		Page:               &page,
+		Size:               &size,
+	}
+	if state != nil {
+		req.State = state
+	}
+	resp, err := client.GetProcessInstanceErrorSubscriptions(ctx, req)
+	if err != nil {
+		e := fmt.Errorf("failed to get error subscriptions from partition %d %w", partitionId, err)
+		return nil, zenerr.TechnicalError(e)
+	}
+	if resp.Error != nil {
+		e := fmt.Errorf("failed to get error subscriptions from partition %d", partitionId)
+		return nil, zenerr.ToZenError(resp.Error, e)
+	}
+	return resp, nil
+}
+
 // GetFlowElementHistory will contact follower node of partition that contains process instance
 func (node *ZenNode) GetFlowElementHistory(ctx context.Context, page int32, size int32, processInstanceKey int64, sort *sql.Sort) (*proto.GetFlowElementHistoryResponse, error) {
 	state := node.store.ClusterState()

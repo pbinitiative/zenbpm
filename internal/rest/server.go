@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -1540,12 +1541,16 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 		if err != nil {
 			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 		}
+		jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
+		if stateErr != nil {
+			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+		}
 		resp[i] = public.Job{
 			CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 			ElementId:          job.GetElementId(),
 			Key:                job.GetKey(),
 			ProcessInstanceKey: job.GetProcessInstanceKey(),
-			State:              getRestJobState(runtime.ActivityState(job.GetState())),
+			State:              jobState,
 			Type:               job.GetType(),
 			Variables:          vars,
 			Assignee:           ptr.To(job.GetAssignee()),
@@ -1558,6 +1563,199 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 			Page:       int(*request.Params.Page),
 			Size:       int(*request.Params.Size),
 			TotalCount: int(*jobs.TotalCount),
+		},
+	}, nil
+}
+
+func validateEventSubscriptionState(state *public.EventSubscriptionState, allowed []public.EventSubscriptionState, endpointName string) *zenerr.ZenError {
+	if state == nil {
+		return nil
+	}
+	for _, a := range allowed {
+		if *state == a {
+			return nil
+		}
+	}
+	validValues := make([]string, len(allowed))
+	for i, a := range allowed {
+		validValues[i] = string(a)
+	}
+	return zenerr.BadRequest(fmt.Errorf("unsupported state for %s subscriptions: %q, valid values: %s",
+		endpointName, *state, strings.Join(validValues, ", ")))
+}
+
+func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, request public.GetProcessInstanceMessageSubscriptionsRequestObject) (public.GetProcessInstanceMessageSubscriptionsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
+	}
+	if stateErr := validateEventSubscriptionState(request.Params.State,
+		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateWithdrawn},
+		"message"); stateErr != nil {
+		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(stateErr.ToApiError()), nil
+	}
+	stateInt := messageSubscriptionStateToInt64(request.Params.State)
+	partitionedSubscriptions, err := s.node.GetProcessInstanceMessageSubscriptions(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, stateInt)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceMessageSubscriptions502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+
+	var items []public.MessageSubscription
+	totalCount := int32(0)
+	for _, partitionSubscriptions := range partitionedSubscriptions {
+		totalCount += partitionSubscriptions.GetTotalCount()
+		for _, sub := range partitionSubscriptions.GetItems() {
+			subState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(sub.GetState()))
+			if stateErr != nil {
+				return public.GetProcessInstanceMessageSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+			}
+			var correlationKey *string
+			if ck := sub.GetCorrelationKey(); ck != "" {
+				correlationKey = &ck
+			}
+			items = append(items, public.MessageSubscription{
+				Key:                  sub.GetKey(),
+				ElementId:            sub.GetElementId(),
+				ProcessDefinitionKey: sub.GetProcessDefinitionKey(),
+				ProcessInstanceKey:   sub.GetProcessInstanceKey(),
+				MessageName:          sub.GetMessageName(),
+				CorrelationKey:       correlationKey,
+				State:                subState,
+				CreatedAt:            time.UnixMilli(sub.GetCreatedAt()),
+			})
+		}
+	}
+	if items == nil {
+		items = []public.MessageSubscription{}
+	}
+	return public.GetProcessInstanceMessageSubscriptions200JSONResponse{
+		Items: items,
+		PageMetadata: public.PageMetadata{
+			Count:      len(items),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(totalCount),
+		},
+	}, nil
+}
+
+func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, request public.GetProcessInstanceTimerSubscriptionsRequestObject) (public.GetProcessInstanceTimerSubscriptionsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetProcessInstanceTimerSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
+	}
+	if stateErr := validateEventSubscriptionState(request.Params.State,
+		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateWithdrawn},
+		"timer"); stateErr != nil {
+		return public.GetProcessInstanceTimerSubscriptions400JSONResponse(stateErr.ToApiError()), nil
+	}
+	stateInt := timerSubscriptionStateToInt64(request.Params.State)
+	resp, err := s.node.GetProcessInstanceTimerSubscriptions(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, stateInt)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceTimerSubscriptions502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	items := make([]public.TimerSubscription, len(resp.Items))
+	for i, t := range resp.Items {
+		tState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(t.GetState()))
+		if stateErr != nil {
+			return public.GetProcessInstanceTimerSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+		}
+		var dueDate *time.Time
+		if v := t.GetDueAt(); v != 0 {
+			d := time.UnixMilli(v)
+			dueDate = &d
+		}
+		items[i] = public.TimerSubscription{
+			Key:                  t.GetKey(),
+			ElementId:            t.GetElementId(),
+			ProcessDefinitionKey: t.GetProcessDefinitionKey(),
+			ProcessInstanceKey:   t.GetProcessInstanceKey(),
+			State:                tState,
+			CreatedAt:            time.UnixMilli(t.GetCreatedAt()),
+			DueDate:              dueDate,
+		}
+	}
+	return public.GetProcessInstanceTimerSubscriptions200JSONResponse{
+		Items: items,
+		PageMetadata: public.PageMetadata{
+			Count:      len(items),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(resp.GetTotalCount()),
+		},
+	}, nil
+}
+
+func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, request public.GetProcessInstanceErrorSubscriptionsRequestObject) (public.GetProcessInstanceErrorSubscriptionsResponseObject, error) {
+	defaultPagination(&request.Params.Page, &request.Params.Size)
+	if paginationErr := validatePagination(*request.Params.Page, *request.Params.Size); paginationErr != nil {
+		return public.GetProcessInstanceErrorSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
+	}
+	if stateErr := validateEventSubscriptionState(request.Params.State,
+		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateWithdrawn},
+		"error"); stateErr != nil {
+		return public.GetProcessInstanceErrorSubscriptions400JSONResponse(stateErr.ToApiError()), nil
+	}
+	stateInt := errorSubscriptionStateToInt64(request.Params.State)
+	resp, err := s.node.GetProcessInstanceErrorSubscriptions(ctx, *request.Params.Page, *request.Params.Size, request.ProcessInstanceKey, stateInt)
+	if err != nil {
+		var zerr *zenerr.ZenError
+		if errors.As(err, &zerr) {
+			switch zerr.Code {
+			case zenerr.ClusterErrorCode:
+				return public.GetProcessInstanceErrorSubscriptions502JSONResponse(zerr.ToApiError()), nil
+			default:
+				return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zerr.ToApiError()), nil
+			}
+		}
+		return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
+	}
+	items := make([]public.ErrorSubscription, len(resp.Items))
+	for i, sub := range resp.Items {
+		subState, stateErr := activityStateToEventSubscriptionState(runtime.ActivityState(sub.GetState()))
+		if stateErr != nil {
+			return public.GetProcessInstanceErrorSubscriptions500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+		}
+		var errorCode *string
+		if ec := sub.GetErrorCode(); ec != "" {
+			errorCode = &ec
+		}
+		items[i] = public.ErrorSubscription{
+			Key:                  sub.GetKey(),
+			ElementInstanceKey:   sub.GetElementInstanceKey(),
+			ElementId:            sub.GetElementId(),
+			ProcessDefinitionKey: sub.GetProcessDefinitionKey(),
+			ProcessInstanceKey:   sub.GetProcessInstanceKey(),
+			ErrorCode:            errorCode,
+			State:                subState,
+			CreatedAt:            time.UnixMilli(sub.GetCreatedAt()),
+		}
+	}
+	return public.GetProcessInstanceErrorSubscriptions200JSONResponse{
+		Items: items,
+		PageMetadata: public.PageMetadata{
+			Count:      len(items),
+			Page:       int(*request.Params.Page),
+			Size:       int(*request.Params.Size),
+			TotalCount: int(resp.GetTotalCount()),
 		},
 	}, nil
 }
@@ -1619,10 +1817,14 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 			if err != nil {
 				return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 			}
+			jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
+			if stateErr != nil {
+				return public.GetJobs500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+			}
 			jobsPage.Partitions[i].Items[k] = public.Job{
 				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 				Key:                job.GetKey(),
-				State:              getRestJobState(runtime.ActivityState(job.GetState())),
+				State:              jobState,
 				ElementId:          job.GetElementId(),
 				ProcessInstanceKey: job.GetProcessInstanceKey(),
 				Type:               job.GetType(),
@@ -1659,13 +1861,17 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
+	jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
+	if stateErr != nil {
+		return public.GetJob500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
+	}
 	return public.GetJob200JSONResponse{
 		Assignee:           job.Assignee,
 		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
 		ElementId:          job.GetElementId(),
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
-		State:              getRestJobState(runtime.ActivityState(job.GetState())),
+		State:              jobState,
 		Type:               job.GetType(),
 		Variables:          jobVars,
 	}, nil
@@ -1693,18 +1899,18 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 	return public.FailJob204Response{}, nil
 }
 
-func getRestJobState(state runtime.ActivityState) public.JobState {
+func getRestJobState(state runtime.ActivityState) (public.JobState, error) {
 	switch state {
 	case runtime.ActivityStateActive:
-		return public.JobStateActive
+		return public.JobStateActive, nil
 	case runtime.ActivityStateCompleted:
-		return public.JobStateCompleted
+		return public.JobStateCompleted, nil
 	case runtime.ActivityStateTerminated:
-		return public.JobStateTerminated
+		return public.JobStateTerminated, nil
 	case runtime.ActivityStateFailed:
-		return public.JobStateFailed
+		return public.JobStateFailed, nil
 	default:
-		panic(fmt.Sprintf("unexpected runtime.ActivityState: %#v", state))
+		return "", fmt.Errorf("unexpected runtime.ActivityState: %#v", state)
 	}
 }
 
@@ -1737,6 +1943,103 @@ func getRestProcessInstanceType(state runtime.ProcessType) (public.ProcessInstan
 		return public.ProcessInstanceProcessTypeMultiInstance, nil
 	default:
 		return "", fmt.Errorf("unexpected runtime.ProcessType: %#v", state)
+	}
+}
+
+func messageSubscriptionStateToInt64(p *public.EventSubscriptionState) *int64 {
+	if p == nil {
+		return nil
+	}
+	var v int64
+	switch *p {
+	case public.EventSubscriptionStateActive:
+		v = int64(runtime.ActivityStateActive)
+	case public.EventSubscriptionStateCompensated:
+		v = int64(runtime.ActivityStateCompensated)
+	case public.EventSubscriptionStateCompensating:
+		v = int64(runtime.ActivityStateCompensating)
+	case public.EventSubscriptionStateCompleted:
+		v = int64(runtime.ActivityStateCompleted)
+	case public.EventSubscriptionStateCompleting:
+		v = int64(runtime.ActivityStateCompleting)
+	case public.EventSubscriptionStateFailed:
+		v = int64(runtime.ActivityStateFailed)
+	case public.EventSubscriptionStateFailing:
+		v = int64(runtime.ActivityStateFailing)
+	case public.EventSubscriptionStateReady:
+		v = int64(runtime.ActivityStateReady)
+	case public.EventSubscriptionStateTerminated:
+		v = int64(runtime.ActivityStateTerminated)
+	case public.EventSubscriptionStateTerminating:
+		v = int64(runtime.ActivityStateTerminating)
+	case public.EventSubscriptionStateWithdrawn:
+		v = int64(runtime.ActivityStateWithdrawn)
+	default:
+		return nil
+	}
+	return &v
+}
+
+func timerSubscriptionStateToInt64(p *public.EventSubscriptionState) *int64 {
+	if p == nil {
+		return nil
+	}
+	var v int64
+	switch *p {
+	case public.EventSubscriptionStateActive:
+		v = int64(runtime.TimerStateCreated)
+	case public.EventSubscriptionStateCompleted:
+		v = int64(runtime.TimerStateTriggered)
+	case public.EventSubscriptionStateWithdrawn:
+		v = int64(runtime.TimerStateCancelled)
+	default:
+		return nil
+	}
+	return &v
+}
+
+func errorSubscriptionStateToInt64(p *public.EventSubscriptionState) *int64 {
+	if p == nil {
+		return nil
+	}
+	var v int64
+	switch *p {
+	case public.EventSubscriptionStateActive:
+		v = int64(runtime.ErrorStateCreated)
+	case public.EventSubscriptionStateWithdrawn:
+		v = int64(runtime.ErrorStateCancelled)
+	default:
+		return nil
+	}
+	return &v
+}
+
+func activityStateToEventSubscriptionState(state runtime.ActivityState) (public.EventSubscriptionState, error) {
+	switch state {
+	case runtime.ActivityStateActive:
+		return public.EventSubscriptionStateActive, nil
+	case runtime.ActivityStateCompensated:
+		return public.EventSubscriptionStateCompensated, nil
+	case runtime.ActivityStateCompensating:
+		return public.EventSubscriptionStateCompensating, nil
+	case runtime.ActivityStateCompleted:
+		return public.EventSubscriptionStateCompleted, nil
+	case runtime.ActivityStateCompleting:
+		return public.EventSubscriptionStateCompleting, nil
+	case runtime.ActivityStateFailed:
+		return public.EventSubscriptionStateFailed, nil
+	case runtime.ActivityStateFailing:
+		return public.EventSubscriptionStateFailing, nil
+	case runtime.ActivityStateReady:
+		return public.EventSubscriptionStateReady, nil
+	case runtime.ActivityStateTerminated:
+		return public.EventSubscriptionStateTerminated, nil
+	case runtime.ActivityStateTerminating:
+		return public.EventSubscriptionStateTerminating, nil
+	case runtime.ActivityStateWithdrawn:
+		return public.EventSubscriptionStateWithdrawn, nil
+	default:
+		return "", fmt.Errorf("unexpected runtime.ActivityState: %#v", state)
 	}
 }
 

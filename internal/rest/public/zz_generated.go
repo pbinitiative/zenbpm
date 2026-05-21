@@ -31,6 +31,21 @@ const (
 	EvaluatedDecisionDecisionTypeLITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
 )
 
+// Defines values for EventSubscriptionState.
+const (
+	EventSubscriptionStateActive       EventSubscriptionState = "active"
+	EventSubscriptionStateCompensated  EventSubscriptionState = "compensated"
+	EventSubscriptionStateCompensating EventSubscriptionState = "compensating"
+	EventSubscriptionStateCompleted    EventSubscriptionState = "completed"
+	EventSubscriptionStateCompleting   EventSubscriptionState = "completing"
+	EventSubscriptionStateFailed       EventSubscriptionState = "failed"
+	EventSubscriptionStateFailing      EventSubscriptionState = "failing"
+	EventSubscriptionStateReady        EventSubscriptionState = "ready"
+	EventSubscriptionStateTerminated   EventSubscriptionState = "terminated"
+	EventSubscriptionStateTerminating  EventSubscriptionState = "terminating"
+	EventSubscriptionStateWithdrawn    EventSubscriptionState = "withdrawn"
+)
+
 // Defines values for JobState.
 const (
 	JobStateActive     JobState = "active"
@@ -292,6 +307,26 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// ErrorSubscription defines model for ErrorSubscription.
+type ErrorSubscription struct {
+	CreatedAt            time.Time              `json:"createdAt"`
+	ElementId            string                 `json:"elementId"`
+	ElementInstanceKey   int64                  `json:"elementInstanceKey"`
+	ErrorCode            *string                `json:"errorCode"`
+	Key                  int64                  `json:"key"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// ErrorSubscriptionPage defines model for ErrorSubscriptionPage.
+type ErrorSubscriptionPage struct {
+	// Embedded fields due to inline allOf schema
+	Items []ErrorSubscription `json:"items"`
+	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
+	PageMetadata `yaml:",inline"`
+}
+
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
 	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
@@ -370,6 +405,9 @@ type EvaluatedOutput struct {
 	// OutputValue The output value (any type)
 	OutputValue *interface{} `json:"outputValue,omitempty"`
 }
+
+// EventSubscriptionState defines model for EventSubscriptionState.
+type EventSubscriptionState string
 
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
@@ -465,6 +503,26 @@ type MatchedRule struct {
 	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
 	RuleId           *string            `json:"ruleId,omitempty"`
 	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
+// MessageSubscription defines model for MessageSubscription.
+type MessageSubscription struct {
+	CorrelationKey       *string                `json:"correlationKey"`
+	CreatedAt            time.Time              `json:"createdAt"`
+	ElementId            string                 `json:"elementId"`
+	Key                  int64                  `json:"key"`
+	MessageName          string                 `json:"messageName"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// MessageSubscriptionPage defines model for MessageSubscriptionPage.
+type MessageSubscriptionPage struct {
+	// Embedded fields due to inline allOf schema
+	Items []MessageSubscription `json:"items"`
+	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
+	PageMetadata `yaml:",inline"`
 }
 
 // PageMetadata defines model for PageMetadata.
@@ -623,6 +681,25 @@ type StartElementInstanceData struct {
 // TerminateElementInstanceData defines model for TerminateElementInstanceData.
 type TerminateElementInstanceData struct {
 	ElementInstanceKey int64 `json:"elementInstanceKey"`
+}
+
+// TimerSubscription defines model for TimerSubscription.
+type TimerSubscription struct {
+	CreatedAt            time.Time              `json:"createdAt"`
+	DueDate              *time.Time             `json:"dueDate,omitempty"`
+	ElementId            string                 `json:"elementId"`
+	Key                  int64                  `json:"key"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// TimerSubscriptionPage defines model for TimerSubscriptionPage.
+type TimerSubscriptionPage struct {
+	// Embedded fields due to inline allOf schema
+	Items []TimerSubscription `json:"items"`
+	// Embedded struct due to allOf(#/components/schemas/PageMetadata)
+	PageMetadata `yaml:",inline"`
 }
 
 // SortOrder defines model for sortOrder.
@@ -952,6 +1029,27 @@ type GetChildProcessInstancesParamsSortOrder string
 // GetChildProcessInstancesParamsState defines parameters for GetChildProcessInstances.
 type GetChildProcessInstancesParamsState string
 
+// GetProcessInstanceErrorSubscriptionsParams defines parameters for GetProcessInstanceErrorSubscriptions.
+type GetProcessInstanceErrorSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetProcessInstanceMessageSubscriptionsParams defines parameters for GetProcessInstanceMessageSubscriptions.
+type GetProcessInstanceMessageSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetProcessInstanceTimerSubscriptionsParams defines parameters for GetProcessInstanceTimerSubscriptions.
+type GetProcessInstanceTimerSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	// Page Page number (1-based indexing)
@@ -1107,6 +1205,15 @@ type ServerInterface interface {
 	// Get list of running child process instances
 	// (GET /process-instances/{processInstanceKey}/child-processes)
 	GetChildProcessInstances(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetChildProcessInstancesParams)
+	// Get error event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/errors)
+	GetProcessInstanceErrorSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceErrorSubscriptionsParams)
+	// Get message event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/messages)
+	GetProcessInstanceMessageSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceMessageSubscriptionsParams)
+	// Get timer event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/timers)
+	GetProcessInstanceTimerSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceTimerSubscriptionsParams)
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams)
@@ -1284,6 +1391,24 @@ func (_ Unimplemented) CancelProcessInstance(w http.ResponseWriter, r *http.Requ
 // Get list of running child process instances
 // (GET /process-instances/{processInstanceKey}/child-processes)
 func (_ Unimplemented) GetChildProcessInstances(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetChildProcessInstancesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get error event subscriptions for a process instance
+// (GET /process-instances/{processInstanceKey}/event-subscriptions/errors)
+func (_ Unimplemented) GetProcessInstanceErrorSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceErrorSubscriptionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get message event subscriptions for a process instance
+// (GET /process-instances/{processInstanceKey}/event-subscriptions/messages)
+func (_ Unimplemented) GetProcessInstanceMessageSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceMessageSubscriptionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get timer event subscriptions for a process instance
+// (GET /process-instances/{processInstanceKey}/event-subscriptions/timers)
+func (_ Unimplemented) GetProcessInstanceTimerSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceTimerSubscriptionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2334,6 +2459,162 @@ func (siw *ServerInterfaceWrapper) GetChildProcessInstances(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetProcessInstanceErrorSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessInstanceErrorSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessInstanceErrorSubscriptionsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessInstanceErrorSubscriptions(w, r, processInstanceKey, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProcessInstanceMessageSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessInstanceMessageSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessInstanceMessageSubscriptionsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessInstanceMessageSubscriptions(w, r, processInstanceKey, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProcessInstanceTimerSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessInstanceTimerSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "processInstanceKey" -------------
+	var processInstanceKey int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "processInstanceKey", chi.URLParam(r, "processInstanceKey"), &processInstanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "processInstanceKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProcessInstanceTimerSubscriptionsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "size", r.URL.Query(), &params.Size)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessInstanceTimerSubscriptions(w, r, processInstanceKey, params)
+	}))
+
+	for i := len(siw.HandlerMiddlewares) - 1; i >= 0; i-- {
+		handler = siw.HandlerMiddlewares[i](handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHistory operation middleware
 func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -2811,6 +3092,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/child-processes", wrapper.GetChildProcessInstances)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/event-subscriptions/errors", wrapper.GetProcessInstanceErrorSubscriptions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/event-subscriptions/messages", wrapper.GetProcessInstanceMessageSubscriptions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/event-subscriptions/timers", wrapper.GetProcessInstanceTimerSubscriptions)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process-instances/{processInstanceKey}/history", wrapper.GetHistory)
@@ -4076,6 +4366,141 @@ func (response GetChildProcessInstances502JSONResponse) VisitGetChildProcessInst
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProcessInstanceErrorSubscriptionsRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	Params             GetProcessInstanceErrorSubscriptionsParams
+}
+
+type GetProcessInstanceErrorSubscriptionsResponseObject interface {
+	VisitGetProcessInstanceErrorSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessInstanceErrorSubscriptions200JSONResponse ErrorSubscriptionPage
+
+func (response GetProcessInstanceErrorSubscriptions200JSONResponse) VisitGetProcessInstanceErrorSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceErrorSubscriptions400JSONResponse Error
+
+func (response GetProcessInstanceErrorSubscriptions400JSONResponse) VisitGetProcessInstanceErrorSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceErrorSubscriptions500JSONResponse Error
+
+func (response GetProcessInstanceErrorSubscriptions500JSONResponse) VisitGetProcessInstanceErrorSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceErrorSubscriptions502JSONResponse Error
+
+func (response GetProcessInstanceErrorSubscriptions502JSONResponse) VisitGetProcessInstanceErrorSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceMessageSubscriptionsRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	Params             GetProcessInstanceMessageSubscriptionsParams
+}
+
+type GetProcessInstanceMessageSubscriptionsResponseObject interface {
+	VisitGetProcessInstanceMessageSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessInstanceMessageSubscriptions200JSONResponse MessageSubscriptionPage
+
+func (response GetProcessInstanceMessageSubscriptions200JSONResponse) VisitGetProcessInstanceMessageSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceMessageSubscriptions400JSONResponse Error
+
+func (response GetProcessInstanceMessageSubscriptions400JSONResponse) VisitGetProcessInstanceMessageSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceMessageSubscriptions500JSONResponse Error
+
+func (response GetProcessInstanceMessageSubscriptions500JSONResponse) VisitGetProcessInstanceMessageSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceMessageSubscriptions502JSONResponse Error
+
+func (response GetProcessInstanceMessageSubscriptions502JSONResponse) VisitGetProcessInstanceMessageSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceTimerSubscriptionsRequestObject struct {
+	ProcessInstanceKey int64 `json:"processInstanceKey"`
+	Params             GetProcessInstanceTimerSubscriptionsParams
+}
+
+type GetProcessInstanceTimerSubscriptionsResponseObject interface {
+	VisitGetProcessInstanceTimerSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type GetProcessInstanceTimerSubscriptions200JSONResponse TimerSubscriptionPage
+
+func (response GetProcessInstanceTimerSubscriptions200JSONResponse) VisitGetProcessInstanceTimerSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceTimerSubscriptions400JSONResponse Error
+
+func (response GetProcessInstanceTimerSubscriptions400JSONResponse) VisitGetProcessInstanceTimerSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceTimerSubscriptions500JSONResponse Error
+
+func (response GetProcessInstanceTimerSubscriptions500JSONResponse) VisitGetProcessInstanceTimerSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProcessInstanceTimerSubscriptions502JSONResponse Error
+
+func (response GetProcessInstanceTimerSubscriptions502JSONResponse) VisitGetProcessInstanceTimerSubscriptionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetHistoryRequestObject struct {
 	ProcessInstanceKey int64 `json:"processInstanceKey"`
 	Params             GetHistoryParams
@@ -4515,6 +4940,15 @@ type StrictServerInterface interface {
 	// Get list of running child process instances
 	// (GET /process-instances/{processInstanceKey}/child-processes)
 	GetChildProcessInstances(ctx context.Context, request GetChildProcessInstancesRequestObject) (GetChildProcessInstancesResponseObject, error)
+	// Get error event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/errors)
+	GetProcessInstanceErrorSubscriptions(ctx context.Context, request GetProcessInstanceErrorSubscriptionsRequestObject) (GetProcessInstanceErrorSubscriptionsResponseObject, error)
+	// Get message event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/messages)
+	GetProcessInstanceMessageSubscriptions(ctx context.Context, request GetProcessInstanceMessageSubscriptionsRequestObject) (GetProcessInstanceMessageSubscriptionsResponseObject, error)
+	// Get timer event subscriptions for a process instance
+	// (GET /process-instances/{processInstanceKey}/event-subscriptions/timers)
+	GetProcessInstanceTimerSubscriptions(ctx context.Context, request GetProcessInstanceTimerSubscriptionsRequestObject) (GetProcessInstanceTimerSubscriptionsResponseObject, error)
 	// Get list of visited flow elements for a process instance
 	// (GET /process-instances/{processInstanceKey}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
@@ -5274,6 +5708,87 @@ func (sh *strictHandler) GetChildProcessInstances(w http.ResponseWriter, r *http
 	}
 }
 
+// GetProcessInstanceErrorSubscriptions operation middleware
+func (sh *strictHandler) GetProcessInstanceErrorSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceErrorSubscriptionsParams) {
+	var request GetProcessInstanceErrorSubscriptionsRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessInstanceErrorSubscriptions(ctx, request.(GetProcessInstanceErrorSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessInstanceErrorSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessInstanceErrorSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitGetProcessInstanceErrorSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessInstanceMessageSubscriptions operation middleware
+func (sh *strictHandler) GetProcessInstanceMessageSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceMessageSubscriptionsParams) {
+	var request GetProcessInstanceMessageSubscriptionsRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessInstanceMessageSubscriptions(ctx, request.(GetProcessInstanceMessageSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessInstanceMessageSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessInstanceMessageSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitGetProcessInstanceMessageSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProcessInstanceTimerSubscriptions operation middleware
+func (sh *strictHandler) GetProcessInstanceTimerSubscriptions(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetProcessInstanceTimerSubscriptionsParams) {
+	var request GetProcessInstanceTimerSubscriptionsRequestObject
+
+	request.ProcessInstanceKey = processInstanceKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProcessInstanceTimerSubscriptions(ctx, request.(GetProcessInstanceTimerSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProcessInstanceTimerSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProcessInstanceTimerSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitGetProcessInstanceTimerSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHistory operation middleware
 func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, processInstanceKey int64, params GetHistoryParams) {
 	var request GetHistoryRequestObject
@@ -5496,139 +6011,145 @@ func (sh *strictHandler) TestStopPprofServer(w http.ResponseWriter, r *http.Requ
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

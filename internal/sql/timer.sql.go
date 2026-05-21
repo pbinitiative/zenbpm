@@ -197,6 +197,78 @@ func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg Find
 	return items, nil
 }
 
+const findProcessInstanceTimersPage = `-- name: FindProcessInstanceTimersPage :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token,
+    COUNT(*) OVER () AS total_count
+FROM
+    timer
+WHERE
+    process_instance_key = ?1
+    AND COALESCE(?2, state) = state
+ORDER BY key ASC
+LIMIT ?4 OFFSET ?3
+`
+
+type FindProcessInstanceTimersPageParams struct {
+	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
+	State              sql.NullInt64 `json:"state"`
+	Offset             int64         `json:"offset"`
+	Size               int64         `json:"size"`
+}
+
+type FindProcessInstanceTimersPageRow struct {
+	Key                  int64         `json:"key"`
+	ElementInstanceKey   sql.NullInt64 `json:"element_instance_key"`
+	ElementID            string        `json:"element_id"`
+	ProcessDefinitionKey int64         `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64 `json:"process_instance_key"`
+	State                int64         `json:"state"`
+	CreatedAt            int64         `json:"created_at"`
+	DueAt                int64         `json:"due_at"`
+	ExecutionToken       sql.NullInt64 `json:"execution_token"`
+	TotalCount           int64         `json:"total_count"`
+}
+
+func (q *Queries) FindProcessInstanceTimersPage(ctx context.Context, arg FindProcessInstanceTimersPageParams) ([]FindProcessInstanceTimersPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersPage,
+		arg.ProcessInstanceKey,
+		arg.State,
+		arg.Offset,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindProcessInstanceTimersPageRow{}
+	for rows.Next() {
+		var i FindProcessInstanceTimersPageRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+			&i.DueAt,
+			&i.ExecutionToken,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findTimers = `-- name: FindTimers :many
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token

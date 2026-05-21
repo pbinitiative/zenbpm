@@ -63,3 +63,15 @@ FROM
 WHERE
     key = @key
     AND state = @state;
+
+-- name: FindProcessInstanceMessageSubscriptionsPage :many
+SELECT
+    *,
+    COUNT(*) OVER () AS total_count
+FROM
+    message_subscription
+WHERE
+    process_instance_key = @process_instance_key
+    AND COALESCE(sqlc.narg('state'), state) = state
+ORDER BY key ASC
+LIMIT @size OFFSET @offset;

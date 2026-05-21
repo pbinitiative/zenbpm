@@ -76,6 +76,9 @@ service ZenService {
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc GetFlowElementHistory(GetFlowElementHistoryRequest) returns (GetFlowElementHistoryResponse);
   rpc GetIncidents(GetIncidentsRequest) returns (GetIncidentsResponse);
+  rpc GetProcessInstanceMessageSubscriptions(GetProcessInstanceMessageSubscriptionsRequest) returns (GetProcessInstanceMessageSubscriptionsResponse);
+  rpc GetProcessInstanceTimerSubscriptions(GetProcessInstanceTimerSubscriptionsRequest) returns (GetProcessInstanceTimerSubscriptionsResponse);
+  rpc GetProcessInstanceErrorSubscriptions(GetProcessInstanceErrorSubscriptionsRequest) returns (GetProcessInstanceErrorSubscriptionsResponse);
   rpc ResolveIncident(ResolveIncidentRequest) returns (ResolveIncidentResponse);
   // Subscribes client to receive jobs of type
   rpc SubscribeJob(stream SubscribeJobRequest) returns (stream SubscribeJobResponse);
@@ -795,3 +798,80 @@ message NodeCommandResponse {
 
 message ClusterNodeChangeResponse {}
 message ClusterNodePartitionChangeResponse {}
+
+message ProtoMessageSubscription {
+  int64 key = 1;
+  string element_id = 2;
+  int64 process_definition_key = 3;
+  int64 process_instance_key = 4;
+  string message_name = 5;
+  string correlation_key = 6;
+  int64 state = 7;
+  int64 created_at = 8;
+}
+
+message PartitionedMessageSubscriptions {
+  uint32 partition_id = 1;
+  repeated ProtoMessageSubscription items = 2;
+  int32 total_count = 3;
+}
+
+message ProtoTimerSubscription {
+  int64 key = 1;
+  string element_id = 2;
+  int64 process_definition_key = 3;
+  int64 process_instance_key = 4;
+  int64 state = 5;
+  int64 created_at = 6;
+  int64 due_at = 7;
+}
+
+message ProtoErrorSubscription {
+  int64 key = 1;
+  int64 element_instance_key = 2;
+  string element_id = 3;
+  int64 process_definition_key = 4;
+  int64 process_instance_key = 5;
+  string error_code = 6;
+  int64 state = 7;
+  int64 created_at = 8;
+}
+
+message GetProcessInstanceMessageSubscriptionsRequest {
+  repeated uint32 partitions = 1;
+  int64 process_instance_key = 2;
+  int32 page = 3;
+  int32 size = 4;
+  int64 state = 5;
+}
+
+message GetProcessInstanceMessageSubscriptionsResponse {
+  ErrorResult error = 1;
+  repeated PartitionedMessageSubscriptions partitions = 2;
+}
+
+message GetProcessInstanceTimerSubscriptionsRequest {
+  int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
+  int64 state = 4;
+}
+
+message GetProcessInstanceTimerSubscriptionsResponse {
+  ErrorResult error = 1;
+  repeated ProtoTimerSubscription items = 2;
+  int32 total_count = 3;
+}
+
+message GetProcessInstanceErrorSubscriptionsRequest {
+  int64 process_instance_key = 1;
+  int32 page = 2;
+  int32 size = 3;
+  int64 state = 4;
+}
+
+message GetProcessInstanceErrorSubscriptionsResponse {
+  ErrorResult error = 1;
+  repeated ProtoErrorSubscription items = 2;
+  int32 total_count = 3;
+}

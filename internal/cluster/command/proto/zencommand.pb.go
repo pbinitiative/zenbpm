@@ -180,7 +180,7 @@ func (RaftSuffrage) EnumDescriptor() ([]byte, []int) {
 //
 //	↓
 //
-// # INITIALIZED - node has joined the partition group
+// INITIALIZED - node has joined the partition group
 //
 // LEAVING - node has to leave the partition group
 type NodePartitionState int32

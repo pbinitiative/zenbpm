@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_11xph0n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.43.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_11xph0n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="message_end_event" name="message_end_event" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0cgyiyy</bpmn:outgoing>
@@ -7,11 +7,11 @@
     <bpmn:sequenceFlow id="Flow_0cgyiyy" sourceRef="StartEvent_1" targetRef="Event_11flm9z" />
     <bpmn:endEvent id="Event_11flm9z">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="message-end-event-task-1" retries="5" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;beijing&#34;" target="city" />
-          <zeebe:output source="=city" target="newCity" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="message-end-event-task-1" retries="5" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;beijing&#34;" target="city" />
+          <zenbpm:output source="=city" target="newCity" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0cgyiyy</bpmn:incoming>
       <bpmn:messageEventDefinition id="MessageEventDefinition_19u9ka1" />

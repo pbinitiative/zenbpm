@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.14.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="fork-controlled-parallel-join" name="fork-controlled-parallel-join" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
@@ -8,7 +8,7 @@
     <bpmn:sequenceFlow id="flow-to-step-a-1" sourceRef="id-parallel-gateway-1" targetRef="id-a-1" />
     <bpmn:serviceTask id="id-a-1" name="Step A.1">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task-a-1" />
+        <zenbpm:taskDefinition type="task-a-1" />
       </bpmn:extensionElements>
       <bpmn:incoming>flow-to-step-a-1</bpmn:incoming>
       <bpmn:outgoing>Flow_15ki0x2</bpmn:outgoing>
@@ -16,7 +16,7 @@
     <bpmn:sequenceFlow id="flow-to-step-a-2" sourceRef="id-parallel-gateway-1" targetRef="id-a-2" />
     <bpmn:serviceTask id="id-a-2" name="Step A.2">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task-a-2" />
+        <zenbpm:taskDefinition type="task-a-2" />
       </bpmn:extensionElements>
       <bpmn:incoming>flow-to-step-a-2</bpmn:incoming>
       <bpmn:outgoing>Flow_0664r7j</bpmn:outgoing>
@@ -32,7 +32,7 @@
     </bpmn:endEvent>
     <bpmn:serviceTask id="id-b-1" name="Step B.1">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task-b-1" />
+        <zenbpm:taskDefinition type="task-b-1" />
       </bpmn:extensionElements>
       <bpmn:incoming>flow-to-step-b-1</bpmn:incoming>
       <bpmn:outgoing>Flow_0f4onph</bpmn:outgoing>

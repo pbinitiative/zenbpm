@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_output_uses_input_local" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_output_uses_input_local" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="service_task_output_uses_input_local" isExecutable="true">
     <bpmn:startEvent id="start_event">
       <bpmn:outgoing>Flow_0dgvzs1</bpmn:outgoing>
@@ -11,11 +11,11 @@
     <bpmn:sequenceFlow id="Flow_12bso6z" sourceRef="service_task" targetRef="end_event" />
     <bpmn:serviceTask id="service_task">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="test" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=variable_from_create_instance_1" target="local_variable_from_input" />
-          <zeebe:output source="=local_variable_from_input" target="output_variable" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="test" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=variable_from_create_instance_1" target="local_variable_from_input" />
+          <zenbpm:output source="=local_variable_from_input" target="output_variable" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0dgvzs1</bpmn:incoming>
       <bpmn:outgoing>Flow_12bso6z</bpmn:outgoing>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0bkq9uh" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_0bkq9uh" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="user_task_with_output_mapping_value_in_source" isExecutable="true">
     <bpmn:startEvent id="start_event">
       <bpmn:outgoing>Flow_0dgvzs1</bpmn:outgoing>
@@ -11,10 +11,10 @@
     <bpmn:sequenceFlow id="Flow_12bso6z" sourceRef="user_task" targetRef="end_event" />
     <bpmn:userTask id="user_task">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="test" />
-        <zeebe:ioMapping>
-          <zeebe:output source="John" target="name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="test" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="John" target="name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0dgvzs1</bpmn:incoming>
       <bpmn:outgoing>Flow_12bso6z</bpmn:outgoing>

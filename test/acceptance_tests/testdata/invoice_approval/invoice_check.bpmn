@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0ucoqpf" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_0ucoqpf" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
     <bpmn:process id="KontrolaDodavatelskeFaktury" name="Kontrola dodavatelské faktury" isExecutable="true">
         <bpmn:startEvent id="StartEvent" name="Požadavek na kontrolu dodavatelské faktury">
             <bpmn:outgoing>Flow_00fawym</bpmn:outgoing>
@@ -17,10 +17,10 @@
         <bpmn:dataStoreReference id="DataStoreReference_0xjgw52" name="Registr DPH" />
         <bpmn:serviceTask id="ServiceTask_KontrolaSpolehlivostiPlatceDPH" name="(3) Kontrola spolehlivosti plátce DPH">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="KontrolaSpolehlivostiPlatceDPH" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="KontrolaSpolehlivostiPlatceDPH" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_02dkz6e</bpmn:incoming>
             <bpmn:outgoing>Flow_07lk8qn</bpmn:outgoing>
@@ -39,10 +39,10 @@
         <bpmn:sequenceFlow id="Flow_NespolehlivyPlatceDPH" name="Ne" sourceRef="Gateway_SpolehlivyPlatce" targetRef="ServiceTask_AktualizaceDatDodavatele" />
         <bpmn:serviceTask id="ServiceTask_AktualizaceDatDodavatele" name="(4) Aktualizace dat o dodavateli">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="AktualizaceDatDodavatele" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="AktualizaceDatDodavatele" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_NespolehlivyPlatceDPH</bpmn:incoming>
             <bpmn:outgoing>Flow_1bej1of</bpmn:outgoing>
@@ -62,10 +62,10 @@
         <bpmn:sequenceFlow id="Flow_0t74lzp" sourceRef="Gateway_0ph9vm1" targetRef="ServiceTask_KontrolaRegistraceBankovnihoUctu" />
         <bpmn:serviceTask id="ServiceTask_OvereniExistenceObjednavky" name="(1) Ověření existence korespondující objednávky">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="KontrolaExistenceKorespondujiciObjednavky" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=orderExists" target="orderExists" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="KontrolaExistenceKorespondujiciObjednavky" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=orderExists" target="orderExists" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_10ndnwp</bpmn:incoming>
             <bpmn:outgoing>Flow_01fv9oy</bpmn:outgoing>
@@ -83,10 +83,10 @@
         <bpmn:dataStoreReference id="DataStoreReference_0wu7vu1" name="Evidence dodavatelů" />
         <bpmn:serviceTask id="ServiceTask_KontrolaRegistraceBankovnihoUctu" name="(5) Kontrola účtu z faktury v registru plátců DPH">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="KontrolaShodnostiBankUctuNaFaktureVuciEvidenci" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="KontrolaShodnostiBankUctuNaFaktureVuciEvidenci" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_0t74lzp</bpmn:incoming>
             <bpmn:outgoing>Flow_1keknwe</bpmn:outgoing>
@@ -102,10 +102,10 @@
         <bpmn:sequenceFlow id="Flow_1keknwe" sourceRef="ServiceTask_KontrolaRegistraceBankovnihoUctu" targetRef="EndEvent_RegistraceBankovnihoUctuOverena" />
         <bpmn:serviceTask id="ServiceTask_OvereniUdajuDodavatele" name="(2) Ověření údajů o dodavateli vůči interní evidenci">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="KontrolaShodnostiUdajuDodavateleNaFaktureVuciInterniEvidenci" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=supplierDataMatches" target="supplierDataMatches" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="KontrolaShodnostiUdajuDodavateleNaFaktureVuciInterniEvidenci" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=supplierDataMatches" target="supplierDataMatches" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_01lpj58</bpmn:incoming>
             <bpmn:outgoing>Flow_1l46wvn</bpmn:outgoing>
@@ -117,10 +117,10 @@
         </bpmn:serviceTask>
         <bpmn:serviceTask id="ServiceTask_MatematickaKontrolaFaktury" name="(6) Matematická kontrola faktury">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="MatematickaKontrolaObsahuFaktury" />
-                <zeebe:ioMapping>
-                    <zeebe:output source="=hasAmountMatch" target="hasAmountMatch" />
-                </zeebe:ioMapping>
+                <zenbpm:taskDefinition type="MatematickaKontrolaObsahuFaktury" />
+                <zenbpm:ioMapping>
+                    <zenbpm:output source="=hasAmountMatch" target="hasAmountMatch" />
+                </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_1ptdbeo</bpmn:incoming>
             <bpmn:outgoing>Flow_0nqdm5z</bpmn:outgoing>

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_177sxvd" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_177sxvd" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Process_0383xaq" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0vw2e9k</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="SubProcess_0rohbe2">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:output source="=eventSubProcessAVariable" target="eventSubProcessAVariable" />
-          <zeebe:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
-        </zeebe:ioMapping>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=eventSubProcessAVariable" target="eventSubProcessAVariable" />
+          <zenbpm:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0vw2e9k</bpmn:incoming>
       <bpmn:outgoing>Flow_1mkm46n</bpmn:outgoing>
@@ -23,24 +23,24 @@
       <bpmn:sequenceFlow id="Flow_0ka5vj8" sourceRef="ServiceTask1_17v6m2g" targetRef="Event_11hurn1" />
       <bpmn:serviceTask id="ServiceTask1_17v6m2g" name="service task1">
         <bpmn:extensionElements>
-          <zeebe:taskDefinition type="EventSubprocessType" />
+          <zenbpm:taskDefinition type="EventSubprocessType" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_0v5gpy0</bpmn:incoming>
         <bpmn:outgoing>Flow_0ka5vj8</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:subProcess id="EventSubprocessA_00bugpj" triggeredByEvent="true">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:output source="=&#34;event-subprocess-a-done&#34;" target="eventSubProcessAVariable" />
-            <zeebe:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
-            <zeebe:output source="=timerStartEventVarB" target="timerStartEventVarB" />
-          </zeebe:ioMapping>
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=&#34;event-subprocess-a-done&#34;" target="eventSubProcessAVariable" />
+            <zenbpm:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
+            <zenbpm:output source="=timerStartEventVarB" target="timerStartEventVarB" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:startEvent id="eventSubProcessATimerEvent_1i1fx2b" isInterrupting="false">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:output source="=&#34;timerStartEventValueA&#34;" target="timerStartEventVarA" />
-            </zeebe:ioMapping>
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=&#34;timerStartEventValueA&#34;" target="timerStartEventVarA" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:outgoing>Flow_0zjmg06</bpmn:outgoing>
           <bpmn:timerEventDefinition id="TimerEventDefinition_03hr5aw">
@@ -52,15 +52,15 @@
         </bpmn:endEvent>
           <bpmn:subProcess id="EventSubprocessB_16e6pei" triggeredByEvent="true">
             <bpmn:extensionElements>
-              <zeebe:ioMapping>
-                <zeebe:output source="=&#34;event-subprocess-b-done&#34;" target="eventSubProcessBVariable" />
-              </zeebe:ioMapping>
+              <zenbpm:ioMapping>
+                <zenbpm:output source="=&#34;event-subprocess-b-done&#34;" target="eventSubProcessBVariable" />
+              </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:startEvent id="eventSubProcessBTimerEvent_0a3aipv" isInterrupting="false">
               <bpmn:extensionElements>
-                <zeebe:ioMapping>
-                  <zeebe:output source="=&#34;timerStartEventValueB&#34;" target="timerStartEventVarB" />
-                </zeebe:ioMapping>
+                <zenbpm:ioMapping>
+                  <zenbpm:output source="=&#34;timerStartEventValueB&#34;" target="timerStartEventVarB" />
+                </zenbpm:ioMapping>
               </bpmn:extensionElements>
             <bpmn:outgoing>Flow_13syrf4</bpmn:outgoing>
             <bpmn:timerEventDefinition id="TimerEventDefinition_0y0nqde">
@@ -73,7 +73,7 @@
           <bpmn:sequenceFlow id="Flow_13syrf4" sourceRef="eventSubProcessBTimerEvent_0a3aipv" targetRef="ServiceTask2_05612g8" />
           <bpmn:serviceTask id="ServiceTask2_05612g8" name="service task2">
             <bpmn:extensionElements>
-              <zeebe:taskDefinition type="EventSubprocessBtype" />
+              <zenbpm:taskDefinition type="EventSubprocessBtype" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_13syrf4</bpmn:incoming>
             <bpmn:outgoing>Flow_17p7xh1</bpmn:outgoing>

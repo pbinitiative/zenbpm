@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_pag_call" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.36.1">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_pag_call" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
     <bpmn:process id="Pagination_Test_Incidents_Process" isExecutable="true">
         <bpmn:startEvent id="StartEvent_1">
             <bpmn:outgoing>Flow_start_split</bpmn:outgoing>
@@ -16,34 +16,34 @@
         <bpmn:sequenceFlow id="Flow_branch_1" sourceRef="Gateway_split" targetRef="Task_1" />
         <bpmn:serviceTask id="Task_1" name="Incident Task 1">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="pagination-incident-job" />
+                <zenbpm:taskDefinition type="pagination-incident-job" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_branch_1</bpmn:incoming>
         </bpmn:serviceTask>
         <bpmn:sequenceFlow id="Flow_branch_2" sourceRef="Gateway_split" targetRef="Task_2" />
         <bpmn:serviceTask id="Task_2" name="Incident Task 2">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="pagination-incident-job" />
+                <zenbpm:taskDefinition type="pagination-incident-job" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_branch_2</bpmn:incoming>
         </bpmn:serviceTask>
         <bpmn:serviceTask id="Task_3" name="Incident Task 3">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="pagination-incident-job" />
+                <zenbpm:taskDefinition type="pagination-incident-job" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_1q8stqu</bpmn:incoming>
         </bpmn:serviceTask>
         <bpmn:sequenceFlow id="Flow_branch_4" sourceRef="Gateway_split" targetRef="Task_4" />
         <bpmn:serviceTask id="Task_4" name="Incident Task 4">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="pagination-incident-job" />
+                <zenbpm:taskDefinition type="pagination-incident-job" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_branch_4</bpmn:incoming>
         </bpmn:serviceTask>
         <bpmn:sequenceFlow id="Flow_branch_5" sourceRef="Gateway_split" targetRef="Task_5" />
         <bpmn:serviceTask id="Task_5" name="Incident Task 5">
             <bpmn:extensionElements>
-                <zeebe:taskDefinition type="pagination-incident-job" />
+                <zenbpm:taskDefinition type="pagination-incident-job" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_branch_5</bpmn:incoming>
         </bpmn:serviceTask>

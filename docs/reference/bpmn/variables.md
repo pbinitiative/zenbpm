@@ -20,9 +20,9 @@ An output mapping evaluates its source expression against the element's local va
 For activities, define an output mapping whenever data should leave the activity:
 
 ```xml
-<zeebe:ioMapping>
-  <zeebe:output source="=result" target="processResult" />
-</zeebe:ioMapping>
+<zenbpm:ioMapping>
+  <zenbpm:output source="=result" target="processResult" />
+</zenbpm:ioMapping>
 ```
 
 For catching events, omit output mappings when the complete message or error payload should be copied into the catching scope. Add output mappings when only selected payload variables should be exposed.

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1bs25jn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1bs25jn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:collaboration id="Collaboration_1ckpgi4">
     <bpmn:participant id="Participant_1t0rpa0" name="DocsFlow" processRef="approval-basic" />
   </bpmn:collaboration>
@@ -43,17 +43,17 @@
   </bpmn:process>
   <bpmn:message id="Message_2kup1ij" name="cancel">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=approvalId" />
+      <zenbpm:subscription correlationKey="=approvalId" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_0fprdg6" name="return">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;approvalId&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;approvalId&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_2q4m1ht" name="dissapprove">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=approvalId" />
+      <zenbpm:subscription correlationKey="=approvalId" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

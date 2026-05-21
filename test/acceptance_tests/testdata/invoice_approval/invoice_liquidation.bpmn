@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_Process_eb8c7b12" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.0.0">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_Process_eb8c7b12" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:collaboration id="LikvidaceDodavatelskeFaktury_ProcessDefinition">
     <bpmn:participant id="Participant_1tcns0a" name="4BPM Platform" processRef="LikvidaceDodavatelskeFaktury" />
     <bpmn:participant id="Participant_061xepn" name="Dodavatel" />
@@ -38,48 +38,48 @@
     </bpmn:laneSet>
     <bpmn:serviceTask id="ServiceTask_VytezeniFaktury" name="(1) Vytěžení dat z PDF faktury">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="JobTypeVytezeniFaktury" />
+        <zenbpm:taskDefinition type="JobTypeVytezeniFaktury" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_07p4il3</bpmn:incoming>
       <bpmn:outgoing>Flow_1xaxwoq</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:userTask id="UserTask_ManualniKorekcePoVytezeni" name="(2) Manuální korekce po vytěžení">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;manual-check-form&#34;" target="4BPM_FORM_KEY" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;manual-check-form&#34;" target="4BPM_FORM_KEY" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1xaxwoq</bpmn:incoming>
       <bpmn:outgoing>Flow_0f8o3sl</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:callActivity id="CallActivity_KontrolaFaktury" name="(3) Kontrola faktury">
       <bpmn:extensionElements>
-        <zeebe:calledElement processId="KontrolaDodavatelskeFaktury" propagateAllChildVariables="true" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=invoiceOrderReference" target="invoiceOrderReference" />
-          <zeebe:output source="=orderExists" target="orderExists" />
-          <zeebe:output source="=supplierDataMatches" target="supplierDataMatches" />
-          <zeebe:output source="=isReliableVatPayer" target="isReliableVatPayer" />
-          <zeebe:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
-          <zeebe:output source="=hasAmountMatch" target="hasAmountMatch" />
-        </zeebe:ioMapping>
+        <zenbpm:calledElement processId="KontrolaDodavatelskeFaktury" propagateAllChildVariables="true" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceOrderReference" target="invoiceOrderReference" />
+          <zenbpm:output source="=orderExists" target="orderExists" />
+          <zenbpm:output source="=supplierDataMatches" target="supplierDataMatches" />
+          <zenbpm:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+          <zenbpm:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+          <zenbpm:output source="=hasAmountMatch" target="hasAmountMatch" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0f8o3sl</bpmn:incoming>
       <bpmn:outgoing>Flow_031zwou</bpmn:outgoing>
     </bpmn:callActivity>
     <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniDalsihoPostupu" name="(4) Stanovení dalšího postupu">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="Decision_StanoveniDalsihoPostupu_DodavatelskaFaktura" resultVariable="whatNextResult" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=orderExists" target="orderExists" />
-          <zeebe:input source="=supplierDataMatches" target="supplierDataMatches" />
-          <zeebe:input source="=isReliableVatPayer" target="isReliableVatPayer" />
-          <zeebe:input source="=isBankAccountRegistered" target="isBankAccountRegistered" />
-          <zeebe:input source="=hasAmountMatch" target="hasAmountMatch" />
-          <zeebe:output source="=whatNextResult" target="whatNextResult" />
-          <zeebe:output source="=whatNextResult.invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniDalsihoPostupu_DodavatelskaFaktura" resultVariable="whatNextResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=orderExists" target="orderExists" />
+          <zenbpm:input source="=supplierDataMatches" target="supplierDataMatches" />
+          <zenbpm:input source="=isReliableVatPayer" target="isReliableVatPayer" />
+          <zenbpm:input source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+          <zenbpm:input source="=hasAmountMatch" target="hasAmountMatch" />
+          <zenbpm:output source="=whatNextResult" target="whatNextResult" />
+          <zenbpm:output source="=whatNextResult.invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_031zwou</bpmn:incoming>
       <bpmn:outgoing>Flow_0reidu6</bpmn:outgoing>
@@ -92,12 +92,12 @@
     </bpmn:exclusiveGateway>
     <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniObsahuOznameni" name="(5) Stanovení obsahu oznámení">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="Decision_StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury" resultVariable="determiningContentOfNoticeResult" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=invoiceRejectionReasonCode" target="whatNextResult.invoiceRejectionReasonCode" />
-          <zeebe:output source="=determiningContentOfNoticeResult.title" target="title" />
-          <zeebe:output source="=determiningContentOfNoticeResult.description" target="description" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury" resultVariable="determiningContentOfNoticeResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceRejectionReasonCode" target="whatNextResult.invoiceRejectionReasonCode" />
+          <zenbpm:output source="=determiningContentOfNoticeResult.title" target="title" />
+          <zenbpm:output source="=determiningContentOfNoticeResult.description" target="description" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_Zamitnout</bpmn:incoming>
       <bpmn:incoming>Flow_0zeten0</bpmn:incoming>
@@ -106,33 +106,33 @@
     </bpmn:businessRuleTask>
     <bpmn:sendTask id="SendTask_OznameniZamitnutiFaktury" name="(6) Oznámení o zamítnutí faktury">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="OznameniZamitnutiFaktury" />
+        <zenbpm:taskDefinition type="OznameniZamitnutiFaktury" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0o45i01</bpmn:incoming>
       <bpmn:outgoing>Flow_0zpwudc</bpmn:outgoing>
     </bpmn:sendTask>
     <bpmn:sendTask id="SendTask_OznameniSchvaleniFaktury" name="(10) Oznámení o schválení faktury">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="OznameniSchvaleniFaktury" />
+        <zenbpm:taskDefinition type="OznameniSchvaleniFaktury" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0in5l2o</bpmn:incoming>
       <bpmn:outgoing>Flow_0mb5wmf</bpmn:outgoing>
     </bpmn:sendTask>
     <bpmn:userTask id="UserTask_KonfiguraceUctovaniFaktury" name="(11) Konfigurace účtování faktur">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;konfigurace-uctovani-form&#34;" target="4BPM_FORM_KEY" />
-          <zeebe:output source="=payPrevodem" target="payPrevodem" />
-          <zeebe:output source="=payZapoctem" target="payZapoctem" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;konfigurace-uctovani-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=payPrevodem" target="payPrevodem" />
+          <zenbpm:output source="=payZapoctem" target="payZapoctem" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0mb5wmf</bpmn:incoming>
       <bpmn:outgoing>Flow_0szydg4</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:serviceTask id="ServiceTask_ZauctovaniDodavatelskeFaktury" name="(12) Zaúčtování dod. faktury">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="ZauctovaniDodavatelskeFaktury" />
+        <zenbpm:taskDefinition type="ZauctovaniDodavatelskeFaktury" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0szydg4</bpmn:incoming>
       <bpmn:outgoing>Flow_1nnmf96</bpmn:outgoing>
@@ -147,7 +147,7 @@
     </bpmn:inclusiveGateway>
     <bpmn:serviceTask id="ServiceTask_VytvoreniNavrhuPrikazuPlatby" name="(14) Vytvoření návrhu příkazu k platbě">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="VytvoreniNavrhuPrikazuPlatby" />
+        <zenbpm:taskDefinition type="VytvoreniNavrhuPrikazuPlatby" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_Prevodem</bpmn:incoming>
       <bpmn:outgoing>Flow_1jspv1p</bpmn:outgoing>
@@ -157,10 +157,10 @@
     </bpmn:serviceTask>
     <bpmn:userTask id="UserTask_ZapocetFaktury" name="(13) Zápočet faktury s protější fakturou / dobropisem">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;zapocet-faktury-form&#34;" target="4BPM_FORM_KEY" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;zapocet-faktury-form&#34;" target="4BPM_FORM_KEY" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_Zapoctem</bpmn:incoming>
       <bpmn:outgoing>Flow_0xqjdwq</bpmn:outgoing>
@@ -174,13 +174,13 @@
     </bpmn:endEvent>
     <bpmn:userTask id="UserTask_ManualniNahraniFaktury" name="(0) Manuální nahráni faktúry">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;invoice-upload-form&#34;" target="4BPM_FORM_KEY" />
-          <zeebe:output source="=invoiceNumber" target="invoiceNumber" />
-          <zeebe:output source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
-          <zeebe:output source="=invoiceOrderReference" target="invoiceOrderReference" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;invoice-upload-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=invoiceNumber" target="invoiceNumber" />
+          <zenbpm:output source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
+          <zenbpm:output source="=invoiceOrderReference" target="invoiceOrderReference" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ezu2nf</bpmn:incoming>
       <bpmn:outgoing>Flow_07p4il3</bpmn:outgoing>
@@ -218,12 +218,12 @@
     <bpmn:sequenceFlow id="Flow_1ezu2nf" sourceRef="StartEvent_DodavatelskaFakturaProLikvidaci" targetRef="UserTask_ManualniNahraniFaktury" />
     <bpmn:userTask id="UserTask_ManualniOvereniFaktury" name="(7) Manuální ověření dod. faktury">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;manual-overeni-form&#34;" target="4BPM_FORM_KEY" />
-          <zeebe:output source="=poslatKeSchvaleni" target="poslatKeSchvaleni" />
-          <zeebe:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;manual-overeni-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=poslatKeSchvaleni" target="poslatKeSchvaleni" />
+          <zenbpm:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_ManualneOverit</bpmn:incoming>
       <bpmn:outgoing>Flow_16po2p3</bpmn:outgoing>
@@ -238,11 +238,11 @@
     </bpmn:exclusiveGateway>
     <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniSchvalovatelu" name="(8) Stanovení schvalovatelů">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury" resultVariable="designationOfApproversResult" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
-          <zeebe:output source="=designationOfApproversResult" target="designationOfApproversResult" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury" resultVariable="designationOfApproversResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
+          <zenbpm:output source="=designationOfApproversResult" target="designationOfApproversResult" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_PokracovatVeZpracovani</bpmn:incoming>
       <bpmn:incoming>Flow_0w5754q</bpmn:incoming>
@@ -250,12 +250,12 @@
     </bpmn:businessRuleTask>
     <bpmn:userTask id="UserTask_SchvaleniFaktury" name="(9) Schválení faktury">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;invoice-approval-form&#34;" target="4BPM_FORM_KEY" />
-          <zeebe:output source="=schvaleno" target="schvaleno" />
-          <zeebe:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
-        </zeebe:ioMapping>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;invoice-approval-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=schvaleno" target="schvaleno" />
+          <zenbpm:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ila9f9</bpmn:incoming>
       <bpmn:outgoing>Flow_0kv908p</bpmn:outgoing>
@@ -278,17 +278,17 @@
   </bpmn:process>
   <bpmn:message id="Message_2f1eoiv" name="Message Stanoveni obsahu oznameni">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=invoiceNumber" />
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_3ofhjk6" name="Vráceno k opravě">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=invoiceNumber" />
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_0oovh8n" name="Message Zamítnuto">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=invoiceNumber" />
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

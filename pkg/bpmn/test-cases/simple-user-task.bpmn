@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.0.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="simple-user-task" name="simple-user-task" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
@@ -11,8 +11,8 @@
     <bpmn:sequenceFlow id="Flow_1vz4oo2" sourceRef="user-task" targetRef="Event_1j4mcqg" />
     <bpmn:userTask id="user-task" name="user-task">
       <bpmn:extensionElements>
-        <zeebe:assignmentDefinition assignee="assignee" candidateGroups="candicate-groups" />
-        <zeebe:formDefinition formKey="form-key" />
+        <zenbpm:assignmentDefinition assignee="assignee" candidateGroups="candicate-groups" />
+        <zenbpm:formDefinition formKey="form-key" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>
       <bpmn:outgoing>Flow_1vz4oo2</bpmn:outgoing>

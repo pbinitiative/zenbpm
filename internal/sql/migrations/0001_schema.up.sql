@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS job(
     element_instance_key integer NOT NULL, -- int64 id of the element instance
     element_id text NOT NULL, -- string id of the element from xml definition
     process_instance_key integer NOT NULL, -- int64 reference to process instance
-    type TEXT NOT NULL, -- zeebe:taskDefinition type from the xml definition
+    type TEXT NOT NULL, -- zenbpm:taskDefinition type from the xml definition
     state integer NOT NULL, -- pkg/bpmn/runtime/types.go:ActivityState
     created_at integer NOT NULL, -- unix millis of when the instance of the job was created
     variables text NOT NULL, -- serialized json variables of the process instance

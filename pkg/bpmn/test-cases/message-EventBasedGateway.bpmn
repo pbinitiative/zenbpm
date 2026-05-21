@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1yxvip4" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1yxvip4" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="message-EventBasedGateway" name="message-EventBasedGateway" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_053t0or</bpmn:outgoing>
@@ -32,14 +32,14 @@
     <bpmn:sequenceFlow id="Flow_0tkfctx" sourceRef="task-b" targetRef="Event_182vnrp" />
     <bpmn:serviceTask id="task-a" name="A">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task-a" />
+        <zenbpm:taskDefinition type="task-a" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0f74oux</bpmn:incoming>
       <bpmn:outgoing>Flow_18ampmb</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="task-b" name="B">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task-b" />
+        <zenbpm:taskDefinition type="task-b" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1nvciiq</bpmn:incoming>
       <bpmn:outgoing>Flow_0tkfctx</bpmn:outgoing>
@@ -47,12 +47,12 @@
   </bpmn:process>
   <bpmn:message id="Message_27spjjt" name="msg-a">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;key&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_0qgkugh" name="msg-b">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;key&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

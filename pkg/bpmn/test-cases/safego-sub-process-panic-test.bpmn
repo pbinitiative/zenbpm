@@ -4,14 +4,14 @@
   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
-  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+  xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0"
+ 
   id="Definitions_safego_test"
   targetNamespace="http://bpmn.io/schema/bpmn"
-  exporter="Camunda Modeler"
-  exporterVersion="5.35.0"
-  modeler:executionPlatform="Camunda Cloud"
-  modeler:executionPlatformVersion="8.6.0">
+  exporter="ZenBPM Modeler"
+  exporterVersion="1.0.0"
+ 
+ >
 
   <bpmn:process id="SafeGo_SubProcess_Panic_Test" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
@@ -27,7 +27,7 @@
       <bpmn:sequenceFlow id="Flow_sub_to_task" sourceRef="SubStart_1" targetRef="SubTask_1" />
       <bpmn:serviceTask id="SubTask_1" name="Sub Task">
         <bpmn:extensionElements>
-          <zeebe:taskDefinition type="safego-panic-test-task" />
+          <zenbpm:taskDefinition type="safego-panic-test-task" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_sub_to_task</bpmn:incoming>
         <bpmn:outgoing>Flow_sub_to_end</bpmn:outgoing>

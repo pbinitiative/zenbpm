@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_multiline_dmn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_multiline_dmn" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="MultilineDMNBusinessRulesProcess" name="Multiline DMN Business Rules Process" isExecutable="true">
     <bpmn:startEvent id="start" name="Start">
       <bpmn:outgoing>Flow_start_to_literal</bpmn:outgoing>
@@ -7,10 +7,10 @@
     <bpmn:sequenceFlow id="Flow_start_to_literal" sourceRef="start" targetRef="LiteralExpressionTask" />
     <bpmn:businessRuleTask id="LiteralExpressionTask" name="Literal Expression Multiline">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="decLiteralExpr" resultVariable="literalResult" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=literalResult" target="literalResult" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="decLiteralExpr" resultVariable="literalResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=literalResult" target="literalResult" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_start_to_literal</bpmn:incoming>
       <bpmn:outgoing>Flow_literal_to_table</bpmn:outgoing>
@@ -18,12 +18,12 @@
     <bpmn:sequenceFlow id="Flow_literal_to_table" sourceRef="LiteralExpressionTask" targetRef="DecisionTableTask" />
     <bpmn:businessRuleTask id="DecisionTableTask" name="Decision Table Multiline Output">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="decMultilineOutput" resultVariable="tableResult" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;A1&#34;" target="code" />
-          <zeebe:output source="=&#34;A1&#34;" target="code" />
-          <zeebe:output source="=tableResult" target="tableResult" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="decMultilineOutput" resultVariable="tableResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;A1&#34;" target="code" />
+          <zenbpm:output source="=&#34;A1&#34;" target="code" />
+          <zenbpm:output source="=tableResult" target="tableResult" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_literal_to_table</bpmn:incoming>
       <bpmn:outgoing>Flow_table_to_end</bpmn:outgoing>

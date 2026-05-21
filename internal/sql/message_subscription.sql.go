@@ -138,6 +138,80 @@ func (q *Queries) FindProcessInstanceMessageSubscriptions(ctx context.Context, a
 	return items, nil
 }
 
+const findProcessInstanceMessageSubscriptionsPage = `-- name: FindProcessInstanceMessageSubscriptionsPage :many
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type,
+    COUNT(*) OVER () AS total_count
+FROM
+    message_subscription
+WHERE
+    process_instance_key = ?1
+    AND COALESCE(?2, state) = state
+ORDER BY key ASC
+LIMIT ?4 OFFSET ?3
+`
+
+type FindProcessInstanceMessageSubscriptionsPageParams struct {
+	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
+	State              sql.NullInt64 `json:"state"`
+	Offset             int64         `json:"offset"`
+	Size               int64         `json:"size"`
+}
+
+type FindProcessInstanceMessageSubscriptionsPageRow struct {
+	Key                  int64          `json:"key"`
+	ElementID            string         `json:"element_id"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
+	ProcessInstanceKey   sql.NullInt64  `json:"process_instance_key"`
+	Name                 string         `json:"name"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	CorrelationKey       sql.NullString `json:"correlation_key"`
+	ExecutionToken       sql.NullInt64  `json:"execution_token"`
+	Type                 int64          `json:"type"`
+	TotalCount           int64          `json:"total_count"`
+}
+
+func (q *Queries) FindProcessInstanceMessageSubscriptionsPage(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsPageParams) ([]FindProcessInstanceMessageSubscriptionsPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceMessageSubscriptionsPage,
+		arg.ProcessInstanceKey,
+		arg.State,
+		arg.Offset,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindProcessInstanceMessageSubscriptionsPageRow{}
+	for rows.Next() {
+		var i FindProcessInstanceMessageSubscriptionsPageRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.Name,
+			&i.State,
+			&i.CreatedAt,
+			&i.CorrelationKey,
+			&i.ExecutionToken,
+			&i.Type,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findTokenMessageSubscriptions = `-- name: FindTokenMessageSubscriptions :many
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type

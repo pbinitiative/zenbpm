@@ -24,6 +24,21 @@ const (
 	EvaluatedDecisionDecisionTypeLITERALEXPRESSION EvaluatedDecisionDecisionType = "LITERAL_EXPRESSION"
 )
 
+// Defines values for EventSubscriptionState.
+const (
+	EventSubscriptionStateActive       EventSubscriptionState = "active"
+	EventSubscriptionStateCompensated  EventSubscriptionState = "compensated"
+	EventSubscriptionStateCompensating EventSubscriptionState = "compensating"
+	EventSubscriptionStateCompleted    EventSubscriptionState = "completed"
+	EventSubscriptionStateCompleting   EventSubscriptionState = "completing"
+	EventSubscriptionStateFailed       EventSubscriptionState = "failed"
+	EventSubscriptionStateFailing      EventSubscriptionState = "failing"
+	EventSubscriptionStateReady        EventSubscriptionState = "ready"
+	EventSubscriptionStateTerminated   EventSubscriptionState = "terminated"
+	EventSubscriptionStateTerminating  EventSubscriptionState = "terminating"
+	EventSubscriptionStateWithdrawn    EventSubscriptionState = "withdrawn"
+)
+
 // Defines values for JobState.
 const (
 	JobStateActive     JobState = "active"
@@ -302,6 +317,34 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// ErrorSubscription defines model for ErrorSubscription.
+type ErrorSubscription struct {
+	CreatedAt            time.Time              `json:"createdAt"`
+	ElementId            string                 `json:"elementId"`
+	ElementInstanceKey   int64                  `json:"elementInstanceKey"`
+	ErrorCode            *string                `json:"errorCode"`
+	Key                  int64                  `json:"key"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// ErrorSubscriptionPage defines model for ErrorSubscriptionPage.
+type ErrorSubscriptionPage struct {
+	// Count Number of items returned in the current page
+	Count int                 `json:"count"`
+	Items []ErrorSubscription `json:"items"`
+
+	// Page Current page number (1-based indexing)
+	Page int `json:"page"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
+}
+
 // EvaluatedDRDResult defines model for EvaluatedDRDResult.
 type EvaluatedDRDResult struct {
 	DecisionInstanceKey int64                     `json:"decisionInstanceKey"`
@@ -380,6 +423,9 @@ type EvaluatedOutput struct {
 	// OutputValue The output value (any type)
 	OutputValue *interface{} `json:"outputValue,omitempty"`
 }
+
+// EventSubscriptionState defines model for EventSubscriptionState.
+type EventSubscriptionState string
 
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
@@ -507,6 +553,34 @@ type MatchedRule struct {
 	EvaluatedOutputs *[]EvaluatedOutput `json:"evaluatedOutputs,omitempty"`
 	RuleId           *string            `json:"ruleId,omitempty"`
 	RuleIndex        *int               `json:"ruleIndex,omitempty"`
+}
+
+// MessageSubscription defines model for MessageSubscription.
+type MessageSubscription struct {
+	CorrelationKey       *string                `json:"correlationKey"`
+	CreatedAt            time.Time              `json:"createdAt"`
+	ElementId            string                 `json:"elementId"`
+	Key                  int64                  `json:"key"`
+	MessageName          string                 `json:"messageName"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// MessageSubscriptionPage defines model for MessageSubscriptionPage.
+type MessageSubscriptionPage struct {
+	// Count Number of items returned in the current page
+	Count int                   `json:"count"`
+	Items []MessageSubscription `json:"items"`
+
+	// Page Current page number (1-based indexing)
+	Page int `json:"page"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
 }
 
 // PageMetadata defines model for PageMetadata.
@@ -690,6 +764,33 @@ type StartElementInstanceData struct {
 // TerminateElementInstanceData defines model for TerminateElementInstanceData.
 type TerminateElementInstanceData struct {
 	ElementInstanceKey int64 `json:"elementInstanceKey"`
+}
+
+// TimerSubscription defines model for TimerSubscription.
+type TimerSubscription struct {
+	CreatedAt            time.Time              `json:"createdAt"`
+	DueDate              *time.Time             `json:"dueDate,omitempty"`
+	ElementId            string                 `json:"elementId"`
+	Key                  int64                  `json:"key"`
+	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
+	ProcessInstanceKey   int64                  `json:"processInstanceKey"`
+	State                EventSubscriptionState `json:"state"`
+}
+
+// TimerSubscriptionPage defines model for TimerSubscriptionPage.
+type TimerSubscriptionPage struct {
+	// Count Number of items returned in the current page
+	Count int                 `json:"count"`
+	Items []TimerSubscription `json:"items"`
+
+	// Page Current page number (1-based indexing)
+	Page int `json:"page"`
+
+	// Size Number of items per page
+	Size int `json:"size"`
+
+	// TotalCount Total number of items available
+	TotalCount int `json:"totalCount"`
 }
 
 // SortOrder defines model for sortOrder.
@@ -1019,6 +1120,27 @@ type GetChildProcessInstancesParamsSortOrder string
 // GetChildProcessInstancesParamsState defines parameters for GetChildProcessInstances.
 type GetChildProcessInstancesParamsState string
 
+// GetProcessInstanceErrorSubscriptionsParams defines parameters for GetProcessInstanceErrorSubscriptions.
+type GetProcessInstanceErrorSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetProcessInstanceMessageSubscriptionsParams defines parameters for GetProcessInstanceMessageSubscriptions.
+type GetProcessInstanceMessageSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// GetProcessInstanceTimerSubscriptionsParams defines parameters for GetProcessInstanceTimerSubscriptions.
+type GetProcessInstanceTimerSubscriptionsParams struct {
+	Page  *int32                  `form:"page,omitempty" json:"page,omitempty"`
+	Size  *int32                  `form:"size,omitempty" json:"size,omitempty"`
+	State *EventSubscriptionState `form:"state,omitempty" json:"state,omitempty"`
+}
+
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	// Page Page number (1-based indexing)
@@ -1260,6 +1382,15 @@ type ClientInterface interface {
 
 	// GetChildProcessInstances request
 	GetChildProcessInstances(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProcessInstanceErrorSubscriptions request
+	GetProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceErrorSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProcessInstanceMessageSubscriptions request
+	GetProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceMessageSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProcessInstanceTimerSubscriptions request
+	GetProcessInstanceTimerSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceTimerSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHistory request
 	GetHistory(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1674,6 +1805,42 @@ func (c *Client) CancelProcessInstance(ctx context.Context, processInstanceKey i
 
 func (c *Client) GetChildProcessInstances(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetChildProcessInstancesRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProcessInstanceErrorSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceErrorSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProcessInstanceErrorSubscriptionsRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceMessageSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProcessInstanceMessageSubscriptionsRequest(c.Server, processInstanceKey, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProcessInstanceTimerSubscriptions(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceTimerSubscriptionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProcessInstanceTimerSubscriptionsRequest(c.Server, processInstanceKey, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3636,6 +3803,270 @@ func NewGetChildProcessInstancesRequest(server string, processInstanceKey int64,
 	return req, nil
 }
 
+// NewGetProcessInstanceErrorSubscriptionsRequest generates requests for GetProcessInstanceErrorSubscriptions
+func NewGetProcessInstanceErrorSubscriptionsRequest(server string, processInstanceKey int64, params *GetProcessInstanceErrorSubscriptionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/event-subscriptions/errors", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProcessInstanceMessageSubscriptionsRequest generates requests for GetProcessInstanceMessageSubscriptions
+func NewGetProcessInstanceMessageSubscriptionsRequest(server string, processInstanceKey int64, params *GetProcessInstanceMessageSubscriptionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/event-subscriptions/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProcessInstanceTimerSubscriptionsRequest generates requests for GetProcessInstanceTimerSubscriptions
+func NewGetProcessInstanceTimerSubscriptionsRequest(server string, processInstanceKey int64, params *GetProcessInstanceTimerSubscriptionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "processInstanceKey", runtime.ParamLocationPath, processInstanceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process-instances/%s/event-subscriptions/timers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page", runtime.ParamLocationQuery, *params.Page); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Size != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "size", runtime.ParamLocationQuery, *params.Size); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHistoryRequest generates requests for GetHistory
 func NewGetHistoryRequest(server string, processInstanceKey int64, params *GetHistoryParams) (*http.Request, error) {
 	var err error
@@ -4223,6 +4654,15 @@ type ClientWithResponsesInterface interface {
 
 	// GetChildProcessInstancesWithResponse request
 	GetChildProcessInstancesWithResponse(ctx context.Context, processInstanceKey int64, params *GetChildProcessInstancesParams, reqEditors ...RequestEditorFn) (*GetChildProcessInstancesResponse, error)
+
+	// GetProcessInstanceErrorSubscriptionsWithResponse request
+	GetProcessInstanceErrorSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceErrorSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceErrorSubscriptionsResponse, error)
+
+	// GetProcessInstanceMessageSubscriptionsWithResponse request
+	GetProcessInstanceMessageSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceMessageSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceMessageSubscriptionsResponse, error)
+
+	// GetProcessInstanceTimerSubscriptionsWithResponse request
+	GetProcessInstanceTimerSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceTimerSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceTimerSubscriptionsResponse, error)
 
 	// GetHistoryWithResponse request
 	GetHistoryWithResponse(ctx context.Context, processInstanceKey int64, params *GetHistoryParams, reqEditors ...RequestEditorFn) (*GetHistoryResponse, error)
@@ -4895,6 +5335,81 @@ func (r GetChildProcessInstancesResponse) StatusCode() int {
 	return 0
 }
 
+type GetProcessInstanceErrorSubscriptionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ErrorSubscriptionPage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProcessInstanceErrorSubscriptionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProcessInstanceErrorSubscriptionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProcessInstanceMessageSubscriptionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MessageSubscriptionPage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProcessInstanceMessageSubscriptionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProcessInstanceMessageSubscriptionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProcessInstanceTimerSubscriptionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TimerSubscriptionPage
+	JSON400      *Error
+	JSON500      *Error
+	JSON502      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProcessInstanceTimerSubscriptionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProcessInstanceTimerSubscriptionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetHistoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5379,6 +5894,33 @@ func (c *ClientWithResponses) GetChildProcessInstancesWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseGetChildProcessInstancesResponse(rsp)
+}
+
+// GetProcessInstanceErrorSubscriptionsWithResponse request returning *GetProcessInstanceErrorSubscriptionsResponse
+func (c *ClientWithResponses) GetProcessInstanceErrorSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceErrorSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceErrorSubscriptionsResponse, error) {
+	rsp, err := c.GetProcessInstanceErrorSubscriptions(ctx, processInstanceKey, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProcessInstanceErrorSubscriptionsResponse(rsp)
+}
+
+// GetProcessInstanceMessageSubscriptionsWithResponse request returning *GetProcessInstanceMessageSubscriptionsResponse
+func (c *ClientWithResponses) GetProcessInstanceMessageSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceMessageSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceMessageSubscriptionsResponse, error) {
+	rsp, err := c.GetProcessInstanceMessageSubscriptions(ctx, processInstanceKey, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProcessInstanceMessageSubscriptionsResponse(rsp)
+}
+
+// GetProcessInstanceTimerSubscriptionsWithResponse request returning *GetProcessInstanceTimerSubscriptionsResponse
+func (c *ClientWithResponses) GetProcessInstanceTimerSubscriptionsWithResponse(ctx context.Context, processInstanceKey int64, params *GetProcessInstanceTimerSubscriptionsParams, reqEditors ...RequestEditorFn) (*GetProcessInstanceTimerSubscriptionsResponse, error) {
+	rsp, err := c.GetProcessInstanceTimerSubscriptions(ctx, processInstanceKey, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProcessInstanceTimerSubscriptionsResponse(rsp)
 }
 
 // GetHistoryWithResponse request returning *GetHistoryResponse
@@ -6672,6 +7214,147 @@ func ParseGetChildProcessInstancesResponse(rsp *http.Response) (*GetChildProcess
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ProcessInstancePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProcessInstanceErrorSubscriptionsResponse parses an HTTP response from a GetProcessInstanceErrorSubscriptionsWithResponse call
+func ParseGetProcessInstanceErrorSubscriptionsResponse(rsp *http.Response) (*GetProcessInstanceErrorSubscriptionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProcessInstanceErrorSubscriptionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ErrorSubscriptionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProcessInstanceMessageSubscriptionsResponse parses an HTTP response from a GetProcessInstanceMessageSubscriptionsWithResponse call
+func ParseGetProcessInstanceMessageSubscriptionsResponse(rsp *http.Response) (*GetProcessInstanceMessageSubscriptionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProcessInstanceMessageSubscriptionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MessageSubscriptionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProcessInstanceTimerSubscriptionsResponse parses an HTTP response from a GetProcessInstanceTimerSubscriptionsWithResponse call
+func ParseGetProcessInstanceTimerSubscriptionsResponse(rsp *http.Response) (*GetProcessInstanceTimerSubscriptionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProcessInstanceTimerSubscriptionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TimerSubscriptionPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

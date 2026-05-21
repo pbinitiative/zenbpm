@@ -58,6 +58,78 @@ func (q *Queries) FindProcessInstanceErrorSubscriptions(ctx context.Context, arg
 	return items, nil
 }
 
+const findProcessInstanceErrorSubscriptionsPage = `-- name: FindProcessInstanceErrorSubscriptionsPage :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, error_code, state, created_at, execution_token,
+    COUNT(*) OVER () AS total_count
+FROM
+    error_subscription
+WHERE
+    process_instance_key = ?1
+    AND COALESCE(?2, state) = state
+ORDER BY key ASC
+LIMIT ?4 OFFSET ?3
+`
+
+type FindProcessInstanceErrorSubscriptionsPageParams struct {
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	State              sql.NullInt64 `json:"state"`
+	Offset             int64         `json:"offset"`
+	Size               int64         `json:"size"`
+}
+
+type FindProcessInstanceErrorSubscriptionsPageRow struct {
+	Key                  int64          `json:"key"`
+	ElementInstanceKey   int64          `json:"element_instance_key"`
+	ElementID            string         `json:"element_id"`
+	ProcessDefinitionKey int64          `json:"process_definition_key"`
+	ProcessInstanceKey   int64          `json:"process_instance_key"`
+	ErrorCode            sql.NullString `json:"error_code"`
+	State                int64          `json:"state"`
+	CreatedAt            int64          `json:"created_at"`
+	ExecutionToken       int64          `json:"execution_token"`
+	TotalCount           int64          `json:"total_count"`
+}
+
+func (q *Queries) FindProcessInstanceErrorSubscriptionsPage(ctx context.Context, arg FindProcessInstanceErrorSubscriptionsPageParams) ([]FindProcessInstanceErrorSubscriptionsPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceErrorSubscriptionsPage,
+		arg.ProcessInstanceKey,
+		arg.State,
+		arg.Offset,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindProcessInstanceErrorSubscriptionsPageRow{}
+	for rows.Next() {
+		var i FindProcessInstanceErrorSubscriptionsPageRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.ErrorCode,
+			&i.State,
+			&i.CreatedAt,
+			&i.ExecutionToken,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findTokenErrorSubscriptions = `-- name: FindTokenErrorSubscriptions :many
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, error_code, state, created_at, execution_token

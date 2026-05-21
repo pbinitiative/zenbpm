@@ -16,6 +16,7 @@ type Querier interface {
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
 	// Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+	// See pkg/bpmn/runtime/types.go for the discriminator constants.
 	DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error

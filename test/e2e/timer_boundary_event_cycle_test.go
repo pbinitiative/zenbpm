@@ -30,7 +30,7 @@ func TestTimerBoundaryEventNonInterruptingTimeCycle(t *testing.T) {
 		bpmnProcessId        = "timer-boundary-event-noninterrupting-timeCycle"
 		mainJobType          = "simple-job"
 		downstreamJobType    = "simple-job-2"
-		boundaryTimerElement = "service-task-id" // boundary timers persist the attached activity's id
+		boundaryTimerElement = "Event_1n9fcqj" // boundary timers persist the boundary event's own id (attached to "service-task-id")
 	)
 
 	definition, err := deployGetDefinition(t, bpmnFile, bpmnProcessId)

@@ -115,7 +115,14 @@ func parseISORepeatingInterval(expr string) (cycleSpec, error) {
 			return cycleSpec{}, fmt.Errorf("invalid period %q in timeCycle %q: must not be zero", first, expr)
 		}
 		spec.hasStart = true
-		spec.start = shiftBack(secondTime, firstDuration)
+		shifts := 1
+		if reps > 0 {
+			shifts = reps - 1
+		}
+		spec.start = secondTime
+		for i := 0; i < shifts; i++ {
+			spec.start = shiftBack(spec.start, firstDuration)
+		}
 		spec.period = firstDuration
 		return spec, nil
 	case firstTimeOK && secondTimeOK:
@@ -253,13 +260,30 @@ func (c cycleSpec) nextDueAt(now time.Time, consumedOccurrences int, firstDueFal
 	return due, true
 }
 
-func extractTimerEventDefinition(defs []bpmn20.EventDefinition) *bpmn20.TTimerEventDefinition {
-	for _, ed := range defs {
-		if td, ok := ed.(bpmn20.TTimerEventDefinition); ok {
-			return &td
+// extractTimerEventDefinition returns the sole TTimerEventDefinition from the list, if any.
+//
+// BPMN 2.0 technically permits multiple event definitions on a single catch event, but our
+// runtime Timer model only persists ElementId — not the specific event definition that fired —
+// so re-arming and renewal can't pick the right one back. To avoid silently selecting the wrong
+// definition we reject ambiguous configurations up front instead of returning the first match.
+func extractTimerEventDefinition(defs []bpmn20.EventDefinition) (*bpmn20.TTimerEventDefinition, error) {
+	var found *bpmn20.TTimerEventDefinition
+	for i := range defs {
+		td, ok := defs[i].(bpmn20.TTimerEventDefinition)
+		if !ok {
+			continue
 		}
+		if found != nil {
+			id := "<unknown>"
+			if td.Id != nil {
+				id = *td.Id
+			}
+			return nil, fmt.Errorf("element has multiple timer event definitions (e.g. %s); only one is supported", id)
+		}
+		tdCopy := td
+		found = &tdCopy
 	}
-	return nil
+	return found, nil
 }
 
 func isZeroDuration(d duration.Duration) bool {
@@ -268,17 +292,22 @@ func isZeroDuration(d duration.Duration) bool {
 
 // findTimerEventDefinition locates the TTimerEventDefinition for the given elementId in the
 // provided process definition. It looks at top-level start events, intermediate catch events,
-// boundary events, and start events of (nested) event subprocesses.
-func findTimerEventDefinition(definition *runtime.ProcessDefinition, elementId string) *bpmn20.TTimerEventDefinition {
+// boundary events, and start events of (nested) event subprocesses. Returns an error if the
+// matching element carries multiple timer event definitions (see extractTimerEventDefinition).
+func findTimerEventDefinition(definition *runtime.ProcessDefinition, elementId string) (*bpmn20.TTimerEventDefinition, error) {
 	if definition == nil {
-		return nil
+		return nil, nil
 	}
 	process := &definition.Definitions.Process
 	for i := range process.StartEvents {
 		se := process.StartEvents[i]
 		if se.GetId() == elementId {
-			if td := extractTimerEventDefinition(se.EventDefinitions); td != nil {
-				return td
+			td, err := extractTimerEventDefinition(se.EventDefinitions)
+			if err != nil {
+				return nil, fmt.Errorf("element %s: %w", elementId, err)
+			}
+			if td != nil {
+				return td, nil
 			}
 		}
 	}
@@ -286,7 +315,7 @@ func findTimerEventDefinition(definition *runtime.ProcessDefinition, elementId s
 		ice := process.IntermediateCatchEvent[i]
 		if ice.GetId() == elementId {
 			if td, ok := ice.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
-				return &td
+				return &td, nil
 			}
 		}
 	}
@@ -294,16 +323,20 @@ func findTimerEventDefinition(definition *runtime.ProcessDefinition, elementId s
 		be := process.BoundaryEvent[i]
 		if be.GetId() == elementId {
 			if td, ok := be.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
-				return &td
+				return &td, nil
 			}
 		}
 	}
 	if _, se := process.GetSubprocessAndStartEventById(elementId); se != nil {
-		if td := extractTimerEventDefinition(se.EventDefinitions); td != nil {
-			return td
+		td, err := extractTimerEventDefinition(se.EventDefinitions)
+		if err != nil {
+			return nil, fmt.Errorf("element %s: %w", elementId, err)
+		}
+		if td != nil {
+			return td, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // isInterruptingTimerElement reports whether the given timer should NOT be re-armed
@@ -474,8 +507,7 @@ func (engine *Engine) scheduleNextCycleTimer(
 
 // scheduleNextBoundaryCycleTimer schedules the next iteration for a fired timeCycle boundary
 // timer on the open EngineBatch. The boundary listener (and its timer definition / interrupting
-// flag) is resolved by the caller, so this helper does not rely on the persisted ElementId
-// (which for boundary timers refers to the attached activity, not the boundary event itself).
+// flag) is resolved by the caller, avoiding a redundant process-tree lookup by ElementId.
 // It is a no-op when the boundary event is interrupting or all repetitions have been consumed.
 func (engine *Engine) scheduleNextBoundaryCycleTimer(
 	ctx context.Context,
@@ -510,15 +542,19 @@ func (engine *Engine) persistNextCycleTimer(ctx context.Context, batch *EngineBa
 // exhausted repetitions, or not a cycle timer).
 //
 // This variant infers the timer event definition and interrupting-ness from the process
-// definition using the persisted timer's ElementId, which works for start, intermediate-catch
-// and event-subprocess timer-start events. For boundary timers — whose ElementId refers to the
-// attached activity — use scheduleNextBoundaryCycleTimer instead.
+// definition using the persisted timer's ElementId, which works for start, intermediate-catch,
+// event-subprocess and (now that boundary timers persist the boundary event id) boundary timer
+// events. Boundary timers prefer scheduleNextBoundaryCycleTimer because the caller already has
+// the resolved listener in scope.
 func (engine *Engine) buildNextCycleTimer(
 	ctx context.Context,
 	definition *runtime.ProcessDefinition,
 	triggeredTimer runtime.Timer,
 ) (*runtime.Timer, error) {
-	timerDef := findTimerEventDefinition(definition, triggeredTimer.ElementId)
+	timerDef, err := findTimerEventDefinition(definition, triggeredTimer.ElementId)
+	if err != nil {
+		return nil, err
+	}
 	if timerDef == nil || timerDef.TimeCycle == nil {
 		return nil, nil
 	}

@@ -836,7 +836,10 @@ func (engine *Engine) createBoundaryEventSubscriptions(ctx context.Context, batc
 				return err
 			}
 		case bpmn20.TTimerEventDefinition:
-			_, err := engine.createTimerCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TTimerEventDefinition), element, currentToken)
+			// Persist the boundary event's own id as the timer's ElementId so that cycle repetition counting (cycleTimerStats)
+			// does not aggregate independent timer boundary events that happen to be attached to the same activity.
+			boundaryEvent := be
+			_, err := engine.createTimerCatchEvent(ctx, batch, instance, be.EventDefinition.(bpmn20.TTimerEventDefinition), &boundaryEvent, currentToken)
 			if err != nil {
 				return err
 			}

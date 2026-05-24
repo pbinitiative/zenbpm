@@ -28,6 +28,7 @@ func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBa
 		return currentToken, fmt.Errorf("failed to create timer %+v: %w", timer, err)
 	}
 	if timer == nil { // timeCycle with no remaining occurrences
+		currentToken.State = runtime.TokenStateWaiting
 		return currentToken, nil
 	}
 	err = batch.SaveTimer(ctx, *timer)
@@ -171,12 +172,16 @@ func (engine *Engine) createCycleTimer(
 func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatch, timer runtime.Timer, instance runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	var listener *bpmn20.TBoundaryEvent
 
-	for _, be := range instance.ProcessInstance().Definition.Definitions.Process.BoundaryEvent {
-		if be.AttachedToRef != timer.Token.ElementId {
+	// Boundary timer ElementId is the boundary event's own id, so we can resolve the listener directly by id.
+	// This is critical when multiple timer boundary events are attached to the same activity —
+	// matching by AttachedToRef would otherwise pick an arbitrary one and break per-boundary cycle repetition tracking.
+	for i := range instance.ProcessInstance().Definition.Definitions.Process.BoundaryEvent {
+		be := &instance.ProcessInstance().Definition.Definitions.Process.BoundaryEvent[i]
+		if be.GetId() != timer.ElementId {
 			continue
 		}
 		if _, ok := be.EventDefinition.(bpmn20.TTimerEventDefinition); ok {
-			listener = &be
+			listener = be
 			break
 		}
 	}
@@ -219,14 +224,13 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			}
 		}
 	} else {
-		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
 		timerDef := listener.EventDefinition.(bpmn20.TTimerEventDefinition)
 		if timerDef.TimeCycle != nil {
 			if err := engine.scheduleNextBoundaryCycleTimer(ctx, batch, listener, timerDef, timer); err != nil {
 				return nil, fmt.Errorf("failed to schedule next boundary cycle timer: %w", err)
 			}
 		} else {
-			_, err := engine.createTimerCatchEvent(ctx, batch, instance, timerDef, element, token)
+			_, err := engine.createTimerCatchEvent(ctx, batch, instance, timerDef, listener, token)
 			if err != nil {
 				return nil, fmt.Errorf("failed to recreate timer subscription: %w", err)
 			}

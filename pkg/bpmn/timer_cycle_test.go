@@ -41,8 +41,37 @@ func TestParseCycle_WithDurationAndEndDate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, spec.repetitions)
 	assert.True(t, spec.hasStart)
-	assert.Equal(t, time.Date(2020, time.January, 2, 0, 0, 0, 0, time.UTC), spec.start)
+	// R3/P1D/2020-01-03 → 3 occurrences ending at 2020-01-03 → start = end - (n-1)*period = 2020-01-01.
+	assert.Equal(t, time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC), spec.start)
 	assert.Equal(t, 1, spec.period.D)
+}
+
+func TestParseCycle_WithDurationAndEndDate_InfiniteFallsBackToSingleShift(t *testing.T) {
+	// R/duration/end has no finite "first" occurrence; we fall back to end - period.
+	spec, err := parseCycle("R/P1D/2020-01-03T00:00:00Z")
+	require.NoError(t, err)
+	assert.Equal(t, -1, spec.repetitions)
+	assert.True(t, spec.hasStart)
+	assert.Equal(t, time.Date(2020, time.January, 2, 0, 0, 0, 0, time.UTC), spec.start)
+}
+
+func TestParseCycle_WithDurationAndEndDate_AllOccurrencesWithinInterval(t *testing.T) {
+	spec, err := parseCycle("R5/PT1H/2020-01-01T05:00:00Z")
+	require.NoError(t, err)
+	// Expected occurrences: 01:00, 02:00, 03:00, 04:00, 05:00.
+	want := []time.Time{
+		time.Date(2020, time.January, 1, 1, 0, 0, 0, time.UTC),
+		time.Date(2020, time.January, 1, 2, 0, 0, 0, time.UTC),
+		time.Date(2020, time.January, 1, 3, 0, 0, 0, time.UTC),
+		time.Date(2020, time.January, 1, 4, 0, 0, 0, time.UTC),
+		time.Date(2020, time.January, 1, 5, 0, 0, 0, time.UTC),
+	}
+	got := spec.start
+	assert.Equal(t, want[0], got)
+	for i := 1; i < len(want); i++ {
+		got = spec.shift(got)
+		assert.Equal(t, want[i], got)
+	}
 }
 
 func TestParseCycle_WithStartAndEndDate(t *testing.T) {
@@ -172,11 +201,26 @@ func TestExtractTimerEventDefinition(t *testing.T) {
 		TimeDuration: &bpmn20.TTimeInfo{XMLText: "PT1S"},
 	}
 	defs := []bpmn20.EventDefinition{td}
-	res := extractTimerEventDefinition(defs)
+	res, err := extractTimerEventDefinition(defs)
+	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.NotNil(t, res.TimeDuration)
 
-	assert.Nil(t, extractTimerEventDefinition([]bpmn20.EventDefinition{}))
+	empty, err := extractTimerEventDefinition([]bpmn20.EventDefinition{})
+	require.NoError(t, err)
+	assert.Nil(t, empty)
+}
+
+func TestExtractTimerEventDefinition_AmbiguousMultipleDefinitionsErrors(t *testing.T) {
+	id1, id2 := "t1", "t2"
+	defs := []bpmn20.EventDefinition{
+		bpmn20.TTimerEventDefinition{Id: &id1, TimeDuration: &bpmn20.TTimeInfo{XMLText: "PT1S"}},
+		bpmn20.TTimerEventDefinition{Id: &id2, TimeDuration: &bpmn20.TTimeInfo{XMLText: "PT2S"}},
+	}
+	res, err := extractTimerEventDefinition(defs)
+	assert.Nil(t, res)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple timer event definitions")
 }
 
 func TestIsInterruptingTimerElement_StartEvent(t *testing.T) {
@@ -232,15 +276,39 @@ func TestFindTimerEventDefinition_StartEvent(t *testing.T) {
 			EventDefinitions: []bpmn20.EventDefinition{td},
 		},
 	}
-	res := findTimerEventDefinition(def, "start-1")
+	res, err := findTimerEventDefinition(def, "start-1")
+	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.NotNil(t, res.TimeCycle)
 }
 
+func TestFindTimerEventDefinition_AmbiguousMultipleTimerDefinitionsErrors(t *testing.T) {
+	def := &runtime.ProcessDefinition{}
+	id1, id2 := "t1", "t2"
+	def.Definitions.Process.StartEvents = []bpmn20.TStartEvent{
+		{
+			TEvent: bpmn20.TEvent{TFlowNode: bpmn20.TFlowNode{TFlowElement: bpmn20.TFlowElement{TBaseElement: bpmn20.TBaseElement{Id: "start-x"}}}},
+			EventDefinitions: []bpmn20.EventDefinition{
+				bpmn20.TTimerEventDefinition{Id: &id1, TimeCycle: &bpmn20.TTimeInfo{XMLText: "R/PT1S"}},
+				bpmn20.TTimerEventDefinition{Id: &id2, TimeDuration: &bpmn20.TTimeInfo{XMLText: "PT5S"}},
+			},
+		},
+	}
+	res, err := findTimerEventDefinition(def, "start-x")
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "start-x")
+}
+
 func TestFindTimerEventDefinition_NotFound(t *testing.T) {
 	def := &runtime.ProcessDefinition{}
-	assert.Nil(t, findTimerEventDefinition(def, "missing"))
-	assert.Nil(t, findTimerEventDefinition(nil, "missing"))
+	res, err := findTimerEventDefinition(def, "missing")
+	require.NoError(t, err)
+	assert.Nil(t, res)
+
+	res, err = findTimerEventDefinition(nil, "missing")
+	require.NoError(t, err)
+	assert.Nil(t, res)
 }
 
 func TestFindTimerEventDefinition_BoundaryEvent(t *testing.T) {
@@ -252,7 +320,8 @@ func TestFindTimerEventDefinition_BoundaryEvent(t *testing.T) {
 			EventDefinition: td,
 		},
 	}
-	res := findTimerEventDefinition(def, "b-1")
+	res, err := findTimerEventDefinition(def, "b-1")
+	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.NotNil(t, res.TimeDuration)
 }
@@ -276,7 +345,8 @@ func TestBpmnParse_TimeCycle(t *testing.T) {
 	require.NotNil(t, startEvent)
 	assert.False(t, startEvent.IsInterrupting, "expected non-interrupting start event")
 
-	td := extractTimerEventDefinition(startEvent.EventDefinitions)
+	td, err := extractTimerEventDefinition(startEvent.EventDefinitions)
+	require.NoError(t, err)
 	require.NotNil(t, td)
 	require.NotNil(t, td.TimeCycle)
 	assert.Equal(t, "R3/PT1S", td.TimeCycle.XMLText)
@@ -429,7 +499,8 @@ func TestBuildNextCycleTimer_NoRearmAfterAllRepetitions(t *testing.T) {
 		},
 	}
 	// Sanity: parser sees R2.
-	td := findTimerEventDefinition(def, "evt-start-1")
+	td, err := findTimerEventDefinition(def, "evt-start-1")
+	require.NoError(t, err)
 	require.NotNil(t, td)
 	require.NotNil(t, td.TimeCycle)
 	spec, err := findCycleValue(*td)

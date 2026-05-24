@@ -13,10 +13,22 @@ import (
 )
 
 func (engine *Engine) createTimerCatchEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, timerDef bpmn20.TTimerEventDefinition, element bpmn20.FlowNode, currentToken runtime.ExecutionToken) (runtime.ExecutionToken, error) {
-	timer, err := engine.createDurationTimer(instance, timerDef, element.GetId(), &currentToken)
+	var timer *runtime.Timer
+	var err error
+	switch {
+	case timerDef.TimeCycle != nil:
+		timer, err = engine.createCycleTimer(instance, timerDef, element.GetId(), &currentToken)
+	case timerDef.TimeDate != nil:
+		timer, err = engine.createDateTimer(instance, timerDef, element.GetId(), &currentToken)
+	default:
+		timer, err = engine.createDurationTimer(instance, timerDef, element.GetId(), &currentToken)
+	}
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to create timer %+v: %w", timer, err)
+	}
+	if timer == nil { // timeCycle with no remaining occurrences
+		return currentToken, nil
 	}
 	err = batch.SaveTimer(ctx, *timer)
 	if err != nil {
@@ -91,6 +103,71 @@ func findStartTime(timerDef bpmn20.TTimerEventDefinition) (time.Time, error) {
 	return datetime.ParseLocal(timeDateStr)
 }
 
+// createDateTimer builds a runtime.Timer for a timer event definition that uses timeDate.
+func (engine *Engine) createDateTimer(
+	instance runtime.ProcessInstance,
+	timerDef bpmn20.TTimerEventDefinition,
+	elementId string,
+	token *runtime.ExecutionToken,
+) (*runtime.Timer, error) {
+	startTime, err := findStartTime(timerDef)
+	if err != nil {
+		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeDate' value from element with ID=%s. Error:%s", elementId, err.Error())}
+	}
+	now := time.Now()
+	var elementInstanceKey *int64
+	if token != nil {
+		elementInstanceKey = &token.ElementInstanceKey
+	}
+	return &runtime.Timer{
+		ElementId:            elementId,
+		Key:                  engine.generateKey(),
+		ElementInstanceKey:   elementInstanceKey,
+		ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+		ProcessInstanceKey:   &instance.ProcessInstance().Key,
+		TimerState:           runtime.TimerStateCreated,
+		CreatedAt:            now,
+		DueAt:                startTime,
+		Duration:             startTime.Sub(now),
+		Token:                token,
+	}, nil
+}
+
+// createCycleTimer builds a runtime.Timer for the first iteration of a timer event definition
+// that uses timeCycle. Subsequent iterations are scheduled by scheduleNextCycleTimer after each fire.
+func (engine *Engine) createCycleTimer(
+	instance runtime.ProcessInstance,
+	timerDef bpmn20.TTimerEventDefinition,
+	elementId string,
+	token *runtime.ExecutionToken,
+) (*runtime.Timer, error) {
+	spec, err := findCycleValue(timerDef)
+	if err != nil {
+		return nil, &BpmnEngineError{Msg: fmt.Sprintf("Error parsing 'timeCycle' value from element with ID=%s. Error:%s", elementId, err.Error())}
+	}
+	now := time.Now()
+	dueAt, ok := spec.nextDueAt(now, 0, time.Time{})
+	if !ok {
+		return nil, nil
+	}
+	var elementInstanceKey *int64
+	if token != nil {
+		elementInstanceKey = &token.ElementInstanceKey
+	}
+	return &runtime.Timer{
+		ElementId:            elementId,
+		Key:                  engine.generateKey(),
+		ElementInstanceKey:   elementInstanceKey,
+		ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+		ProcessInstanceKey:   &instance.ProcessInstance().Key,
+		TimerState:           runtime.TimerStateCreated,
+		CreatedAt:            now,
+		DueAt:                dueAt,
+		Duration:             dueAt.Sub(now),
+		Token:                token,
+	}, nil
+}
+
 func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatch, timer runtime.Timer, instance runtime.ProcessInstance, token runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
 	var listener *bpmn20.TBoundaryEvent
 
@@ -108,7 +185,9 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 	}
 
 	timer.TimerState = runtime.TimerStateTriggered
-	batch.SaveTimer(ctx, timer)
+	if err := batch.SaveTimer(ctx, timer); err != nil {
+		return nil, fmt.Errorf("failed to update timer state for timer %d: %w", timer.Key, err)
+	}
 
 	if listener.CancellActivity {
 		// cancel job
@@ -141,10 +220,16 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 		}
 	} else {
 		element := instance.ProcessInstance().Definition.Definitions.Process.GetFlowNodeById(token.ElementId)
-		// recreate the message subscription
-		_, err := engine.createTimerCatchEvent(ctx, batch, instance, listener.EventDefinition.(bpmn20.TTimerEventDefinition), element, token)
-		if err != nil {
-			return nil, fmt.Errorf("failed to recreate message subscription: %w", err)
+		timerDef := listener.EventDefinition.(bpmn20.TTimerEventDefinition)
+		if timerDef.TimeCycle != nil {
+			if err := engine.scheduleNextBoundaryCycleTimer(ctx, batch, listener, timerDef, timer); err != nil {
+				return nil, fmt.Errorf("failed to schedule next boundary cycle timer: %w", err)
+			}
+		} else {
+			_, err := engine.createTimerCatchEvent(ctx, batch, instance, timerDef, element, token)
+			if err != nil {
+				return nil, fmt.Errorf("failed to recreate timer subscription: %w", err)
+			}
 		}
 
 		token = runtime.ExecutionToken{
@@ -154,7 +239,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
-		err = batch.SaveToken(ctx, token)
+		err := batch.SaveToken(ctx, token)
 		if err != nil {
 			return nil, err
 		}

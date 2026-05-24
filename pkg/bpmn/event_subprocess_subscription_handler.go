@@ -27,6 +27,10 @@ type eventSubprocessTrigger struct {
 	refresh func(ctx context.Context) (skip bool, err error)
 	// markConsumed records the trigger as consumed (timer triggered / subscription completed) on the batch.
 	markConsumed func(ctx context.Context, batch *EngineBatch) error
+	// afterConsumed runs after markConsumed (still inside the open batch) and receives the parent process
+	// definition. Triggers that need follow-up writes which depend on the BPMN definition (e.g. timeCycle
+	// re-arming after the previous timer fires) implement this. It must be safe to be nil.
+	afterConsumed func(ctx context.Context, batch *EngineBatch, definition *runtime.ProcessDefinition) error
 }
 
 // startEventSubprocess implements the activation logic shared by message and timer (and potentially future new) start event subprocesses.
@@ -87,6 +91,12 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	if err := t.markConsumed(ctx, &batch); err != nil {
 		return err
+	}
+
+	if t.afterConsumed != nil {
+		if err := t.afterConsumed(ctx, &batch, instance.ProcessInstance().Definition); err != nil {
+			return err
+		}
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
@@ -260,6 +270,13 @@ func (engine *Engine) processTimerTriggerOnEventSubprocess(ctx context.Context, 
 			current.TimerState = runtime.TimerStateTriggered
 			if err := batch.SaveTimer(ctx, current); err != nil {
 				return fmt.Errorf("failed to update timer state for timer %d: %w", current.Key, err)
+			}
+			return nil
+		},
+		afterConsumed: func(ctx context.Context, batch *EngineBatch, definition *runtime.ProcessDefinition) error {
+			// For timeCycle event-subprocess timer-start events schedule the next iteration (if any).
+			if err := engine.scheduleNextCycleTimer(ctx, batch, definition, current); err != nil {
+				return fmt.Errorf("failed to schedule next cycle timer for element %s: %w", current.ElementId, err)
 			}
 			return nil
 		},

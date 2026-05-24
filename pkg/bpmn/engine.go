@@ -511,7 +511,7 @@ func (engine *Engine) createStartEventSubscriptions(
 ) error {
 	for _, startEvent := range process.StartEvents {
 		for _, startEventDefinition := range startEvent.EventDefinitions {
-			err := engine.createTimerStartEventTimers(ctx, batch, startEventDefinition, startEvent, processDefinition.Key, processInstance)
+			err := engine.createTimerStartEventTimers(ctx, batch, startEventDefinition, startEvent, processDefinition.Key, processInstance, nil)
 			if err != nil {
 				return fmt.Errorf("failed to create timers for timer start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
 			}
@@ -531,55 +531,72 @@ func (engine *Engine) createTimerStartEventTimers(
 	startEvent bpmn20.TStartEvent,
 	processDefinitionKey int64,
 	processInstance *runtime.ProcessInstance,
+	inFlightTriggeredCycleTimerKey *int64,
 ) error {
-	if timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition); ok {
-		switch {
-		case timerStartEventDefinition.TimeDate != nil:
-			startTime, err := findStartTime(timerStartEventDefinition)
-			if err != nil {
-				return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
-					startEvent.GetId(), processDefinitionKey, err)
-			}
-			now := time.Now()
-			var processInstanceKey *int64
-			if processInstance != nil {
-				processInstanceKey = &(*processInstance).ProcessInstance().Key
-			}
-			timer := runtime.Timer{
-				ElementId:            startEvent.GetId(),
-				Key:                  engine.generateKey(),
-				ElementInstanceKey:   nil,
-				ProcessDefinitionKey: processDefinitionKey,
-				ProcessInstanceKey:   processInstanceKey,
-				TimerState:           runtime.TimerStateCreated,
-				CreatedAt:            now,
-				DueAt:                startTime,
-				Duration:             startTime.Sub(now),
-				Token:                nil,
-			}
-			err = batch.SaveTimer(ctx, timer)
-			if err != nil {
-				return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
-					startEvent.GetId(), processDefinitionKey, err)
-			}
-			engine.timerManager.registerTimer(timer)
-		case timerStartEventDefinition.TimeDuration != nil:
-			if processInstance == nil {
-				return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
-					processDefinitionKey, startEvent.GetId())
-			}
-			timer, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
-			if err != nil {
-				return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
-					startEvent.GetId(), processDefinitionKey, err)
-			}
-			err = batch.SaveTimer(ctx, *timer)
-			if err != nil {
-				return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
-					startEvent.GetId(), processDefinitionKey, err)
-			}
-		}
+	timerStartEventDefinition, ok := startEventDefinition.(bpmn20.TTimerEventDefinition)
+	if !ok {
+		return nil
 	}
+	var processInstanceKey *int64
+	if processInstance != nil {
+		key := (*processInstance).ProcessInstance().Key
+		processInstanceKey = &key
+	}
+	var timer *runtime.Timer
+	switch {
+	case timerStartEventDefinition.TimeDate != nil:
+		startTime, err := findStartTime(timerStartEventDefinition)
+		if err != nil {
+			return fmt.Errorf("error parsing 'timeDate' value for element %s of definition %d: %w",
+				startEvent.GetId(), processDefinitionKey, err)
+		}
+		now := time.Now()
+		t := runtime.Timer{
+			ElementId:            startEvent.GetId(),
+			Key:                  engine.generateKey(),
+			ElementInstanceKey:   nil,
+			ProcessDefinitionKey: processDefinitionKey,
+			ProcessInstanceKey:   processInstanceKey,
+			TimerState:           runtime.TimerStateCreated,
+			CreatedAt:            now,
+			DueAt:                startTime,
+			Duration:             startTime.Sub(now),
+			Token:                nil,
+		}
+		timer = &t
+	case timerStartEventDefinition.TimeDuration != nil:
+		if processInstance == nil {
+			return fmt.Errorf("missing processInstanceKey for timer start event with duration. processDefinitionKey=%d, startEventId=%s",
+				processDefinitionKey, startEvent.GetId())
+		}
+		t, err := engine.createDurationTimer(*processInstance, timerStartEventDefinition, startEvent.GetId(), nil)
+		if err != nil {
+			return fmt.Errorf("failed to create duration timer for timer start event %s of definition %d: %w",
+				startEvent.GetId(), processDefinitionKey, err)
+		}
+		timer = t
+	case timerStartEventDefinition.TimeCycle != nil:
+		t, err := engine.createCycleStartTimer(ctx, processDefinitionKey, processInstanceKey, startEvent.GetId(), timerStartEventDefinition, inFlightTriggeredCycleTimerKey)
+		if err != nil {
+			return fmt.Errorf("failed to create cycle timer for timer start event %s of definition %d: %w",
+				startEvent.GetId(), processDefinitionKey, err)
+		}
+		if t == nil { // Cycle has been exhausted (or a Created timer already exists) — nothing to do.
+			return nil
+		}
+		timer = t
+	}
+	if timer == nil {
+		return nil
+	}
+	if err := batch.SaveTimer(ctx, *timer); err != nil {
+		return fmt.Errorf("failed to save timer for timer start event %s of definition %d: %w",
+			startEvent.GetId(), processDefinitionKey, err)
+	}
+	saved := *timer
+	batch.AddPostFlushAction(ctx, func() {
+		engine.timerManager.registerTimer(saved)
+	})
 	return nil
 }
 

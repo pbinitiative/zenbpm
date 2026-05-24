@@ -326,7 +326,7 @@ type TTimerEventDefinition struct {
 	Id           *string    `xml:"id,attr"`
 	TimeDuration *TTimeInfo `xml:"timeDuration"`
 	TimeDate     *TTimeInfo `xml:"timeDate"`
-	// TimeCycle    TTimeInfo `xml:"timeCycle"` // TODO: implement support for TimeCycles
+	TimeCycle    *TTimeInfo `xml:"timeCycle"`
 }
 
 func (TTimerEventDefinition) eventDefinition() {}

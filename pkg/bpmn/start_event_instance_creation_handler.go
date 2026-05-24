@@ -32,6 +32,10 @@ type startEventInstanceCreationTrigger struct {
 	// markConsumed records the trigger as consumed (timer Triggered / subscription Completed)
 	// on the batch.
 	markConsumed func(ctx context.Context, batch storage.Batch) error
+	// inFlightTriggeredTimerKey is set for timer triggers and identifies the timer whose Triggered
+	// transition is being written by markConsumed on the same batch. It lets timeCycle renewal see
+	// a consistent view of the cycle history even though the just-consumed timer is still persisted as Created.
+	inFlightTriggeredTimerKey *int64
 }
 
 // handleStartEventInstanceCreation is the shared implementation for activating a
@@ -70,7 +74,7 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 	if pdErr == nil {
 		startEvent = findStartEventById(&processDefinition.Definitions.Process, t.elementId)
 		if startEvent != nil {
-			if renewErr := engine.renewStartEventTrigger(ctx, batch, processDefinition, *startEvent); renewErr != nil {
+			if renewErr := engine.renewStartEventTrigger(ctx, batch, processDefinition, *startEvent, t.inFlightTriggeredTimerKey); renewErr != nil {
 				return renewErr
 			}
 		}
@@ -99,32 +103,40 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 	return nil
 }
 
-// renewStartEventTrigger re-creates the message subscription on the given start event so that subsequent published
-// messages can spawn additional process instances. The new subscription is persisted via the batch and is independent
-// of the just-consumed one (different key, Active state).
+// renewStartEventTrigger re-creates the trigger on the given start event so that subsequent firings
+// can spawn additional process instances. The new trigger is persisted via the batch and is independent
+// of the just-consumed one (different key, Active/Created state).
 //
-// Note: timer start events are NOT renewed here. Recurring `timeCycle` timers would be the only case where renewal is
-// meaningful, and they are not yet implemented in createTimerStartEventTimers. Any other (signal/error/...) event
-// definitions are also intentionally not renewed.
+// Renewal semantics by event definition kind:
+//   - Message: always re-created (start-event message subscriptions are inherently long-lived).
+//   - Timer with timeCycle: re-armed via createTimerStartEventTimers; createCycleStartTimer is a no-op once the configured number of repetitions has been consumed.
+//   - Timer with timeDate / timeDuration: NOT renewed — these are one-shot per BPMN semantics.
+//   - Other event definitions (signal/error/...): not yet supported as definition-level start triggers.
+//
+// inFlightTriggeredTimerKey, if non-nil, identifies the timer whose Triggered transition is being written by markConsumed
+// on the same batch. Cycle renewal compensates for the fact that this timer is still persisted as Created when stats are queried.
 func (engine *Engine) renewStartEventTrigger(
 	ctx context.Context,
 	batch storage.Batch,
 	processDefinition runtime.ProcessDefinition,
 	startEvent bpmn20.TStartEvent,
+	inFlightTriggeredTimerKey *int64,
 ) error {
 	for _, eventDef := range startEvent.EventDefinitions {
-		switch eventDef.(type) {
+		switch typed := eventDef.(type) {
 		case bpmn20.TMessageEventDefinition:
 			if err := engine.createMessageStartEventMessageSubscriptions(ctx, batch, eventDef, startEvent, processDefinition, nil); err != nil {
 				return fmt.Errorf("failed to re-create message subscription for start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
 			}
 		case bpmn20.TTimerEventDefinition:
-			// TODO: when TimeCycle timer start events are supported, createTimerStartEventTimers
-			// should be called here to re-create the timer trigger. timeDate / timeDuration timers
-			// are one-shot per BPMN semantics and must NOT be renewed.
+			if typed.TimeCycle == nil { // timeDate / timeDuration timers are one-shot per BPMN semantics and must NOT be renewed.
+				continue
+			}
+			if err := engine.createTimerStartEventTimers(ctx, batch, eventDef, startEvent, processDefinition.Key, nil, inFlightTriggeredTimerKey); err != nil {
+				return fmt.Errorf("failed to re-create cycle timer for start event %s of definition %d: %w", startEvent.GetId(), processDefinition.Key, err)
+			}
 		default:
-			// Other event definitions (signal/error/...) are not supported as definition-level
-			// start-event triggers yet; nothing to renew.
+			// Other event definitions (signal/error/...) are not supported as definition-level start-event triggers yet; nothing to renew.
 		}
 	}
 	return nil
@@ -182,10 +194,11 @@ func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, mess
 func (engine *Engine) processTimerTriggerOnInstanceCreation(ctx context.Context, timer runtime.Timer) (*runtime.ProcessInstance, []runtime.ExecutionToken, error) {
 	current := timer
 	err := engine.handleStartEventInstanceCreation(ctx, startEventInstanceCreationTrigger{
-		triggerKey:           timer.Key,
-		processDefinitionKey: timer.ProcessDefinitionKey,
-		elementId:            timer.ElementId,
-		inputVariables:       map[string]any{},
+		triggerKey:                timer.Key,
+		processDefinitionKey:      timer.ProcessDefinitionKey,
+		elementId:                 timer.ElementId,
+		inputVariables:            map[string]any{},
+		inFlightTriggeredTimerKey: &timer.Key,
 		refresh: func(ctx context.Context) (bool, error) {
 			refreshed, err := engine.persistence.GetTimer(ctx, timer.Key)
 			if err != nil {

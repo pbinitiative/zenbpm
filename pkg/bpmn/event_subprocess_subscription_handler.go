@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -27,6 +28,11 @@ type eventSubprocessTrigger struct {
 	refresh func(ctx context.Context) (skip bool, err error)
 	// markConsumed records the trigger as consumed (timer triggered / subscription completed) on the batch.
 	markConsumed func(ctx context.Context, batch *EngineBatch) error
+	// renew, when non-nil, is invoked AFTER markConsumed but only when the event subprocess start event is
+	// non-interrupting. It is responsible for re-creating the trigger (e.g. a fresh Active
+	// InstanceMessageSubscription) so subsequent fires can activate the event subprocess again — a
+	// non-interrupting event subprocess can run any number of times for the lifetime of its parent.
+	renew func(ctx context.Context, batch *EngineBatch) error
 }
 
 // startEventSubprocess implements the activation logic shared by message and timer (and potentially future new) start event subprocesses.
@@ -87,6 +93,13 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 
 	if err := t.markConsumed(ctx, &batch); err != nil {
 		return err
+	}
+
+	// Non-interrupting event subprocesses can be triggered multiple times for a single parent process instance.
+	if !startEventDef.IsInterrupting && t.renew != nil {
+		if err := t.renew(ctx, &batch); err != nil {
+			return err
+		}
 	}
 
 	batch.AddPostFlushAction(ctx, func() {
@@ -227,6 +240,27 @@ func (engine *Engine) PublishMessageOnEventSubprocess(ctx context.Context, messa
 			current.State = runtime.ActivityStateCompleted
 			if err := batch.SaveMessageSubscription(ctx, current); err != nil {
 				return fmt.Errorf("failed to save message subscription %d: %w", current.Key, err)
+			}
+			return nil
+		},
+		renew: func(ctx context.Context, batch *EngineBatch) error {
+			// Re-create the InstanceMessageSubscription with the same name/correlation key but a fresh
+			// key and Active state so subsequent publishes can trigger the non-interrupting event subprocess again.
+			renewed := &runtime.InstanceMessageSubscription{
+				ProcessInstanceKey: current.ProcessInstanceKey,
+				CorrelationKey:     current.CorrelationKey,
+				MessageSubscriptionData: runtime.MessageSubscriptionData{
+					Key:                  engine.generateKey(),
+					ElementId:            current.ElementId,
+					Name:                 current.Name,
+					State:                runtime.ActivityStateActive,
+					ProcessDefinitionKey: current.ProcessDefinitionKey,
+					CreatedAt:            time.Now(),
+				},
+			}
+			if err := batch.SaveMessageSubscription(ctx, renewed); err != nil {
+				return fmt.Errorf("failed to renew non-interrupting message subscription for element %s on instance %d: %w",
+					current.ElementId, current.ProcessInstanceKey, err)
 			}
 			return nil
 		},

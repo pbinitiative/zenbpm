@@ -357,7 +357,7 @@ func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.Process
 		}
 		ck, ok := correlationKeyResult.(string)
 		if !ok {
-			return "", fmt.Errorf("result of correlation key evaluation is not a string: %w", err)
+			return "", fmt.Errorf("result of correlation key evaluation is not a string: got %T (%v)", correlationKeyResult, correlationKeyResult)
 		}
 		correlationKey = ck
 	}

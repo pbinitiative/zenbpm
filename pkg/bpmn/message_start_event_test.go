@@ -115,13 +115,29 @@ func TestPublishMessage_OnDefinitionSubscription_CreatesActiveProcessInstance(t 
 			"variables published with the message must be propagated to the new process instance")
 	}
 
+	var completedOriginal, freshlyActive int
 	for _, sub := range store.MessageSubscriptions {
-		if defSub, ok := sub.(*runtime.DefinitionMessageSubscription); ok &&
-			defSub.MessageSubscription().ProcessDefinitionKey == def.Key {
-			assert.Equal(t, runtime.ActivityStateCompleted, defSub.MessageSubscription().State,
-				"definition-level message subscription must be Completed after the message has been published")
+		defSub, ok := sub.(*runtime.DefinitionMessageSubscription)
+		if !ok || defSub.MessageSubscription().ProcessDefinitionKey != def.Key {
+			continue
+		}
+		switch defSub.MessageSubscription().State {
+		case runtime.ActivityStateCompleted:
+			completedOriginal++
+		case runtime.ActivityStateActive:
+			freshlyActive++
+			assert.Equal(t, "messageStartEventProcessRef", defSub.MessageSubscription().Name,
+				"renewed subscription must target the same message name")
+			assert.Equal(t, def.Key, defSub.MessageSubscription().ProcessDefinitionKey,
+				"renewed subscription must point at the same process definition")
+			assert.Equal(t, "messageStartEvent_1234", defSub.MessageSubscription().ElementId,
+				"renewed subscription must point at the same start-event element")
 		}
 	}
+	assert.Equal(t, 1, completedOriginal,
+		"the consumed definition-level subscription must remain in Completed state")
+	assert.Equal(t, 1, freshlyActive,
+		"a fresh Active definition-level subscription must be created for follow-up messages")
 }
 
 // TestLoadFromBytes_MessageStartEvent_RegisterIsDeterministic verifies that loading two

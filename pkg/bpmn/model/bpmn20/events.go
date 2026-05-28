@@ -54,14 +54,13 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 		startEvent.IsInterrupting = true
 	}
 	startEvent.ParallelMultiple = tempStruct.ParallelMultiple
+	startEvent.Output = tempStruct.Output
 	startEvent.EventDefinitions = make([]EventDefinition, 0)
 	if tempStruct.TimerEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.TimerEventDefinition)
-		startEvent.Output = tempStruct.Output
 	}
 	if tempStruct.MessageEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.MessageEventDefinition)
-		startEvent.Output = tempStruct.Output
 	}
 	return nil
 }

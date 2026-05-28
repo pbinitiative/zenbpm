@@ -247,8 +247,11 @@ func TestLoadFromBytes_TimerStartEvent_IdenticalReloadKeepsExistingTimer(t *test
 
 // TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer verifies that loading a process
 // definition with a timer start event twice (with timeDate in future) results in exactly
-// one timer in the DB for the latest process definition, and that this only timer fires to create an
-// active process instance.
+// one timer in the DB for the latest process definition before the timer fires, and that
+// the timer fires to create an active process instance. After the timer fires the engine
+// must mark the original timer as Triggered. The `timeDate` timer is one-shot per BPMN
+// semantics and must NOT be renewed (renewing it would re-fire immediately on the next
+// poll cycle and cascade duplicate process instances).
 func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T) {
 	store := inmemory.NewStorage()
 	engine := NewEngine(EngineWithStorage(store), EngineWithPollTimerDelay(200*time.Millisecond))
@@ -291,38 +294,53 @@ func TestLoadFromBytes_TimerStartEvent_ReloadCreatesExactlyOneTimer(t *testing.T
 	err = engine.RegisterProcessDefinitionSubscriptions(t.Context(), def2.Key)
 	require.NoError(t, err)
 
-	// Wait for the timer to fire (timeDate = now+1s, wait 2s)
-	time.Sleep(2 * time.Second)
+	// Wait until the v2 timer has been Triggered (i.e. the original timer has fired).
+	require.Eventually(t, func() bool {
+		for _, timer := range store.Timers {
+			if timer.ProcessDefinitionKey == def2.Key && timer.TimerState == runtime.TimerStateTriggered {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 50*time.Millisecond,
+		"expected the original v2 timer to be Triggered after it fired")
 
-	// Assert: exactly 1 timer exists in DB for the v2 process definition
-	// and no timer exists for the v1 process definition
-	var timersForV2 []runtime.Timer
+	// Assert: no timer exists for the v1 process definition (replaced when v2 was deployed).
 	for _, timer := range store.Timers {
-		assert.NotEqual(t, def1.Key, timer.ProcessDefinitionKey, "expected no timer for v1 process definition")
-		if timer.ProcessDefinitionKey == def2.Key {
-			timersForV2 = append(timersForV2, timer)
+		assert.NotEqualf(t, def1.Key, timer.ProcessDefinitionKey,
+			"expected no timer for v1 process definition, found timer %d in state %v", timer.Key, timer.TimerState)
+	}
+
+	// Assert: exactly one Triggered timer for v2 and NO Created timer (timeDate is one-shot, must not be renewed).
+	var triggeredV2, createdV2 int
+	for _, timer := range store.Timers {
+		if timer.ProcessDefinitionKey != def2.Key {
+			continue
+		}
+		switch timer.TimerState {
+		case runtime.TimerStateTriggered:
+			triggeredV2++
+		case runtime.TimerStateCreated:
+			createdV2++
 		}
 	}
-	assert.Equal(t, 1, len(timersForV2), "expected exactly 1 timer for v2 process definition")
+	assert.Equal(t, 1, triggeredV2, "expected exactly one Triggered timer for v2 (the original timer that fired)")
+	assert.Equal(t, 0, createdV2, "expected no Created timer for v2: timeDate timer-start events are one-shot and must not be renewed")
 
-	// Assert: one process instance for the v2 definition is Active
-	activeInstances := 0
+	// Assert: exactly one active process instance was spawned for v2 and none for v1.
+	activeForV2 := 0
 	for _, pi := range store.ProcessInstances {
 		piData := pi.ProcessInstance()
-		if piData.Definition != nil && piData.Definition.Key == def2.Key &&
-			piData.GetState() == runtime.ActivityStateActive {
-			activeInstances++
+		if piData.Definition == nil {
+			continue
+		}
+		assert.NotEqual(t, def1.Key, piData.Definition.Key, "expected no process instance for v1 process definition")
+		if piData.Definition.Key == def2.Key && piData.GetState() == runtime.ActivityStateActive {
+			activeForV2++
 		}
 	}
-	assert.Equal(t, 1, activeInstances, "expected exactly 1 active process instance for v2 process definition")
-
-	// Assert: no process instance exists for the v1 process definition
-	for _, pi := range store.ProcessInstances {
-		piData := pi.ProcessInstance()
-		if piData.Definition != nil {
-			assert.NotEqual(t, def1.Key, piData.Definition.Key, "expected no process instance for v1 process definition")
-		}
-	}
+	assert.Equal(t, 1, activeForV2,
+		"expected exactly one active process instance for v2 after the timer fired")
 }
 
 // TestCreateStartProcessOnTimerStartEvent_TimerMarkedTriggeredBeforeInstanceCreation

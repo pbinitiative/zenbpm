@@ -25,6 +25,20 @@ func createNewIncidentFromToken(err error, token runtime.ExecutionToken, engine 
 	}
 }
 
+func (engine *Engine) retryEventSubprocessSubscriptionIncident(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, incident runtime.Incident) error {
+	processDefinition := instance.ProcessInstance().Definition
+	if processDefinition == nil {
+		return fmt.Errorf("process instance %d has no process definition", instance.ProcessInstance().Key)
+	}
+
+	subProcess, startEvent := processDefinition.Definitions.Process.GetSubprocessAndStartEventById(incident.ElementId)
+	if subProcess == nil || startEvent == nil {
+		return fmt.Errorf("failed to find event subprocess start event %s in process definition %d", incident.ElementId, processDefinition.Key)
+	}
+
+	return engine.createStartEventSubscriptions(ctx, batch, subProcess.TProcess, *processDefinition, &instance)
+}
+
 func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr error) {
 	ctx, resoveIncidentSpan := engine.tracer.Start(ctx, fmt.Sprintf("incident:%d", key))
 	defer func() {
@@ -72,6 +86,20 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 	}
 	if incident.ResolvedAt != nil {
 		return newEngineErrorf("incident with key %d was already resolved", key)
+	}
+
+	if incident.Token.Key == 0 {
+		if err := engine.retryEventSubprocessSubscriptionIncident(ctx, &batch, instance, incident); err != nil {
+			return fmt.Errorf("failed to recreate event subprocess subscription for incident %d: %w", key, err)
+		}
+		incident.ResolvedAt = ptr.To(time.Now())
+		if err := batch.SaveIncident(ctx, incident); err != nil {
+			return fmt.Errorf("failed to save resolved incident %d: %w", incident.Key, err)
+		}
+		if err := batch.Flush(ctx); err != nil {
+			return newEngineErrorf("failed to complete incident with key: %d", key)
+		}
+		return nil
 	}
 
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)

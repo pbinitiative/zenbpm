@@ -338,21 +338,26 @@ func assertTimerTriggered(t *testing.T, instanceKey int64, elementId string) {
 }
 
 // assertTimerCreated verifies that a timer with the given elementId exists in TimerStateCreated
-// for the given process instance (i.e. the timer has not yet fired).
+// for the given process instance (i.e. the timer has not yet fired). Retries until the timer shows up
 func assertTimerCreated(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 	require.NoError(t, err)
-	createdTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
-	require.NoError(t, err)
-	found := false
-	for _, timer := range createdTimers {
-		if timer.ElementId == elementId {
-			found = true
-			break
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		createdTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
+		if !assert.NoError(collect, err) {
+			return
 		}
-	}
-	assert.True(t, found, "expected timer with elementId %q to be in TimerStateCreated for process instance %d, got: %+v", elementId, instanceKey, createdTimers)
+		found := false
+		for _, timer := range createdTimers {
+			if timer.ElementId == elementId {
+				found = true
+				break
+			}
+		}
+		assert.True(collect, found, "expected timer with elementId %q to be in TimerStateCreated for process instance %d, got: %+v", elementId, instanceKey, createdTimers)
+	}, 20*time.Second, 100*time.Millisecond, "timer should be created")
 }
 
 // assertTimerCancelled verifies that a timer with the given elementId exists in TimerStateCancelled
@@ -361,14 +366,18 @@ func assertTimerCancelled(t *testing.T, instanceKey int64, elementId string) {
 	t.Helper()
 	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 	require.NoError(t, err)
-	cancelledTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCancelled)
-	require.NoError(t, err)
-	found := false
-	for _, timer := range cancelledTimers {
-		if timer.ElementId == elementId {
-			found = true
-			break
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		cancelledTimers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCancelled)
+		if !assert.NoError(collect, err) {
+			return
 		}
-	}
-	assert.True(t, found, "expected timer with elementId %q to be in TimerStateCancelled for process instance %d, got: %+v", elementId, instanceKey, cancelledTimers)
+		found := false
+		for _, timer := range cancelledTimers {
+			if timer.ElementId == elementId {
+				found = true
+				break
+			}
+		}
+		assert.True(collect, found, "expected timer with elementId %q to be in TimerStateCancelled for process instance %d, got: %+v", elementId, instanceKey, cancelledTimers)
+	}, 20*time.Second, 100*time.Millisecond, "timer should be cancelled")
 }

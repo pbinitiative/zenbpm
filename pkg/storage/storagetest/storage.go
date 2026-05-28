@@ -515,6 +515,31 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 		assert.Truef(t, slices.ContainsFunc(messageSubs, func(sub bpmnruntime.MessageSubscription) bool {
 			return bpmnruntime.EqualTo(messageSub, sub)
 		}), "expected to find message subscription in message subscriptions array: %+v", messageSubs)
+
+		// Backend-parity coverage for the message-start-event hot path:
+		// FindMessageSubscriptionByName(name, nil, Active) must locate a definition-level
+		// subscription (correlation_key IS NULL) for inbound messages without a correlation key.
+		defSubKey := s.GenerateId()
+		defSubName := fmt.Sprintf("msg-start-no-correlation-%d", defSubKey)
+		defSub := &bpmnruntime.DefinitionMessageSubscription{
+			MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
+				ElementId:            fmt.Sprintf("startEvt-%d", defSubKey),
+				Key:                  defSubKey,
+				ProcessDefinitionKey: st.processDefinition.Key,
+				Name:                 defSubName,
+				State:                bpmnruntime.ActivityStateActive,
+				CreatedAt:            time.Now().Truncate(time.Millisecond),
+			},
+		}
+		assert.NoError(t, s.SaveMessageSubscription(t.Context(), defSub))
+
+		foundDefSub, err := s.FindMessageSubscriptionByName(t.Context(), defSubName, nil, bpmnruntime.ActivityStateActive)
+		assert.NoError(t, err, "FindMessageSubscriptionByName(name, nil, Active) must locate a definition-level subscription")
+		if assert.NotNil(t, foundDefSub) {
+			assert.Equal(t, defSubKey, foundDefSub.MessageSubscription().Key)
+			_, isDef := foundDefSub.(*bpmnruntime.DefinitionMessageSubscription)
+			assert.True(t, isDef, "expected returned subscription to be a DefinitionMessageSubscription, got %T", foundDefSub)
+		}
 	}
 }
 

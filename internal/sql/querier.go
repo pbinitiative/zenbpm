@@ -15,6 +15,8 @@ type Querier interface {
 	CountWaitingJobs(ctx context.Context) (int64, error)
 	DeleteFlowElementInstance(ctx context.Context, keys []int64) error
 	DeleteProcessDefinitionsMessageSubscriptionPointers(ctx context.Context, processdefinitionkeys []int64) error
+	// Deletes only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+	// See pkg/bpmn/runtime/types.go for the discriminator constants.
 	DeleteProcessDefinitionsMessageSubscriptions(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
@@ -56,7 +58,6 @@ type Querier interface {
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
-	FindMessageSubscriptions(ctx context.Context, arg FindMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
 	FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error)

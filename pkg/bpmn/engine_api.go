@@ -357,6 +357,10 @@ func (engine *Engine) CreateInstanceWithStartingElements(ctx context.Context, pr
 		return nil, fmt.Errorf("failed to create instance on elements: %w", err)
 	}
 
+	if err := engine.createEventSubProcessSubscriptions(ctx, batch, instance, &processDefinition.Definitions.Process.TFlowElementsContainer); err != nil {
+		return nil, fmt.Errorf("failed to create event subprocess subscriptions for process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
 	err = batch.Flush(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start process instance: %w", err)

@@ -1216,10 +1216,11 @@ func (s *Server) PublishMessageStartProcessInstance(ctx context.Context, req *pr
 	}
 
 	vars := map[string]any{}
-	err := json.Unmarshal(req.Variables, &vars)
-	if err != nil {
-		err := zenerr.TechnicalError(fmt.Errorf("failed to unmarshal input variables: %w", err))
-		return &proto.PublishMessageStartProcessInstanceResponse{Error: err.ToProtoError()}, nil
+	if len(req.Variables) > 0 {
+		if err := json.Unmarshal(req.Variables, &vars); err != nil {
+			zerr := zenerr.BadRequest(fmt.Errorf("failed to unmarshal input variables for message %s: %w", req.GetMessageName(), err))
+			return &proto.PublishMessageStartProcessInstanceResponse{Error: zerr.ToProtoError()}, nil
+		}
 	}
 
 	if req.HistoryTTL != nil {
@@ -1342,6 +1343,33 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 				Message: ptr.To(err.Error()),
 			},
 		}, err
+	}
+
+	// Re-assert the caller-supplied (name, correlationKey) on the server side. The key alone is enough to look up the row,
+	// but we still validate the caller's view to guard against accidental mis-routing or a stale client cache.
+	if reqName := req.GetName(); reqName != "" && reqName != messageSub.Name {
+		mismatchErr := fmt.Errorf("message subscription %d has name %q but request specified %q", req.GetMessageSubscriptionKey(), messageSub.Name, reqName)
+		return &proto.FindActiveMessageResponse{
+			Error: &proto.ErrorResult{
+				Code:    nil,
+				Message: ptr.To(mismatchErr.Error()),
+			},
+		}, status.Error(codes.FailedPrecondition, mismatchErr.Error())
+	}
+	if reqCK := req.GetCorrelationKey(); reqCK != "" {
+		storedCK := ""
+		if messageSub.CorrelationKey.Valid {
+			storedCK = messageSub.CorrelationKey.String
+		}
+		if storedCK != reqCK {
+			mismatchErr := fmt.Errorf("message subscription %d has correlation key %q but request specified %q", req.GetMessageSubscriptionKey(), storedCK, reqCK)
+			return &proto.FindActiveMessageResponse{
+				Error: &proto.ErrorResult{
+					Code:    nil,
+					Message: ptr.To(mismatchErr.Error()),
+				},
+			}, status.Error(codes.FailedPrecondition, mismatchErr.Error())
+		}
 	}
 	return &proto.FindActiveMessageResponse{
 		Key:                  &messageSub.Key,

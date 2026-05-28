@@ -42,11 +42,6 @@ type ProcessInstance interface {
 	GetParentProcessInstanceKey() *int64
 }
 
-type EventSubProcessInstance struct {
-	ParentProcessTargetElementId string
-	ProcessInstanceData
-}
-
 type SubProcessInstance struct {
 	ParentProcessExecutionToken           ExecutionToken
 	ParentProcessTargetElementInstanceKey int64
@@ -218,7 +213,7 @@ type MessageSubscriptionType int
 //go:generate go tool stringer -type=MessageSubscriptionType
 
 const (
-	_ MessageSubscriptionType = iota
+	MessageSubscriptionTypeUnknown MessageSubscriptionType = iota
 	MessageSubscriptionTypeToken
 	MessageSubscriptionTypeInstance
 	MessageSubscriptionTypeDefinition

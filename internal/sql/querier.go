@@ -61,6 +61,7 @@ type Querier interface {
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)
 	FindProcessDefinitionStatistics(ctx context.Context, arg FindProcessDefinitionStatisticsParams) ([]FindProcessDefinitionStatisticsRow, error)
 	FindProcessDefinitionTimersInState(ctx context.Context, arg FindProcessDefinitionTimersInStateParams) ([]Timer, error)
+	FindProcessDefinitionTimersInStateByElement(ctx context.Context, arg FindProcessDefinitionTimersInStateByElementParams) ([]Timer, error)
 	// force sqlc to keep sort param
 	// workaround for sqlc does not replace params in order by
 	FindProcessDefinitions(ctx context.Context, arg FindProcessDefinitionsParams) ([]FindProcessDefinitionsRow, error)
@@ -73,6 +74,7 @@ type Querier interface {
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsParams) ([]MessageSubscription, error)
 	FindProcessInstanceMessageSubscriptionsPage(ctx context.Context, arg FindProcessInstanceMessageSubscriptionsPageParams) ([]FindProcessInstanceMessageSubscriptionsPageRow, error)
 	FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error)
+	FindProcessInstanceTimersInStateByElement(ctx context.Context, arg FindProcessInstanceTimersInStateByElementParams) ([]Timer, error)
 	FindProcessInstanceTimersPage(ctx context.Context, arg FindProcessInstanceTimersPageParams) ([]FindProcessInstanceTimersPageRow, error)
 	// workaround for sqlc which does not replace params in order by
 	FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error)

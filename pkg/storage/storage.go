@@ -148,6 +148,10 @@ type TimerStorageReader interface {
 
 	FindProcessDefinitionTimers(ctx context.Context, processDefinitionKey int64, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
 
+	FindProcessInstanceTimersByElement(ctx context.Context, processInstanceKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+
+	FindProcessDefinitionTimersByElement(ctx context.Context, processDefinitionKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error)
+
 	FindTokenActiveTimerSubscriptions(ctx context.Context, tokenKey int64) ([]bpmnruntime.Timer, error)
 }
 

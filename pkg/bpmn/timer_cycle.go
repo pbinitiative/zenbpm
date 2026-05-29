@@ -392,24 +392,18 @@ func (engine *Engine) cycleTimerStats(ctx context.Context, processDefinitionKey 
 			stats.firstDue = t.DueAt
 		}
 	}
-	triggered, err := engine.findCycleTimersByState(ctx, processDefinitionKey, processInstanceKey, runtime.TimerStateTriggered)
+	triggered, err := engine.findCycleTimersByState(ctx, processDefinitionKey, processInstanceKey, elementId, runtime.TimerStateTriggered)
 	if err != nil {
 		return stats, fmt.Errorf("failed to load triggered timers for element %s: %w", elementId, err)
 	}
 	for _, t := range triggered {
-		if t.ElementId != elementId {
-			continue
-		}
 		accountForTimerAsTriggered(t)
 	}
-	created, err := engine.findCycleTimersByState(ctx, processDefinitionKey, processInstanceKey, runtime.TimerStateCreated)
+	created, err := engine.findCycleTimersByState(ctx, processDefinitionKey, processInstanceKey, elementId, runtime.TimerStateCreated)
 	if err != nil {
 		return stats, fmt.Errorf("failed to load created timers for element %s: %w", elementId, err)
 	}
 	for _, t := range created {
-		if t.ElementId != elementId {
-			continue
-		}
 		// The just-consumed timer is still persisted as Created (its Triggered update lives in the
 		// open batch). Treat it as Triggered here so renewal sees the same view it will after flush.
 		if inFlightTriggeredTimerKey != nil && t.Key == *inFlightTriggeredTimerKey {
@@ -424,23 +418,16 @@ func (engine *Engine) cycleTimerStats(ctx context.Context, processDefinitionKey 
 	return stats, nil
 }
 
-func (engine *Engine) findCycleTimersByState(ctx context.Context, processDefinitionKey int64, processInstanceKey *int64, state runtime.TimerState) ([]runtime.Timer, error) {
+// findCycleTimersByState loads timers for a single element in the given state. For instance-scoped
+// cycles it queries by process instance + element; for definition-scoped cycles (timer start events)
+// it queries definition-level timers (process_instance_key IS NULL) by element. Filtering on the
+// element in the persistence layer avoids scanning every timer of the instance/definition on each
+// cycle fire, which matters for long-running infinite cycles (e.g. R/PT1S).
+func (engine *Engine) findCycleTimersByState(ctx context.Context, processDefinitionKey int64, processInstanceKey *int64, elementId string, state runtime.TimerState) ([]runtime.Timer, error) {
 	if processInstanceKey != nil {
-		return engine.persistence.FindProcessInstanceTimers(ctx, *processInstanceKey, state)
+		return engine.persistence.FindProcessInstanceTimersByElement(ctx, *processInstanceKey, elementId, state)
 	}
-	timers, err := engine.persistence.FindProcessDefinitionTimers(ctx, processDefinitionKey, state)
-	if err != nil {
-		return nil, err
-	}
-	// Allocate a fresh slice: the storage.Storage contract does not guarantee that the returned slice
-	// is exclusively owned by the caller, so we must not truncate/append into its backing array.
-	filtered := make([]runtime.Timer, 0, len(timers))
-	for _, t := range timers {
-		if t.ProcessInstanceKey == nil {
-			filtered = append(filtered, t)
-		}
-	}
-	return filtered, nil
+	return engine.persistence.FindProcessDefinitionTimersByElement(ctx, processDefinitionKey, elementId, state)
 }
 
 // createCycleStartTimer builds the next runtime.Timer for a timer start event whose

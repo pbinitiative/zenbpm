@@ -149,6 +149,57 @@ func (q *Queries) FindProcessDefinitionTimersInState(ctx context.Context, arg Fi
 	return items, nil
 }
 
+const findProcessDefinitionTimersInStateByElement = `-- name: FindProcessDefinitionTimersInStateByElement :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+FROM
+    timer
+WHERE
+    process_definition_key = ?1
+    AND process_instance_key IS NULL
+    AND element_id = ?2
+    AND state = ?3
+`
+
+type FindProcessDefinitionTimersInStateByElementParams struct {
+	ProcessDefinitionKey int64  `json:"process_definition_key"`
+	ElementID            string `json:"element_id"`
+	State                int64  `json:"state"`
+}
+
+func (q *Queries) FindProcessDefinitionTimersInStateByElement(ctx context.Context, arg FindProcessDefinitionTimersInStateByElementParams) ([]Timer, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessDefinitionTimersInStateByElement, arg.ProcessDefinitionKey, arg.ElementID, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Timer{}
+	for rows.Next() {
+		var i Timer
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+			&i.DueAt,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findProcessInstanceTimersInState = `-- name: FindProcessInstanceTimersInState :many
 SELECT
     "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
@@ -166,6 +217,56 @@ type FindProcessInstanceTimersInStateParams struct {
 
 func (q *Queries) FindProcessInstanceTimersInState(ctx context.Context, arg FindProcessInstanceTimersInStateParams) ([]Timer, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersInState, arg.ProcessInstanceKey, arg.State)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Timer{}
+	for rows.Next() {
+		var i Timer
+		if err := rows.Scan(
+			&i.Key,
+			&i.ElementInstanceKey,
+			&i.ElementID,
+			&i.ProcessDefinitionKey,
+			&i.ProcessInstanceKey,
+			&i.State,
+			&i.CreatedAt,
+			&i.DueAt,
+			&i.ExecutionToken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findProcessInstanceTimersInStateByElement = `-- name: FindProcessInstanceTimersInStateByElement :many
+SELECT
+    "key", element_instance_key, element_id, process_definition_key, process_instance_key, state, created_at, due_at, execution_token
+FROM
+    timer
+WHERE
+    process_instance_key = ?1
+    AND element_id = ?2
+    AND state = ?3
+`
+
+type FindProcessInstanceTimersInStateByElementParams struct {
+	ProcessInstanceKey sql.NullInt64 `json:"process_instance_key"`
+	ElementID          string        `json:"element_id"`
+	State              int64         `json:"state"`
+}
+
+func (q *Queries) FindProcessInstanceTimersInStateByElement(ctx context.Context, arg FindProcessInstanceTimersInStateByElementParams) ([]Timer, error) {
+	rows, err := q.db.QueryContext(ctx, findProcessInstanceTimersInStateByElement, arg.ProcessInstanceKey, arg.ElementID, arg.State)
 	if err != nil {
 		return nil, err
 	}

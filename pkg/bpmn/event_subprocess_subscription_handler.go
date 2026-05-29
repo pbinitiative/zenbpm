@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -31,6 +32,11 @@ type eventSubprocessTrigger struct {
 	// definition. Triggers that need follow-up writes which depend on the BPMN definition (e.g. timeCycle
 	// re-arming after the previous timer fires) implement this. It must be safe to be nil.
 	afterConsumed func(ctx context.Context, batch *EngineBatch, definition *runtime.ProcessDefinition) error
+	// renew, when non-nil, is invoked AFTER markConsumed but only when the event subprocess start event is
+	// non-interrupting. It is responsible for re-creating the trigger (e.g. a fresh Active
+	// InstanceMessageSubscription) so subsequent fires can activate the event subprocess again — a
+	// non-interrupting event subprocess can run any number of times for the lifetime of its parent.
+	renew func(ctx context.Context, batch *EngineBatch) error
 }
 
 // startEventSubprocess implements the activation logic shared by message and timer (and potentially future new) start event subprocesses.
@@ -93,6 +99,16 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 		return err
 	}
 
+	// Non-interrupting event subprocesses can be triggered multiple times for a single parent process instance.
+	if !startEventDef.IsInterrupting && t.renew != nil {
+		if err := t.renew(ctx, &batch); err != nil {
+			return err
+		}
+	}
+
+	// afterConsumed performs follow-up writes that depend on the parent BPMN definition (e.g. re-arming a
+	// timeCycle timer for the next fire). It self-guards against interrupting elements, so it is safe to call
+	// unconditionally when set.
 	if t.afterConsumed != nil {
 		if err := t.afterConsumed(ctx, &batch, instance.ProcessInstance().Definition); err != nil {
 			return err
@@ -237,6 +253,27 @@ func (engine *Engine) PublishMessageOnEventSubprocess(ctx context.Context, messa
 			current.State = runtime.ActivityStateCompleted
 			if err := batch.SaveMessageSubscription(ctx, current); err != nil {
 				return fmt.Errorf("failed to save message subscription %d: %w", current.Key, err)
+			}
+			return nil
+		},
+		renew: func(ctx context.Context, batch *EngineBatch) error {
+			// Re-create the InstanceMessageSubscription with the same name/correlation key but a fresh
+			// key and Active state so subsequent publishes can trigger the non-interrupting event subprocess again.
+			renewed := &runtime.InstanceMessageSubscription{
+				ProcessInstanceKey: current.ProcessInstanceKey,
+				CorrelationKey:     current.CorrelationKey,
+				MessageSubscriptionData: runtime.MessageSubscriptionData{
+					Key:                  engine.generateKey(),
+					ElementId:            current.ElementId,
+					Name:                 current.Name,
+					State:                runtime.ActivityStateActive,
+					ProcessDefinitionKey: current.ProcessDefinitionKey,
+					CreatedAt:            time.Now(),
+				},
+			}
+			if err := batch.SaveMessageSubscription(ctx, renewed); err != nil {
+				return fmt.Errorf("failed to renew non-interrupting message subscription for element %s on instance %d: %w",
+					current.ElementId, current.ProcessInstanceKey, err)
 			}
 			return nil
 		},

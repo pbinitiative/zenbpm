@@ -402,7 +402,31 @@ func (engine *Engine) createInstance(
 			State:              runtime.TokenStateRunning,
 		}
 		executionTokens = append(executionTokens, token)
-		batch.SaveToken(ctx, token)
+		if err := batch.SaveToken(ctx, token); err != nil {
+			return nil, nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", be.GetId(), instance.ProcessInstance().Key, err)
+		}
+	}
+
+	// Fallback for manual process instance creation: process has no plain start events but does have event-driven start events (message/timer/...)
+	if len(executionTokens) == 0 && len(process.Definitions.Process.StartEvents) > 0 {
+		for _, startEvent := range process.Definitions.Process.StartEvents {
+			if len(startEvent.EventDefinitions) == 0 {
+				continue
+			}
+			var be bpmn20.FlowNode = &startEvent
+			token := runtime.ExecutionToken{
+				Key:                engine.generateKey(),
+				ElementInstanceKey: engine.generateKey(),
+				ElementId:          be.GetId(),
+				ProcessInstanceKey: instance.ProcessInstance().Key,
+				State:              runtime.TokenStateRunning,
+			}
+			executionTokens = append(executionTokens, token)
+			if err := batch.SaveToken(ctx, token); err != nil {
+				return nil, nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", be.GetId(), instance.ProcessInstance().Key, err)
+			}
+			break
+		}
 	}
 
 	// Create event sub process subscriptions for event subprocesses of the process instance
@@ -460,11 +484,15 @@ func (engine *Engine) createInstanceWithStartingElements(
 			State:              runtime.TokenStateRunning,
 		}
 		executionTokens = append(executionTokens, token)
-		batch.SaveToken(ctx, token)
+		if err := batch.SaveToken(ctx, token); err != nil {
+			return nil, nil, fmt.Errorf("failed to start execution token starting at %s for process instance %d: %w", startNode.GetId(), instance.ProcessInstance().Key, err)
+		}
 	}
 
 	return instance, executionTokens, nil
 }
+
+var errRecoverableEventSubprocessSubscription = errors.New("recoverable event subprocess subscription creation failure")
 
 // createEventSubProcessSubscriptions scans the given flow elements container for event subprocesses(ones with TriggeredByEvent=true).
 // For each event subprocess that has only 1 StartEvent it creates a subscription to start that event sub process
@@ -487,10 +515,47 @@ func (engine *Engine) createEventSubProcessSubscriptions(
 			&instance,
 		)
 		if err != nil {
-			return fmt.Errorf("failed to start event subscriptions for event subprocess %s: %w", eventSubProcess.GetId(), err)
+			if !errors.Is(err, errRecoverableEventSubprocessSubscription) {
+				return fmt.Errorf("failed to start event subscriptions for event subprocess %s: %w", eventSubProcess.GetId(), err)
+			}
+			engine.logger.Warn("failed to create event subprocess subscription, recording incident",
+				"eventSubProcess", eventSubProcess.GetId(),
+				"processInstance", instance.ProcessInstance().Key,
+				"err", err,
+			)
+			if incidentErr := engine.recordEventSubprocessSubscriptionIncident(ctx, batch, instance, eventSubProcess, err); incidentErr != nil {
+				return fmt.Errorf("failed to record incident for event subprocess %s: %w", eventSubProcess.GetId(), incidentErr)
+			}
+			continue
 		}
 	}
 	return nil
+}
+
+// recordEventSubprocessSubscriptionIncident persists an incident against the failing event subprocess
+// start event (or the event subprocess itself when its start event cannot be identified)
+func (engine *Engine) recordEventSubprocessSubscriptionIncident(
+	ctx context.Context,
+	batch storage.Batch,
+	instance runtime.ProcessInstance,
+	eventSubProcess *bpmn20.TSubProcess,
+	cause error,
+) error {
+	elementId := eventSubProcess.GetId()
+	if len(eventSubProcess.StartEvents) == 1 {
+		elementId = eventSubProcess.StartEvents[0].GetId()
+	}
+	incident := runtime.Incident{
+		Key:                engine.generateKey(),
+		ElementInstanceKey: engine.generateKey(),
+		ElementId:          elementId,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		Message:            cause.Error(),
+		CreatedAt:          time.Now(),
+		ResolvedAt:         nil,
+		// No execution token exists yet for this event subprocess start event; leave zero-value.
+	}
+	return batch.SaveIncident(ctx, incident)
 }
 
 /*
@@ -617,7 +682,7 @@ func (engine *Engine) createMessageStartEventMessageSubscriptions(
 		if processInstance != nil {
 			correlationKey, err := engine.getMessageCorrelationKey(processDefinition, processInstance, messageStartEventDefinition)
 			if err != nil {
-				return fmt.Errorf("failed to evaluate message correlation key: %w", err)
+				return fmt.Errorf("%w: failed to evaluate message correlation key: %w", errRecoverableEventSubprocessSubscription, err)
 			}
 			subscription = &runtime.InstanceMessageSubscription{
 				ProcessInstanceKey: (*processInstance).ProcessInstance().Key,

@@ -546,11 +546,11 @@ func assertNoCreatedTimerForElement(t *testing.T, store storage.Storage, instanc
 // ISO-8601 timestamps sort lexicographically in chronological order, so this correctly
 // identifies the timestamp from the last cycle firing.
 func maxString(set map[string]struct{}) string {
-	max := ""
+	largest := ""
 	for s := range set {
-		if s > max {
-			max = s
+		if s > largest {
+			largest = s
 		}
 	}
-	return max
+	return largest
 }

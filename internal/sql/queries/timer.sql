@@ -69,6 +69,27 @@ WHERE
     process_definition_key = @process_definition_key
     AND state = @state;
 
+-- name: FindProcessInstanceTimersInStateByElement :many
+SELECT
+    *
+FROM
+    timer
+WHERE
+    process_instance_key = @process_instance_key
+    AND element_id = @element_id
+    AND state = @state;
+
+-- name: FindProcessDefinitionTimersInStateByElement :many
+SELECT
+    *
+FROM
+    timer
+WHERE
+    process_definition_key = @process_definition_key
+    AND process_instance_key IS NULL
+    AND element_id = @element_id
+    AND state = @state;
+
 -- name: FindTimersInStateTillDueAt :many
 SELECT
     *

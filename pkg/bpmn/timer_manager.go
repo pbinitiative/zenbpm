@@ -57,7 +57,10 @@ func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFu
 
 // registerTimer will register the time if its due date is in the current cycle
 func (tm *timerManager) registerTimer(timer runtime.Timer) {
-	if timer.DueAt.After(tm.nextPoll) {
+	tm.mu.RLock()
+	nextPoll := tm.nextPoll
+	tm.mu.RUnlock()
+	if timer.DueAt.After(nextPoll) {
 		return
 	}
 	tm.addWaitingTimer(timer)
@@ -129,7 +132,9 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 		for _, tft := range toFireTimers {
 			tm.addWaitingTimer(tft)
 		}
+		tm.mu.Lock()
 		tm.nextPoll = t.Add(tm.pollTimerDelay)
+		tm.mu.Unlock()
 	}
 	return
 }
@@ -165,7 +170,9 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 }
 
 func (tm *timerManager) start() {
+	tm.mu.Lock()
 	tm.nextPoll = time.Now().Add(tm.pollTimerDelay)
+	tm.mu.Unlock()
 	go tm.run()
 }
 

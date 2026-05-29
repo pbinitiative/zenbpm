@@ -28,6 +28,10 @@ type eventSubprocessTrigger struct {
 	refresh func(ctx context.Context) (skip bool, err error)
 	// markConsumed records the trigger as consumed (timer triggered / subscription completed) on the batch.
 	markConsumed func(ctx context.Context, batch *EngineBatch) error
+	// afterConsumed runs after markConsumed (still inside the open batch) and receives the parent process
+	// definition. Triggers that need follow-up writes which depend on the BPMN definition (e.g. timeCycle
+	// re-arming after the previous timer fires) implement this. It must be safe to be nil.
+	afterConsumed func(ctx context.Context, batch *EngineBatch, definition *runtime.ProcessDefinition) error
 	// renew, when non-nil, is invoked AFTER markConsumed but only when the event subprocess start event is
 	// non-interrupting. It is responsible for re-creating the trigger (e.g. a fresh Active
 	// InstanceMessageSubscription) so subsequent fires can activate the event subprocess again — a
@@ -98,6 +102,15 @@ func (engine *Engine) startEventSubprocess(ctx context.Context, t eventSubproces
 	// Non-interrupting event subprocesses can be triggered multiple times for a single parent process instance.
 	if !startEventDef.IsInterrupting && t.renew != nil {
 		if err := t.renew(ctx, &batch); err != nil {
+			return err
+		}
+	}
+
+	// afterConsumed performs follow-up writes that depend on the parent BPMN definition (e.g. re-arming a
+	// timeCycle timer for the next fire). It self-guards against interrupting elements, so it is safe to call
+	// unconditionally when set.
+	if t.afterConsumed != nil {
+		if err := t.afterConsumed(ctx, &batch, instance.ProcessInstance().Definition); err != nil {
 			return err
 		}
 	}
@@ -294,6 +307,13 @@ func (engine *Engine) processTimerTriggerOnEventSubprocess(ctx context.Context, 
 			current.TimerState = runtime.TimerStateTriggered
 			if err := batch.SaveTimer(ctx, current); err != nil {
 				return fmt.Errorf("failed to update timer state for timer %d: %w", current.Key, err)
+			}
+			return nil
+		},
+		afterConsumed: func(ctx context.Context, batch *EngineBatch, definition *runtime.ProcessDefinition) error {
+			// For timeCycle event-subprocess timer-start events schedule the next iteration (if any).
+			if err := engine.scheduleNextCycleTimer(ctx, batch, definition, current); err != nil {
+				return fmt.Errorf("failed to schedule next cycle timer for element %s: %w", current.ElementId, err)
 			}
 			return nil
 		},

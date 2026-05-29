@@ -409,3 +409,129 @@ func getFirstChildInstance(t testing.TB, parentKey int64) zenclient.ProcessInsta
 	}, 5*time.Second, 100*time.Millisecond, "The child process instance list should contain exactly one child process instance.")
 	return processInstanceListItem
 }
+
+// TestTimerCycleStartEvent_InstanceAndDurationSubprocess is the timer-cycle analogue of
+// TestMessageStartEvent_SameMessageForInstanceAndSubprocess (see message_start_event_test.go).
+//
+// The deployed BPMN has:
+//   - a definition-level timer-start event with timeCycle = R2/PT1S — so the engine itself
+//     creates exactly 2 process instances, ~1s apart, without any external trigger;
+//   - an interrupting event subprocess whose timer-start event uses timeDuration = PT1S —
+//     so for every spawned parent instance the event subprocess fires ~1s after creation,
+//     interrupts the parent's service-task job, and completes the parent.
+//
+// The test asserts the cycle produced exactly 2 instances and then runs the full
+// interruption verification per instance (job Terminated, child event subprocess Completed, parent variables propagated, root timer Triggered).
+func TestTimerCycleStartEvent_InstanceAndDurationSubprocess(t *testing.T) {
+	bpmnData, err := os.ReadFile("../../pkg/bpmn/test-cases/process_definition_start_event/timer-cycle-start-event-instance-and-duration-subprocess.bpmn")
+	require.NoError(t, err)
+
+	// Make the deployment unique so this test does not interfere with other e2e tests that may
+	// share the same BPMN id or with multiple invocations of this test.
+	uniqueProcessId := fmt.Sprintf("process-timerCycleInstanceAndDurationSubprocess-%d", time.Now().UnixNano())
+	modifiedBpmn := []byte(strings.NewReplacer(
+		"Process_timerEventSubProcessInterrupting2_cycle", uniqueProcessId,
+	).Replace(string(bpmnData)))
+
+	deployResp, err := deployDefinitionFromBytes(t, modifiedBpmn, "process_definition_start_event/timer-cycle-start-event-instance-and-duration-subprocess.bpmn")
+	require.NoError(t, err)
+
+	var definitionKey int64
+	if deployResp.JSON201 != nil {
+		definitionKey = deployResp.JSON201.ProcessDefinitionKey
+	} else {
+		require.NotNil(t, deployResp.JSON200, "expected either 200 or 201 response from deploy")
+		definitionKey = deployResp.JSON200.ProcessDefinitionKey
+	}
+
+	// Wait until the R2/PT1S cycle has produced exactly 2 process instances.
+	var parentInstances []zenclient.ProcessInstancesSimple
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		page, errGet := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: &uniqueProcessId,
+		})
+		if !assert.NoError(collect, errGet) {
+			return
+		}
+		if !assert.NotNil(collect, page) || !assert.NotNil(collect, page.JSON200) {
+			return
+		}
+		if !assert.Equal(collect, 2, page.JSON200.TotalCount,
+			"definition-level R2/PT1S cycle must create exactly 2 process instances (got %d)", page.JSON200.TotalCount) {
+			return
+		}
+		parentInstances = parentInstances[:0]
+		for _, p := range page.JSON200.Partitions {
+			parentInstances = append(parentInstances, p.Items...)
+		}
+		assert.Equal(collect, 2, len(parentInstances),
+			"flattened instance count must match TotalCount=2, got %d", len(parentInstances))
+	}, 20*time.Second, 100*time.Millisecond, "definition-level R2/PT1S cycle must create exactly 2 process instances")
+
+	// Per-instance verification: the event subprocess timer (PT1S) must fire, interrupt the
+	// service-task job, complete the event subprocess child and the parent process, and
+	// propagate the io-mapping variables up.
+	for _, parent := range parentInstances {
+		parent := parent // capture
+		t.Run(fmt.Sprintf("instance %d", parent.Key), func(t *testing.T) {
+			// Parent eventually completes once the PT1S event-subprocess timer fires and interrupts.
+			waitForProcessInstanceState(t, parent.Key, zenclient.ProcessInstanceStateCompleted)
+
+			// The main service-task job must have been Terminated by the interrupting event subprocess.
+			assertSingleJobState(t, parent.Key, zenclient.JobStateTerminated)
+
+			// Event subprocess timer-start must end up Triggered on this parent instance.
+			assertTimerTriggered(t, parent.Key, "subProcessTimerEvent_12i3m6f")
+
+			// The event subprocess child instance must exist and be Completed.
+			_ = requireChildEventSubProcessCompleted(t, parent.Key)
+
+			// Variables produced by the event subprocess io-mappings must be propagated to the parent.
+			fetched, err := getProcessInstance(t, parent.Key)
+			require.NoError(t, err)
+			assert.Equal(t, "timer-fired", fetched.Variables["subProcessResult"],
+				"subProcessResult must be propagated from the interrupting timer event subprocess")
+			assert.Equal(t, true, fetched.Variables["timerInterrupted"],
+				"timerInterrupted must be propagated from the interrupting timer event subprocess")
+			assert.Equal(t, "timer-event-subprocess", fetched.Variables["interruptedBy"],
+				"interruptedBy must be propagated from the interrupting timer event subprocess")
+			assert.Equal(t, "timerStartEventOutputValue", fetched.Variables["timerStartEventOutputVar"],
+				"timerStartEventOutputVar must be propagated from the timer-start event io-mapping")
+		})
+	}
+
+	// Definition-level R2 cycle must be fully exhausted: 2 Triggered timers and no remaining
+	// Created timer for the definition-level start event. The definition key is not partition-encoded,
+	// so route the lookup through one of the parent instances' partition store.
+	require.NotEmpty(t, parentInstances, "expected at least one parent instance to look up the partition store")
+	store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(parentInstances[0].Key))
+	require.NoError(t, err)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		triggered, errFind := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateTriggered)
+		if !assert.NoError(collect, errFind) {
+			return
+		}
+		defLevelTriggered := filterDefinitionLevelTimers(triggered)
+		assert.Equal(collect, 2, len(defLevelTriggered),
+			"R2 cycle should produce exactly 2 triggered definition-level timers, got %d (all triggered: %d)", len(defLevelTriggered), len(triggered))
+	}, 15*time.Second, 100*time.Millisecond,
+		"definition-level cycle should produce exactly 2 triggered timers")
+
+	created, err := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	defLevelCreated := filterDefinitionLevelTimers(created)
+	assert.Empty(t, defLevelCreated,
+		"no further Created definition-level timer should remain after the R2 cycle is exhausted, got: %+v", defLevelCreated)
+}
+
+// filterDefinitionLevelTimers returns only timers that are scoped to a process definition (not to a specific process instance).
+// Definition-level timer-start events have ProcessInstanceKey == nil, whereas event-subprocess / boundary timers carry the parent instance's key.
+func filterDefinitionLevelTimers(timers []bpmnruntime.Timer) []bpmnruntime.Timer {
+	filtered := make([]bpmnruntime.Timer, 0, len(timers))
+	for _, t := range timers {
+		if t.ProcessInstanceKey == nil {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}

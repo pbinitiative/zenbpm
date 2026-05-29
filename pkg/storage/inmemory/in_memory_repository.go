@@ -490,6 +490,42 @@ func (mem *Storage) FindProcessDefinitionTimers(ctx context.Context, processDefi
 	return res, nil
 }
 
+func (mem *Storage) FindProcessInstanceTimersByElement(ctx context.Context, processInstanceKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.ProcessInstanceKey == nil || *timer.ProcessInstanceKey != processInstanceKey {
+			continue
+		}
+		if timer.ElementId != elementId || timer.TimerState != state {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindProcessDefinitionTimersByElement(ctx context.Context, processDefinitionKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.Timer, 0)
+	for _, timer := range mem.Timers {
+		if timer.ProcessDefinitionKey != processDefinitionKey {
+			continue
+		}
+		// definition-level timers only (process_instance_key IS NULL)
+		if timer.ProcessInstanceKey != nil {
+			continue
+		}
+		if timer.ElementId != elementId || timer.TimerState != state {
+			continue
+		}
+		res = append(res, timer)
+	}
+	return res, nil
+}
+
 func (mem *Storage) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()

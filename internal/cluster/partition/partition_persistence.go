@@ -1220,6 +1220,32 @@ func (rq *DB) FindProcessDefinitionTimers(ctx context.Context, processDefinition
 	return rq.inflateTimers(ctx, dbTimers)
 }
 
+func (rq *DB) FindProcessInstanceTimersByElement(ctx context.Context, processInstanceKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindProcessInstanceTimersInStateByElement(ctx, sql.FindProcessInstanceTimersInStateByElementParams{
+		ProcessInstanceKey: ssql.NullInt64{Int64: processInstanceKey, Valid: true},
+		ElementID:          elementId,
+		State:              int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers for process instance %d element %s: %w", processInstanceKey, elementId, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
+}
+
+func (rq *DB) FindProcessDefinitionTimersByElement(ctx context.Context, processDefinitionKey int64, elementId string, state bpmnruntime.TimerState) ([]bpmnruntime.Timer, error) {
+	dbTimers, err := rq.Queries.FindProcessDefinitionTimersInStateByElement(ctx, sql.FindProcessDefinitionTimersInStateByElementParams{
+		ProcessDefinitionKey: processDefinitionKey,
+		ElementID:            elementId,
+		State:                int64(state),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find timers for process definition %d element %s: %w", processDefinitionKey, elementId, err)
+	}
+
+	return rq.inflateTimers(ctx, dbTimers)
+}
+
 func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Timer, error) {
 	dbTimers, err := rq.Queries.FindTimersInStateTillDueAt(ctx, sql.FindTimersInStateTillDueAtParams{
 		State: int64(bpmnruntime.TimerStateCreated),

@@ -353,6 +353,34 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 		assert.NoError(t, err)
 		assert.Falsef(t, slices.ContainsFunc(timers, timer.EqualTo), "timer in TimerStateCreated should not appear in TimerStateTriggered results: %+v", timers)
 
+		// Element-aware instance query returns the timer for its element only.
+		timers, err = s.FindProcessInstanceTimersByElement(t.Context(), *timer.ProcessInstanceKey, timer.ElementId, bpmnruntime.TimerStateCreated)
+		assert.NoError(t, err)
+		assert.Truef(t, slices.ContainsFunc(timers, timer.EqualTo), "expected to find timer %v in FindProcessInstanceTimersByElement result: %+v", timer, timers)
+
+		timers, err = s.FindProcessInstanceTimersByElement(t.Context(), *timer.ProcessInstanceKey, timer.ElementId+"-other", bpmnruntime.TimerStateCreated)
+		assert.NoError(t, err)
+		assert.Falsef(t, slices.ContainsFunc(timers, timer.EqualTo), "timer should not be returned for a different element id: %+v", timers)
+
+		// Definition-level (process_instance_key IS NULL) element-aware query.
+		defTimerKey := s.GenerateId()
+		defTimer := bpmnruntime.Timer{
+			ElementId:            fmt.Sprintf("def-timer-%d", defTimerKey),
+			Key:                  defTimerKey,
+			ProcessDefinitionKey: st.processDefinition.Key,
+			TimerState:           bpmnruntime.TimerStateCreated,
+			CreatedAt:            time.Now().Truncate(time.Millisecond),
+			DueAt:                time.Now().Add(1 * time.Hour).Truncate(time.Millisecond),
+			Duration:             1 * time.Hour,
+		}
+		err = s.SaveTimer(t.Context(), defTimer)
+		assert.NoError(t, err)
+
+		timers, err = s.FindProcessDefinitionTimersByElement(t.Context(), st.processDefinition.Key, defTimer.ElementId, bpmnruntime.TimerStateCreated)
+		assert.NoError(t, err)
+		assert.Truef(t, slices.ContainsFunc(timers, defTimer.EqualTo), "expected to find definition timer %v in FindProcessDefinitionTimersByElement result: %+v", defTimer, timers)
+		assert.Falsef(t, slices.ContainsFunc(timers, timer.EqualTo), "instance-scoped timer must not appear in definition-level element results: %+v", timers)
+
 		timerTest, err := s.GetTimer(t.Context(), timer.Token.Key)
 		assert.NoError(t, err)
 		assert.Equal(t, timer.Key, timerTest.Key)

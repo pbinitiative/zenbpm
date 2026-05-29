@@ -55,6 +55,8 @@ func TestTimerManagerLoadsAndFiresTimers(t *testing.T) {
 	defer tm.stop()
 	now := time.Now()
 	assert.Eventually(t, func() bool {
+		tester.mu.Lock()
+		defer tester.mu.Unlock()
 		if len(tester.generatedTimers) > 0 {
 			now = time.Now()
 			return true
@@ -63,6 +65,8 @@ func TestTimerManagerLoadsAndFiresTimers(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond, "timers should be generated in time")
 
 	assert.Eventually(t, func() bool {
+		tester.mu.Lock()
+		defer tester.mu.Unlock()
 		for _, timerToFire := range tester.generatedTimers {
 			if timerToFire.DueAt.After(now) {
 				continue
@@ -77,6 +81,8 @@ func TestTimerManagerLoadsAndFiresTimers(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond, "processed timers did not contain timer that should be fired")
 
 	// verify that timers that should have fired
+	tester.mu.Lock()
+	defer tester.mu.Unlock()
 	assert.NotEmpty(t, tester.generatedTimers)
 	assert.NotEmpty(t, tester.processedTimers)
 	for _, timerToFire := range tester.generatedTimers {
@@ -115,17 +121,26 @@ func TestTimerManagerIgnoresDuplicateTimers(t *testing.T) {
 	}
 	tm.registerTimer(duplicate)
 	tm.registerTimer(duplicate)
-	time.Sleep(2 * time.Second)
 
-	// verify that the timer fired exactly once
-	assert.NotEmpty(t, tester.processedTimers)
-	count := 0
-	for _, timerToFire := range tester.processedTimers {
-		if timerToFire.EqualTo(duplicate) {
-			count++
+	countDuplicate := func() int {
+		tester.mu.Lock()
+		defer tester.mu.Unlock()
+		count := 0
+		for _, timerToFire := range tester.processedTimers {
+			if timerToFire.EqualTo(duplicate) {
+				count++
+			}
 		}
+		return count
 	}
-	assert.Equal(t, 1, count, "Duplicate timer should fire exactly once")
+
+	// Wait until the duplicate has fired at least once, then give the manager a
+	// brief settle window to detect any erroneous extra fires.
+	assert.Eventually(t, func() bool { return countDuplicate() >= 1 }, 2*time.Second, 20*time.Millisecond,
+		"duplicate timer should fire at least once")
+	assert.Never(t, func() bool { return countDuplicate() > 1 }, 500*time.Millisecond, 50*time.Millisecond,
+		"duplicate timer should fire exactly once")
+	assert.Equal(t, 1, countDuplicate(), "Duplicate timer should fire exactly once")
 }
 
 func TestTimerManagerFiresHistoricTimers(t *testing.T) {
@@ -156,17 +171,24 @@ func TestTimerManagerFiresHistoricTimers(t *testing.T) {
 		},
 	}
 	tm.registerTimer(timer)
-	time.Sleep(2 * time.Second)
 
-	// verify that the timer fired exactly once
-	assert.NotEmpty(t, tester.processedTimers)
-	count := 0
-	for _, timerToFire := range tester.processedTimers {
-		if timerToFire.EqualTo(timer) {
-			count++
+	countTimer := func() int {
+		tester.mu.Lock()
+		defer tester.mu.Unlock()
+		count := 0
+		for _, timerToFire := range tester.processedTimers {
+			if timerToFire.EqualTo(timer) {
+				count++
+			}
 		}
+		return count
 	}
-	assert.Equal(t, 1, count, "Historic timer should fire exactly once")
+
+	assert.Eventually(t, func() bool { return countTimer() >= 1 }, 2*time.Second, 20*time.Millisecond,
+		"historic timer should fire at least once")
+	assert.Never(t, func() bool { return countTimer() > 1 }, 500*time.Millisecond, 50*time.Millisecond,
+		"historic timer should fire exactly once")
+	assert.Equal(t, 1, countTimer(), "Historic timer should fire exactly once")
 }
 
 func TestTimerManagerRemovesWaitingTimerBeforeProcessing(t *testing.T) {
@@ -324,4 +346,40 @@ func countOccurrences(s []int64, v int64) int {
 		}
 	}
 	return n
+}
+
+// TestTimerManagerRegisterTimerConcurrentWithPoll exercises concurrent calls to
+// registerTimer while the timer-manager's poll loop is updating nextPoll. It exists
+// primarily to guard, under `go test -race`, against regressions in the
+// synchronization of timerManager.nextPoll.
+//
+// All registered timers have a DueAt far in the future so they never reach the firing
+// channel (avoids exercising unrelated parts of the manager).
+func TestTimerManagerRegisterTimerConcurrentWithPoll(t *testing.T) {
+	tm := newTimerManager(
+		func(ctx context.Context, timer runtime.Timer) {},
+		func(ctx context.Context, end time.Time) ([]runtime.Timer, error) { return nil, nil },
+		5*time.Millisecond,
+	)
+	tm.start()
+	defer tm.stop()
+
+	const goroutines = 8
+	const iterationsPerGoroutine = 2000
+	farFuture := time.Now().Add(24 * time.Hour)
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterationsPerGoroutine; j++ {
+				tm.registerTimer(runtime.Timer{
+					Key:   rand.Int63(),
+					DueAt: farFuture,
+				})
+			}
+		}()
+	}
+	wg.Wait()
 }

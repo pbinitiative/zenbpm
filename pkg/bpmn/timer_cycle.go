@@ -202,17 +202,8 @@ func findCycleValue(timerDef bpmn20.TTimerEventDefinition) (cycleSpec, error) {
 	return parseCycle(cycleStr)
 }
 
-// firstCycleDueAt returns the first future occurrence for tests and timer creation without persisted history.
+// firstCycleDueAt returns the first future occurrence without any persisted history (consumedOccurrences=0, no fallback anchor).
 func (c cycleSpec) firstCycleDueAt(now time.Time) time.Time {
-	due, ok := c.nextDueAt(now, 0, time.Time{})
-	if !ok {
-		return time.Time{}
-	}
-	return due
-}
-
-// nextCycleDueAt returns the next future occurrence for tests.
-func (c cycleSpec) nextCycleDueAt(now time.Time) time.Time {
 	due, ok := c.nextDueAt(now, 0, time.Time{})
 	if !ok {
 		return time.Time{}
@@ -418,11 +409,6 @@ func (engine *Engine) cycleTimerStats(ctx context.Context, processDefinitionKey 
 	return stats, nil
 }
 
-// findCycleTimersByState loads timers for a single element in the given state. For instance-scoped
-// cycles it queries by process instance + element; for definition-scoped cycles (timer start events)
-// it queries definition-level timers (process_instance_key IS NULL) by element. Filtering on the
-// element in the persistence layer avoids scanning every timer of the instance/definition on each
-// cycle fire, which matters for long-running infinite cycles (e.g. R/PT1S).
 func (engine *Engine) findCycleTimersByState(ctx context.Context, processDefinitionKey int64, processInstanceKey *int64, elementId string, state runtime.TimerState) ([]runtime.Timer, error) {
 	if processInstanceKey != nil {
 		return engine.persistence.FindProcessInstanceTimersByElement(ctx, *processInstanceKey, elementId, state)

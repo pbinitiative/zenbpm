@@ -182,11 +182,11 @@ func TestCycleSpec_AnchoredNextDueSkipsMissedOccurrences(t *testing.T) {
 	assert.Equal(t, time.Date(2026, time.May, 11, 13, 0, 0, 0, time.UTC), due)
 }
 
-func TestCycleSpec_NextCycleDueAt(t *testing.T) {
+func TestCycleSpec_FirstCycleDueAt_InfiniteNoHistory(t *testing.T) {
 	spec, err := parseCycle("R/PT5S")
 	require.NoError(t, err)
 	now := time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
-	due := spec.nextCycleDueAt(now)
+	due := spec.firstCycleDueAt(now)
 	assert.Equal(t, now.Add(5*time.Second), due)
 }
 

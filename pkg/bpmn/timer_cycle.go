@@ -564,11 +564,11 @@ func (engine *Engine) buildNextCycleTimerFromSpec(
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse timeCycle for element %s: %w", triggeredTimer.ElementId, err)
 	}
-	stats, err := engine.cycleTimerStats(ctx, triggeredTimer.ProcessDefinitionKey, triggeredTimer.ProcessInstanceKey, triggeredTimer.ElementId, nil)
+	stats, err := engine.cycleTimerStats(ctx, triggeredTimer.ProcessDefinitionKey, triggeredTimer.ProcessInstanceKey, triggeredTimer.ElementId, &triggeredTimer.Key)
 	if err != nil {
 		return nil, err
 	}
-	consumed := stats.triggeredCount + 1 // current timer is saved on the same batch and is not visible to the stats query yet.
+	consumed := stats.triggeredCount
 	firstDue := stats.firstDue
 	if firstDue.IsZero() {
 		firstDue = triggeredTimer.DueAt

@@ -229,11 +229,6 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			if err := engine.scheduleNextBoundaryCycleTimer(ctx, batch, listener, timerDef, timer); err != nil {
 				return nil, fmt.Errorf("failed to schedule next boundary cycle timer: %w", err)
 			}
-		} else {
-			_, err := engine.createTimerCatchEvent(ctx, batch, instance, timerDef, listener, token)
-			if err != nil {
-				return nil, fmt.Errorf("failed to recreate timer subscription: %w", err)
-			}
 		}
 
 		token = runtime.ExecutionToken{

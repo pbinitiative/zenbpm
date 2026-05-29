@@ -104,8 +104,45 @@ func TestMultipleNoninterruptingBoundaryEventTimerCyclesTrackIndependently(t *te
 	}, 10*time.Second, 50*time.Millisecond, "each boundary cycle should fire its own configured repetitions independently")
 }
 
+// TestNoninterruptingBoundaryEventTimeDurationFiresOnce verifies that a non-interrupting timer
+// boundary event configured with a one-shot timeDuration (PT1S) fires exactly once and is NOT
+// re-armed afterwards.
+func TestNonInterruptingBoundaryEventTimeDurationFiresOnce(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-noninterrupting.bpmn")
+	require.NoError(t, err)
+	instance, err := bpmnEngine.CreateInstance(t.Context(), process, nil)
+	require.NoError(t, err)
+	piKey := instance.ProcessInstance().Key
+
+	const boundaryTimerElementId = "Event_1n9fcqj"
+
+	// The single PT1S timer fires exactly once and leaves no Created timer behind (one-shot, not re-armed).
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		triggered, err := boundaryTimersInState(t, piKey, runtime.TimerStateTriggered, boundaryTimerElementId)
+		if !assert.NoError(collect, err) {
+			return
+		}
+		assert.Equal(collect, 1, len(triggered), "one-shot timeDuration boundary timer should fire exactly once")
+
+		created, err := boundaryTimersInState(t, piKey, runtime.TimerStateCreated, boundaryTimerElementId)
+		if !assert.NoError(collect, err) {
+			return
+		}
+		assert.Empty(collect, created, "one-shot boundary timer must not be re-armed after firing")
+	}, 5*time.Second, 50*time.Millisecond, "PT1S non-interrupting boundary timer should fire once")
+
+	// Guard against regression: over a window spanning several PT1S periods the timer must never be
+	// re-created or re-fired. With the previous (buggy) recreate logic the triggered count would grow.
+	require.Never(t, func() bool {
+		triggered, err := boundaryTimersInState(t, piKey, runtime.TimerStateTriggered, boundaryTimerElementId)
+		if err != nil {
+			return false
+		}
+		return len(triggered) > 1
+	}, 3*time.Second, 100*time.Millisecond, "one-shot timeDuration boundary timer must not be re-armed/re-fired")
+}
+
 // boundaryTimersInState returns the timers for the given process instance in the given state
-// whose persisted ElementId equals boundaryEventId (which is how boundary timers are persisted).
 func boundaryTimersInState(t *testing.T, piKey int64, state runtime.TimerState, boundaryEventId string) ([]runtime.Timer, error) {
 	t.Helper()
 	all, err := bpmnEngine.persistence.FindProcessInstanceTimers(t.Context(), piKey, state)

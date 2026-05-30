@@ -51,7 +51,7 @@ install_trivy() {
   local tmpdir
 
   tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' RETURN
+  trap "rm -rf '$tmpdir'" EXIT
 
   curl -fsSLo "${tmpdir}/${asset}" "$url"
   printf '%s  %s\n' "$TRIVY_ARCHIVE_SHA256" "${tmpdir}/${asset}" | sha256sum -c -
@@ -63,7 +63,9 @@ install_trivy() {
     sudo install -m 0755 "${tmpdir}/trivy" "${TRIVY_INSTALL_DIR}/trivy"
   fi
 
-  trivy --version
+  "${TRIVY_INSTALL_DIR}/trivy" --version
+  rm -rf "$tmpdir"
+  trap - EXIT
 }
 
 build_scan_image() {
@@ -83,7 +85,7 @@ build_scan_image() {
 }
 
 run_trivy() {
-  trivy "$@" || echo "trivy command failed: trivy $*"
+  trivy "$@"
 }
 
 scan() {
@@ -177,7 +179,7 @@ summary_value() {
   local fallback="$2"
 
   if [ -s "${TRIVY_REPORT_DIR}/image-digest.json" ]; then
-    jq -r --arg key "$key" '.[$key] // empty' "${TRIVY_REPORT_DIR}/image-digest.json"
+    jq -r --arg key "$key" --arg fallback "$fallback" '.[$key] // $fallback' "${TRIVY_REPORT_DIR}/image-digest.json"
   else
     printf '%s\n' "$fallback"
   fi
@@ -249,7 +251,7 @@ notify_discord() {
   local summary_file="${TRIVY_REPORT_DIR}/summary.json"
 
   if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
-    echo "DISCORD_RELEASE_WEBHOOK_URL is not configured; skipping Discord notification."
+    echo "DISCORD_WEBHOOK_URL is not configured; skipping Discord notification."
     return 0
   fi
 

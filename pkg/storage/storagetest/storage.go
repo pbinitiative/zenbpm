@@ -797,6 +797,34 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		assert.Nil(t, err)
 		assert.Equal(t, noTokenIncident, testNoTokenIncident)
 		assert.Equal(t, int64(0), testNoTokenIncident.Token.Key)
+
+		// Incidents that reference a token which is no longer persisted must remain readable
+		// for history/listing purposes. Callers that need to act on the token are responsible
+		// for loading the current token state explicitly.
+		danglingIncidentKey := s.GenerateId()
+		danglingTokenKey := s.GenerateId()
+		danglingIncident := bpmnruntime.Incident{
+			Key:                danglingIncidentKey,
+			ElementInstanceKey: danglingIncidentKey,
+			ElementId:          "dangling-token-incident",
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			Message:            "referenced token was removed",
+			CreatedAt:          time.Time{}.Local(),
+			ResolvedAt:         nil,
+			Token: bpmnruntime.ExecutionToken{
+				Key:                danglingTokenKey,
+				ElementInstanceKey: danglingIncidentKey,
+				ElementId:          "dangling-token-incident",
+				ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			},
+		}
+
+		err = s.SaveIncident(t.Context(), danglingIncident)
+		assert.Nil(t, err)
+
+		testDanglingIncident, err := s.FindIncidentByKey(t.Context(), danglingIncidentKey)
+		assert.Nil(t, err)
+		assert.Equal(t, danglingIncident, testDanglingIncident)
 	}
 }
 

@@ -2322,17 +2322,15 @@ func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (bpmnrun
 	}
 
 	var token sql.ExecutionToken
-	// A zero-value execution token means the incident is not bound to an execution token (e.g. event subprocess start
-	// event subscriptions created during process instance creation). In that case there is no token to load.
+	// A zero execution_token means the incident is not bound to an execution token (e.g. event subprocess start event subscriptions created during process instance creation).
 	if incident.ExecutionToken != 0 {
 		tokens, getErr := db.GetTokens(ctx, []int64{incident.ExecutionToken})
 		if getErr != nil {
 			return bpmnruntime.Incident{}, fmt.Errorf("failed to find tokens for incident %d: %w", key, getErr)
 		}
-		if len(tokens) == 0 {
-			return bpmnruntime.Incident{}, fmt.Errorf("execution token %d for incident %d not found: %w", incident.ExecutionToken, key, storage.ErrNotFound)
+		if len(tokens) > 0 {
+			token = tokens[0]
 		}
-		token = tokens[0]
 	}
 	return buildIncident(incident, token), nil
 }

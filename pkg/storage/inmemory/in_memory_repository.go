@@ -755,16 +755,7 @@ func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnrunti
 	if !ok {
 		return bpmnruntime.Incident{}, storage.ErrNotFound
 	}
-	// A zero-value execution token means the incident is not bound to an execution token (e.g. event subprocess start
-	// event subscriptions created during process instance creation). In that case there is no token to look up.
-	if incident.Token.Key != 0 {
-		token, ok := mem.ExecutionTokens[incident.Token.Key]
-		if !ok {
-			return bpmnruntime.Incident{}, fmt.Errorf("execution token %d for incident %d not found: %w", incident.Token.Key, key, storage.ErrNotFound)
-		}
-		incident.Token = token
-	}
-	return incident, nil
+	return mem.hydrateIncidentToken(incident), nil
 }
 
 func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {

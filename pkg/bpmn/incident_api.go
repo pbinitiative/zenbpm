@@ -102,6 +102,13 @@ func (engine *Engine) ResolveIncident(ctx context.Context, key int64) (retErr er
 		return nil
 	}
 
+	// FindIncidentByKey keeps dangling token-bound incidents readable for history/listing purposes,
+	// but resolving such an incident requires the current persisted token.
+	incident.Token, err = engine.persistence.GetTokenByKey(ctx, incident.Token.Key)
+	if err != nil {
+		return fmt.Errorf("failed to find execution token %d for incident %d: %w", incident.Token.Key, key, err)
+	}
+
 	jobs, err := engine.persistence.FindPendingProcessInstanceJobs(ctx, incident.ProcessInstanceKey)
 	if err != nil {
 		return newEngineErrorf("failed to find jobs for token key: %d", incident.Token.Key)

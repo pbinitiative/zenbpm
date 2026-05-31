@@ -2222,41 +2222,66 @@ func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element b
 
 var _ storage.IncidentStorageReader = &DB{}
 
+// buildIncident maps a persisted incident row together with its (already loaded) execution token
+// into the runtime representation. A zero-value token is expected for tokenless incidents.
+func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.Incident {
+	res := bpmnruntime.Incident{
+		Key:                incident.Key,
+		ElementInstanceKey: incident.ElementInstanceKey,
+		ElementId:          incident.ElementID,
+		ProcessInstanceKey: incident.ProcessInstanceKey,
+		Message:            incident.Message,
+		CreatedAt:          time.UnixMilli(incident.CreatedAt),
+		Token: bpmnruntime.ExecutionToken{
+			Key:                token.Key,
+			ElementInstanceKey: token.ElementInstanceKey,
+			ElementId:          token.ElementID,
+			ProcessInstanceKey: token.ProcessInstanceKey,
+			State:              bpmnruntime.TokenState(token.State),
+		},
+	}
+	if incident.ResolvedAt.Valid {
+		resolvedAt := time.UnixMilli(incident.ResolvedAt.Int64)
+		res.ResolvedAt = &resolvedAt
+	}
+	return res
+}
+
+// inflateIncidents hydrates the current execution token state for a batch of incidents using a single
+// token query. Incidents with a zero execution_token (e.g. event subprocess start event subscriptions
+// created during process instance creation) are left with a zero-value token.
+func inflateIncidents(ctx context.Context, db *sql.Queries, incidents []sql.Incident) ([]bpmnruntime.Incident, error) {
+	tokenKeys := make([]int64, 0, len(incidents))
+	for _, incident := range incidents {
+		if incident.ExecutionToken != 0 {
+			tokenKeys = append(tokenKeys, incident.ExecutionToken)
+		}
+	}
+
+	tokensByKey := make(map[int64]sql.ExecutionToken, len(tokenKeys))
+	if len(tokenKeys) > 0 {
+		tokens, err := db.GetTokens(ctx, tokenKeys)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find tokens for incidents: %w", err)
+		}
+		for _, token := range tokens {
+			tokensByKey[token.Key] = token
+		}
+	}
+
+	res := make([]bpmnruntime.Incident, len(incidents))
+	for i, incident := range incidents {
+		res[i] = buildIncident(incident, tokensByKey[incident.ExecutionToken])
+	}
+	return res, nil
+}
+
 func (rq *DB) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {
 	incidents, err := rq.Queries.FindIncidentsByExecutionTokenKey(ctx, executionTokenKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find incidents for execution token %d: %w", executionTokenKey, err)
 	}
-	res := make([]bpmnruntime.Incident, len(incidents))
-
-	tokens, err := rq.Queries.GetTokens(ctx, []int64{executionTokenKey})
-	if err != nil {
-		return res, fmt.Errorf("failed to find job tokens: %w", err)
-	}
-
-	for i, incident := range incidents {
-		res[i] = bpmnruntime.Incident{
-			Key:                incident.Key,
-			ElementInstanceKey: incident.ElementInstanceKey,
-			ElementId:          incident.ElementID,
-			ProcessInstanceKey: incident.ProcessInstanceKey,
-			Message:            incident.Message,
-			CreatedAt:          time.UnixMilli(incident.CreatedAt),
-			Token: bpmnruntime.ExecutionToken{
-				Key:                tokens[0].Key,
-				ElementInstanceKey: tokens[0].ElementInstanceKey,
-				ElementId:          tokens[0].ElementID,
-				ProcessInstanceKey: tokens[0].ProcessInstanceKey,
-				State:              bpmnruntime.TokenState(tokens[0].State),
-			},
-		}
-		if incident.ResolvedAt.Valid {
-			time := time.UnixMilli(incident.ResolvedAt.Int64)
-			res[i].ResolvedAt = &time
-		}
-	}
-
-	return res, nil
+	return inflateIncidents(ctx, rq.Queries, incidents)
 }
 
 func (rq *DB) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
@@ -2272,35 +2297,20 @@ func FindIncidentByKey(ctx context.Context, db *sql.Queries, key int64) (bpmnrun
 		return bpmnruntime.Incident{}, fmt.Errorf("incident with key %d not found: %w", key, err)
 	}
 
-	tokens, err := db.GetTokens(ctx, []int64{incident.ExecutionToken})
 	var token sql.ExecutionToken
-	if len(tokens) == 0 {
-		err = errors.Join(err, errors.New("no incidents found"))
-	} else {
+	// A zero-value execution token means the incident is not bound to an execution token (e.g. event subprocess start
+	// event subscriptions created during process instance creation). In that case there is no token to load.
+	if incident.ExecutionToken != 0 {
+		tokens, getErr := db.GetTokens(ctx, []int64{incident.ExecutionToken})
+		if getErr != nil {
+			return bpmnruntime.Incident{}, fmt.Errorf("failed to find tokens for incident %d: %w", key, getErr)
+		}
+		if len(tokens) == 0 {
+			return bpmnruntime.Incident{}, fmt.Errorf("execution token %d for incident %d not found: %w", incident.ExecutionToken, key, storage.ErrNotFound)
+		}
 		token = tokens[0]
 	}
-	return bpmnruntime.Incident{
-		Key:                incident.Key,
-		ElementInstanceKey: incident.ElementInstanceKey,
-		ElementId:          incident.ElementID,
-		ProcessInstanceKey: incident.ProcessInstanceKey,
-		Message:            incident.Message,
-		CreatedAt:          time.UnixMilli(incident.CreatedAt),
-		ResolvedAt: func() *time.Time {
-			if incident.ResolvedAt.Valid {
-				t := time.UnixMilli(incident.ResolvedAt.Int64)
-				return &t
-			}
-			return nil
-		}(),
-		Token: bpmnruntime.ExecutionToken{
-			Key:                token.Key,
-			ElementInstanceKey: token.ElementInstanceKey,
-			ElementId:          token.ElementID,
-			ProcessInstanceKey: token.ProcessInstanceKey,
-			State:              bpmnruntime.TokenState(token.State),
-		},
-	}, err
+	return buildIncident(incident, token), nil
 }
 
 func (rq *DB) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
@@ -2310,43 +2320,9 @@ func (rq *DB) FindIncidentsByProcessInstanceKey(ctx context.Context, processInst
 func FindIncidentsByProcessInstanceKey(ctx context.Context, db *sql.Queries, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
 	incidents, err := db.FindIncidentsByProcessInstanceKey(ctx, processInstanceKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find incidents for process instance %d: %w", processInstanceKey, err)
 	}
-	res := make([]bpmnruntime.Incident, len(incidents))
-
-	tokensToLoad := make([]int64, len(incidents))
-	for i, incident := range incidents {
-		res[i] = bpmnruntime.Incident{
-			Key:                incident.Key,
-			ElementInstanceKey: incident.ElementInstanceKey,
-			ElementId:          incident.ElementID,
-			ProcessInstanceKey: incident.ProcessInstanceKey,
-			Message:            incident.Message,
-		}
-
-		tokensToLoad[i] = incident.ExecutionToken
-	}
-
-	tokens, err := db.GetTokens(ctx, tokensToLoad)
-	if err != nil {
-		return res, fmt.Errorf("failed to find job tokens: %w", err)
-	}
-token:
-	for _, token := range tokens {
-		for i := range res {
-			if res[i].Token.Key == token.Key {
-				res[i].Token = bpmnruntime.ExecutionToken{
-					Key:                token.Key,
-					ElementInstanceKey: token.ElementInstanceKey,
-					ElementId:          token.ElementID,
-					ProcessInstanceKey: token.ProcessInstanceKey,
-					State:              bpmnruntime.TokenState(token.State),
-				}
-				continue token
-			}
-		}
-	}
-	return res, nil
+	return inflateIncidents(ctx, db, incidents)
 }
 
 var _ storage.IncidentStorageWriter = &DB{}

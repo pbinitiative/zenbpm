@@ -107,4 +107,67 @@ func TestCreateInstance_ManualStart_OnEventDrivenStartEvent_WithFailingEventSubp
 	}
 	_, err = store.GetTokenByKey(t.Context(), 0)
 	assert.Error(t, err, "resolving a tokenless incident must not save a token with key 0")
+
+	// Publish the message on the event subprocess message start event using the correct message name and correlation key
+	ck := correlationKey
+	require.NoError(t,
+		engine.PublishMessageByName(t.Context(), "globalMessageRef", &ck, nil),
+		"publishing message %q with correlation key %q must succeed now that a matching active subscription exists",
+		"globalMessageRef", correlationKey)
+
+	// The interrupting event subprocess (start event → end event, no intermediate tasks) runs to completion and cancels the still-active service task,
+	// The parent process instance must therefore reach Completed state.
+	require.Eventually(t, func() bool {
+		refreshed, fErr := store.FindProcessInstanceByKey(t.Context(), piKey)
+		if fErr != nil {
+			return false
+		}
+		return refreshed.ProcessInstance().GetState() == runtime.ActivityStateCompleted
+	}, 2*time.Second, 25*time.Millisecond,
+		"parent process instance must reach Completed state after the interrupting event subprocess fires")
+
+	// Find the event subprocess child instance (a SubProcessInstance whose parent token
+	// belongs to the parent process instance) and verify it is also Completed.
+	parentTokens, err := store.GetAllTokensForProcessInstance(t.Context(), piKey)
+	require.NoError(t, err)
+	var (
+		subprocInstance runtime.ProcessInstance
+		foundSubproc    bool
+	)
+	for _, token := range parentTokens {
+		children, childErr := store.FindProcessInstancesByParentExecutionTokenKey(t.Context(), token.Key)
+		if childErr != nil {
+			continue
+		}
+		for _, child := range children {
+			if child.Type() == runtime.ProcessTypeSubProcess {
+				subprocInstance = child
+				foundSubproc = true
+				break
+			}
+		}
+		if foundSubproc {
+			break
+		}
+	}
+	require.True(t, foundSubproc, "an event subprocess child instance must have been created when the message was published")
+	assert.Equal(t, runtime.ActivityStateCompleted, subprocInstance.ProcessInstance().GetState(),
+		"event subprocess child instance must be in Completed state")
+
+	// The event subprocess subscription must have been consumed — no Active subscriptions
+	// may remain for this process instance after the interrupting fire.
+	activeAfter, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), piKey, runtime.ActivityStateActive)
+	require.NoError(t, err)
+	assert.Empty(t, activeAfter, "event subprocess subscription must be consumed after the message is published")
+
+	// The event subprocess output mappings must have propagated their variables into the
+	// parent process instance scope.
+	completedInstance, err := store.FindProcessInstanceByKey(t.Context(), piKey)
+	require.NoError(t, err)
+	assert.Equal(t, "message-fired", completedInstance.ProcessInstance().GetVariable("subProcessResult"),
+		"subProcessResult output variable must be mapped from the event subprocess")
+	assert.Equal(t, true, completedInstance.ProcessInstance().GetVariable("messageInterrupted"),
+		"messageInterrupted output variable must be mapped from the event subprocess")
+	assert.Equal(t, "message-event-subprocess", completedInstance.ProcessInstance().GetVariable("interruptedBy"),
+		"interruptedBy output variable must be mapped from the event subprocess")
 }

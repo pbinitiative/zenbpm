@@ -2224,7 +2224,20 @@ var _ storage.IncidentStorageReader = &DB{}
 
 // buildIncident maps a persisted incident row together with its (already loaded) execution token
 // into the runtime representation. A zero-value token is expected for tokenless incidents.
+// If the incident references a token that could not be loaded, fall back to the incident's
+// own snapshot fields so the incident remains distinguishable from a tokenless one.
 func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.Incident {
+	tokenKey := token.Key
+	tokenElementInstanceKey := token.ElementInstanceKey
+	tokenElementId := token.ElementID
+	tokenProcessInstanceKey := token.ProcessInstanceKey
+	if tokenKey == 0 && incident.ExecutionToken != 0 {
+		tokenKey = incident.ExecutionToken
+		tokenElementInstanceKey = incident.ElementInstanceKey
+		tokenElementId = incident.ElementID
+		tokenProcessInstanceKey = incident.ProcessInstanceKey
+	}
+
 	res := bpmnruntime.Incident{
 		Key:                incident.Key,
 		ElementInstanceKey: incident.ElementInstanceKey,
@@ -2233,10 +2246,10 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 		Message:            incident.Message,
 		CreatedAt:          time.UnixMilli(incident.CreatedAt),
 		Token: bpmnruntime.ExecutionToken{
-			Key:                token.Key,
-			ElementInstanceKey: token.ElementInstanceKey,
-			ElementId:          token.ElementID,
-			ProcessInstanceKey: token.ProcessInstanceKey,
+			Key:                tokenKey,
+			ElementInstanceKey: tokenElementInstanceKey,
+			ElementId:          tokenElementId,
+			ProcessInstanceKey: tokenProcessInstanceKey,
 			State:              bpmnruntime.TokenState(token.State),
 		},
 	}
@@ -2251,12 +2264,7 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 // token query. Incidents with a zero execution_token (e.g. event subprocess start event subscriptions
 // created during process instance creation) are left with a zero-value token.
 func inflateIncidents(ctx context.Context, db *sql.Queries, incidents []sql.Incident) ([]bpmnruntime.Incident, error) {
-	tokenKeys := make([]int64, 0, len(incidents))
-	for _, incident := range incidents {
-		if incident.ExecutionToken != 0 {
-			tokenKeys = append(tokenKeys, incident.ExecutionToken)
-		}
-	}
+	tokenKeys := incidentTokenKeys(incidents)
 
 	tokensByKey := make(map[int64]sql.ExecutionToken, len(tokenKeys))
 	if len(tokenKeys) > 0 {
@@ -2274,6 +2282,22 @@ func inflateIncidents(ctx context.Context, db *sql.Queries, incidents []sql.Inci
 		res[i] = buildIncident(incident, tokensByKey[incident.ExecutionToken])
 	}
 	return res, nil
+}
+
+func incidentTokenKeys(incidents []sql.Incident) []int64 {
+	tokenKeysMap := make(map[int64]struct{}, len(incidents))
+	for _, incident := range incidents {
+		if incident.ExecutionToken != 0 {
+			tokenKeysMap[incident.ExecutionToken] = struct{}{}
+		}
+	}
+
+	tokenKeys := make([]int64, 0, len(tokenKeysMap))
+	for key := range tokenKeysMap {
+		tokenKeys = append(tokenKeys, key)
+	}
+	sort.Slice(tokenKeys, func(i, j int) bool { return tokenKeys[i] < tokenKeys[j] })
+	return tokenKeys
 }
 
 func (rq *DB) FindIncidentsByExecutionTokenKey(ctx context.Context, executionTokenKey int64) ([]bpmnruntime.Incident, error) {

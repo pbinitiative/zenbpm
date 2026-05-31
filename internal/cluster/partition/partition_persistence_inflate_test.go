@@ -15,6 +15,67 @@ import (
 func nullInt64(v int64) ssql.NullInt64    { return ssql.NullInt64{Int64: v, Valid: true} }
 func nullString(v string) ssql.NullString { return ssql.NullString{String: v, Valid: true} }
 
+func TestBuildIncident(t *testing.T) {
+	baseIncident := sql.Incident{
+		Key:                1,
+		ElementInstanceKey: 11,
+		ElementID:          "incident-element",
+		ProcessInstanceKey: 101,
+		Message:            "incident-message",
+		CreatedAt:          12345,
+		ExecutionToken:     1001,
+	}
+
+	t.Run("uses hydrated token when available", func(t *testing.T) {
+		token := sql.ExecutionToken{
+			Key:                1001,
+			ElementInstanceKey: 22,
+			ElementID:          "token-element",
+			ProcessInstanceKey: 202,
+			State:              int64(bpmnruntime.TokenStateFailed),
+		}
+
+		got := buildIncident(baseIncident, token)
+
+		assert.Equal(t, int64(1001), got.Token.Key)
+		assert.Equal(t, int64(22), got.Token.ElementInstanceKey)
+		assert.Equal(t, "token-element", got.Token.ElementId)
+		assert.Equal(t, int64(202), got.Token.ProcessInstanceKey)
+		assert.Equal(t, bpmnruntime.TokenStateFailed, got.Token.State)
+	})
+
+	t.Run("falls back to incident fields when referenced token is missing", func(t *testing.T) {
+		got := buildIncident(baseIncident, sql.ExecutionToken{})
+
+		assert.Equal(t, int64(1001), got.Token.Key)
+		assert.Equal(t, baseIncident.ElementInstanceKey, got.Token.ElementInstanceKey)
+		assert.Equal(t, baseIncident.ElementID, got.Token.ElementId)
+		assert.Equal(t, baseIncident.ProcessInstanceKey, got.Token.ProcessInstanceKey)
+		assert.Equal(t, bpmnruntime.TokenState(0), got.Token.State)
+	})
+
+	t.Run("keeps tokenless incidents tokenless", func(t *testing.T) {
+		incident := baseIncident
+		incident.ExecutionToken = 0
+
+		got := buildIncident(incident, sql.ExecutionToken{})
+
+		assert.Equal(t, bpmnruntime.ExecutionToken{}, got.Token)
+	})
+}
+
+func TestIncidentTokenKeysDeduplicatesAndSkipsZero(t *testing.T) {
+	incidents := []sql.Incident{
+		{ExecutionToken: 20},
+		{ExecutionToken: 0},
+		{ExecutionToken: 10},
+		{ExecutionToken: 20},
+		{ExecutionToken: 10},
+	}
+
+	assert.Equal(t, []int64{10, 20}, incidentTokenKeys(incidents))
+}
+
 func TestInflateDefinitionMessageSubscription(t *testing.T) {
 	dbm := sql.MessageSubscription{
 		Key:                  10,

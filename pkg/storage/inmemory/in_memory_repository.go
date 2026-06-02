@@ -743,7 +743,7 @@ func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, execut
 		if inc.Token.Key != executionTokenKey {
 			continue
 		}
-		res = append(res, inc)
+		res = append(res, mem.hydrateIncidentToken(inc))
 	}
 	return res, nil
 }
@@ -751,12 +751,11 @@ func (mem *Storage) FindIncidentsByExecutionTokenKey(ctx context.Context, execut
 func (mem *Storage) FindIncidentByKey(ctx context.Context, key int64) (bpmnruntime.Incident, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
-	var res bpmnruntime.Incident
-	res, ok := mem.Incidents[key]
+	incident, ok := mem.Incidents[key]
 	if !ok {
-		return res, storage.ErrNotFound
+		return bpmnruntime.Incident{}, storage.ErrNotFound
 	}
-	return res, nil
+	return mem.hydrateIncidentToken(incident), nil
 }
 
 func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, processInstanceKey int64) ([]bpmnruntime.Incident, error) {
@@ -767,9 +766,22 @@ func (mem *Storage) FindIncidentsByProcessInstanceKey(ctx context.Context, proce
 		if inc.ProcessInstanceKey != processInstanceKey {
 			continue
 		}
-		res = append(res, inc)
+		res = append(res, mem.hydrateIncidentToken(inc))
 	}
 	return res, nil
+}
+
+// hydrateIncidentToken refreshes the incident's execution token with the current persisted token state.
+// Tokenless incidents (zero token key) are returned as-is, and a token that can no longer be found
+// falls back to the snapshot stored on the incident. Callers must hold mem.mu.
+func (mem *Storage) hydrateIncidentToken(incident bpmnruntime.Incident) bpmnruntime.Incident {
+	if incident.Token.Key == 0 {
+		return incident
+	}
+	if token, ok := mem.ExecutionTokens[incident.Token.Key]; ok {
+		incident.Token = token
+	}
+	return incident
 }
 
 var _ storage.MessageStorageWriter = &Storage{}

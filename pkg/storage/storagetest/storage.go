@@ -750,6 +750,81 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(testIncidents))
 		assert.Equal(t, incident, testIncidents[0])
+
+		// Verify that FindIncidentByKey returns the current token state
+		updatedToken := token
+		updatedToken.State = bpmnruntime.TokenStateFailed
+		err = s.SaveToken(t.Context(), updatedToken)
+		assert.Nil(t, err)
+
+		refreshedIncident, err := s.FindIncidentByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.Equal(t, bpmnruntime.TokenStateFailed, refreshedIncident.Token.State, "FindIncidentByKey should return the current token state, not a stale snapshot")
+
+		// The list readers must expose the same current token state as FindIncidentByKey.
+		byProcessInstance, err := s.FindIncidentsByProcessInstanceKey(t.Context(), st.processInstance.ProcessInstance().Key)
+		assert.Nil(t, err)
+		for _, listed := range byProcessInstance {
+			if listed.Key == r {
+				assert.Equal(t, bpmnruntime.TokenStateFailed, listed.Token.State, "FindIncidentsByProcessInstanceKey should return the current token state, not a stale snapshot")
+			}
+		}
+
+		byToken, err := s.FindIncidentsByExecutionTokenKey(t.Context(), tok)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(byToken))
+		assert.Equal(t, bpmnruntime.TokenStateFailed, byToken[0].Token.State, "FindIncidentsByExecutionTokenKey should return the current token state, not a stale snapshot")
+
+		// Incidents created for event subprocess start event subscriptions have no
+		// execution token yet, so the token is left as a zero value. FindIncidentByKey
+		// must still be able to return such incidents instead of failing to load a token.
+		noTokenIncidentKey := s.GenerateId()
+		noTokenIncident := bpmnruntime.Incident{
+			Key:                noTokenIncidentKey,
+			ElementInstanceKey: noTokenIncidentKey,
+			ElementId:          "event-subprocess-start",
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			Message:            "failed to evaluate correlation key",
+			CreatedAt:          time.Time{}.Local(),
+			ResolvedAt:         nil,
+			Token:              bpmnruntime.ExecutionToken{},
+		}
+
+		err = s.SaveIncident(t.Context(), noTokenIncident)
+		assert.Nil(t, err)
+
+		testNoTokenIncident, err := s.FindIncidentByKey(t.Context(), noTokenIncidentKey)
+		assert.Nil(t, err)
+		assert.Equal(t, noTokenIncident, testNoTokenIncident)
+		assert.Equal(t, int64(0), testNoTokenIncident.Token.Key)
+
+		// Incidents that reference a token which is no longer persisted must remain readable
+		// for history/listing purposes. Callers that need to act on the token are responsible
+		// for loading the current token state explicitly.
+		danglingIncidentKey := s.GenerateId()
+		danglingTokenKey := s.GenerateId()
+		danglingIncident := bpmnruntime.Incident{
+			Key:                danglingIncidentKey,
+			ElementInstanceKey: danglingIncidentKey,
+			ElementId:          "dangling-token-incident",
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			Message:            "referenced token was removed",
+			CreatedAt:          time.Time{}.Local(),
+			ResolvedAt:         nil,
+			Token: bpmnruntime.ExecutionToken{
+				Key:                danglingTokenKey,
+				ElementInstanceKey: danglingIncidentKey,
+				ElementId:          "dangling-token-incident",
+				ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			},
+		}
+
+		err = s.SaveIncident(t.Context(), danglingIncident)
+		assert.Nil(t, err)
+
+		testDanglingIncident, err := s.FindIncidentByKey(t.Context(), danglingIncidentKey)
+		assert.Nil(t, err)
+		assert.Equal(t, danglingIncident, testDanglingIncident)
 	}
 }
 

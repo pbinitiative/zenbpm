@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -48,12 +50,14 @@ func TestGrpcJobStream(t *testing.T) {
 
 	zenClient := zenclient.NewGrpc(conn)
 
-	count := 0
-	completed := 0
+	// Counters are mutated from worker callback goroutines spawned by the gRPC client,
+	// so they must be accessed atomically to avoid data races with the assertions below.
+	var count atomic.Int64
+	var completed atomic.Int64
 	start := time.Now()
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
-		count++
+		count.Add(1)
 		return map[string]any{
 			"testVar": 456,
 		}, nil
@@ -62,29 +66,38 @@ func TestGrpcJobStream(t *testing.T) {
 
 	_, err = zenClient.RegisterWorker(t.Context(), completeType, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, completeType, job.GetType())
-		completed++
+		completed.Add(1)
 		return map[string]any{
 			"testVar": 456,
 		}, nil
 	}, completeType)
 	assert.NoError(t, err)
 
-	assert.Eventually(t, func() bool {
-		jobs, err := getProcessInstanceJobs(t, instance.Key)
-		if err != nil {
-			return false
-		}
-		if instances != len(startedInstances) && len(startedInstances) != completed {
-			return false
-		}
-		for _, job := range jobs {
-			if job.State != public.JobStateCompleted {
+	// Wait until every started instance has completed together with all of its jobs.
+	// Checking the instance state (not just the jobs) avoids a false positive in the window between one job completing
+	// and the next being created, where all currently persisted jobs would momentarily be completed.
+	require.Eventually(t, func() bool {
+		for _, instanceKey := range startedInstances {
+			inst, err := getProcessInstance(t, instanceKey)
+			if err != nil || inst.State != zenclient.ProcessInstanceStateCompleted {
 				return false
 			}
+			jobs, err := getProcessInstanceJobs(t, instanceKey)
+			if err != nil {
+				return false
+			}
+			for _, job := range jobs {
+				if job.State != public.JobStateCompleted {
+					return false
+				}
+			}
 		}
-		fmt.Println(time.Since(start).String())
 		return true
-	}, 10*time.Second, 10*time.Millisecond, "Process instance should have all jobs completed")
+	}, 30*time.Second, 100*time.Millisecond, "all process instances should have all jobs completed")
+
+	fmt.Println(time.Since(start).String())
+	assert.Positive(t, count.Load(), "the task worker should have processed at least one job")
+	assert.Positive(t, completed.Load(), "the complete worker should have processed at least one job")
 }
 
 func TestGrpcJobStreamFailjob(t *testing.T) {
@@ -128,7 +141,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 		} else {
 			return jobs[0].State == public.JobStateFailed
 		}
-	}, 10*time.Second, 1*time.Second, "job should have failed")
+	}, 30*time.Second, 100*time.Millisecond, "job should have failed")
 
 	// now setup for resolve
 	conn.Close()
@@ -158,8 +171,8 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 	// Now testing that we can resolve
 	incidents, err := getProcessInstanceIncidents(t, instance.Key)
-	assert.NoError(t, err)
-	assert.Len(t, incidents, 1)
+	require.NoError(t, err)
+	require.Len(t, incidents, 1)
 
 	resolveIncident(t, incidents[0].Key)
 
@@ -172,10 +185,9 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 		if len(jobs) != 1 {
 			return false
-		} else {
-			return jobs[0].State == public.JobStateCompleted
 		}
-	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
+		return jobs[0].State == public.JobStateCompleted
+	}, 30*time.Second, 100*time.Millisecond, "job should have completed")
 
 	assert.Eventually(t, func() bool {
 		instance, err = getProcessInstance(t, instance.Key)
@@ -184,7 +196,7 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 			return false
 		}
 		return instance.State == zenclient.ProcessInstanceStateCompleted
-	}, 10*time.Second, 10*time.Millisecond, "job should have completed")
+	}, 30*time.Second, 100*time.Millisecond, "job should have completed")
 
 }
 

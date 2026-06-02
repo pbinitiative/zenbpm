@@ -591,7 +591,7 @@ func TestBoundaryEventActivityCompleteCancelsSubscriptions(t *testing.T) {
 	assert.Equal(t, 1, len(jobs))
 
 	// when
-	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].Variables)
+	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables)
 	assert.NoError(t, err)
 
 	// then

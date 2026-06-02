@@ -57,10 +57,11 @@ func TestUserTaskJobCompleteVariables(t *testing.T) {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		completeJobForElementId(t, processInstance.Key, "user_task", map[string]any{"variable_without_output_mapping": "value"})
+		completeJobVariables := map[string]any{"variable_without_output_mapping": "value"}
+		completeJobForElementId(t, processInstance.Key, "user_task", completeJobVariables)
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "user_task", public.JobStateCompleted)
-		require.Equal(t, job.Variables, map[string]interface{}{}, "variables for jobs should not be propagated to job after job completion, its expected behaviour")
+		require.Equal(t, completeJobVariables, *job.OutputVariables, "completion variables should be stored as output variables on the job")
 	})
 
 	t.Run("Only job completion variables referenced by output mappings are propagated", func(t *testing.T) {

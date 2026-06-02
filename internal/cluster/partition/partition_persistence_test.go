@@ -326,7 +326,7 @@ func TestDataCleanup(t *testing.T) {
 			Key:                r2 + 90,
 			State:              runtime.ActivityStateActive,
 			Type:               "test-job",
-			Variables:          map[string]any{"foo": "bar"},
+			InputVariables:     map[string]any{"foo": "bar"},
 			CreatedAt:          time.Now(),
 			Token:              token,
 		}

@@ -833,6 +833,10 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 		if job.Assignee.Valid {
 			assignee = &job.Assignee.String
 		}
+		var outputVarsBytes []byte
+		if job.OutputVariables.Valid {
+			outputVarsBytes = []byte(job.OutputVariables.String)
+		}
 		jobs[i] = &proto.Job{
 			Key:                &job.Key,
 			ElementInstanceKey: &job.ElementInstanceKey,
@@ -841,7 +845,8 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			Type:               &job.Type,
 			State:              ptr.To(job.State),
 			CreatedAt:          &job.CreatedAt,
-			Variables:          []byte(job.Variables),
+			InputVariables:     []byte(job.InputVariables),
+			OutputVariables:    outputVarsBytes,
 			Assignee:           assignee,
 		}
 	}
@@ -948,6 +953,10 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 			if job.Assignee.Valid {
 				a = &job.Assignee.String
 			}
+			var outputVarsBytes []byte
+			if job.OutputVariables.Valid {
+				outputVarsBytes = []byte(job.OutputVariables.String)
+			}
 			partitionJobs[i] = &proto.Job{
 				Key:                ptr.To(job.Key),
 				ProcessInstanceKey: ptr.To(job.ProcessInstanceKey),
@@ -957,7 +966,8 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				CreatedAt:          ptr.To(job.CreatedAt),
 				State:              ptr.To(job.State),
 				Assignee:           a,
-				Variables:          []byte(job.Variables),
+				InputVariables:     []byte(job.InputVariables),
+				OutputVariables:    outputVarsBytes,
 			}
 		}
 
@@ -997,6 +1007,10 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 		assignee = &job.Assignee.String
 	}
 
+	var outputVarsBytes []byte
+	if job.OutputVariables.Valid {
+		outputVarsBytes = []byte(job.OutputVariables.String)
+	}
 	return &proto.GetJobResponse{
 		Job: &proto.Job{
 			Key:                &job.Key,
@@ -1007,7 +1021,8 @@ func (s *Server) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.G
 			State:              &job.State,
 			CreatedAt:          &job.CreatedAt,
 			Assignee:           assignee,
-			Variables:          []byte(job.Variables),
+			InputVariables:     []byte(job.InputVariables),
+			OutputVariables:    outputVarsBytes,
 		},
 	}, nil
 

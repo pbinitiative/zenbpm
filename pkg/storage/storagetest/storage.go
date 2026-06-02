@@ -178,7 +178,7 @@ func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job 
 		State:              bpmnruntime.ActivityStateActive,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 		Token:              token,
-		Variables:          map[string]any{"foo": "bar"},
+		InputVariables:     map[string]any{"foo": "bar"},
 	}
 }
 

@@ -33,7 +33,7 @@ func (engine *Engine) createInternalTask(
 		Key:                engine.generateKey(),
 		Type:               element.GetTaskType(),
 		State:              runtime.ActivityStateActive,
-		Variables:          jobVarHolder.LocalVariables(),
+		InputVariables:     jobVarHolder.LocalVariables(),
 		CreatedAt:          time.Now(),
 		Token:              currentToken,
 	}

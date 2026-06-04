@@ -269,8 +269,9 @@ func (zpn *ZenPartitionNode) Stop() error {
 		remover.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, zpn.config.JoinAs))
 		zpn.logger.Info("initiating removal of this node from cluster before shutdown")
 		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := remover.Do(removeCtx, zpn.config.NodeID, true); err != nil {
+		err := remover.Do(removeCtx, zpn.config.NodeID, true)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("failed to remove this node from cluster before shutdown: %w", err)
 		}
 		zpn.logger.Info("removed this node successfully from cluster before shutdown")

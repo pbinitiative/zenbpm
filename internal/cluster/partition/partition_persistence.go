@@ -37,8 +37,8 @@ import (
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
-	"github.com/rqlite/rqlite/v8/command/proto"
-	"github.com/rqlite/rqlite/v8/store"
+	"github.com/rqlite/rqlite/v10/command/proto"
+	"github.com/rqlite/rqlite/v10/store"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -183,7 +183,7 @@ func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Stateme
 		Timings: false,
 	}
 
-	results, _, resultsErr := rq.Store.Execute(er)
+	results, _, resultsErr := rq.Store.Execute(ctx, er)
 
 	if resultsErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -284,7 +284,7 @@ func (rq *DB) generateStatement(sql string, parameters ...interface{}) *proto.St
 	}
 }
 
-func (rq *DB) queryDatabase(query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
+func (rq *DB) queryDatabase(ctx context.Context, query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
 	stmts := rq.generateStatement(query, parameters...)
 
 	qr := &proto.QueryRequest{
@@ -294,10 +294,10 @@ func (rq *DB) queryDatabase(query string, parameters ...interface{}) ([]*proto.Q
 			Statements:  []*proto.Statement{stmts},
 		},
 		Timings: false,
-		Level:   proto.QueryRequest_QUERY_REQUEST_LEVEL_NONE,
+		Level:   proto.ConsistencyLevel_NONE,
 	}
 
-	results, _, resultsErr := rq.Store.Query(qr)
+	results, _, _, resultsErr := rq.Store.Query(ctx, qr)
 	if resultsErr != nil {
 		rq.logger.Error("Error executing SQL statements", "err", resultsErr)
 		return nil, resultsErr
@@ -366,7 +366,7 @@ func (rq *DB) QueryContext(ctx context.Context, query string, args ...interface{
 	defer func() {
 		querySpan.End()
 	}()
-	results, err := rq.queryDatabase(query, args...)
+	results, err := rq.queryDatabase(ctx, query, args...)
 	if err != nil {
 		querySpan.RecordError(err)
 		querySpan.SetStatus(codes.Error, err.Error())

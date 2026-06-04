@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -9,7 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
-	"github.com/rqlite/rqlite/v8/cluster"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
 const numAttempts int = 3
@@ -33,7 +34,7 @@ func TestSingleJoinOK(t *testing.T) {
 
 	clientMgr := client.NewClientManager(nil)
 	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
-	addr, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
+	addr, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", rqproto.Suffrage_VOTER)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +53,8 @@ func TestSingleJoinZeroAttempts(t *testing.T) {
 
 	clientMgr := client.NewClientManager(nil)
 	joiner := NewJoiner(clientMgr, 0, attemptInterval)
-	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
-	if err != ErrJoinFailed {
+	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", rqproto.Suffrage_VOTER)
+	if !errors.Is(err, ErrJoinFailed) {
 		t.Fatalf("Incorrect error returned when zero attempts specified")
 	}
 }
@@ -67,7 +68,7 @@ func TestSingleJoinFail(t *testing.T) {
 
 	clientMgr := client.NewClientManager(nil)
 	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
-	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
+	_, err := joiner.Do(context.Background(), []string{srv.Addr()}, "id0", "1.2.3.4", rqproto.Suffrage_VOTER)
 	if err == nil {
 		t.Fatalf("expected error when joining bad node")
 	}
@@ -89,8 +90,8 @@ func TestSingleJoinCancel(t *testing.T) {
 
 	clientMgr := client.NewClientManager(nil)
 	joiner := NewJoiner(clientMgr, 10, attemptInterval)
-	_, err := joiner.Do(ctx, []string{srv.Addr()}, "id0", "1.2.3.4", cluster.Voter)
-	if err != ErrJoinCanceled {
+	_, err := joiner.Do(ctx, []string{srv.Addr()}, "id0", "1.2.3.4", rqproto.Suffrage_VOTER)
+	if !errors.Is(err, ErrJoinCanceled) {
 		t.Fatalf("incorrect error returned when canceling: %s", err)
 	}
 }
@@ -110,7 +111,7 @@ func TestDoubleJoinOKSecondNode(t *testing.T) {
 
 	clientMgr := client.NewClientManager(nil)
 	joiner := NewJoiner(clientMgr, numAttempts, attemptInterval)
-	addr, err := joiner.Do(context.Background(), []string{srv1.Addr(), srv2.Addr()}, "id0", "1.2.3.4", cluster.Voter)
+	addr, err := joiner.Do(context.Background(), []string{srv1.Addr(), srv2.Addr()}, "id0", "1.2.3.4", rqproto.Suffrage_VOTER)
 	if err != nil {
 		t.Fatal(err)
 	}

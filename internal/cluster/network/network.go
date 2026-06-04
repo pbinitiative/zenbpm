@@ -6,8 +6,8 @@ import (
 	"net"
 
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/rtls"
-	httpd "github.com/rqlite/rqlite/v8/http"
-	"github.com/rqlite/rqlite/v8/tcp"
+	httpd "github.com/rqlite/rqlite/v10/http"
+	"github.com/rqlite/rqlite/v10/tcp"
 )
 
 // muxHeader specifies the header byte for server communication

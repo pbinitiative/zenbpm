@@ -3,11 +3,12 @@ package partition
 import (
 	"context"
 	"fmt"
-	"github.com/pbinitiative/zenbpm/pkg/script"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pbinitiative/zenbpm/pkg/script"
 
 	"golang.org/x/sync/errgroup"
 
@@ -21,14 +22,15 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/network"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn"
-	"github.com/rqlite/rqlite/v8/auth"
-	"github.com/rqlite/rqlite/v8/auto/backup"
-	"github.com/rqlite/rqlite/v8/auto/restore"
-	"github.com/rqlite/rqlite/v8/cluster"
-	"github.com/rqlite/rqlite/v8/command/proto"
-	httpd "github.com/rqlite/rqlite/v8/http"
-	"github.com/rqlite/rqlite/v8/store"
-	"github.com/rqlite/rqlite/v8/tcp"
+	"github.com/rqlite/rqlite/v10/auth"
+	"github.com/rqlite/rqlite/v10/auto/backup"
+	"github.com/rqlite/rqlite/v10/auto/restore"
+	"github.com/rqlite/rqlite/v10/cluster"
+	"github.com/rqlite/rqlite/v10/command"
+	"github.com/rqlite/rqlite/v10/command/proto"
+	httpd "github.com/rqlite/rqlite/v10/http"
+	"github.com/rqlite/rqlite/v10/store"
+	"github.com/rqlite/rqlite/v10/tcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -234,12 +236,12 @@ func (zpn *ZenPartitionNode) Role() zproto.Role {
 }
 
 func (zpn *ZenPartitionNode) Execute(ctx context.Context, req *proto.ExecuteRequest) ([]*proto.ExecuteQueryResponse, error) {
-	res, _, err := zpn.store.Execute(req)
+	res, _, err := zpn.store.Execute(ctx, req)
 	return res, err
 }
 
 func (zpn *ZenPartitionNode) Query(ctx context.Context, req *proto.QueryRequest) ([]*proto.QueryRows, error) {
-	rows, _, err := zpn.store.Query(req)
+	rows, _, _, err := zpn.store.Query(ctx, req)
 	return rows, err
 }
 
@@ -266,7 +268,9 @@ func (zpn *ZenPartitionNode) Stop() error {
 		remover := cluster.NewRemover(zpn.clusterClient, 1*time.Second, zpn.store)
 		remover.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, zpn.config.JoinAs))
 		zpn.logger.Info("initiating removal of this node from cluster before shutdown")
-		if err := remover.Do(zpn.config.NodeID, true); err != nil {
+		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := remover.Do(removeCtx, zpn.config.NodeID, true); err != nil {
 			return fmt.Errorf("failed to remove this node from cluster before shutdown: %w", err)
 		}
 		zpn.logger.Info("removed this node successfully from cluster before shutdown")
@@ -321,10 +325,9 @@ func (zpn *ZenPartitionNode) startAutoBackups(ctx context.Context, cfg *config.R
 
 func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, partition uint32) (*store.Store, error) {
 	dbConf := store.NewDBConfig()
-	dbConf.OnDiskPath = cfg.OnDiskPath
 	dbConf.FKConstraints = cfg.FKConstraints
 
-	str := store.New(ln, &store.Config{
+	str := store.New(&store.Config{
 		DBConf: dbConf,
 		Dir:    cfg.DataPath,
 		ID:     cfg.NodeID,
@@ -333,7 +336,7 @@ func (zpn *ZenPartitionNode) createStore(cfg *config.RqLite, ln *tcp.Layer, part
 			StandardLogger(&hclog.StandardLoggerOptions{
 				ForceLevel: hclog.Default().GetLevel(),
 			}),
-	})
+	}, ln)
 
 	str.RaftLogLevel = cfg.RaftLogLevel
 	str.ShutdownOnRemove = cfg.RaftShutdownOnRemove
@@ -522,7 +525,7 @@ func (zpn *ZenPartitionNode) createPartitionCluster(ctx context.Context, cfg *co
 		leader, _ := zpn.store.LeaderAddr()
 		return leader != ""
 	}
-	clusterSuf := cluster.VoterSuffrage(!cfg.RaftNonVoter)
+	clusterSuf := command.SuffrageVoterFromBool(!cfg.RaftNonVoter)
 
 	joiner := cluster.NewJoiner(zpn.clusterClient, cfg.JoinAttempts, cfg.JoinInterval)
 	joiner.SetCredentials(cluster.CredentialsFor(zpn.credentialStore, cfg.JoinAs))

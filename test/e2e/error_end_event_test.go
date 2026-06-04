@@ -12,7 +12,7 @@ import (
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
-	rqliteproto "github.com/rqlite/rqlite/v8/command/proto"
+	rqliteproto "github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

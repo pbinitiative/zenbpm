@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/sql"
-	rqproto "github.com/rqlite/rqlite/v8/command/proto"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
 func (db *DB) RunMigrations(ctx context.Context) error {

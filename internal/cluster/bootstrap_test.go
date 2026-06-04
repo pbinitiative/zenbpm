@@ -12,7 +12,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/server/servertest"
-	"github.com/rqlite/rqlite/v8/cluster"
+	"github.com/rqlite/rqlite/v10/cluster"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
 func TestAddressProviderString(t *testing.T) {
@@ -51,7 +52,7 @@ func TestBootstrapperBootDoneImmediately(t *testing.T) {
 	}
 	p := NewAddressProviderString([]string{srv.Addr()})
 	bs := NewBootstrapper(p, nil)
-	if err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 10*time.Second); err != nil {
+	if err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 10*time.Second); err != nil {
 		t.Fatalf("failed to boot: %s", err)
 	}
 	if exp, got := cluster.BootDone, bs.Status(); exp != got {
@@ -77,7 +78,7 @@ func TestBootstrapperBootTimeout(t *testing.T) {
 	clientMgr := client.NewClientManager(nil)
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 1*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 1*time.Second)
 	if err == nil {
 		t.Fatalf("no error returned from timed-out boot")
 	}
@@ -104,7 +105,7 @@ func TestBootstrapperBootCanceled(t *testing.T) {
 	clientMgr := client.NewClientManager(nil)
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
-	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
+	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 5*time.Second)
 	if err == nil {
 		t.Fatalf("no error returned from timed-out boot")
 	}
@@ -133,7 +134,7 @@ func TestBootstrapperBootCanceledDone(t *testing.T) {
 	clientMgr := client.NewClientManager(nil)
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
-	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
+	err := bs.Boot(ctx, "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 5*time.Second)
 	if err != nil {
 		t.Fatalf("error returned from canceled boot even though it's done: %s", err)
 	}
@@ -166,7 +167,7 @@ func TestBootstrapperBootSingleJoin(t *testing.T) {
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
 
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 5*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 5*time.Second)
 	if err != nil {
 		t.Fatalf("failed to boot: %s", err)
 	}
@@ -201,7 +202,7 @@ func TestBootstrapperBootNonVoter(t *testing.T) {
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
 
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.NonVoter, done, 3*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_NON_VOTER, done, 3*time.Second)
 	if err == nil {
 		t.Fatalf("expected error, got none")
 	}
@@ -233,7 +234,7 @@ func TestBootstrapperBootSingleNotify(t *testing.T) {
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
 
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 60*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 60*time.Second)
 	if err != nil {
 		t.Fatalf("failed to boot: %s", err)
 	}
@@ -291,7 +292,7 @@ func TestBootstrapperBootMultiJoinNotify(t *testing.T) {
 	bs := NewBootstrapper(p, clientMgr)
 	bs.Interval = time.Second
 
-	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", cluster.Voter, done, 60*time.Second)
+	err := bs.Boot(context.Background(), "node1", "192.168.1.1:1234", rqproto.Suffrage_VOTER, done, 60*time.Second)
 	if err != nil {
 		t.Fatalf("failed to boot: %s", err)
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/zenerr"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
-	"github.com/rqlite/rqlite/v8/tcp"
+	"github.com/rqlite/rqlite/v10/tcp"
 )
 
 // Test_NonOpenStore tests that a non-open Store handles public methods correctly.

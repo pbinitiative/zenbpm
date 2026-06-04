@@ -216,7 +216,7 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 
 	backupSrv, err := zpn.startAutoBackups(ctx, cfg, str)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start auto-ackups: %w", err)
+		return nil, fmt.Errorf("failed to start auto-backups: %w", err)
 	}
 	if backupSrv != nil {
 		zpn.registerStatus("auto_backups", backupSrv)

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
-	"github.com/rqlite/rqlite/v8/command/proto"
+	"github.com/rqlite/rqlite/v10/command/proto"
 )
 
 type Rows struct {

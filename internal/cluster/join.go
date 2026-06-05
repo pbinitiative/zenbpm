@@ -10,7 +10,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
-	"github.com/rqlite/rqlite/v8/cluster"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
 var (
@@ -48,7 +48,7 @@ func NewJoiner(clientMgr *client.ClientManager, numAttempts int, attemptInterval
 
 // Do makes the actual join request. If the join is successful with any address,
 // that address is returned. Otherwise, an error is returned.
-func (j *Joiner) Do(ctx context.Context, targetAddrs []string, id, addr string, suf cluster.Suffrage) (string, error) {
+func (j *Joiner) Do(ctx context.Context, targetAddrs []string, id, addr string, suf rqproto.Suffrage) (string, error) {
 	if id == "" {
 		return "", ErrNodeIDRequired
 	}
@@ -83,21 +83,21 @@ func (j *Joiner) Do(ctx context.Context, targetAddrs []string, id, addr string, 
 	return "", ErrJoinFailed
 }
 
-func (j *Joiner) join(targetAddr, id, addr string, suf cluster.Suffrage) (string, error) {
+func (j *Joiner) join(targetAddr, id, addr string, suf rqproto.Suffrage) (string, error) {
 	req := &proto.JoinRequest{
 		Id:      &id,
 		Address: &addr,
-		Voter:   ptr.To(suf.IsVoter()),
+		Voter:   ptr.To(suf == rqproto.Suffrage_VOTER),
 	}
 
 	// Attempt to join.
-	client, err := j.clientMgr.For(targetAddr)
+	clusterClient, err := j.clientMgr.For(targetAddr)
 	if err != nil {
 		j.logger.Error(fmt.Sprintf("failed to create client for %s: %s", targetAddr, err))
 		return "", fmt.Errorf("failed to create client for %s: %w", targetAddr, err)
 	}
 	timeoutCtx, cancelCtx := context.WithTimeout(context.Background(), time.Second)
-	_, err = client.Join(timeoutCtx, req)
+	_, err = clusterClient.Join(timeoutCtx, req)
 	cancelCtx()
 	if err != nil {
 		return "", fmt.Errorf("failed to call Join on %s: %w", targetAddr, err)

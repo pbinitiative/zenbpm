@@ -92,9 +92,6 @@ type RqLite struct {
 	// BootstrapExpectTimeout is the maximum time a bootstrap operation can take.
 	BootstrapExpectTimeout time.Duration `yaml:"bootstrapExpectTimeout" json:"bootstrapExpectTimeout" env:"RQLITE_BOOTSTRAP_EXPECT_TIMEOUT"`
 
-	// OnDiskPath sets the path to the SQLite file. May not be set.
-	OnDiskPath string `yaml:"onDiskPath" json:"onDiskPath" env:"RQLITE_ON_DISK_PATH"`
-
 	// FKConstraints enables SQLite foreign key constraints.
 	FKConstraints bool `yaml:"fkConstraints" json:"fkConstraints" env:"RQLITE_FK_CONSTRAINTS"`
 

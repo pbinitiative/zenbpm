@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/rqlite/rqlite/v8/tcp"
+	"github.com/rqlite/rqlite/v10/tcp"
 )
 
 // Transport is the network service provided to Raft, and wraps a Listener.

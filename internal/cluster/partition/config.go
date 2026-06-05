@@ -33,7 +33,6 @@ func GetRqLiteDefaultConfig(nodeId string, raftAddr string, dataPath string, joi
 		JoinAs:                      "",
 		BootstrapExpect:             1,
 		BootstrapExpectTimeout:      120 * time.Second,
-		OnDiskPath:                  "",
 		FKConstraints:               true,
 		AutoVacInterval:             12 * time.Hour,
 		RaftLogLevel:                "WARN",

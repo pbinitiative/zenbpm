@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/pbinitiative/zenbpm/internal/safego"
-	"github.com/rqlite/rqlite/v8/tcp"
+	"github.com/rqlite/rqlite/v10/tcp"
 )
 
 // NewNodeMux creates a new instance of TCP multiplexer.

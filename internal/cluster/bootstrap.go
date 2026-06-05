@@ -10,7 +10,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/rqlitecompat/random"
-	"github.com/rqlite/rqlite/v8/cluster"
+	"github.com/rqlite/rqlite/v10/cluster"
+	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
 const (
@@ -64,12 +65,12 @@ func NewBootstrapper(p AddressProvider, client *client.ClientManager) *Bootstrap
 // true. done() is periodically polled by the boot process. Returns an error
 // the boot process encounters an unrecoverable error, or booting does not
 // occur within the given timeout. If booting was canceled, ErrBootCanceled is
-// returned unless done() returns true at the time of cancelation, in which case
+// returned unless done() returns true at the time of cancellation, in which case
 // no error is returned.
 //
 // id and raftAddr are those of the node calling Boot. suf is whether this node
 // is a Voter or NonVoter.
-func (b *Bootstrapper) Boot(ctx context.Context, id, raftAddr string, suf cluster.Suffrage, done func() bool, timeout time.Duration) error {
+func (b *Bootstrapper) Boot(ctx context.Context, id, raftAddr string, suf rqproto.Suffrage, done func() bool, timeout time.Duration) error {
 	timeoutT := time.NewTimer(timeout)
 	defer timeoutT.Stop()
 	tickerT := time.NewTimer(random.Jitter(time.Millisecond)) // Check fast, just once at the start.
@@ -116,7 +117,7 @@ func (b *Bootstrapper) Boot(ctx context.Context, id, raftAddr string, suf cluste
 				return nil
 			}
 
-			if suf.IsVoter() {
+			if suf == rqproto.Suffrage_VOTER {
 				// This is where we have to be careful. This node failed to join with any node
 				// in the targets list. This could be because none of the nodes are contactable,
 				// or none of the nodes are in a functioning cluster with a leader. That means that

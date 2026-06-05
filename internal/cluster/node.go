@@ -33,8 +33,9 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
-	"github.com/rqlite/rqlite/v8/cluster"
-	"github.com/rqlite/rqlite/v8/tcp"
+	"github.com/rqlite/rqlite/v10/cluster"
+	"github.com/rqlite/rqlite/v10/command"
+	"github.com/rqlite/rqlite/v10/tcp"
 	"golang.org/x/sync/errgroup"
 	gproto "google.golang.org/protobuf/proto"
 )
@@ -152,7 +153,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 		leader, _ := node.store.LeaderAddr()
 		return leader != ""
 	}
-	clusterSuf := cluster.VoterSuffrage(!conf.Cluster.Raft.NonVoter)
+	clusterSuf := command.SuffrageVoterFromBool(!conf.Cluster.Raft.NonVoter)
 
 	joiner := NewJoiner(node.client, conf.Cluster.Raft.JoinAttempts, conf.Cluster.Raft.JoinInterval)
 	if len(conf.Cluster.Raft.JoinAddresses) > 0 && conf.Cluster.Raft.BootstrapExpect == 0 {

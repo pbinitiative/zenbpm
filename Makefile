@@ -27,7 +27,7 @@ SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 33.4
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
-GOLANG_CROSS_VERSION ?= v1.25.1
+GOLANG_CROSS_VERSION ?= v1.26.3
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.

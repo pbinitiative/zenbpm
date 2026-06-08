@@ -3,7 +3,6 @@ package grpc
 import (
 	"testing"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestUnknownRequestError(t *testing.T) {
 		req := &proto.JobStreamRequest{
 			Request: &proto.JobStreamRequest_Subscription{
 				Subscription: &proto.StreamSubscriptionRequest{
-					Type: ptr.To(proto.StreamSubscriptionRequest_Type(9999)),
+					Type: new(proto.StreamSubscriptionRequest_Type(9999)),
 				},
 			},
 		}

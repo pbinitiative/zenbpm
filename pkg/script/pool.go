@@ -29,7 +29,7 @@ type RunnerPool struct {
 
 func NewRunnerPool(runnerFactory RunnerFactory, maxVmPoolSize int, minVmPoolSize int) *RunnerPool {
 	if maxVmPoolSize < minVmPoolSize {
-		panic("vm pool min size is smaller than vm pool max size")
+		panic("vm pool max size is smaller than vm pool min size")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

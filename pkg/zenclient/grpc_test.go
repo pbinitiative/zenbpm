@@ -75,7 +75,7 @@ func TestHandleJob_PanicInWorkerFuncFailsJobAndDoesNotCrash(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		w.handleJob(job, stream.record)
+		w.handleJob(context.Background(), job, stream.record)
 	}()
 
 	select {
@@ -114,7 +114,7 @@ func TestHandleJob_SuccessCompletesJob(t *testing.T) {
 	}
 	job := &proto.WaitingJob{Key: ptrInt64(7)}
 
-	w.handleJob(job, stream.record)
+	w.handleJob(context.Background(), job, stream.record)
 
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
@@ -138,7 +138,7 @@ func TestHandleJob_WorkerErrorWithNilErrFailsJobWithoutPanic(t *testing.T) {
 	job := &proto.WaitingJob{Key: ptrInt64(9)}
 
 	require.NotPanics(t, func() {
-		w.handleJob(job, stream.record)
+		w.handleJob(context.Background(), job, stream.record)
 	})
 
 	fails := stream.failRequests()
@@ -163,7 +163,7 @@ func TestHandleJob_NilJobIsSkippedWithoutPanic(t *testing.T) {
 	}
 
 	require.NotPanics(t, func() {
-		w.handleJob(nil, stream.record)
+		w.handleJob(context.Background(), nil, stream.record)
 	})
 
 	assert.False(t, handlerCalled, "user handler must not be invoked for a nil job")

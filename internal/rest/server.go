@@ -97,6 +97,7 @@ func (s *Server) Start() net.Listener {
 	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		log.Error("failed to listen: %v", err)
+		return nil
 	}
 	log.Info("ZenBpm REST server listening on %s", s.addr)
 	safego.Go("rest-server-serve", safego.DefaultLogger, func() {

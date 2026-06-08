@@ -67,6 +67,7 @@ func (s *Server) Start() {
 	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		log.Error("failed to listen: %v", err)
+		return
 	}
 	safego.Go("grpc-server-serve", safego.DefaultLogger, func() {
 		log.Info("ZenBpm GRPC server listening on %s", s.addr)
@@ -181,7 +182,7 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				s.node.JobManager.RemoveClientJobSub(stream.Context(), clientID, jobType)
 			default:
-				_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.Type))
+				_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.GetType()))
 				continue
 			}
 		default:
@@ -221,7 +222,7 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 func unknownRequestError(req any) *proto.JobStreamResponse {
 	return &proto.JobStreamResponse{
 		Error: &proto.ErrorResult{
-			Message: ptr.To(fmt.Sprintf("unexpected job stream request type: %T", req)),
+			Message: new(fmt.Sprintf("unexpected job stream request: %v (type %T)", req, req)),
 		},
 	}
 }

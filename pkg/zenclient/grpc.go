@@ -121,15 +121,17 @@ func (w *Worker) performWork() {
 			w.logger.Error("received job stream response with no job and no error; skipping")
 			continue
 		}
-		go w.handleJob(jobToComplete.Job, w.send)
+		go w.handleJob(w.stream.Context(), jobToComplete.Job, w.send)
 	}
 }
 
 // handleJob executes the user-supplied worker function for a single job and
-// reports the result back through send. It recovers from panics in the user
-// handler so that a faulty handler cannot crash the client: the panic is
-// logged and the job is failed back to the server (graceful degradation).
-func (w *Worker) handleJob(job *proto.WaitingJob, send func(*proto.JobStreamRequest) error) {
+// reports the result back through send. ctx is the gRPC stream context so the
+// handler is cancelled when the stream dies (server disconnect, transport
+// failure). It recovers from panics in the user handler so that a faulty
+// handler cannot crash the client: the panic is logged and the job is failed
+// back to the server (graceful degradation).
+func (w *Worker) handleJob(ctx context.Context, job *proto.WaitingJob, send func(*proto.JobStreamRequest) error) {
 	if job == nil {
 		w.logger.Error("zenclient: handleJob called with nil job; skipping")
 		return
@@ -137,17 +139,11 @@ func (w *Worker) handleJob(job *proto.WaitingJob, send func(*proto.JobStreamRequ
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.Error(fmt.Sprintf("zenclient: panic in worker handler: %v\n%s", r, debug.Stack()))
-			// Guard job.Key: the panic may have originated from a nil/invalid
-			// job, and dereferencing it here would panic a second time inside
-			var jobKey *int64
-			if job != nil {
-				jobKey = job.Key
-			}
 			err := send(&proto.JobStreamRequest{
 				Request: &proto.JobStreamRequest_Fail{
 					Fail: &proto.JobFailRequest{
-						Key:     jobKey,
-						Message: ptr.To(fmt.Sprintf("handler panicked: %v", r)),
+						Key:     job.Key,
+						Message: new(fmt.Sprintf("handler panicked: %v", r)),
 					},
 				},
 			})
@@ -157,7 +153,7 @@ func (w *Worker) handleJob(job *proto.WaitingJob, send func(*proto.JobStreamRequ
 		}
 	}()
 
-	vars, workerErr := w.f(w.ctx, job)
+	vars, workerErr := w.f(ctx, job)
 	if workerErr != nil {
 		errVars, err := json.Marshal(workerErr.Variables)
 		if err != nil {
@@ -168,7 +164,7 @@ func (w *Worker) handleJob(job *proto.WaitingJob, send func(*proto.JobStreamRequ
 			Request: &proto.JobStreamRequest_Fail{
 				Fail: &proto.JobFailRequest{
 					Key:       job.Key,
-					Message:   ptr.To(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
+					Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
 					ErrorCode: &workerErr.ErrorCode,
 					Variables: errVars,
 				},

@@ -117,6 +117,10 @@ func (w *Worker) performWork() {
 			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.GetMessage()))
 			continue
 		}
+		if jobToComplete.Job == nil {
+			w.logger.Error("received job stream response with no job and no error; skipping")
+			continue
+		}
 		go w.handleJob(jobToComplete.Job, w.send)
 	}
 }
@@ -126,13 +130,23 @@ func (w *Worker) performWork() {
 // handler so that a faulty handler cannot crash the client: the panic is
 // logged and the job is failed back to the server (graceful degradation).
 func (w *Worker) handleJob(job *proto.WaitingJob, send func(*proto.JobStreamRequest) error) {
+	if job == nil {
+		w.logger.Error("zenclient: handleJob called with nil job; skipping")
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.Error(fmt.Sprintf("zenclient: panic in worker handler: %v\n%s", r, debug.Stack()))
+			// Guard job.Key: the panic may have originated from a nil/invalid
+			// job, and dereferencing it here would panic a second time inside
+			var jobKey *int64
+			if job != nil {
+				jobKey = job.Key
+			}
 			err := send(&proto.JobStreamRequest{
 				Request: &proto.JobStreamRequest_Fail{
 					Fail: &proto.JobFailRequest{
-						Key:     job.Key,
+						Key:     jobKey,
 						Message: ptr.To(fmt.Sprintf("handler panicked: %v", r)),
 					},
 				},

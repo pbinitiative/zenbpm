@@ -74,13 +74,26 @@ func (r *RunnerPool) cleanupLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			for len(r.pool) > r.minVmPoolSize {
-				r.activeRunnersMu.Lock()
-				<-r.pool
-				r.activeRunnersCount--
-				r.activeRunnersMu.Unlock()
-			}
+			r.drainIdleRunners()
 		case <-r.ctx.Done():
+			return
+		}
+	}
+}
+
+// drainIdleRunners discards idle runners above the minimum pool size. It never
+// blocks on the channel: the receive is non-blocking (select/default), so a
+// runner taken concurrently by GetRunnerFromPool between the size check and the
+// receive simply ends the drain instead of stalling the goroutine while holding
+// the mutex.
+func (r *RunnerPool) drainIdleRunners() {
+	for len(r.pool) > r.minVmPoolSize {
+		select {
+		case <-r.pool:
+			r.activeRunnersMu.Lock()
+			r.activeRunnersCount--
+			r.activeRunnersMu.Unlock()
+		default:
 			return
 		}
 	}

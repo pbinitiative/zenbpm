@@ -31,6 +31,84 @@ func TestNewRunnerPool_PanicGuardOnBadSizes(t *testing.T) {
 	})
 }
 
+func TestDrainIdleRunners_DiscardsRunnersAboveMin(t *testing.T) {
+	pool := NewRunnerPool(fakeFactory{}, 5, 1)
+	defer pool.Stop()
+	
+	for i := 0; i < 3; i++ {
+		pool.activeRunnersMu.Lock()
+		pool.pool <- pool.runnerFactory.NewRunner()
+		pool.activeRunnersCount++
+		pool.activeRunnersMu.Unlock()
+	}
+	require.Equal(t, 4, pool.activeRunnersCount)
+	require.Equal(t, 4, len(pool.pool))
+
+	pool.drainIdleRunners()
+
+	assert.Equal(t, 1, len(pool.pool), "should drain down to minVmPoolSize")
+	assert.Equal(t, 1, pool.activeRunnersCount)
+}
+
+func TestDrainIdleRunners_EmptyPoolDoesNotBlock(t *testing.T) {
+	pool := NewRunnerPool(fakeFactory{}, 5, 1)
+	defer pool.Stop()
+
+	<-pool.pool
+	require.Equal(t, 0, len(pool.pool))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pool.drainIdleRunners()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("drainIdleRunners blocked on an empty pool — possible deadlock")
+	}
+}
+
+func TestDrainIdleRunners_DoesNotDeadlockOnConcurrentTake(t *testing.T) {
+	pool := NewRunnerPool(fakeFactory{}, 5, 1)
+	defer pool.Stop()
+
+	pool.activeRunnersMu.Lock()
+	pool.pool <- pool.runnerFactory.NewRunner()
+	pool.activeRunnersCount++
+	pool.activeRunnersMu.Unlock()
+	require.Equal(t, 2, len(pool.pool))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-pool.pool:
+			default:
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pool.drainIdleRunners()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("drainIdleRunners deadlocked under concurrent take")
+	}
+	wg.Wait()
+
+	require.True(t, pool.activeRunnersMu.TryLock(), "activeRunnersMu still held after drain — mutex leaked")
+	pool.activeRunnersMu.Unlock()
+}
+
 type recordingLogger struct {
 	mu      sync.Mutex
 	msgs    []string

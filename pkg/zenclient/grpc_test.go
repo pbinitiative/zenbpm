@@ -146,3 +146,33 @@ func TestHandleJob_WorkerErrorWithNilErrFailsJobWithoutPanic(t *testing.T) {
 	require.NotNil(t, fails[0].ErrorCode)
 	assert.Equal(t, "BUSINESS_ERROR", *fails[0].ErrorCode)
 }
+
+func TestHandleJob_NilJobIsSkippedWithoutPanic(t *testing.T) {
+	logger := &captureLogger{}
+	stream := &fakeStream{}
+
+	handlerCalled := false
+	w := &Worker{
+		ctx:      context.Background(),
+		logger:   logger,
+		clientID: "test-client",
+		f: func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError) {
+			handlerCalled = true
+			return nil, nil
+		},
+	}
+
+	require.NotPanics(t, func() {
+		w.handleJob(nil, stream.record)
+	})
+
+	assert.False(t, handlerCalled, "user handler must not be invoked for a nil job")
+
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	assert.Empty(t, stream.sent, "no stream request should be sent for a nil job")
+
+	msgs := logger.snapshot()
+	require.NotEmpty(t, msgs, "nil job should be logged")
+	assert.Contains(t, msgs[0], "nil job")
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
@@ -90,7 +91,14 @@ func (c *Grpc) RegisterWorker(ctx context.Context, clientID string, f WorkerFunc
 			return nil, fmt.Errorf("failed to subscribe worker to job type %s: %w", jobType, err)
 		}
 	}
-	go worker.performWork()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				worker.logger.Error(fmt.Sprintf("zenclient: panic in worker recv loop: %v\n%s", r, debug.Stack()))
+			}
+		}()
+		worker.performWork()
+	}()
 	return worker, nil
 }
 
@@ -109,45 +117,78 @@ func (w *Worker) performWork() {
 			w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.GetMessage()))
 			continue
 		}
-		go func() {
-			vars, workerErr := w.f(w.stream.Context(), jobToComplete.Job)
-			if workerErr != nil {
-				errVars, err := json.Marshal(workerErr.Variables)
-				if err != nil {
-					w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
-				}
+		if jobToComplete.Job == nil {
+			w.logger.Error("received job stream response with no job and no error; skipping")
+			continue
+		}
+		go w.handleJob(w.stream.Context(), jobToComplete.Job, w.send)
+	}
+}
 
-				err = w.send(&proto.JobStreamRequest{
-					Request: &proto.JobStreamRequest_Fail{
-						Fail: &proto.JobFailRequest{
-							Key:       jobToComplete.Job.Key,
-							Message:   ptr.To(fmt.Sprintf("failed to complete job: %s", workerErr.Err.Error())),
-							ErrorCode: &workerErr.ErrorCode,
-							Variables: errVars,
-						},
+// handleJob executes the user-supplied worker function for a single job and
+// reports the result back through send. ctx is the gRPC stream context so the
+// handler is cancelled when the stream dies (server disconnect, transport
+// failure). It recovers from panics in the user handler so that a faulty
+// handler cannot crash the client: the panic is logged and the job is failed
+// back to the server (graceful degradation).
+func (w *Worker) handleJob(ctx context.Context, job *proto.WaitingJob, send func(*proto.JobStreamRequest) error) {
+	if job == nil {
+		w.logger.Error("zenclient: handleJob called with nil job; skipping")
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error(fmt.Sprintf("zenclient: panic in worker handler: %v\n%s", r, debug.Stack()))
+			err := send(&proto.JobStreamRequest{
+				Request: &proto.JobStreamRequest_Fail{
+					Fail: &proto.JobFailRequest{
+						Key:     job.Key,
+						Message: new(fmt.Sprintf("handler panicked: %v", r)),
 					},
-				})
-				if err != nil {
-					w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
-				}
-			} else {
-				varsMarshaled, err := json.Marshal(vars)
-				if err != nil {
-					w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
-				}
-				err = w.send(&proto.JobStreamRequest{
-					Request: &proto.JobStreamRequest_Complete{
-						Complete: &proto.JobCompleteRequest{
-							Key:       jobToComplete.Job.Key,
-							Variables: varsMarshaled,
-						},
-					},
-				})
-				if err != nil {
-					w.logger.Error(fmt.Sprintf("failed to complete job %d: %s", jobToComplete.Job.Key, err))
-				}
+				},
+			})
+			if err != nil {
+				w.logger.Error(fmt.Sprintf("failed to inform server about panicked job: %s", err))
 			}
-		}()
+		}
+	}()
+
+	vars, workerErr := w.f(ctx, job)
+	if workerErr != nil {
+		errVars, err := json.Marshal(workerErr.Variables)
+		if err != nil {
+			w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
+		}
+
+		err = send(&proto.JobStreamRequest{
+			Request: &proto.JobStreamRequest_Fail{
+				Fail: &proto.JobFailRequest{
+					Key:       job.Key,
+					Message:   new(fmt.Sprintf("failed to complete job: %s", workerErr.Error())),
+					ErrorCode: &workerErr.ErrorCode,
+					Variables: errVars,
+				},
+			},
+		})
+		if err != nil {
+			w.logger.Error(fmt.Sprintf("failed to inform server about failed job: %s", err))
+		}
+	} else {
+		varsMarshaled, err := json.Marshal(vars)
+		if err != nil {
+			w.logger.Error(fmt.Sprintf("failed to marshal variables from job result: %s", err))
+		}
+		err = send(&proto.JobStreamRequest{
+			Request: &proto.JobStreamRequest_Complete{
+				Complete: &proto.JobCompleteRequest{
+					Key:       job.Key,
+					Variables: varsMarshaled,
+				},
+			},
+		})
+		if err != nil {
+			w.logger.Error(fmt.Sprintf("failed to complete job %d: %s", job.Key, err))
+		}
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/rest/middleware"
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/dmn"
@@ -96,13 +97,14 @@ func (s *Server) Start() net.Listener {
 	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		log.Error("failed to listen: %v", err)
+		return nil
 	}
 	log.Info("ZenBpm REST server listening on %s", s.addr)
-	go func() {
+	safego.Go("rest-server-serve", safego.DefaultLogger, func() {
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Error("Error starting server: %s", err)
 		}
-	}()
+	})
 	return listener
 }
 

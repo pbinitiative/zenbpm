@@ -3,6 +3,7 @@ package grpc
 import (
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,5 +37,36 @@ func TestDecodeVariables(t *testing.T) {
 		vars, err := decodeVariables([]byte("{"))
 		require.Error(t, err)
 		assert.Nil(t, vars)
+	})
+}
+
+func TestUnknownRequestError(t *testing.T) {
+	t.Run("unknown subscription type returns error response, no panic", func(t *testing.T) {
+		req := &proto.JobStreamRequest{
+			Request: &proto.JobStreamRequest_Subscription{
+				Subscription: &proto.StreamSubscriptionRequest{
+					Type: new(proto.StreamSubscriptionRequest_Type(9999)),
+				},
+			},
+		}
+		var resp *proto.JobStreamResponse
+		require.NotPanics(t, func() {
+			resp = unknownRequestError(req.Request)
+		})
+		require.NotNil(t, resp)
+		require.NotNil(t, resp.Error)
+		require.NotNil(t, resp.Error.Message)
+		assert.Contains(t, *resp.Error.Message, "unexpected")
+	})
+
+	t.Run("unknown top-level request type returns error response, no panic", func(t *testing.T) {
+		var resp *proto.JobStreamResponse
+		require.NotPanics(t, func() {
+			resp = unknownRequestError(nil)
+		})
+		require.NotNil(t, resp)
+		require.NotNil(t, resp.Error)
+		require.NotNil(t, resp.Error.Message)
+		assert.Contains(t, *resp.Error.Message, "unexpected")
 	})
 }

@@ -18,8 +18,8 @@ var (
 		"StartEvent_1",
 		"Flow_start_main",
 		"service-task-error-boundary",
-		"Flow_boundary_handled",
 		"boundary-error-main-task",
+		"Flow_boundary_handled",
 		"handled-end",
 	}
 )
@@ -72,8 +72,8 @@ func TestServiceTaskErrorBoundaryFlow(t *testing.T) {
 			"StartEvent_1",
 			"Flow_start_main",
 			"service_task",
-			"Flow_boundary_handled",
 			"boundary-error-main-task",
+			"Flow_boundary_handled",
 			"handled-end",
 		})
 	})

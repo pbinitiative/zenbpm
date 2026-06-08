@@ -14,6 +14,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster"
 	"github.com/pbinitiative/zenbpm/internal/cluster/jobmanager"
 	"github.com/pbinitiative/zenbpm/internal/grpc/interceptor/recovery"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient/proto"
 	"go.opentelemetry.io/otel"
@@ -67,13 +68,13 @@ func (s *Server) Start() {
 	if err != nil {
 		log.Error("failed to listen: %v", err)
 	}
-	go func() {
+	safego.Go("grpc-server-serve", safego.DefaultLogger, func() {
 		log.Info("ZenBpm GRPC server listening on %s", s.addr)
 		err := s.server.Serve(listener)
 		if err != nil {
 			log.Error("ZenBPM GRPC server startup failed: %s", err)
 		}
-	}()
+	})
 }
 
 // Stop stops the ZenBPM GRPC server.
@@ -92,7 +93,9 @@ func (s *Server) JobStream(stream grpc.BidiStreamingServer[proto.JobStreamReques
 		return fmt.Errorf("failed to add client: %w", err)
 	}
 	sendMu := &sync.Mutex{}
-	go s.recvClientRequests(stream, clientID, sendMu)
+	safego.Go("grpc-job-stream-recv", safego.DefaultLogger, func() {
+		s.recvClientRequests(stream, clientID, sendMu)
+	})
 	s.sendClientJobs(stream, clientCh, clientID, sendMu)
 	return nil
 }
@@ -178,10 +181,12 @@ func (s *Server) recvClientRequests(stream grpc.BidiStreamingServer[proto.JobStr
 				jobType := jobmanager.JobType(req.Subscription.GetJobType())
 				s.node.JobManager.RemoveClientJobSub(stream.Context(), clientID, jobType)
 			default:
-				panic(fmt.Sprintf("unexpected proto.StreamSubscriptionRequest_Type: %#v", req.Subscription.Type))
+				_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(req.Subscription.Type))
+				continue
 			}
 		default:
-			panic(fmt.Sprintf("unexpected proto.isJobStreamRequest_Request: %#v", clientReq.Request))
+			_ = sendJobStreamResponse(stream, sendMu, unknownRequestError(clientReq.Request))
+			continue
 		}
 	}
 }
@@ -210,6 +215,14 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 				continue
 			}
 		}
+	}
+}
+
+func unknownRequestError(req any) *proto.JobStreamResponse {
+	return &proto.JobStreamResponse{
+		Error: &proto.ErrorResult{
+			Message: ptr.To(fmt.Sprintf("unexpected job stream request type: %T", req)),
+		},
 	}
 }
 

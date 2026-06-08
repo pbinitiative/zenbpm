@@ -197,6 +197,9 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 	variables map[string]interface{},
 	cancelChildInstances bool,
 ) (runtime.ProcessInstance, []runtime.ExecutionToken, error) {
+	boundaryEventKey := engine.generateKey()
+	boundaryEventCreatedAt := time.Now()
+
 	boundaryInstance, tokens, err := engine.handleBoundaryError(ctx, batch, currentInstance, match, cancelChildInstances)
 	if err != nil {
 		return nil, nil, err
@@ -214,10 +217,10 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 
 	err = batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
-			Key:                engine.generateKey(),
+			Key:                boundaryEventKey,
 			ProcessInstanceKey: currentInstance.ProcessInstance().GetInstanceKey(),
 			ElementId:          match.event.TEvent.GetId(),
-			CreatedAt:          time.Now(),
+			CreatedAt:          boundaryEventCreatedAt,
 			ExecutionTokenKey:  match.scope.token.Key,
 			InputVariables:     nil,
 			OutputVariables:    propagatedVariables,

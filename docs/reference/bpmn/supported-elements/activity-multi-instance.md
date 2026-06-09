@@ -92,15 +92,15 @@ Raw variables returned by a job or created inside the wrapped activity are not a
 ```xml
 <bpmn:userTask id="review_task">
   <bpmn:extensionElements>
-    <zeebe:ioMapping>
-      <zeebe:output source="=approver" target="reviewer" />
-      <zeebe:output source="=approved" target="approved" />
-    </zeebe:ioMapping>
+    <zenbpm:ioMapping>
+      <zenbpm:output source="=approver" target="reviewer" />
+      <zenbpm:output source="=approved" target="approved" />
+    </zenbpm:ioMapping>
   </bpmn:extensionElements>
 
   <bpmn:multiInstanceLoopCharacteristics isSequential="true">
     <bpmn:extensionElements>
-      <zeebe:loopCharacteristics
+      <zenbpm:loopCharacteristics
         inputCollection="=approvers"
         inputElement="approver"
         outputCollection="approvalResults"

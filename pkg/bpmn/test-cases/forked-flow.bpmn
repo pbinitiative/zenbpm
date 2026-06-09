@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="4.11.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Simple_Task_Process" name="aName" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
@@ -7,7 +7,7 @@
     <bpmn:sequenceFlow id="Flow_0xt1d7q" sourceRef="StartEvent_1" targetRef="id-a-1" />
     <bpmn:serviceTask id="id-a-1" name="Step A.1">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition />
+        <zenbpm:taskDefinition />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>
       <bpmn:outgoing>Flow_1hft1cq</bpmn:outgoing>
@@ -26,7 +26,7 @@
     <bpmn:sequenceFlow id="Flow_1qb150d" sourceRef="id-a-1" targetRef="id-b-2" />
     <bpmn:serviceTask id="id-b-2" name="Step B.2">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="step3" />
+        <zenbpm:taskDefinition type="step3" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1qb150d</bpmn:incoming>
       <bpmn:outgoing>Flow_1id9hbz</bpmn:outgoing>

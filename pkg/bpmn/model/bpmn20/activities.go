@@ -43,7 +43,7 @@ type TActivity struct {
 	CompletionQuantity int             `xml:"completionQuantity,attr"`
 	IsForCompensation  bool            `xml:"isForCompensation,attr"`
 	StartQuantity      int             `xml:"startQuantity,attr" default:"1"`
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
@@ -136,7 +136,7 @@ func (sendTask TSendTask) GetType() ElementType { return ElementTypeServiceTask 
 
 type TUserTask struct {
 	TTask
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	AssignmentDefinition extensions.TAssignmentDefinition `xml:"extensionElements>assignmentDefinition"`
 }
 
@@ -153,7 +153,7 @@ func (userTask TUserTask) GetAssignmentCandidateGroups() []string {
 
 type TCallActivity struct {
 	TActivity
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }
 

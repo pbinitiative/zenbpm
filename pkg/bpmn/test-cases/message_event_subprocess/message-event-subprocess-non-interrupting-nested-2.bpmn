@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_msgNested2" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_msgNested2" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Process_msgNested2" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0vw2e9k</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:subProcess id="SubProcess_0rohbe2">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:output source="=eventSubProcessAVariable" target="eventSubProcessAVariable" />
-          <zeebe:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
-        </zeebe:ioMapping>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=eventSubProcessAVariable" target="eventSubProcessAVariable" />
+          <zenbpm:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0vw2e9k</bpmn:incoming>
       <bpmn:outgoing>Flow_1mkm46n</bpmn:outgoing>
@@ -23,24 +23,24 @@
       <bpmn:sequenceFlow id="Flow_0ka5vj8" sourceRef="ServiceTask1_17v6m2g" targetRef="Event_11hurn1" />
       <bpmn:serviceTask id="ServiceTask1_17v6m2g" name="service task1">
         <bpmn:extensionElements>
-          <zeebe:taskDefinition type="msgEventSubprocessType" />
+          <zenbpm:taskDefinition type="msgEventSubprocessType" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_0v5gpy0</bpmn:incoming>
         <bpmn:outgoing>Flow_0ka5vj8</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:subProcess id="EventSubprocessA_00bugpj" triggeredByEvent="true">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:output source="=&#34;event-subprocess-a-done&#34;" target="eventSubProcessAVariable" />
-            <zeebe:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
-            <zeebe:output source="=messageStartEventVarB" target="messageStartEventVarB" />
-          </zeebe:ioMapping>
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=&#34;event-subprocess-a-done&#34;" target="eventSubProcessAVariable" />
+            <zenbpm:output source="=eventSubProcessBVariable" target="eventSubProcessBVariable" />
+            <zenbpm:output source="=messageStartEventVarB" target="messageStartEventVarB" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:startEvent id="eventSubProcessAMessageEvent_1i1fx2b" isInterrupting="false">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:output source="=&#34;messageStartEventValueA&#34;" target="messageStartEventVarA" />
-            </zeebe:ioMapping>
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=&#34;messageStartEventValueA&#34;" target="messageStartEventVarA" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:outgoing>Flow_0zjmg06</bpmn:outgoing>
           <bpmn:messageEventDefinition id="MessageEventDefinition_msgNested2A" messageRef="Message_msgNested2A" />
@@ -50,15 +50,15 @@
         </bpmn:endEvent>
         <bpmn:subProcess id="EventSubprocessB_16e6pei" triggeredByEvent="true">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:output source="=&#34;event-subprocess-b-done&#34;" target="eventSubProcessBVariable" />
-            </zeebe:ioMapping>
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=&#34;event-subprocess-b-done&#34;" target="eventSubProcessBVariable" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:startEvent id="eventSubProcessBMessageEvent_0a3aipv" isInterrupting="false">
             <bpmn:extensionElements>
-              <zeebe:ioMapping>
-                <zeebe:output source="=&#34;messageStartEventValueB&#34;" target="messageStartEventVarB" />
-              </zeebe:ioMapping>
+              <zenbpm:ioMapping>
+                <zenbpm:output source="=&#34;messageStartEventValueB&#34;" target="messageStartEventVarB" />
+              </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:outgoing>Flow_13syrf4</bpmn:outgoing>
             <bpmn:messageEventDefinition id="MessageEventDefinition_msgNested2B" messageRef="Message_msgNested2B" />
@@ -69,7 +69,7 @@
           <bpmn:sequenceFlow id="Flow_13syrf4" sourceRef="eventSubProcessBMessageEvent_0a3aipv" targetRef="ServiceTask2_05612g8" />
           <bpmn:serviceTask id="ServiceTask2_05612g8" name="service task2">
             <bpmn:extensionElements>
-              <zeebe:taskDefinition type="msgEventSubprocessBtype" />
+              <zenbpm:taskDefinition type="msgEventSubprocessBtype" />
             </bpmn:extensionElements>
             <bpmn:incoming>Flow_13syrf4</bpmn:incoming>
             <bpmn:outgoing>Flow_17p7xh1</bpmn:outgoing>
@@ -95,12 +95,12 @@
   </bpmn:process>
   <bpmn:message id="Message_msgNested2A" name="messageNestedARef">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-msg-nested-2-A&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-msg-nested-2-A&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_msgNested2B" name="messageNestedBRef">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-msg-nested-2-B&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-msg-nested-2-B&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

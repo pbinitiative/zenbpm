@@ -151,7 +151,7 @@ type TIntermediateCatchEvent struct {
 	TEvent
 	EventDefinition  EventDefinition
 	ParallelMultiple bool `xml:"parallelMultiple"`
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	Input  []extensions.TIoMapping `xml:"extensionElements>ioMapping>input"`
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
@@ -201,7 +201,7 @@ func (intermediateCatchEvent TIntermediateCatchEvent) GetType() ElementType {
 type TIntermediateThrowEvent struct {
 	TEvent
 	EventDefinition EventDefinition
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	TaskDefinition extensions.TTaskDefinition `xml:"extensionElements>taskDefinition"`
 	Input          []extensions.TIoMapping    `xml:"extensionElements>ioMapping>input"`
 	Output         []extensions.TIoMapping    `xml:"extensionElements>ioMapping>output"`
@@ -259,7 +259,7 @@ type TBoundaryEvent struct {
 	EventDefinition EventDefinition
 	AttachedToRef   string `xml:"attachedToRef,attr"`
 	CancellActivity bool   `xml:"cancelActivity,attr"`
-	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/camunda/zeebe-bpmn-moddle
+	// BPMN 2.0 Unorthodox elements. Part of the extensions elements see https://github.com/pbinitiative/zenbpm-bpmn-moddle
 	Output []extensions.TIoMapping `xml:"extensionElements>ioMapping>output"`
 }
 

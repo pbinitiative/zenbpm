@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="MultiInstance_Call_Activity_Task_Process" name="aName" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
@@ -14,17 +14,17 @@
     <bpmn:sequenceFlow id="Flow_104hlf4" sourceRef="Event_15f0ox7" targetRef="Event_1vd6rls" />
     <bpmn:callActivity id="Activity_0kx7fyc">
       <bpmn:extensionElements>
-        <zeebe:calledElement processId="Multi_Instance_Call_Activity_Process" propagateAllChildVariables="false" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=item" target="testElementInput" />
-          <zeebe:output source="=testOutput" target="testElementOutput" />
-        </zeebe:ioMapping>
+        <zenbpm:calledElement processId="Multi_Instance_Call_Activity_Process" propagateAllChildVariables="false" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=item" target="testElementInput" />
+          <zenbpm:output source="=testOutput" target="testElementOutput" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>
       <bpmn:outgoing>Flow_07piwol</bpmn:outgoing>
       <bpmn:multiInstanceLoopCharacteristics isSequential="true">
         <bpmn:extensionElements>
-          <zeebe:loopCharacteristics inputCollection="=testInputCollection" inputElement="item" outputCollection="testOutputCollection" outputElement="=testElementOutput" />
+          <zenbpm:loopCharacteristics inputCollection="=testInputCollection" inputElement="item" outputCollection="testOutputCollection" outputElement="=testElementOutput" />
         </bpmn:extensionElements>
       </bpmn:multiInstanceLoopCharacteristics>
     </bpmn:callActivity>
@@ -36,7 +36,7 @@
   </bpmn:process>
   <bpmn:message id="Message_3314vbd" name="boundary message">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;1234&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;1234&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

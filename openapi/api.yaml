@@ -2163,7 +2163,7 @@ paths:
               example:
                 key: 4503599627370540
                 elementId: "Task_ReviewApplication"
-                type: "io.camunda.zeebe:userTask"
+                type: "zenbpm:userTask"
                 processInstanceKey: 4503599627370501
                 state: "active"
                 createdAt: "2025-08-22T15:10:26Z"

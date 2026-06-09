@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Process_timerEventSubProcessInterrupting" isExecutable="true">
     <bpmn:endEvent id="Event_1mhay4i">
       <bpmn:incoming>Flow_1mibmwr</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:serviceTask id="service-task-1" name="service-task-1">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;task-1&#34;" target="name" />
-          <zeebe:input source="=1" target="id" />
-          <zeebe:input source="=&#34;beijing&#34;" target="city" />
-          <zeebe:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
-          <zeebe:output source="=1234" target="orderId" />
-          <zeebe:output source="=city" target="dstcity" />
-        </zeebe:ioMapping>
-        <zeebe:taskDefinition type="input-task-timer-event-subprocess-interrupting" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;task-1&#34;" target="name" />
+          <zenbpm:input source="=1" target="id" />
+          <zenbpm:input source="=&#34;beijing&#34;" target="city" />
+          <zenbpm:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
+          <zenbpm:output source="=1234" target="orderId" />
+          <zenbpm:output source="=city" target="dstcity" />
+        </zenbpm:ioMapping>
+        <zenbpm:taskDefinition type="input-task-timer-event-subprocess-interrupting" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1pv0o34</bpmn:incoming>
       <bpmn:outgoing>Flow_1mibmwr</bpmn:outgoing>
@@ -24,11 +24,11 @@
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:output source="=&#34;timer-fired&#34;" target="subProcessResult" />
-          <zeebe:output source="=true" target="timerInterrupted" />
-          <zeebe:output source="=&#34;timer-event-subprocess&#34;" target="interruptedBy" />
-        </zeebe:ioMapping>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;timer-fired&#34;" target="subProcessResult" />
+          <zenbpm:output source="=true" target="timerInterrupted" />
+          <zenbpm:output source="=&#34;timer-event-subprocess&#34;" target="interruptedBy" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
@@ -36,9 +36,9 @@
       <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="subProcessTimerEvent_12i3m6f" targetRef="Event_0a9ph2i" />
       <bpmn:startEvent id="subProcessTimerEvent_12i3m6f">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
-          </zeebe:ioMapping>
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=&#34;timerStartEventValue&#34;" target="timerStartEventVar" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:timerEventDefinition id="TimerEventDefinition_0j2io9y">
@@ -51,7 +51,7 @@
   </bpmn:process>
   <bpmn:message id="Message_0d37bgs" name="globalMessageRef">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-event-subprocess-1&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-event-subprocess-1&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

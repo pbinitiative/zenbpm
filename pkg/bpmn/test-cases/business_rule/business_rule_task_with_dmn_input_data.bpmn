@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_04tsqvd" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_04tsqvd" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="DMNWithInputData" name="Test DMN with input data" isExecutable="true">
     <bpmn:startEvent id="start" name="Start">
       <bpmn:outgoing>Flow_0izhgrm</bpmn:outgoing>
@@ -7,12 +7,12 @@
     <bpmn:sequenceFlow id="Flow_0izhgrm" sourceRef="start" targetRef="drd_bug" />
     <bpmn:businessRuleTask id="drd_bug" name="DRD Bug">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="decisionWithInputData" resultVariable="output" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=row.is" target="append_data" />
-          <zeebe:input source="=row.as" target="append_data_2" />
-          <zeebe:output source="=output" target="output" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="decisionWithInputData" resultVariable="output" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=row.is" target="append_data" />
+          <zenbpm:input source="=row.as" target="append_data_2" />
+          <zenbpm:output source="=output" target="output" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0izhgrm</bpmn:incoming>
       <bpmn:outgoing>Flow_0rupe32</bpmn:outgoing>

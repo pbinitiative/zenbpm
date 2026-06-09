@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_messageNested" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_messageNested" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Process_messageEventSubProcessInterruptingNested" isExecutable="true">
     <bpmn:endEvent id="Event_1mhay4i">
       <bpmn:incoming>Flow_1mibmwr</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:serviceTask id="service-task-1" name="service-task-1">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:input source="=&#34;task-1&#34;" target="name" />
-          <zeebe:input source="=1" target="id" />
-          <zeebe:input source="=&#34;beijing&#34;" target="city" />
-          <zeebe:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
-          <zeebe:output source="=1234" target="orderId" />
-          <zeebe:output source="=city" target="dstcity" />
-        </zeebe:ioMapping>
-        <zeebe:taskDefinition type="input-task-message-root" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;task-1&#34;" target="name" />
+          <zenbpm:input source="=1" target="id" />
+          <zenbpm:input source="=&#34;beijing&#34;" target="city" />
+          <zenbpm:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
+          <zenbpm:output source="=1234" target="orderId" />
+          <zenbpm:output source="=city" target="dstcity" />
+        </zenbpm:ioMapping>
+        <zenbpm:taskDefinition type="input-task-message-root" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1pv0o34</bpmn:incoming>
       <bpmn:outgoing>Flow_1mibmwr</bpmn:outgoing>
@@ -24,12 +24,12 @@
     </bpmn:startEvent>
     <bpmn:subProcess id="Activity_0adcic4" triggeredByEvent="true">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:output source="=&#34;l1-completed&#34;" target="l1Result" />
-          <zeebe:output source="=l2Result" target="l2Result" />
-          <zeebe:output source="=l3Result" target="l3Result" />
-          <zeebe:output source="=l3MessageStartEventVar + &#34;-l1&#34;" target="l3MessageStartEventVar" />
-        </zeebe:ioMapping>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;l1-completed&#34;" target="l1Result" />
+          <zenbpm:output source="=l2Result" target="l2Result" />
+          <zenbpm:output source="=l3Result" target="l3Result" />
+          <zenbpm:output source="=l3MessageStartEventVar + &#34;-l1&#34;" target="l3MessageStartEventVar" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:endEvent id="Event_0a9ph2i">
         <bpmn:incoming>Flow_00h23fd</bpmn:incoming>
@@ -37,20 +37,20 @@
       <bpmn:sequenceFlow id="Flow_0yl0wws" sourceRef="eventSubprocessL1MessageEvent_12i3m6f" targetRef="Activity_055f4nj" />
       <bpmn:startEvent id="eventSubprocessL1MessageEvent_12i3m6f">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:output source="=&#34;l1MessageStartEventValue&#34;" target="l1MessageStartEventVar" />
-          </zeebe:ioMapping>
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=&#34;l1MessageStartEventValue&#34;" target="l1MessageStartEventVar" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:outgoing>Flow_0yl0wws</bpmn:outgoing>
         <bpmn:messageEventDefinition id="MessageEventDefinition_l1" messageRef="Message_l1" />
       </bpmn:startEvent>
       <bpmn:subProcess id="Activity_0qhb6na" triggeredByEvent="true">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:output source="=&#34;l2-completed&#34;" target="l2Result" />
-            <zeebe:output source="=l3Result" target="l3Result" />
-            <zeebe:output source="=l3MessageStartEventVar + &#34;-l2&#34;" target="l3MessageStartEventVar" />
-          </zeebe:ioMapping>
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=&#34;l2-completed&#34;" target="l2Result" />
+            <zenbpm:output source="=l3Result" target="l3Result" />
+            <zenbpm:output source="=l3MessageStartEventVar + &#34;-l2&#34;" target="l3MessageStartEventVar" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:endEvent id="Event_08ff21p">
           <bpmn:incoming>Flow_0h2g7mc</bpmn:incoming>
@@ -58,18 +58,18 @@
         <bpmn:sequenceFlow id="Flow_0ss9opw" sourceRef="eventSubProcessL2MessageEvent_075kpin" targetRef="Activity_1ey36nv" />
         <bpmn:startEvent id="eventSubProcessL2MessageEvent_075kpin">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:output source="=&#34;l2MessageStartEventValue&#34;" target="l2MessageStartEventVar" />
-            </zeebe:ioMapping>
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=&#34;l2MessageStartEventValue&#34;" target="l2MessageStartEventVar" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:outgoing>Flow_0ss9opw</bpmn:outgoing>
           <bpmn:messageEventDefinition id="MessageEventDefinition_l2" messageRef="Message_l2" />
         </bpmn:startEvent>
         <bpmn:subProcess id="Activity_1epwa93" triggeredByEvent="true">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:output source="=&#34;l3-completed&#34;" target="l3Result" />
-            </zeebe:ioMapping>
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=&#34;l3-completed&#34;" target="l3Result" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:endEvent id="Event_18wifoj">
             <bpmn:incoming>Flow_1ex4n94</bpmn:incoming>
@@ -77,9 +77,9 @@
           <bpmn:sequenceFlow id="Flow_1ex4n94" sourceRef="eventSubProcessL3MessageEvent_0zi70w1" targetRef="Event_18wifoj" />
           <bpmn:startEvent id="eventSubProcessL3MessageEvent_0zi70w1">
             <bpmn:extensionElements>
-              <zeebe:ioMapping>
-                <zeebe:output source="=&#34;l3&#34;" target="l3MessageStartEventVar" />
-              </zeebe:ioMapping>
+              <zenbpm:ioMapping>
+                <zenbpm:output source="=&#34;l3&#34;" target="l3MessageStartEventVar" />
+              </zenbpm:ioMapping>
             </bpmn:extensionElements>
             <bpmn:outgoing>Flow_1ex4n94</bpmn:outgoing>
             <bpmn:messageEventDefinition id="MessageEventDefinition_l3" messageRef="Message_l3" />
@@ -87,15 +87,15 @@
         </bpmn:subProcess>
         <bpmn:serviceTask id="Activity_1ey36nv" name="service-task-3">
           <bpmn:extensionElements>
-            <zeebe:ioMapping>
-              <zeebe:input source="=&#34;task-1&#34;" target="name" />
-              <zeebe:input source="=1" target="id" />
-              <zeebe:input source="=&#34;beijing&#34;" target="city" />
-              <zeebe:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
-              <zeebe:output source="=1234" target="orderId" />
-              <zeebe:output source="=city" target="dstcity" />
-            </zeebe:ioMapping>
-            <zeebe:taskDefinition type="input-task-message-L2" />
+            <zenbpm:ioMapping>
+              <zenbpm:input source="=&#34;task-1&#34;" target="name" />
+              <zenbpm:input source="=1" target="id" />
+              <zenbpm:input source="=&#34;beijing&#34;" target="city" />
+              <zenbpm:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
+              <zenbpm:output source="=1234" target="orderId" />
+              <zenbpm:output source="=city" target="dstcity" />
+            </zenbpm:ioMapping>
+            <zenbpm:taskDefinition type="input-task-message-L2" />
           </bpmn:extensionElements>
           <bpmn:incoming>Flow_0ss9opw</bpmn:incoming>
           <bpmn:outgoing>Flow_0h2g7mc</bpmn:outgoing>
@@ -104,15 +104,15 @@
       </bpmn:subProcess>
       <bpmn:serviceTask id="Activity_055f4nj" name="service-task-2">
         <bpmn:extensionElements>
-          <zeebe:ioMapping>
-            <zeebe:input source="=&#34;task-1&#34;" target="name" />
-            <zeebe:input source="=1" target="id" />
-            <zeebe:input source="=&#34;beijing&#34;" target="city" />
-            <zeebe:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
-            <zeebe:output source="=1234" target="orderId" />
-            <zeebe:output source="=city" target="dstcity" />
-          </zeebe:ioMapping>
-          <zeebe:taskDefinition type="input-task-message-L1" />
+          <zenbpm:ioMapping>
+            <zenbpm:input source="=&#34;task-1&#34;" target="name" />
+            <zenbpm:input source="=1" target="id" />
+            <zenbpm:input source="=&#34;beijing&#34;" target="city" />
+            <zenbpm:output source="={&#34;name&#34;: &#34;order1&#34;, &#34;id&#34;: &#34;1234&#34;}" target="order" />
+            <zenbpm:output source="=1234" target="orderId" />
+            <zenbpm:output source="=city" target="dstcity" />
+          </zenbpm:ioMapping>
+          <zenbpm:taskDefinition type="input-task-message-L1" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_0yl0wws</bpmn:incoming>
         <bpmn:outgoing>Flow_00h23fd</bpmn:outgoing>
@@ -124,17 +124,17 @@
   </bpmn:process>
   <bpmn:message id="Message_l1" name="messageL1Ref">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-message-l1&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-message-l1&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_l2" name="messageL2Ref">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-message-l2&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-message-l2&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_l3" name="messageL3Ref">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-message-l3&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-message-l3&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

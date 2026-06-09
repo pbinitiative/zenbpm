@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1cyeso2" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1cyeso2" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Process_0yo7bdi" isExecutable="true">
     <bpmn:endEvent id="Event_05azz2d">
       <bpmn:incoming>Flow_01kda66</bpmn:incoming>
@@ -21,110 +21,110 @@
     </bpmn:startEvent>
     <bpmn:serviceTask id="id" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ss9hpp</bpmn:incoming>
       <bpmn:outgoing>Flow_1j4zud5</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_14cn3b0" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1j4zud5</bpmn:incoming>
       <bpmn:outgoing>Flow_1n69rlt</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0tpyafm" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1n69rlt</bpmn:incoming>
       <bpmn:outgoing>Flow_12jpzuw</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0p89epm" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_12jpzuw</bpmn:incoming>
       <bpmn:outgoing>Flow_10vwy08</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0yd39ao" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_10vwy08</bpmn:incoming>
       <bpmn:outgoing>Flow_1hay5xg</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0jxehyk" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1hay5xg</bpmn:incoming>
       <bpmn:outgoing>Flow_0wtt1n0</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_06lgjnc" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0wtt1n0</bpmn:incoming>
       <bpmn:outgoing>Flow_1xmiyfh</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0i2ezz9" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1xmiyfh</bpmn:incoming>
       <bpmn:outgoing>Flow_1n9ygfz</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_0oa0st5" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1n9ygfz</bpmn:incoming>
       <bpmn:outgoing>Flow_1hhlgfv</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_1pfphnd" name="Test">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1hhlgfv</bpmn:incoming>
       <bpmn:outgoing>Flow_0msngaz</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_1difb9n" name="Test Complete">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TestCompleteType" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=variable_name" target="variable_name" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="TestCompleteType" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=variable_name" target="variable_name" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0msngaz</bpmn:incoming>
       <bpmn:outgoing>Flow_01kda66</bpmn:outgoing>

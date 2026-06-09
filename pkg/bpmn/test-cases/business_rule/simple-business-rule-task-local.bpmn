@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_12z3225" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_12z3225" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="SimpleDMNTest" name="Simple DMN Test" isExecutable="true">
     <bpmn:startEvent id="StartEvent" name="Start">
       <bpmn:outgoing>Flow_1csvjbr</bpmn:outgoing>
@@ -7,11 +7,11 @@
     <bpmn:sequenceFlow id="Flow_1csvjbr" sourceRef="StartEvent" targetRef="BusinessRuleTask1" />
     <bpmn:businessRuleTask id="BusinessRuleTask1" name="Test Simple Business Rule Task 1">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=1000" target="claim.amountOfDamage" />
-          <zeebe:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=1000" target="claim.amountOfDamage" />
+          <zenbpm:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1csvjbr</bpmn:incoming>
       <bpmn:outgoing>Flow_1w5n6k0</bpmn:outgoing>
@@ -22,12 +22,12 @@
     <bpmn:sequenceFlow id="Flow_1w5n6k0" sourceRef="BusinessRuleTask1" targetRef="BusinessRuleTask2" />
     <bpmn:businessRuleTask id="BusinessRuleTask2" name="Test Simple Business Rule Task 2">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable2" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=1000" target="claim.amountOfDamage" />
-          <zeebe:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
-          <zeebe:output source="=testResultVariable2.canAutoLiquidate" target="OutputTestResultVariable" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable2" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=1000" target="claim.amountOfDamage" />
+          <zenbpm:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
+          <zenbpm:output source="=testResultVariable2.canAutoLiquidate" target="OutputTestResultVariable" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1w5n6k0</bpmn:incoming>
       <bpmn:outgoing>Flow_1l9khpz</bpmn:outgoing>
@@ -35,11 +35,11 @@
     <bpmn:sequenceFlow id="Flow_1l9khpz" sourceRef="BusinessRuleTask2" targetRef="BusinessRuleTask3" />
     <bpmn:businessRuleTask id="BusinessRuleTask3" name="Test Simple Business Rule Task 3">
       <bpmn:extensionElements>
-        <zeebe:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable3" bindingType="versionTag" versionTag="versionTagTest" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=1000" target="claim.amountOfDamage" />
-          <zeebe:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
-        </zeebe:ioMapping>
+        <zenbpm:calledDecision decisionId="example_canAutoLiquidateRule" resultVariable="testResultVariable3" bindingType="versionTag" versionTag="versionTagTest" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=1000" target="claim.amountOfDamage" />
+          <zenbpm:input source="=&#34;MAJ&#34;" target="claim.insuranceType" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1l9khpz</bpmn:incoming>
       <bpmn:outgoing>Flow_1s7d076</bpmn:outgoing>

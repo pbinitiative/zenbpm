@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_business_rule_task_external_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_business_rule_task_external_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="business-rule-task-external-error-boundary" name="Business Rule Task External With Error Boundary Event" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
@@ -7,7 +7,7 @@
     <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="boundary-error-business-rule-external" />
     <bpmn:businessRuleTask id="boundary-error-business-rule-external" name="Business rule external">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="business-rule-boundary-test" />
+        <zenbpm:taskDefinition type="business-rule-boundary-test" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_start_main</bpmn:incoming>
       <bpmn:outgoing>Flow_main_success</bpmn:outgoing>

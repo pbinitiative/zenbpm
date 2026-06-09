@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1lqrhd1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.38.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1lqrhd1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="message_boundary_event_on_sub_process_interrupting" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_16z3u60</bpmn:outgoing>
@@ -17,7 +17,7 @@
       <bpmn:sequenceFlow id="Flow_0old6db" sourceRef="service_task" targetRef="Event_03i9atj" />
       <bpmn:serviceTask id="service_task">
         <bpmn:extensionElements>
-          <zeebe:taskDefinition type="superJob" />
+          <zenbpm:taskDefinition type="superJob" />
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_0pfme8l</bpmn:incoming>
         <bpmn:outgoing>Flow_0old6db</bpmn:outgoing>
@@ -37,7 +37,7 @@
   </bpmn:process>
   <bpmn:message id="Message_36in6ev" name="messageOne">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

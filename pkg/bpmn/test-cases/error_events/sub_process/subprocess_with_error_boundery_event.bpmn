@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_1h4conm" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="error_boundery_event_with_subprocess" isExecutable="true">
     <bpmn:subProcess id="subprocess_1">
       <bpmn:incoming>Flow_08y636o</bpmn:incoming>
@@ -36,7 +36,7 @@
   </bpmn:process>
   <bpmn:message id="Message_0d37bgs" name="globalMessageRef">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;correlation-key-event-subprocess-1&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;correlation-key-event-subprocess-1&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:error id="Error_0r0bmy6" name="Fail test error" errorCode="54" />

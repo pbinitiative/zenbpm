@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_event_sub_pagination" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_event_sub_pagination" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="event-subscriptions-pagination-test" name="event-subscriptions-pagination-test" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_to_split</bpmn:outgoing>
@@ -47,17 +47,17 @@
        can use unique correlation keys and avoid engine-level subscription conflicts. -->
   <bpmn:message id="Message_page_1" name="msg-page-1">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_page_2" name="msg-page-2">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_page_3" name="msg-page-3">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1yacw8n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.37.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.1.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_1yacw8n" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="message-multiple-intermediate-catch-events" name="message-multiple-intermediate-catch-events" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>flow-to-event-1</bpmn:outgoing>
@@ -37,21 +37,21 @@
     <bpmn:sequenceFlow id="Flow_001u68u" sourceRef="task3" targetRef="Event_0dqzzqf" />
     <bpmn:serviceTask id="task1" name="task1">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task1" />
+        <zenbpm:taskDefinition type="task1" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_18osay6</bpmn:incoming>
       <bpmn:outgoing>Flow_12tzunl</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="task2" name="task2">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task2" />
+        <zenbpm:taskDefinition type="task2" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_09tuxo8</bpmn:incoming>
       <bpmn:outgoing>Flow_104e653</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="task3" name="task3">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="task3" />
+        <zenbpm:taskDefinition type="task3" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_12dfnw3</bpmn:incoming>
       <bpmn:outgoing>Flow_001u68u</bpmn:outgoing>
@@ -59,17 +59,17 @@
   </bpmn:process>
   <bpmn:message id="Message_3se1efk" name="msg-event-2">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;key&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_1ik2fld" name="msg-event-1">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;key&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_2kia6p5" name="msg-event-3">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;key&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;key&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

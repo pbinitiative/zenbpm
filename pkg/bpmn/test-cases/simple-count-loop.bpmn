@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1i461wj" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.5.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1i461wj" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="simple-count-loop" name="simple-count-loop" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0wqfuot</bpmn:outgoing>
@@ -7,10 +7,10 @@
     <bpmn:sequenceFlow id="Flow_0wqfuot" sourceRef="StartEvent_1" targetRef="id-increaseCounter" />
     <bpmn:serviceTask id="id-increaseCounter" name="increaseCounter">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="increaseCounter" />
-        <zeebe:ioMapping>
-          <zeebe:output source="=counter" target="counter" />
-        </zeebe:ioMapping>
+        <zenbpm:taskDefinition type="increaseCounter" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=counter" target="counter" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0wqfuot</bpmn:incoming>
       <bpmn:incoming>flow_default</bpmn:incoming>

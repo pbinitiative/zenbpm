@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1u3x2yl" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Nested_SubProcess_Bpmn" name="aName" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_0xt1d7q</bpmn:outgoing>
@@ -10,10 +10,10 @@
     </bpmn:endEvent>
     <bpmn:subProcess id="Activity_1f5yxes">
       <bpmn:extensionElements>
-        <zeebe:ioMapping>
-          <zeebe:input source="=variable_name" target="testInput" />
-          <zeebe:output source="=testTaskOutput" target="testOutput" />
-        </zeebe:ioMapping>
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=variable_name" target="testInput" />
+          <zenbpm:output source="=testTaskOutput" target="testOutput" />
+        </zenbpm:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0xt1d7q</bpmn:incoming>
       <bpmn:outgoing>Flow_0r2ztbp</bpmn:outgoing>
@@ -27,10 +27,10 @@
       <bpmn:sequenceFlow id="Flow_158puiv" sourceRef="Event_0polsy8" targetRef="id" />
       <bpmn:serviceTask id="id" name="Test">
         <bpmn:extensionElements>
-          <zeebe:taskDefinition type="TestType" />
-          <zeebe:ioMapping>
-            <zeebe:output source="=testJobOutput" target="testTaskOutput" />
-          </zeebe:ioMapping>
+          <zenbpm:taskDefinition type="TestType" />
+          <zenbpm:ioMapping>
+            <zenbpm:output source="=testJobOutput" target="testTaskOutput" />
+          </zenbpm:ioMapping>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_158puiv</bpmn:incoming>
         <bpmn:outgoing>Flow_17mkl4r</bpmn:outgoing>
@@ -55,10 +55,10 @@
         </bpmn:endEvent>
         <bpmn:serviceTask id="Activity_1gbwlgl" name="Test">
           <bpmn:extensionElements>
-            <zeebe:taskDefinition type="TestType" />
-            <zeebe:ioMapping>
-              <zeebe:output source="=testJobOutput" target="testTaskOutput" />
-            </zeebe:ioMapping>
+            <zenbpm:taskDefinition type="TestType" />
+            <zenbpm:ioMapping>
+              <zenbpm:output source="=testJobOutput" target="testTaskOutput" />
+            </zenbpm:ioMapping>
           </bpmn:extensionElements>
           <bpmn:incoming>Flow_1dea1jz</bpmn:incoming>
           <bpmn:outgoing>Flow_10pk3gg</bpmn:outgoing>
@@ -92,17 +92,17 @@
   </bpmn:process>
   <bpmn:message id="Message_1tfendh" name="OuterTestMessage">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;testMessage&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;testMessage&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_22o1br6" name="InnerTestMessage">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;testMessage&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;testMessage&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_3csiutg" name="InnerInnerTestMessage">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=&#34;testMessage&#34;" />
+      <zenbpm:subscription correlationKey="=&#34;testMessage&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

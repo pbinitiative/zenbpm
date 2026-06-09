@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="StanoveniSchvalovatelu_DodavatelskeFaktury" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.7.0">
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="StanoveniSchvalovatelu_DodavatelskeFaktury" name="DRD" namespace="http://camunda.org/schema/1.0/dmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <decision id="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury" name="Stanovení schvalovatelů dodavatelské faktury">
     <decisionTable id="DecisionTable_198kpsd" hitPolicy="COLLECT">
       <input id="Input_1" label="Celková částka faktury bez DPH">

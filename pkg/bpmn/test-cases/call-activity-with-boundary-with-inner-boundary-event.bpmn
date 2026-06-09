@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1plhi4y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.35.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1plhi4y" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
   <bpmn:process id="Simple_CallActivity_Process" isExecutable="true">
     <bpmn:endEvent id="Event_0rrd3fx">
       <bpmn:incoming>Flow_1htsftl</bpmn:incoming>
@@ -11,7 +11,7 @@
     </bpmn:startEvent>
     <bpmn:callActivity id="callActivity" name="Test call activity">
       <bpmn:extensionElements>
-        <zeebe:calledElement processId="message-boundary-event-interrupting" propagateAllChildVariables="false" />
+        <zenbpm:calledElement processId="message-boundary-event-interrupting" propagateAllChildVariables="false" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_0y8zi5j</bpmn:incoming>
       <bpmn:outgoing>Flow_1htsftl</bpmn:outgoing>
@@ -27,7 +27,7 @@
   </bpmn:process>
   <bpmn:message id="simple-boundary-id" name="simple-boundary">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=correlationKey" />
+      <zenbpm:subscription correlationKey="=correlationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">

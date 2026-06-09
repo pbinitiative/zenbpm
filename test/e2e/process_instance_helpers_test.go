@@ -38,10 +38,10 @@ func deployGetUniqueDefinition(t *testing.T, filename string) (zenclient.Process
 	return definition, err
 }
 
-func deployAndGetUniqueProcessDefinition(t *testing.T, filepath string) zenclient.ProcessDefinitionSimple {
+func deployAndGetUniqueProcessDefinition(t *testing.T, filePath string) zenclient.ProcessDefinitionSimple {
 	t.Helper()
 
-	deployedProcessDefinition := deployUniqueProcessDefinition(t, filepath)
+	deployedProcessDefinition := deployUniqueProcessDefinition(t, filePath)
 	definitions, err := listProcessDefinitions(t)
 	require.NoError(t, err)
 
@@ -56,14 +56,34 @@ func deployAndGetUniqueProcessDefinition(t *testing.T, filepath string) zenclien
 	return processDefinition
 }
 
-func deployAndCreateUniqueProcessDefinition(t *testing.T, filepath string, variables map[string]any) zenclient.ProcessInstance {
+func deployAndCreateUniqueProcessDefinition(t *testing.T, filePath string, variables map[string]any) zenclient.ProcessInstance {
 	t.Helper()
 
-	deployedProcessDefinition := deployAndGetUniqueProcessDefinition(t, filepath)
+	deployedProcessDefinition := deployAndGetUniqueProcessDefinition(t, filePath)
 	processInstance, err := createProcessInstance(t, &deployedProcessDefinition.Key, variables)
 	require.NoError(t, err)
 
 	return processInstance
+}
+
+func deployProcessDefinitionKey(t *testing.T, filename string, processId string) int64 {
+	t.Helper()
+
+	response, err := deployDefinition(t, filename)
+	require.NoError(t, err)
+	if response.JSON201 != nil {
+		require.NotZero(t, response.JSON201.ProcessDefinitionKey)
+		return response.JSON201.ProcessDefinitionKey
+	}
+	if response.JSON200 != nil {
+		require.NotZero(t, response.JSON200.ProcessDefinitionKey)
+		return response.JSON200.ProcessDefinitionKey
+	}
+
+	definition, err := deployGetDefinition(t, filename, processId)
+	require.NoError(t, err)
+	require.NotZero(t, definition.Key)
+	return definition.Key
 }
 
 func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables map[string]any) (zenclient.ProcessInstance, error) {
@@ -80,6 +100,21 @@ func createProcessInstance(t testing.TB, processDefinitionKey *int64, variables 
 	require.NotNil(t, resp.JSON201)
 
 	return *resp.JSON201, nil
+}
+
+func createProcessInstanceWithDefaultVariables(t testing.TB, definitionKey int64) zenclient.ProcessInstance {
+	return createProcessInstanceWithVariables(t, definitionKey, map[string]any{
+		"variable_name": "test-value",
+	})
+}
+
+func createProcessInstanceWithVariables(t testing.TB, definitionKey int64, variables map[string]any) zenclient.ProcessInstance {
+	t.Helper()
+
+	instance, err := createProcessInstance(t, &definitionKey, variables)
+	require.NoError(t, err)
+	require.NotEmpty(t, instance.Key)
+	return instance
 }
 
 func getProcessInstance(t testing.TB, key int64) (zenclient.ProcessInstance, error) {
@@ -182,6 +217,22 @@ func waitForProcessInstanceState(t testing.TB, processInstanceKey int64, expecte
 	}, 15*time.Second, 100*time.Millisecond, "process instance %d should reach state %s", processInstanceKey, expectedState)
 }
 
+func waitForTwoProcessInstanceStates(t testing.TB, firstKey int64, firstExpected zenclient.ProcessInstanceState, secondKey int64, secondExpected zenclient.ProcessInstanceState) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		first, err := getProcessInstance(t, firstKey)
+		if err != nil {
+			return false
+		}
+		second, err := getProcessInstance(t, secondKey)
+		if err != nil {
+			return false
+		}
+		return first.State == firstExpected && second.State == secondExpected
+	}, 10*time.Second, 100*time.Millisecond, "process instances %d and %d should reach states %s and %s", firstKey, secondKey, firstExpected, secondExpected)
+}
+
 func assertProcessInstanceVariables(t testing.TB, processInstanceKey int64, expected map[string]any) {
 	t.Helper()
 
@@ -216,6 +267,51 @@ func assertProcessInstanceTokenElements(t testing.TB, processInstanceKey int64, 
 	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain %v elements and not contains %v elements", processInstanceKey, contains, notContains)
 }
 
+func assertProcessInstanceIncidentsLength(t testing.TB, processInstanceKey int64, expectedLen int) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		incidents, err := getProcessInstanceIncidents(t, processInstanceKey)
+		if err != nil {
+			return false
+		}
+		return len(incidents) == expectedLen
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should have %d incidents",
+		processInstanceKey, expectedLen)
+}
+
+func assertProcessInstanceErrorSubscriptionCount(t testing.TB, processInstanceKey int64, expectedCreatedCount int, expectedCancelledCount int) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if err != nil {
+			return false
+		}
+
+		createdSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCreated)
+		if err != nil || len(createdSubs) != expectedCreatedCount {
+			return false
+		}
+
+		cancelledSubs, err := store.FindProcessInstanceErrorSubscriptions(t.Context(), processInstanceKey, bpmnruntime.ErrorStateCancelled)
+		if err != nil || len(cancelledSubs) != expectedCancelledCount {
+			return false
+		}
+
+		return true
+	}, 5*time.Second, 50*time.Millisecond,
+		"process instance %d should have %d created and %d cancelled error subscriptions",
+		processInstanceKey, expectedCreatedCount, expectedCancelledCount)
+}
+
+func assertProcessInstanceErrorSubscriptionsCountIsZero(t testing.TB, processInstanceKey int64) {
+	t.Helper()
+
+	assertProcessInstanceErrorSubscriptionCount(t, processInstanceKey, 0, 0)
+}
+
 func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState) {
 	t.Helper()
 
@@ -239,6 +335,34 @@ func assertProcessInstanceTokenState(t testing.TB, processInstanceKey int64, ele
 
 		assert.Fail(collect, "Token not found", "process instance %d does not expose token on element %s", processInstanceKey, elementId)
 	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain token for element %s in state %s", processInstanceKey, elementId, expectedState)
+}
+
+func assertProcessInstanceTokenStates(t testing.TB, processInstanceKey int64, elementId string, expectedState bpmnruntime.TokenState, expectedCount int) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		matchedStates := make([]bpmnruntime.TokenState, 0)
+		for _, token := range tokens {
+			if token.ElementId == elementId {
+				matchedStates = append(matchedStates, token.State)
+			}
+		}
+
+		require.Len(collect, matchedStates, expectedCount, "process instance %d should expose %d tokens for element %s", processInstanceKey, expectedCount, elementId)
+		for i, state := range matchedStates {
+			assert.Equal(collect, expectedState, state, "process instance %d token %d for element %s should be in state %s", processInstanceKey, i, elementId, expectedState)
+		}
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain %d tokens for element %s in state %s", processInstanceKey, expectedCount, elementId, expectedState)
 }
 
 func assertProcessInstanceIsCompleted(t testing.TB, processInstanceKey int64, tokenElementId string) {
@@ -319,6 +443,29 @@ func requireFirstActiveInstanceWithSingleToken(t testing.TB, processInstances *z
 	assert.Equal(t, 1, len(tokens))
 
 	return fetchedProcessInstance, store
+}
+
+func waitForChildProcessInstanceByType(t testing.TB, parentProcessInstanceKey int64, processType zenclient.ProcessInstanceProcessType) zenclient.ProcessInstancesSimple {
+	t.Helper()
+
+	var child zenclient.ProcessInstancesSimple
+	require.Eventually(t, func() bool {
+		page, err := getChildInstances(t, parentProcessInstanceKey)
+		if err != nil {
+			return false
+		}
+		if len(page.Partitions) == 0 {
+			return false
+		}
+		for _, item := range page.Partitions[0].Items {
+			if item.ProcessType == processType {
+				child = item
+				return true
+			}
+		}
+		return false
+	}, 1*time.Second, 100*time.Millisecond, "process instance %d should create a %s child process instance", parentProcessInstanceKey, processType)
+	return child
 }
 
 func getFlowElementInstancesByElementId(t testing.TB, processInstanceKey int64, elementId string) []bpmnruntime.FlowElementInstance {

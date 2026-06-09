@@ -133,7 +133,6 @@ func (engine *Engine) createSubProcess(
 
 	return runtime.ActivityStateActive, nil
 }
-
 func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.Context, batch *EngineBatch, instance *runtime.SubProcessInstance) error {
 	// Flush pending writes so that subsequent reads (tokens, process instances) see up-to-date persisted state
 	err := batch.Flush(ctx)

@@ -18,13 +18,13 @@
       </bpmn:serviceTask>
     </bpmn:subProcess>
     <bpmn:boundaryEvent id="Event_0pbbln3" attachedToRef="subprocess_1">
-      <bpmn:outgoing>Flow_01g5l10</bpmn:outgoing>
-      <bpmn:errorEventDefinition id="ErrorEventDefinition_042ji1t" errorRef="Error_0r0bmy6" />
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
           <zenbpm:output source="=variable_name" target="variable_name" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_01g5l10</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_042ji1t" errorRef="Error_0r0bmy6" />
     </bpmn:boundaryEvent>
     <bpmn:endEvent id="handled-end" name="Handled end">
       <bpmn:incoming>Flow_01g5l10</bpmn:incoming>

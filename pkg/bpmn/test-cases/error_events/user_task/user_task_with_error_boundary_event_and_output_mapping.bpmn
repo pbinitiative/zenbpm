@@ -12,13 +12,13 @@
     </bpmn:userTask>
     <bpmn:sequenceFlow id="Flow_1h9qmb2" sourceRef="Event_01fi7np" targetRef="user-task-error-boundary" />
     <bpmn:boundaryEvent id="Event_0445qni" attachedToRef="user-task-error-boundary">
-      <bpmn:outgoing>Flow_090ia1o</bpmn:outgoing>
-      <bpmn:errorEventDefinition id="ErrorEventDefinition_0wcgd3n" errorRef="Error_fail_test" />
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
           <zenbpm:output source="=variable_name" target="variable_name" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_090ia1o</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0wcgd3n" errorRef="Error_fail_test" />
     </bpmn:boundaryEvent>
     <bpmn:endEvent id="handled-end" name="Handled end">
       <bpmn:incoming>Flow_090ia1o</bpmn:incoming>

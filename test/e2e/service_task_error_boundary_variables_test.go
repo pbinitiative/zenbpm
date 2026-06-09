@@ -2,8 +2,6 @@ package e2e
 
 import (
 	"testing"
-
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 )
 
 func TestServiceTaskErrorBoundaryVariables(t *testing.T) {
@@ -20,7 +18,7 @@ func TestServiceTaskErrorBoundaryVariables(t *testing.T) {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		failJobForElementId(t, processInstance.Key, "service-task-error-boundary", ptr.To("42"), jobVariables)
+		failJobForElementId(t, processInstance.Key, "service-task-error-boundary", new("42"), jobVariables)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)
@@ -42,7 +40,7 @@ func TestServiceTaskErrorBoundaryVariables(t *testing.T) {
 			"variable_name": "boundary_value",
 			"ignored":       "ignored_value",
 		}
-		failJobForElementId(t, processInstance.Key, "service-task-error-boundary", ptr.To("42"), jobVariables)
+		failJobForElementId(t, processInstance.Key, "service-task-error-boundary", new("42"), jobVariables)
 
 		expectedBoundaryVariables := map[string]any{"variable_name": "boundary_value"}
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
@@ -64,7 +62,7 @@ func TestServiceTaskErrorBoundaryVariables(t *testing.T) {
 		jobVariables := map[string]any{
 			"error_detail": "catch_all_value",
 		}
-		failJobForElementId(t, processInstance.Key, "service_task", ptr.To("any-error"), jobVariables)
+		failJobForElementId(t, processInstance.Key, "service_task", new("any-error"), jobVariables)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)

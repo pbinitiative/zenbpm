@@ -1,0 +1,67 @@
+name: trivy-scan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  IMAGE_NAME: zenbpm-trivy
+  RELEASE_TAG: manual-${{ github.sha }}
+  TRIVY_VERSION: 0.69.3
+  TRIVY_ARCHIVE_SHA256: 1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: install verified trivy
+        run: bash scripts/ci/release-security.sh install-trivy
+      - name: build image for trivy
+        run: bash scripts/ci/release-security.sh build-scan-image
+        env:
+          DOCKER_BUILDKIT: 1
+      - name: trivy scan
+        run: bash scripts/ci/release-security.sh scan
+      - name: summarize trivy reports
+        id: trivy_summary
+        if: always()
+        run: bash scripts/ci/release-security.sh summarize
+      - name: upload trivy image sarif
+        if: ${{ always() && hashFiles('trivy-reports/image.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-reports/image.sarif
+          category: trivy-image
+      - name: upload trivy filesystem sarif
+        if: ${{ always() && hashFiles('trivy-reports/fs.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-reports/fs.sarif
+          category: trivy-fs
+      - name: upload trivy secret sarif
+        if: ${{ always() && hashFiles('trivy-reports/secrets.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-reports/secrets.sarif
+          category: trivy-secrets
+      - name: upload trivy reports
+        if: ${{ always() && hashFiles('trivy-reports/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports-${{ github.ref_name }}-${{ github.sha }}
+          path: trivy-reports/

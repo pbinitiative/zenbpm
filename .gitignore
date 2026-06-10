@@ -17,6 +17,7 @@ sqlite-test-data-*/
 cmd/zenbpm/__debug_*
 bin
 reports/
+trivy-reports/
 node-*
 zen_bpm_node_*
 cover.out

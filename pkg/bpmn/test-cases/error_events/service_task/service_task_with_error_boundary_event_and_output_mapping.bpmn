@@ -17,13 +17,13 @@
       <bpmn:incoming>Flow_main_success</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="service-task-error-boundary">
-      <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
-      <bpmn:errorEventDefinition id="ErrorEventDefinition_main_task" errorRef="Error_fail_test" />
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
           <zenbpm:output source="=variable_name" target="variable_name" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_main_task" errorRef="Error_fail_test" />
     </bpmn:boundaryEvent>
     <bpmn:sequenceFlow id="Flow_boundary_handled" sourceRef="boundary-error-main-task" targetRef="handled-end" />
     <bpmn:endEvent id="handled-end" name="Handled end">

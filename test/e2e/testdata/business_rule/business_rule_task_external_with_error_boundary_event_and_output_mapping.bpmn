@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_job_fail_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
-  <bpmn:process id="job-fail-error-boundary" name="Job Fail Error Boundary" isExecutable="true">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_business_rule_task_external_error_boundary_output_mapping" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="business-rule-task-external-error-boundary-output-mapping" name="Business Rule Task External With Error Boundary Event Output Mapping" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="service-task-error-boundary" />
-    <bpmn:serviceTask id="service-task-error-boundary" name="Main task">
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="boundary-error-business-rule-external" />
+    <bpmn:businessRuleTask id="boundary-error-business-rule-external" name="Business rule external">
       <bpmn:extensionElements>
-        <zenbpm:taskDefinition type="TestType" />
+        <zeebe:taskDefinition type="business-rule-boundary-test" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_start_main</bpmn:incoming>
       <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
-    </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="service-task-error-boundary" targetRef="should-not-happen-end" />
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="boundary-error-business-rule-external" targetRef="should-not-happen-end" />
     <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
       <bpmn:incoming>Flow_main_success</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="service-task-error-boundary">
+    <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="boundary-error-business-rule-external">
       <bpmn:extensionElements>
-        <zenbpm:ioMapping>
-          <zenbpm:output source="=variable_name" target="variable_name" />
-        </zenbpm:ioMapping>
+        <zeebe:ioMapping>
+          <zeebe:output source="=variable_name" target="variable_name" />
+        </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
       <bpmn:errorEventDefinition id="ErrorEventDefinition_main_task" errorRef="Error_fail_test" />
@@ -32,24 +32,18 @@
   </bpmn:process>
   <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="job-fail-error-boundary">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="business-rule-task-external-error-boundary">
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
         <dc:Bounds x="179" y="99" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="main_task_di" bpmnElement="service-task-error-boundary">
+      <bpmndi:BPMNShape id="main_task_di" bpmnElement="boundary-error-business-rule-external">
         <dc:Bounds x="270" y="77" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="success_end_di" bpmnElement="should-not-happen-end">
         <dc:Bounds x="482" y="99" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="441" y="135" width="121" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="handled_end_di" bpmnElement="handled-end">
         <dc:Bounds x="482" y="222" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="469" y="258" width="63" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="boundary_error_main_task_di" bpmnElement="boundary-error-main-task">
         <dc:Bounds x="352" y="139" width="36" height="36" />

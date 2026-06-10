@@ -244,11 +244,9 @@ func TestTimerSubscriptionsInvalidState(t *testing.T) {
 func TestGetProcessInstanceErrorSubscriptions(t *testing.T) {
 	t.Parallel()
 
-	definition, err := deployDefinition(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn")
-	assert.NoError(t, err)
-	assert.NotNil(t, definition.JSON200)
+	definitionKey := deployProcessDefinitionKey(t, "error_events/user_task/user_task_with_error_boundary_event.bpmn", "user-task-with-error-boundary")
 
-	instance, err := createProcessInstance(t, &definition.JSON200.ProcessDefinitionKey, map[string]any{})
+	instance, err := createProcessInstance(t, &definitionKey, map[string]any{})
 	require.NoError(t, err)
 	t.Cleanup(func() { cleanupOwnedProcessInstance(t, instance.Key) })
 

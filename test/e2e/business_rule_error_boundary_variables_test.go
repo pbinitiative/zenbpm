@@ -4,8 +4,7 @@ import (
 	"testing"
 )
 
-func TestUserTaskErrorBoundaryVariables(t *testing.T) {
-
+func TestBusinessRuleErrorBoundaryVariables(t *testing.T) {
 	t.Run("Matching error boundary without output mapping propagates all fail variables", func(t *testing.T) {
 		createInstanceVariables := map[string]any{
 			"variable_name":     "create_value",
@@ -13,12 +12,13 @@ func TestUserTaskErrorBoundaryVariables(t *testing.T) {
 		}
 		jobVariables := map[string]any{"variable_name": "boundary_value"}
 
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_error_boundary_event.bpmn", createInstanceVariables)
+		definitionKey := deployTestDataProcessDefinitionKey(t, "testdata/business_rule/business_rule_task_external_with_error_boundary_event.bpmn")
+		processInstance := createProcessInstanceWithVariables(t, definitionKey, createInstanceVariables)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		failJobForElementId(t, processInstance.Key, "user-task-error-boundary", new("42"), jobVariables)
+		failJobForElementId(t, processInstance.Key, "boundary-error-business-rule-external", new("42"), jobVariables)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)
@@ -30,17 +30,18 @@ func TestUserTaskErrorBoundaryVariables(t *testing.T) {
 			"variable_name":     "create_value",
 			"unchanged_process": "process_value",
 		}
-
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_error_boundary_event_and_output_mapping.bpmn", createInstanceVariables)
-		t.Cleanup(func() {
-			cleanupOwnedProcessInstance(t, processInstance.Key)
-		})
-
 		jobVariables := map[string]any{
 			"variable_name": "boundary_value",
 			"ignored":       "ignored_value",
 		}
-		failJobForElementId(t, processInstance.Key, "user-task-error-boundary", new("42"), jobVariables)
+
+		definitionKey := deployTestDataProcessDefinitionKey(t, "testdata/business_rule/business_rule_task_external_with_error_boundary_event_and_output_mapping.bpmn")
+		processInstance := createProcessInstanceWithVariables(t, definitionKey, createInstanceVariables)
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		failJobForElementId(t, processInstance.Key, "boundary-error-business-rule-external", new("42"), jobVariables)
 
 		expectedBoundaryVariables := map[string]any{"variable_name": "boundary_value"}
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
@@ -53,16 +54,15 @@ func TestUserTaskErrorBoundaryVariables(t *testing.T) {
 			"variable_name":     "create_value",
 			"unchanged_process": "process_value",
 		}
+		jobVariables := map[string]any{"error_detail": "catch_all_value"}
 
-		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/user_task/user_task_with_catch_all_error_boundary_event.bpmn", createInstanceVariables)
+		definitionKey := deployTestDataProcessDefinitionKey(t, "testdata/business_rule/business_rule_task_external_with_catch_all_error_boundary_event.bpmn")
+		processInstance := createProcessInstanceWithVariables(t, definitionKey, createInstanceVariables)
 		t.Cleanup(func() {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		jobVariables := map[string]any{
-			"error_detail": "catch_all_value",
-		}
-		failJobForElementId(t, processInstance.Key, "user_task", new("any-error"), jobVariables)
+		failJobForElementId(t, processInstance.Key, "boundary-error-business-rule-external", new("any-error"), jobVariables)
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "handled-end")
 		assertFlowElementOutputVariables(t, processInstance.Key, "boundary-error-main-task", jobVariables)

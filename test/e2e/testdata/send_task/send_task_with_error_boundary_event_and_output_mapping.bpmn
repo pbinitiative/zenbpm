@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_send_task_error_boundary_output_mapping" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="send-task-error-boundary-output-mapping" name="Send Task With Error Boundary Event Output Mapping" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="boundary-error-send-task" />
+    <bpmn:sendTask id="boundary-error-send-task" name="Send task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="TestType" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="boundary-error-send-task" targetRef="should-not-happen-end" />
+    <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_main_success</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="boundary-error-send-task">
+      <bpmn:extensionElements>
+        <zeebe:ioMapping>
+          <zeebe:output source="=variable_name" target="variable_name" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_main_task" errorRef="Error_fail_test" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_boundary_handled" sourceRef="boundary-error-main-task" targetRef="handled-end" />
+    <bpmn:endEvent id="handled-end" name="Handled end">
+      <bpmn:incoming>Flow_boundary_handled</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
+</bpmn:definitions>

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_job_fail_invalid_error_boundary" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="1.0.0">
+    <bpmn:process id="sub_process_with_error_boundary_and_catch_all" name="Sub process with boundaries for exact match and catch all" isExecutable="true">
+        <bpmn:startEvent id="StartEvent_1">
+            <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="subprocess" />
+        <bpmn:sequenceFlow id="Flow_main_success" sourceRef="subprocess" targetRef="should_not_happen_end" />
+        <bpmn:endEvent id="should_not_happen_end" name="Should not happen end">
+            <bpmn:incoming>Flow_main_success</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:boundaryEvent id="boundary_error_catch_all" attachedToRef="subprocess">
+            <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
+            <bpmn:errorEventDefinition id="catch-all-errors" />
+        </bpmn:boundaryEvent>
+        <bpmn:sequenceFlow id="Flow_boundary_handled" sourceRef="boundary_error_catch_all" targetRef="catch_all_end" />
+        <bpmn:endEvent id="catch_all_end" name="Catch all end">
+            <bpmn:incoming>Flow_boundary_handled</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:boundaryEvent id="boundary_error_exact_match" attachedToRef="subprocess">
+            <bpmn:outgoing>Flow_0xorbu0</bpmn:outgoing>
+            <bpmn:errorEventDefinition id="ErrorEventDefinition_1pdxvy4" errorRef="Error_0je3y5n" />
+        </bpmn:boundaryEvent>
+        <bpmn:endEvent id="exact_match_end" name="Exact match end">
+            <bpmn:incoming>Flow_0xorbu0</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_0xorbu0" sourceRef="boundary_error_exact_match" targetRef="exact_match_end" />
+        <bpmn:subProcess id="subprocess">
+            <bpmn:incoming>Flow_start_main</bpmn:incoming>
+            <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
+            <bpmn:serviceTask id="service_task" name="task">
+                <bpmn:extensionElements>
+                    <zeebe:taskDefinition type="TestType" />
+                </bpmn:extensionElements>
+                <bpmn:incoming>Flow_1jotui9</bpmn:incoming>
+                <bpmn:outgoing>Flow_0b6b6dg</bpmn:outgoing>
+            </bpmn:serviceTask>
+            <bpmn:endEvent id="sub_process_end">
+                <bpmn:incoming>Flow_0b6b6dg</bpmn:incoming>
+            </bpmn:endEvent>
+            <bpmn:sequenceFlow id="Flow_0b6b6dg" sourceRef="service_task" targetRef="sub_process_end" />
+            <bpmn:startEvent id="sub_process_start">
+                <bpmn:outgoing>Flow_1jotui9</bpmn:outgoing>
+            </bpmn:startEvent>
+            <bpmn:sequenceFlow id="Flow_1jotui9" sourceRef="sub_process_start" targetRef="service_task" />
+        </bpmn:subProcess>
+    </bpmn:process>
+    <bpmn:error id="Error_0je3y5n" name="exatch_match" errorCode="31" />
+    <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+        <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="sub_process_with_error_boundary_and_catch_all">
+            <bpmndi:BPMNShape id="handled_end_di" bpmnElement="catch_all_end">
+                <dc:Bounds x="552" y="352" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="537" y="398" width="65" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_0x6424o_di" bpmnElement="exact_match_end">
+                <dc:Bounds x="362" y="352" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="339" y="398" width="82" height="14" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="success_end_di" bpmnElement="should_not_happen_end">
+                <dc:Bounds x="732" y="162" width="36" height="36" />
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds x="720" y="124.5" width="59" height="27" />
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+                <dc:Bounds x="192" y="162" width="36" height="36" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Activity_0s2mz6y_di" bpmnElement="subprocess" isExpanded="true">
+                <dc:Bounds x="310" y="80" width="350" height="200" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="main_task_di" bpmnElement="service_task">
+                <dc:Bounds x="410" y="140" width="100" height="80" />
+                <bpmndi:BPMNLabel />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_1vynple_di" bpmnElement="sub_process_end">
+                <dc:Bounds x="562" y="162" width="36" height="36" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_12jkz8c_di" bpmnElement="sub_process_start">
+                <dc:Bounds x="332" y="162" width="36" height="36" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge id="Flow_1jotui9_di" bpmnElement="Flow_1jotui9">
+                <di:waypoint x="368" y="180" />
+                <di:waypoint x="410" y="180" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_0b6b6dg_di" bpmnElement="Flow_0b6b6dg">
+                <di:waypoint x="510" y="180" />
+                <di:waypoint x="562" y="180" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNShape id="boundary_error_main_task_di" bpmnElement="boundary_error_catch_all">
+                <dc:Bounds x="552" y="262" width="36" height="36" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Event_04izv4i_di" bpmnElement="boundary_error_exact_match">
+                <dc:Bounds x="362" y="262" width="36" height="36" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge id="Flow_boundary_handled_di" bpmnElement="Flow_boundary_handled">
+                <di:waypoint x="570" y="298" />
+                <di:waypoint x="570" y="352" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_0xorbu0_di" bpmnElement="Flow_0xorbu0">
+                <di:waypoint x="380" y="298" />
+                <di:waypoint x="380" y="352" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_main_success_di" bpmnElement="Flow_main_success">
+                <di:waypoint x="660" y="180" />
+                <di:waypoint x="732" y="180" />
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+                <di:waypoint x="228" y="180" />
+                <di:waypoint x="310" y="180" />
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

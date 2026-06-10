@@ -30,13 +30,13 @@
     <bpmn:sequenceFlow id="Flow_104hlf4" sourceRef="Event_15f0ox7" targetRef="error_boundary_event_end" />
     <bpmn:sequenceFlow id="Flow_1nyvqiu" sourceRef="service_task" targetRef="end" />
     <bpmn:boundaryEvent id="Event_15f0ox7" attachedToRef="service_task">
-      <bpmn:outgoing>Flow_104hlf4</bpmn:outgoing>
-      <bpmn:errorEventDefinition id="ErrorEventDefinition_0ibu7t0" errorRef="Error_fail_test" />
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
           <zenbpm:output source="=variable_name" target="variable_name" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_104hlf4</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0ibu7t0" errorRef="Error_fail_test" />
     </bpmn:boundaryEvent>
   </bpmn:process>
   <bpmn:error id="Error_fail_test" name="error" errorCode="44" />

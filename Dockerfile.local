@@ -2,6 +2,10 @@ FROM golang:1.26 AS builder
 
 WORKDIR /build
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY go.mod go.sum ./
 
 RUN go mod download
@@ -9,8 +13,11 @@ RUN go mod download
 COPY . .
 RUN make build
 
+FROM ubuntu:noble-20260410
 
-FROM ubuntu:24.04
+RUN apt-get update \
+    && apt-get install --only-upgrade -y libssl3t64 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /usr/sbin/nologin zenbpm
 

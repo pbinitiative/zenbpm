@@ -174,5 +174,5 @@ func updateProcessInstanceVariables(t testing.TB, processInstanceKey int64, vari
 func resolveIncident(t testing.TB, key int64) {
 	r, err := app.restClient.ResolveIncidentWithResponse(t.Context(), key)
 	require.NoError(t, err, "failed to resolve incident: %w", err)
-	require.Equal(t, r.StatusCode(), http.StatusCreated)
+	require.Equal(t, http.StatusCreated, r.StatusCode())
 }

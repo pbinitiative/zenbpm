@@ -128,7 +128,7 @@ func assertProcessCheckpoint(t testing.TB, processInstanceKey int64, want Proces
 
 		if matchedJob != nil {
 			for name, value := range vars {
-				assert.Equal(t, value, matchedJob.Variables[name],
+				assert.Equal(t, value, matchedJob.InputVariables[name],
 					"job input variable %q for element %q on instance %d",
 					name, elementID, processInstanceKey)
 			}

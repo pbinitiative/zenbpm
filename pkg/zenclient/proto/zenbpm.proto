@@ -47,7 +47,7 @@ message JobStreamResponse {
 message WaitingJob {
   int64 key = 1;
   int64 instance_key = 2;
-  bytes variables = 3;
+  bytes input_variables = 3;
   string type = 4;
   string element_id = 5;
   int64 created_at = 6;

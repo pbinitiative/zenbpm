@@ -500,17 +500,22 @@ type InstanceCounts struct {
 // Job defines model for Job.
 type Job struct {
 	// Assignee Assignee (user assigned to this job)
-	Assignee           *string   `json:"assignee,omitempty"`
-	CreatedAt          time.Time `json:"createdAt"`
-	ElementId          string    `json:"elementId"`
-	Key                int64     `json:"key"`
-	ProcessInstanceKey int64     `json:"processInstanceKey"`
+	Assignee  *string   `json:"assignee,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	ElementId string    `json:"elementId"`
+
+	// InputVariables Variables provided to the job at creation/activation time (from BPMN input mappings)
+	InputVariables map[string]interface{} `json:"inputVariables"`
+	Key            int64                  `json:"key"`
+
+	// OutputVariables Output variables set on job completion or failure
+	OutputVariables    *map[string]interface{} `json:"outputVariables,omitempty"`
+	ProcessInstanceKey int64                   `json:"processInstanceKey"`
 
 	// Retries Remaining retries
-	Retries   *int                   `json:"retries,omitempty"`
-	State     JobState               `json:"state"`
-	Type      string                 `json:"type"`
-	Variables map[string]interface{} `json:"variables"`
+	Retries *int     `json:"retries,omitempty"`
+	State   JobState `json:"state"`
+	Type    string   `json:"type"`
 }
 
 // JobPage defines model for JobPage.

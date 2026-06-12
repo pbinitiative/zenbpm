@@ -1589,7 +1589,7 @@ paths:
                     processInstanceKey: 4503599627370501
                     state: "active"
                     createdAt: "2025-08-22T14:30:26Z"
-                    variables:
+                    inputVariables:
                       formKey: "loan-application-form"
                       assignee: "john.doe"
                   - key: 4503599627370511
@@ -1598,7 +1598,10 @@ paths:
                     processInstanceKey: 4503599627370501
                     state: "completed"
                     createdAt: "2025-08-22T14:32:15Z"
-                    variables:
+                    inputVariables:
+                      applicantId: "APP-12345"
+                      creditScoreThreshold: 80
+                    outputVariables:
                       result: "approved"
                       score: 85
                 page: 1
@@ -2102,7 +2105,7 @@ paths:
                         createdAt: "2025-08-22T15:10:26Z"
                         assignee: "john.doe"
                         retries: 3
-                        variables:
+                        inputVariables:
                           formKey: "loan-review-form"
                   - partition: 2
                     items:
@@ -2113,7 +2116,7 @@ paths:
                         state: "active"
                         createdAt: "2025-08-22T15:46:33Z"
                         retries: 3
-                        variables:
+                        inputVariables:
                           notificationType: "email"
                           recipient: "customer@example.com"
                 page: 1
@@ -2169,7 +2172,7 @@ paths:
                 createdAt: "2025-08-22T15:10:26Z"
                 assignee: "john.doe"
                 retries: 3
-                variables:
+                inputVariables:
                   formKey: "loan-review-form"
                   applicationId: "APP-12345"
                   customerName: "Alice Johnson"
@@ -3403,7 +3406,7 @@ components:
         - processInstanceKey
         - state
         - createdAt
-        - variables
+        - inputVariables
       properties:
         key:
           type: integer
@@ -3420,8 +3423,12 @@ components:
         createdAt:
           type: string
           format: date-time
-        variables:
+        inputVariables:
           type: object
+          description: Variables provided to the job at creation/activation time (from BPMN input mappings)
+        outputVariables:
+          type: object
+          description: Output variables set on job completion or failure
         assignee:
           type: string
           description: Assignee (user assigned to this job)

@@ -49,7 +49,7 @@ func (q *Queries) DeleteProcessInstancesJobs(ctx context.Context, keys []int64) 
 
 const findActiveJobsByType = `-- name: FindActiveJobsByType :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -74,9 +74,10 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -93,7 +94,7 @@ func (q *Queries) FindActiveJobsByType(ctx context.Context, type_ string) ([]Job
 
 const findAllJobs = `-- name: FindAllJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 LIMIT ?2 offset ?1
@@ -121,9 +122,10 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -140,7 +142,7 @@ func (q *Queries) FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job
 
 const findJobByJobKey = `-- name: FindJobByJobKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -158,16 +160,17 @@ func (q *Queries) FindJobByJobKey(ctx context.Context, key int64) (Job, error) {
 		&i.Type,
 		&i.State,
 		&i.CreatedAt,
-		&i.Variables,
+		&i.InputVariables,
 		&i.ExecutionToken,
 		&i.Assignee,
+		&i.OutputVariables,
 	)
 	return i, err
 }
 
 const findJobByKey = `-- name: FindJobByKey :one
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -185,16 +188,17 @@ func (q *Queries) FindJobByKey(ctx context.Context, key int64) (Job, error) {
 		&i.Type,
 		&i.State,
 		&i.CreatedAt,
-		&i.Variables,
+		&i.InputVariables,
 		&i.ExecutionToken,
 		&i.Assignee,
+		&i.OutputVariables,
 	)
 	return i, err
 }
 
 const findJobs = `-- name: FindJobs :many
 SELECT
-  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.variables, j.execution_token, j.assignee,
+  j."key", j.element_instance_key, j.element_id, j.process_instance_key, j.type, j.state, j.created_at, j.input_variables, j.execution_token, j.assignee, j.output_variables,
   COUNT(*) OVER() AS total_count
 FROM job AS j
 WHERE
@@ -237,9 +241,10 @@ type FindJobsRow struct {
 	Type               string         `json:"type"`
 	State              int64          `json:"state"`
 	CreatedAt          int64          `json:"created_at"`
-	Variables          string         `json:"variables"`
+	InputVariables     string         `json:"input_variables"`
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
+	OutputVariables    sql.NullString `json:"output_variables"`
 	TotalCount         int64          `json:"total_count"`
 }
 
@@ -270,9 +275,10 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -290,7 +296,7 @@ func (q *Queries) FindJobs(ctx context.Context, arg FindJobsParams) ([]FindJobsR
 
 const findProcessInstanceJobs = `-- name: FindProcessInstanceJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee,
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables,
     COUNT(*) OVER () AS total_count
 FROM
     job
@@ -313,9 +319,10 @@ type FindProcessInstanceJobsRow struct {
 	Type               string         `json:"type"`
 	State              int64          `json:"state"`
 	CreatedAt          int64          `json:"created_at"`
-	Variables          string         `json:"variables"`
+	InputVariables     string         `json:"input_variables"`
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
+	OutputVariables    sql.NullString `json:"output_variables"`
 	TotalCount         int64          `json:"total_count"`
 }
 
@@ -336,9 +343,10 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -356,7 +364,7 @@ func (q *Queries) FindProcessInstanceJobs(ctx context.Context, arg FindProcessIn
 
 const findProcessInstanceJobsInState = `-- name: FindProcessInstanceJobsInState :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -397,9 +405,10 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -417,7 +426,7 @@ func (q *Queries) FindProcessInstanceJobsInState(ctx context.Context, arg FindPr
 const getJobsInStateByTokenKey = `-- name: GetJobsInStateByTokenKey :many
 
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -459,9 +468,10 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -478,7 +488,7 @@ func (q *Queries) GetJobsInStateByTokenKey(ctx context.Context, arg GetJobsInSta
 
 const getWaitingJobs = `-- name: GetWaitingJobs :many
 SELECT
-    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, variables, execution_token, assignee
+    "key", element_instance_key, element_id, process_instance_key, type, state, created_at, input_variables, execution_token, assignee, output_variables
 FROM
     job
 WHERE
@@ -532,9 +542,10 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 			&i.Type,
 			&i.State,
 			&i.CreatedAt,
-			&i.Variables,
+			&i.InputVariables,
 			&i.ExecutionToken,
 			&i.Assignee,
+			&i.OutputVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -550,12 +561,13 @@ func (q *Queries) GetWaitingJobs(ctx context.Context, arg GetWaitingJobsParams) 
 }
 
 const saveJob = `-- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token, assignee)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-        variables = excluded.variables,
+        input_variables = excluded.input_variables,
+        output_variables = excluded.output_variables,
         assignee = excluded.assignee
 `
 
@@ -567,7 +579,8 @@ type SaveJobParams struct {
 	Type               string         `json:"type"`
 	State              int64          `json:"state"`
 	CreatedAt          int64          `json:"created_at"`
-	Variables          string         `json:"variables"`
+	InputVariables     string         `json:"input_variables"`
+	OutputVariables    sql.NullString `json:"output_variables"`
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
 }
@@ -581,7 +594,8 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) error {
 		arg.Type,
 		arg.State,
 		arg.CreatedAt,
-		arg.Variables,
+		arg.InputVariables,
+		arg.OutputVariables,
 		arg.ExecutionToken,
 		arg.Assignee,
 	)

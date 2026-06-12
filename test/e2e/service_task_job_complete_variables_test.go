@@ -57,10 +57,11 @@ func TestServiceTaskJobCompleteVariables(t *testing.T) {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		completeJobForElementId(t, processInstance.Key, "service_task", map[string]any{"variable_without_output_mapping": "value"})
+		completeJobVariables := map[string]any{"variable_without_output_mapping": "value"}
+		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateCompleted)
-		require.Equal(t, job.Variables, map[string]interface{}{}, "variables for jobs should not be propagated to job after job completion, its expected behaviour")
+		require.Equal(t, completeJobVariables, *job.OutputVariables, "completion variables should be stored as output variables on the job")
 	})
 
 	t.Run("Only job completion variables referenced by output mappings are propagated", func(t *testing.T) {
@@ -75,10 +76,41 @@ func TestServiceTaskJobCompleteVariables(t *testing.T) {
 		}
 		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
 
+		// FlowElementInstance (history) stores only mapped output variables
 		expectedVariables := map[string]any{"output_variable_from_service_task": "mapped_value"}
 		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", expectedVariables)
 		assertProcessInstanceVariables(t, processInstance.Key, expectedVariables)
+
+		// Job stores all output variables before mapping, including unmapped ones
+		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateCompleted)
+		require.Equal(t, completeJobVariables, *job.OutputVariables, "job must store all output variables before mapping")
+	})
+
+	t.Run("Job output variables include unmapped variables; history includes only mapped", func(t *testing.T) {
+
+		processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_with_output_mapping.bpmn", nil)
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+		completeJobVariables := map[string]any{
+			"complete_job_variable": "mapped_value",
+			"extra_unmapped":        "extra_value",
+		}
+		completeJobForElementId(t, processInstance.Key, "service_task", completeJobVariables)
+
+		// Job stores ALL output variables (before output mapping filters them)
+		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateCompleted)
+		require.Equal(t, completeJobVariables, *job.OutputVariables, "job must store all output variables")
+
+		// FlowElementInstance (history) stores only mapped output variables
+		mappedOutput := map[string]any{"output_variable_from_service_task": "mapped_value"}
+		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", mappedOutput)
+
+		// Verify the history does NOT contain the unmapped variable
+		flowElement := getFlowElementByElementId(t, processInstance.Key, "service_task")
+		require.NotContains(t, flowElement.OutputVariables, "extra_unmapped", "flow element history must not contain unmapped output variables")
+		require.Contains(t, *job.OutputVariables, "extra_unmapped", "job must contain unmapped output variable")
 	})
 
 	t.Run("Job completion variables override local variables with the same name in output mapping scope", func(t *testing.T) {

@@ -282,8 +282,9 @@ message Job {
   string type = 5;
   int64 state = 6;
   int64 created_at = 7;
-  bytes variables = 8;
+  bytes input_variables = 8;
   string assignee = 9;
+  bytes output_variables = 10;
 }
 
 message FlowElement {
@@ -358,7 +359,7 @@ message ActivateJobResponse {
 message InternalJob {
   int64 key = 1;
   int64 instance_key = 2;
-  bytes variables = 3;
+  bytes input_variables = 3;
   string type = 4;
   int64 state = 5;
   string element_id = 6;

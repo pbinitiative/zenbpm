@@ -1538,25 +1538,11 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, request public.GetP
 	}
 	resp := make([]public.Job, len(jobs.Jobs))
 	for i, job := range jobs.Jobs {
-		vars := map[string]any{}
-		err := json.Unmarshal(job.GetVariables(), &vars)
+		mappedJob, err := s.mapProtoJob(job)
 		if err != nil {
 			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 		}
-		jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
-		if stateErr != nil {
-			return public.GetProcessInstanceJobs500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
-		}
-		resp[i] = public.Job{
-			CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
-			ElementId:          job.GetElementId(),
-			Key:                job.GetKey(),
-			ProcessInstanceKey: job.GetProcessInstanceKey(),
-			State:              jobState,
-			Type:               job.GetType(),
-			Variables:          vars,
-			Assignee:           ptr.To(job.GetAssignee()),
-		}
+		resp[i] = mappedJob
 	}
 	return public.GetProcessInstanceJobs200JSONResponse{
 		Items: resp,
@@ -1814,25 +1800,11 @@ func (s *Server) GetJobs(ctx context.Context, request public.GetJobsRequestObjec
 		count += len(partitionJobs.GetJobs())
 		totalCount += *partitionJobs.TotalCount
 		for k, job := range partitionJobs.GetJobs() {
-			jobVars := make(map[string]any)
-			err = json.Unmarshal(job.GetVariables(), &jobVars)
+			mappedJob, err := s.mapProtoJob(job)
 			if err != nil {
 				return public.GetJobs500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 			}
-			jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
-			if stateErr != nil {
-				return public.GetJobs500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
-			}
-			jobsPage.Partitions[i].Items[k] = public.Job{
-				CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
-				Key:                job.GetKey(),
-				State:              jobState,
-				ElementId:          job.GetElementId(),
-				ProcessInstanceKey: job.GetProcessInstanceKey(),
-				Type:               job.GetType(),
-				Assignee:           job.Assignee,
-				Variables:          jobVars,
-			}
+			jobsPage.Partitions[i].Items[k] = mappedJob
 		}
 	}
 	jobsPage.Count = count
@@ -1857,26 +1829,11 @@ func (s *Server) GetJob(ctx context.Context, request public.GetJobRequestObject)
 		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 
-	jobVars := make(map[string]any)
-	err = json.Unmarshal(job.GetVariables(), &jobVars)
+	mappedJob, err := s.mapProtoJob(job)
 	if err != nil {
 		return public.GetJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
-
-	jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
-	if stateErr != nil {
-		return public.GetJob500JSONResponse(zenerr.TechnicalError(stateErr).ToApiError()), nil
-	}
-	return public.GetJob200JSONResponse{
-		Assignee:           job.Assignee,
-		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
-		ElementId:          job.GetElementId(),
-		Key:                job.GetKey(),
-		ProcessInstanceKey: job.GetProcessInstanceKey(),
-		State:              jobState,
-		Type:               job.GetType(),
-		Variables:          jobVars,
-	}, nil
+	return public.GetJob200JSONResponse(mappedJob), nil
 }
 
 func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObject) (public.FailJobResponseObject, error) {
@@ -1899,6 +1856,45 @@ func (s *Server) FailJob(ctx context.Context, request public.FailJobRequestObjec
 		return public.FailJob500JSONResponse(zenerr.TechnicalError(err).ToApiError()), nil
 	}
 	return public.FailJob204Response{}, nil
+}
+
+func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
+	if job == nil {
+		return public.Job{}, fmt.Errorf("job is nil")
+	}
+
+	inputVars := map[string]any{}
+	if len(job.GetInputVariables()) > 0 {
+		if err := json.Unmarshal(job.GetInputVariables(), &inputVars); err != nil {
+			return public.Job{}, fmt.Errorf("failed to unmarshal input variables: %w", err)
+		}
+	}
+
+	var outputVars *map[string]any
+	if len(job.GetOutputVariables()) > 0 {
+		vars := map[string]any{}
+		if err := json.Unmarshal(job.GetOutputVariables(), &vars); err != nil {
+			return public.Job{}, fmt.Errorf("failed to unmarshal output variables: %w", err)
+		}
+		outputVars = &vars
+	}
+
+	jobState, stateErr := getRestJobState(runtime.ActivityState(job.GetState()))
+	if stateErr != nil {
+		return public.Job{}, stateErr
+	}
+
+	return public.Job{
+		CreatedAt:          time.UnixMilli(job.GetCreatedAt()),
+		ElementId:          job.GetElementId(),
+		Key:                job.GetKey(),
+		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		State:              jobState,
+		Type:               job.GetType(),
+		InputVariables:     inputVars,
+		OutputVariables:    outputVars,
+		Assignee:           job.Assignee,
+	}, nil
 }
 
 func getRestJobState(state runtime.ActivityState) (public.JobState, error) {

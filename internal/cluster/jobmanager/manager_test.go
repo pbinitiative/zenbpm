@@ -297,7 +297,7 @@ func generateJobs(count int) []sql.Job {
 				Type:               "test-job",
 				State:              int64(runtime.ActivityStateActive),
 				CreatedAt:          time.Now().UnixMilli(),
-				Variables:          "{}",
+				InputVariables:     "{}",
 			},
 		)
 	}

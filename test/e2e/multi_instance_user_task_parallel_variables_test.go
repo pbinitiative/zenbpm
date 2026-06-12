@@ -57,8 +57,8 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 
 		approvers := make([]string, 0, len(jobs))
 		for _, job := range jobs {
-			approver, ok := job.Variables["approver"].(string)
-			require.True(t, ok, "iteration job must expose input element as string, got %T", job.Variables["approver"])
+			approver, ok := job.InputVariables["approver"].(string)
+			require.True(t, ok, "iteration job must expose input element as string, got %T", job.InputVariables["approver"])
 			approvers = append(approvers, approver)
 		}
 		require.ElementsMatch(t, []string{"alice", "bob", "carol"}, approvers, "each parallel iteration must bind input element to a distinct collection entry")
@@ -182,7 +182,7 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 
 		expectedValues := make([]any, 0, len(jobs))
 		for _, job := range jobs {
-			expectedValues = append(expectedValues, job.Variables["approver"])
+			expectedValues = append(expectedValues, job.InputVariables["approver"])
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
 		require.ElementsMatch(t, []any{float64(10), float64(20), float64(30)}, expectedValues, "each parallel iteration must bind a distinct numeric collection entry")
@@ -205,8 +205,8 @@ func TestParallelMultiInstanceUserTaskVariables(t *testing.T) {
 
 		approvers := make([]string, 0, len(jobs))
 		for _, job := range jobs {
-			approver, ok := job.Variables["approver"].(string)
-			require.True(t, ok, "iteration job must shadow parent variable with iteration entry, got %T", job.Variables["approver"])
+			approver, ok := job.InputVariables["approver"].(string)
+			require.True(t, ok, "iteration job must shadow parent variable with iteration entry, got %T", job.InputVariables["approver"])
 			approvers = append(approvers, approver)
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}

@@ -13,8 +13,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/internal/cluster/client"
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"google.golang.org/grpc"
@@ -173,14 +173,14 @@ func (c *jobClient) handleJobStreamRecv(stream *clientNodeStream) {
 			return
 		}
 		c.jobsChan <- Job{
-			Key:         resp.Job.GetKey(),
-			InstanceKey: resp.Job.GetInstanceKey(),
-			Variables:   resp.Job.GetVariables(),
-			Type:        JobType(resp.Job.GetType()),
-			State:       resp.Job.GetState(),
-			ElementID:   resp.Job.GetElementId(),
-			CreatedAt:   resp.Job.GetCreatedAt(),
-			ClientID:    ClientID(resp.GetClientId()),
+			Key:            resp.Job.GetKey(),
+			InstanceKey:    resp.Job.GetInstanceKey(),
+			InputVariables: resp.Job.GetInputVariables(),
+			Type:           JobType(resp.Job.GetType()),
+			State:          resp.Job.GetState(),
+			ElementID:      resp.Job.GetElementId(),
+			CreatedAt:      resp.Job.GetCreatedAt(),
+			ClientID:       ClientID(resp.GetClientId()),
 		}
 	}
 }

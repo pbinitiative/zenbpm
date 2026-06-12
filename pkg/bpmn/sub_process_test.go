@@ -311,7 +311,7 @@ func TestSubProcessStartsAndCompletesAfterFinishingTheJob(t *testing.T) {
 	job = jobs[0]
 
 	assert.NoError(t, err)
-	assert.Equal(t, variableContext[variableName], engineStorage.Jobs[job.Key].Variables["testInput"])
+	assert.Equal(t, variableContext[variableName], engineStorage.Jobs[job.Key].InputVariables["testInput"])
 	bpmnEngine.JobCompleteByKey(t.Context(), job.Key, map[string]interface{}{
 		"testJobOutput": "newJobVal",
 	})

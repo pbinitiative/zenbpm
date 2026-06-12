@@ -21,7 +21,7 @@ func TestServiceTaskJobFailVariables(t *testing.T) {
 		failJobForElementId(t, processInstance.Key, "service_task", nil, jobVariables)
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateFailed)
-		require.Equal(t, jobVariables, job.Variables)
+		require.Equal(t, jobVariables, *job.OutputVariables)
 	})
 
 	t.Run("Job fail variables do not propagate through service task output mappings", func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestServiceTaskJobFailVariables(t *testing.T) {
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}(nil))
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateFailed)
-		require.Equal(t, jobVariables, job.Variables)
+		require.Equal(t, jobVariables, *job.OutputVariables)
 
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{})
 	})
@@ -57,7 +57,7 @@ func TestServiceTaskJobFailVariables(t *testing.T) {
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]any(nil))
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateFailed)
-		require.Equal(t, "fail_value", job.Variables["local_variable"])
+		require.Equal(t, "fail_value", (*job.OutputVariables)["local_variable"])
 
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"process_variable": "input_value"})
 	})
@@ -74,7 +74,7 @@ func TestServiceTaskJobFailVariables(t *testing.T) {
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]any(nil))
 
 		job := waitForProcessInstanceJobByElementId(t, processInstance.Key, "service_task", public.JobStateFailed)
-		require.Equal(t, "complete_value", job.Variables["local_variable"])
+		require.Equal(t, "complete_value", (*job.OutputVariables)["local_variable"])
 
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]any{"process_variable": "input_value"})
 	})

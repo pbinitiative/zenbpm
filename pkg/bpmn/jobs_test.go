@@ -459,7 +459,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	}
 	assert.NotZero(t, foundServiceJob, "expected to find service-task-1 job created for process instance")
 
-	err = bpmnEngine.JobCompleteByKey(t.Context(), foundServiceJob.Key, foundServiceJob.Variables)
+	err = bpmnEngine.JobCompleteByKey(t.Context(), foundServiceJob.Key, foundServiceJob.InputVariables)
 	assert.NoError(t, err)
 
 	serviceToken := runtime.ExecutionToken{}
@@ -480,7 +480,7 @@ func TestJobCompleteIsHandledCorrectly(t *testing.T) {
 	}
 	assert.NotZero(t, foundUserJob, "expected to find user-task-2 job created for process instance")
 
-	err = bpmnEngine.JobCompleteByKey(t.Context(), foundUserJob.Key, foundUserJob.Variables)
+	err = bpmnEngine.JobCompleteByKey(t.Context(), foundUserJob.Key, foundUserJob.InputVariables)
 	assert.NoError(t, err)
 
 	userToken := runtime.ExecutionToken{}
@@ -544,7 +544,7 @@ func TestJobFailIsHandledCorrectly(t *testing.T) {
 
 }
 
-func TestFailJobWithIncidentPreservesNilJobVariablesWhenNoVariablesProvided(t *testing.T) {
+func TestFailJobWithIncidentPreservesNilVariablesWhenNoneProvided(t *testing.T) {
 	store := inmemory.NewStorage()
 	bpmnEngine := NewEngine(EngineWithStorage(store))
 	batch, err := bpmnEngine.NewEngineBatchClean()
@@ -570,7 +570,8 @@ func TestFailJobWithIncidentPreservesNilJobVariablesWhenNoVariablesProvided(t *t
 	savedJob, err := store.FindJobByJobKey(t.Context(), job.Key)
 	require.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateFailed, savedJob.State)
-	assert.Nil(t, savedJob.Variables)
+	assert.Nil(t, savedJob.InputVariables)
+	assert.Nil(t, savedJob.OutputVariables)
 }
 
 func TestBusinessRuleTaskExternalActivated(t *testing.T) {

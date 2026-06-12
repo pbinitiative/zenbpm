@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_parallel_gateway_split_to_end_events" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="parallel_gateway_split_to_end_events" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_split" sourceRef="start_event" targetRef="parallel_gateway_split" />
+    <bpmn:parallelGateway id="parallel_gateway_split">
+      <bpmn:incoming>Flow_start_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_task_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_task_b</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_split_to_task_a" sourceRef="parallel_gateway_split" targetRef="service_task_a" />
+    <bpmn:serviceTask id="service_task_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-end-a" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_a_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_task_a_to_end" sourceRef="service_task_a" targetRef="end_event_a" />
+    <bpmn:endEvent id="end_event_a">
+      <bpmn:incoming>Flow_task_a_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_split_to_task_b" sourceRef="parallel_gateway_split" targetRef="service_task_b" />
+    <bpmn:serviceTask id="service_task_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-end-b" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_b_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_task_b_to_end" sourceRef="service_task_b" targetRef="end_event_b" />
+    <bpmn:endEvent id="end_event_b">
+      <bpmn:incoming>Flow_task_b_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_gateway_split_to_end_events">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_split_di" bpmnElement="parallel_gateway_split">
+        <dc:Bounds x="240" y="153" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_a_di" bpmnElement="service_task_a">
+        <dc:Bounds x="360" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_a_di" bpmnElement="end_event_a">
+        <dc:Bounds x="540" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_b_di" bpmnElement="service_task_b">
+        <dc:Bounds x="360" y="220" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_b_di" bpmnElement="end_event_b">
+        <dc:Bounds x="540" y="242" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_split_di" bpmnElement="Flow_start_to_split">
+        <di:waypoint x="186" y="178" />
+        <di:waypoint x="240" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_a_di" bpmnElement="Flow_split_to_task_a">
+        <di:waypoint x="265" y="153" />
+        <di:waypoint x="265" y="120" />
+        <di:waypoint x="360" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_a_to_end_di" bpmnElement="Flow_task_a_to_end">
+        <di:waypoint x="460" y="120" />
+        <di:waypoint x="540" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_b_di" bpmnElement="Flow_split_to_task_b">
+        <di:waypoint x="265" y="203" />
+        <di:waypoint x="265" y="260" />
+        <di:waypoint x="360" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_b_to_end_di" bpmnElement="Flow_task_b_to_end">
+        <di:waypoint x="460" y="260" />
+        <di:waypoint x="540" y="260" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

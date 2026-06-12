@@ -95,6 +95,28 @@ func waitForProcessInstanceActiveJobsByElementId(t testing.TB, processInstanceKe
 	return foundJobs
 }
 
+func assertProcessInstanceHasNoActiveJobByElementId(t testing.TB, processInstanceKey int64, elementId string) {
+	t.Helper()
+
+	var requestErr error
+	require.Never(t, func() bool {
+		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
+		if err != nil {
+			requestErr = err
+			return false
+		}
+		requestErr = nil
+		for _, job := range jobs {
+			if job.ElementId == elementId && job.State == public.JobStateActive {
+				return true
+			}
+		}
+		return false
+	}, 500*time.Millisecond, 50*time.Millisecond,
+		"process instance %d should not expose active job for element %s", processInstanceKey, elementId)
+	require.NoError(t, requestErr)
+}
+
 func readWaitingJobs(t testing.TB, jobType string) (zenclient.JobPartitionPage, error) {
 	return getJobs(t, zenclient.GetJobsParams{JobType: &jobType, State: ptr.To(zenclient.JobStateActive)})
 }
@@ -131,6 +153,14 @@ func completeJobForElementId(t testing.TB, processInstanceKey int64, elementId s
 	job := waitForProcessInstanceActiveJobByElementId(t, processInstanceKey, elementId)
 	err := completeJob(t, job.Key, vars)
 	require.NoError(t, err)
+}
+
+func completeJobsForElementIds(t testing.TB, processInstanceKey int64, elementIds ...string) {
+	t.Helper()
+
+	for _, elementId := range elementIds {
+		completeJobForElementId(t, processInstanceKey, elementId, nil)
+	}
 }
 
 func failJob(t testing.TB, jobKey int64, errorCode *string, vars map[string]any) {

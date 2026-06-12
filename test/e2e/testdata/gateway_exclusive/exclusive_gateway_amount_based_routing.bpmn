@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_0cp6o8l" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="exclusive_gateway_amount_based_routing" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Input amount">
+      <bpmn:outgoing>Flow_035xjey</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_035xjey" sourceRef="StartEvent_1" targetRef="exclusive_gateway" />
+    <bpmn:exclusiveGateway id="exclusive_gateway">
+      <bpmn:incoming>Flow_035xjey</bpmn:incoming>
+      <bpmn:outgoing>Flow_less_than_100</bpmn:outgoing>
+      <bpmn:outgoing>Flow_between_100_1000</bpmn:outgoing>
+      <bpmn:outgoing>Flow_between_150_200</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="end_event_less_than_100" name="Less than 100">
+      <bpmn:incoming>Flow_less_than_100</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_less_than_100" name="&#60; 100" sourceRef="exclusive_gateway" targetRef="end_event_less_than_100">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=amount &lt; 100</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="end_event_between_100_1000" name="Between 100 and 1000">
+      <bpmn:incoming>Flow_between_100_1000</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_between_100_1000" name="&#62;=100 &#38; &#60; 1000" sourceRef="exclusive_gateway" targetRef="end_event_between_100_1000">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=amount &gt;=100 and amount &lt; 1000</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="end_event_between_150_200" name="Between 150 and 200">
+      <bpmn:incoming>Flow_between_150_200</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_between_150_200" name="&#62;= 150 &#38; &#60; 200" sourceRef="exclusive_gateway" targetRef="end_event_between_150_200">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=amount &gt;= 150 and amount &lt; 200</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="exclusive_gateway_amount_based_routing">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="169" y="205" width="65" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_0dn72v3_di" bpmnElement="exclusive_gateway" isMarkerVisible="true">
+        <dc:Bounds x="275" y="155" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="368" y="170" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_00ef3su_di" bpmnElement="end_event_between_100_1000">
+        <dc:Bounds x="502" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="478" y="205" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0l2ncjd_di" bpmnElement="end_event_between_150_200">
+        <dc:Bounds x="502" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="478" y="315" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1kvsr9c_di" bpmnElement="end_event_less_than_100">
+        <dc:Bounds x="502" y="52" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="485" y="95" width="70" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_035xjey_di" bpmnElement="Flow_035xjey">
+        <di:waypoint x="218" y="180" />
+        <di:waypoint x="275" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1prebqv_di" bpmnElement="Flow_less_than_100">
+        <di:waypoint x="300" y="155" />
+        <di:waypoint x="300" y="70" />
+        <di:waypoint x="502" y="70" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="401" y="53" width="28" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0bm07k9_di" bpmnElement="Flow_between_100_1000">
+        <di:waypoint x="325" y="180" />
+        <di:waypoint x="502" y="180" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="375" y="162" width="79" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1re23gs_di" bpmnElement="Flow_between_150_200">
+        <di:waypoint x="300" y="205" />
+        <di:waypoint x="300" y="290" />
+        <di:waypoint x="502" y="290" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="377" y="273" width="76" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

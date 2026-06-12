@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_parallel_gateway_variables" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="parallel_gateway_variables" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_split" sourceRef="start_event" targetRef="parallel_gateway_split" />
+    <bpmn:parallelGateway id="parallel_gateway_split">
+      <bpmn:incoming>Flow_start_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_service_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_user_b</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_split_to_service_a" sourceRef="parallel_gateway_split" targetRef="service_task_branch_a" />
+    <bpmn:sequenceFlow id="Flow_split_to_user_b" sourceRef="parallel_gateway_split" targetRef="user_task_branch_b" />
+    <bpmn:serviceTask id="service_task_branch_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-variable-service-a" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=seed" target="branch_a_seed_seen" />
+          <zenbpm:output source="=branch_a_job" target="branch_a_value" />
+          <zenbpm:output source="=shared_job" target="shared_value" />
+          <zenbpm:output source="=branch_a_seed_seen" target="branch_a_seed_output" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_service_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_service_a_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="user_task_branch_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-variable-user-b" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=seed" target="branch_b_seed_seen" />
+          <zenbpm:output source="=branch_b_job" target="branch_b_value" />
+          <zenbpm:output source="=shared_job" target="shared_value" />
+          <zenbpm:output source="=branch_b_seed_seen" target="branch_b_seed_output" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_user_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_user_b_to_join</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_service_a_to_join" sourceRef="service_task_branch_a" targetRef="parallel_gateway_join" />
+    <bpmn:sequenceFlow id="Flow_user_b_to_join" sourceRef="user_task_branch_b" targetRef="parallel_gateway_join" />
+    <bpmn:parallelGateway id="parallel_gateway_join">
+      <bpmn:incoming>Flow_service_a_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_user_b_to_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_join_to_after</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_join_to_after" sourceRef="parallel_gateway_join" targetRef="service_task_after_join" />
+    <bpmn:serviceTask id="service_task_after_join">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-variable-after" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=seed" target="after_seed" />
+          <zenbpm:input source="=branch_a_value" target="after_branch_a_value" />
+          <zenbpm:input source="=branch_b_value" target="after_branch_b_value" />
+          <zenbpm:input source="=shared_value" target="after_shared_value" />
+          <zenbpm:input source="=branch_a_seed_output" target="after_branch_a_seed_output" />
+          <zenbpm:input source="=branch_b_seed_output" target="after_branch_b_seed_output" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_join_to_after</bpmn:incoming>
+      <bpmn:outgoing>Flow_after_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_after_to_end" sourceRef="service_task_after_join" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_after_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_gateway_variables">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_split_di" bpmnElement="parallel_gateway_split">
+        <dc:Bounds x="240" y="173" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_branch_a_di" bpmnElement="service_task_branch_a">
+        <dc:Bounds x="360" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="user_task_branch_b_di" bpmnElement="user_task_branch_b">
+        <dc:Bounds x="360" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_join_di" bpmnElement="parallel_gateway_join">
+        <dc:Bounds x="540" y="173" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_after_join_di" bpmnElement="service_task_after_join">
+        <dc:Bounds x="660" y="158" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="830" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_split_di" bpmnElement="Flow_start_to_split">
+        <di:waypoint x="186" y="198" />
+        <di:waypoint x="240" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_service_a_di" bpmnElement="Flow_split_to_service_a">
+        <di:waypoint x="265" y="173" />
+        <di:waypoint x="265" y="140" />
+        <di:waypoint x="360" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_user_b_di" bpmnElement="Flow_split_to_user_b">
+        <di:waypoint x="265" y="223" />
+        <di:waypoint x="265" y="300" />
+        <di:waypoint x="360" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_service_a_to_join_di" bpmnElement="Flow_service_a_to_join">
+        <di:waypoint x="460" y="140" />
+        <di:waypoint x="565" y="140" />
+        <di:waypoint x="565" y="173" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_user_b_to_join_di" bpmnElement="Flow_user_b_to_join">
+        <di:waypoint x="460" y="300" />
+        <di:waypoint x="565" y="300" />
+        <di:waypoint x="565" y="223" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_join_to_after_di" bpmnElement="Flow_join_to_after">
+        <di:waypoint x="590" y="198" />
+        <di:waypoint x="660" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_after_to_end_di" bpmnElement="Flow_after_to_end">
+        <di:waypoint x="760" y="198" />
+        <di:waypoint x="830" y="198" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

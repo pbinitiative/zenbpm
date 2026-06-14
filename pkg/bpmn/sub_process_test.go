@@ -684,6 +684,32 @@ func completeMultiInstanceReceiveTaskBySubscription(t *testing.T, items []string
 	}
 }
 
+func assertActiveReceiveTaskSubscriptionsWaiting(t *testing.T, expectedCorrelationKeys []string) {
+	t.Helper()
+	expected := map[string]struct{}{}
+	for _, key := range expectedCorrelationKeys {
+		expected[key] = struct{}{}
+	}
+	require.Eventually(t, func() bool {
+		seen := map[string]struct{}{}
+		for _, message := range engineStorage.MessageSubscriptions {
+			sub, ok := message.(*runtime.TokenMessageSubscription)
+			if !ok || sub.Name != "receive task message" || sub.State != runtime.ActivityStateActive {
+				continue
+			}
+			if _, ok := expected[sub.CorrelationKey]; !ok {
+				continue
+			}
+			persistedToken, ok := engineStorage.ExecutionTokens[sub.Token.Key]
+			if !ok || persistedToken.State != runtime.TokenStateWaiting || sub.Token.State != runtime.TokenStateWaiting {
+				return false
+			}
+			seen[sub.CorrelationKey] = struct{}{}
+		}
+		return len(seen) == len(expected)
+	}, 2*time.Second, 50*time.Millisecond)
+}
+
 func assertMultiInstanceReceiveTaskInputVariables(t *testing.T, multiInstanceProcessKey int64, expected []string) {
 	t.Helper()
 	flowElementInstances, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), multiInstanceProcessKey, false)
@@ -804,6 +830,7 @@ func TestMultiInstanceReceiveTaskStartsAndCompletesOnSubscription(t *testing.T) 
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
+	assertActiveReceiveTaskSubscriptionsWaiting(t, []string{"test1"})
 
 	completeMultiInstanceReceiveTaskBySubscription(t, []string{"test1", "test2", "test3"})
 
@@ -886,6 +913,7 @@ func TestMultiInstanceParallelReceiveTaskStartsAndCompletesOnPublishedMessage(t 
 	variableContext["testInputCollection"] = []string{"test1", "test2", "test3"}
 	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 	assert.NoError(t, err)
+	assertActiveReceiveTaskSubscriptionsWaiting(t, []string{"test1", "test2", "test3"})
 
 	completeMultiInstanceReceiveTaskByName(t, []string{"test1", "test2", "test3"})
 

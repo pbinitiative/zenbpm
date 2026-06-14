@@ -1314,6 +1314,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 		return currentToken, fmt.Errorf("failed to evaluate receive task message name %s: %w", element.GetId(), err)
 	}
 
+	currentToken.State = runtime.TokenStateWaiting
 	subscription := &runtime.TokenMessageSubscription{
 		Token:              currentToken,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
@@ -1331,8 +1332,6 @@ func (engine *Engine) createReceiveTaskSubscription(
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to save receive task message subscription %s: %w", element.GetId(), err)
 	}
-
-	currentToken.State = runtime.TokenStateWaiting
 	return currentToken, nil
 }
 
@@ -1344,9 +1343,12 @@ func (engine *Engine) createMultiInstanceReceiveTask(
 	currentToken runtime.ExecutionToken,
 	variableHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
-	_, err := engine.createReceiveTaskSubscription(ctx, batch, instance, element, currentToken, variableHolder)
+	updatedToken, err := engine.createReceiveTaskSubscription(ctx, batch, instance, element, currentToken, variableHolder)
 	if err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to save message subscription for multi instance receive task %s: %w", element.GetId(), err)
+	}
+	if err := batch.SaveToken(ctx, updatedToken); err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to save token for multi instance receive task %s: %w", element.GetId(), err)
 	}
 	return runtime.ActivityStateActive, nil
 }

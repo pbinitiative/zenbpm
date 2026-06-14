@@ -7,6 +7,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
+	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/pbinitiative/zenbpm/pkg/zenflake"
 	"github.com/stretchr/testify/assert"
@@ -82,11 +83,14 @@ func assertManualStartRejected(t testing.TB, definitionKey int64) {
 // receive-task-boundary-message-interrupting-instantiating.bpmn, where the process starts directly with an
 // instantiating ReceiveTask (instantiate="true") that has an interrupting boundary message attached.
 //
-//	(no start event) -> ReceiveTask_1efx577 (instantiate) -> ServiceTask_157wf2b -> SuccessEndEvent
+//	ReceiveTask_1efx577 (instantiate) -> ServiceTask_157wf2b -> SuccessEndEvent
 //	                          |
 //	         (boundary message "boundaryMsgRefIInst", interrupting)
 //	                          v
 //	                   GiveUpEndEvent
+//
+// Per BPMN semantics the instantiating message both creates the instance and satisfies the receive task, so the
+// token transitions straight to the service task and the boundary subscription is cancelled without ever firing.
 func TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage(t *testing.T) {
 	cleanProcessInstances(t)
 
@@ -96,9 +100,6 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage(t *testing.T) {
 		receiveTaskElement     = "ReceiveTask_1efx577"
 		mainServiceTaskElement = "ServiceTask_157wf2b"
 		receiveMessageName     = "globalMsgRefMsgIInst"
-		receiveCorrelationKey  = "correlation-key-receive-msg-i-inst"
-		boundaryMessageName    = "boundaryMsgRefIInst"
-		boundaryCorrelationKey = "correlation-key-boundary-msg-i-inst"
 	)
 
 	definition, err := deployGetDefinition(t, "receive_task/"+bpmnFile, bpmnProcessId)
@@ -108,63 +109,33 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage(t *testing.T) {
 	// Such a process definition must NOT be startable manually.
 	assertManualStartRejected(t, definition.Key)
 
-	t.Run("instantiating message creates the instance and the receive message drives the main flow", func(t *testing.T) {
-		// Publishing the instantiating message creates a new process instance that waits on the receive task.
-		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{})
+	t.Run("instantiating message creates the instance and drives the main flow past the receive task", func(t *testing.T) {
+		// Publishing the instantiating message creates a new process instance AND satisfies the receive task.
+		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{"approved": true})
 		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
 
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
 
-		// The new instance must wait on the receive task: its own subscription plus the boundary subscription.
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			assert.Equal(collect, 2, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-				"receive task and boundary message subscriptions should both be active")
-		}, 2*time.Second, 100*time.Millisecond, "receive task and boundary subscriptions should be created")
-
-		// Correlate the receive task message (with its real correlation key) to drive the main flow.
-		require.NoError(t, publishMessage(t, receiveMessageName, receiveCorrelationKey, &map[string]any{
-			"approved": true,
-		}))
-
+		// The instantiating message drives the token straight to the service task; no receive-task or boundary
+		// subscription remains active.
 		job := waitForProcessInstanceActiveJobByElementId(t, instanceKey, mainServiceTaskElement)
 		require.Equal(t, mainServiceTaskElement, job.ElementId)
 
+		require.Equal(t, 0, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
+			"the receive task and its boundary subscription must be consumed by the instantiating message")
+
 		fetched, err := getProcessInstance(t, instanceKey)
 		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["approved"], "receive message variables should be propagated to the instance")
-		require.Nil(t, fetched.Variables["boundaryFired"], "boundary output must not be set when the main flow runs")
+		require.Equal(t, true, fetched.Variables["approved"], "instantiating message variables should be propagated to the instance")
+		require.Nil(t, fetched.Variables["boundaryFired"], "boundary output must not be set; the receive task completed on instantiation")
 
 		require.NoError(t, completeJob(t, job.Key, map[string]any{}))
 		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-	})
-
-	t.Run("instantiating message creates the instance and the boundary message interrupts it", func(t *testing.T) {
-		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{})
-		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
-
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
-		require.NoError(t, err)
-
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			assert.Equal(collect, 2, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-				"receive task and boundary message subscriptions should both be active")
-		}, 2*time.Second, 100*time.Millisecond, "receive task and boundary subscriptions should be created")
-
-		// Correlate the boundary message: the interrupting boundary must terminate the receive task and
-		// take the give-up path which completes the process instance.
-		require.NoError(t, publishMessage(t, boundaryMessageName, boundaryCorrelationKey, &map[string]any{}))
-
-		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-
-		fetched, err := getProcessInstance(t, instanceKey)
-		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["boundaryFired"], "boundary output variable should be propagated to the instance")
-		require.Nil(t, fetched.Variables["approved"], "main flow message variables must not be set when the give-up flow runs")
 
 		active, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), instanceKey, bpmnruntime.ActivityStateActive)
 		require.NoError(t, err)
-		require.Empty(t, active, "no active message subscription should remain after the interrupting boundary fires")
+		require.Empty(t, active, "no active message subscription should remain after the instance completes")
 	})
 }
 
@@ -174,15 +145,11 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingMessage(t *testing.T
 	cleanProcessInstances(t)
 
 	const (
-		bpmnFile                 = "receive-task-boundary-message-noninterrupting-instantiating.bpmn"
-		bpmnProcessId            = "Process_msg_ni_instantiating"
-		receiveTaskElement       = "ReceiveTask_1efx577"
-		mainServiceTaskElement   = "ServiceTask_157wf2b"
-		giveUpServiceTaskElement = "GiveUpServiceTask_0ab12cd"
-		receiveMessageName       = "globalMsgRefMsgNIInst"
-		receiveCorrelationKey    = "correlation-key-receive-msg-ni-inst"
-		boundaryMessageName      = "boundaryMsgRefNIInst"
-		boundaryCorrelationKey   = "correlation-key-boundary-msg-ni-inst"
+		bpmnFile               = "receive-task-boundary-message-noninterrupting-instantiating.bpmn"
+		bpmnProcessId          = "Process_msg_ni_instantiating"
+		receiveTaskElement     = "ReceiveTask_1efx577"
+		mainServiceTaskElement = "ServiceTask_157wf2b"
+		receiveMessageName     = "globalMsgRefMsgNIInst"
 	)
 
 	definition, err := deployGetDefinition(t, "receive_task/"+bpmnFile, bpmnProcessId)
@@ -191,74 +158,47 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingMessage(t *testing.T
 
 	assertManualStartRejected(t, definition.Key)
 
-	t.Run("instantiating message creates the instance and the receive message drives the main flow", func(t *testing.T) {
-		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{})
+	t.Run("instantiating message creates the instance and drives the main flow past the receive task", func(t *testing.T) {
+		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{"approved": true})
 		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
 
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
-
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			assert.Equal(collect, 2, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-				"receive task and boundary message subscriptions should both be active")
-		}, 2*time.Second, 100*time.Millisecond, "receive task and boundary subscriptions should be created")
-
-		require.NoError(t, publishMessage(t, receiveMessageName, receiveCorrelationKey, &map[string]any{
-			"approved": true,
-		}))
 
 		job := waitForProcessInstanceActiveJobByElementId(t, instanceKey, mainServiceTaskElement)
 		require.Equal(t, mainServiceTaskElement, job.ElementId)
 
+		require.Equal(t, 0, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
+			"the receive task and its boundary subscription must be consumed by the instantiating message")
+
 		fetched, err := getProcessInstance(t, instanceKey)
 		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["approved"], "receive message variables should be propagated to the instance")
-		require.Nil(t, fetched.Variables["boundaryFired"], "boundary output must not be set when the main flow runs")
+		require.Equal(t, true, fetched.Variables["approved"], "instantiating message variables should be propagated to the instance")
+		require.Nil(t, fetched.Variables["boundaryFired"], "boundary output must not be set; the receive task completed on instantiation")
 
 		require.NoError(t, completeJob(t, job.Key, map[string]any{}))
 		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
 	})
+}
 
-	t.Run("instantiating message creates the instance and a boundary message runs the give-up flow", func(t *testing.T) {
-		publishInstantiatingMessage(t, receiveMessageName, &map[string]any{})
-		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
+// assertInstantiatingTimerBoundaryConsumed verifies that, after the instantiating message has satisfied the
+// receive task, no receive-task subscription and no created boundary timer remain, the expected message
+// variables are present on the instance, and then completes the job and waits for the instance to finish.
+func assertInstantiatingTimerBoundaryConsumed(t *testing.T, store storage.Storage, instanceKey int64, receiveTaskElement string, jobKey int64) {
+	t.Helper()
+	require.Equal(t, 0, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
+		"the receive task subscription must be consumed by the instantiating message")
+	created, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	require.Empty(t, created, "the boundary timer must be cancelled once the instantiating message satisfies the receive task")
 
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
-		require.NoError(t, err)
+	fetched, err := getProcessInstance(t, instanceKey)
+	require.NoError(t, err)
+	require.Equal(t, true, fetched.Variables["approved"], "instantiating message variables should be propagated to the instance")
+	require.Nil(t, fetched.Variables["timerFired"], "boundary timer output must not be set; the receive task completed on instantiation")
 
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			assert.Equal(collect, 2, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-				"receive task and boundary message subscriptions should both be active")
-		}, 2*time.Second, 100*time.Millisecond, "receive task and boundary subscriptions should be created")
-
-		require.NoError(t, publishMessage(t, boundaryMessageName, boundaryCorrelationKey, &map[string]any{}))
-
-		giveUpJob := waitForProcessInstanceActiveJobByElementId(t, instanceKey, giveUpServiceTaskElement)
-		require.Equal(t, giveUpServiceTaskElement, giveUpJob.ElementId)
-
-		fetched, err := getProcessInstance(t, instanceKey)
-		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["boundaryFired"], "boundary output variable should be propagated to the instance")
-		require.Nil(t, fetched.Variables["approved"], "main flow message variables must not be set when the give-up flow runs")
-
-		// Non-interrupting: the receive task must remain active and waiting.
-		require.GreaterOrEqual(t, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement), 1,
-			"receive task message subscription must remain active after a non-interrupting boundary message")
-
-		require.NoError(t, completeJob(t, giveUpJob.Key, map[string]any{}))
-		require.Never(t, func() bool {
-			pi, err := getProcessInstance(t, instanceKey)
-			return err == nil && pi.State == zenclient.ProcessInstanceStateCompleted
-		}, 500*time.Millisecond, 100*time.Millisecond,
-			"instance must not complete while the receive task is still waiting")
-
-		// Finally correlate the receive message to complete the main flow and the instance.
-		require.NoError(t, publishMessage(t, receiveMessageName, receiveCorrelationKey, &map[string]any{
-			"approved": true,
-		}))
-		completeJobForElementId(t, instanceKey, mainServiceTaskElement, map[string]any{})
-		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-	})
+	require.NoError(t, completeJob(t, jobKey, map[string]any{}))
+	waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
 }
 
 // TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer covers
@@ -269,9 +209,9 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 	const (
 		bpmnFile           = "receive-task-boundary-timer-interrupting-instantiating.bpmn"
 		bpmnProcessId      = "Process_0anusn1_instantiating"
+		receiveTaskElement = "ReceiveTask_1efx577"
 		serviceTaskElement = "ServiceTask_157wf2b"
 		messageName        = "globalMsgRefTimerIInst"
-		correlationKey     = "correlation-key-receive-timer-i-inst"
 	)
 
 	definition, err := deployGetDefinition(t, "receive_task/"+bpmnFile, bpmnProcessId)
@@ -280,59 +220,19 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 
 	assertManualStartRejected(t, definition.Key)
 
-	t.Run("instantiating message creates the instance and the receive message arrives before the timer", func(t *testing.T) {
-		publishInstantiatingMessage(t, messageName, &map[string]any{})
+	t.Run("instantiating message creates the instance and drives the main flow past the receive task", func(t *testing.T) {
+		publishInstantiatingMessage(t, messageName, &map[string]any{"approved": true})
 		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
 
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
 
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			subs, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), instanceKey, bpmnruntime.ActivityStateActive)
-			if !assert.NoError(collect, err) {
-				return
-			}
-			assert.Equal(collect, 1, len(subs), "receive task should have exactly one active message subscription")
-			timers, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
-			if !assert.NoError(collect, err) {
-				return
-			}
-			assert.Equal(collect, 1, len(timers), "receive task should have one created boundary timer")
-		}, 2*time.Second, 100*time.Millisecond, "receive task subscription and boundary timer should be created")
-
-		require.NoError(t, publishMessage(t, messageName, correlationKey, &map[string]any{
-			"approved": true,
-		}))
-
+		// The instantiating message satisfies the receive task immediately, so the boundary timer is cancelled
+		// and the token transitions to the service task.
 		job := waitForProcessInstanceActiveJobByElementId(t, instanceKey, serviceTaskElement)
 		require.Equal(t, serviceTaskElement, job.ElementId)
 
-		fetched, err := getProcessInstance(t, instanceKey)
-		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["approved"], "message variables should be propagated to the instance")
-		require.Nil(t, fetched.Variables["timerFired"], "boundary timer output must not be set when the main flow runs")
-
-		require.NoError(t, completeJob(t, job.Key, map[string]any{}))
-		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-	})
-
-	t.Run("instantiating message creates the instance and the interrupting timer fires", func(t *testing.T) {
-		publishInstantiatingMessage(t, messageName, &map[string]any{})
-		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
-
-		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
-		require.NoError(t, err)
-
-		// No receive message is published; the interrupting boundary timer must fire and complete the instance.
-		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-
-		fetched, err := getProcessInstance(t, instanceKey)
-		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["timerFired"], "boundary timer output variable should be propagated to the instance")
-
-		active, err := store.FindProcessInstanceMessageSubscriptions(t.Context(), instanceKey, bpmnruntime.ActivityStateActive)
-		require.NoError(t, err)
-		require.Empty(t, active, "receive task message subscription should be terminated after the interrupting timer fires")
+		assertInstantiatingTimerBoundaryConsumed(t, store, instanceKey, receiveTaskElement, job.Key)
 	})
 }
 
@@ -342,13 +242,11 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingTimer(t *testing.T) 
 	cleanProcessInstances(t)
 
 	const (
-		bpmnFile                 = "receive-task-boundary-timer-noninterrupting-instantiating.bpmn"
-		bpmnProcessId            = "Process_timer_ni_instantiating"
-		receiveTaskElement       = "ReceiveTask_1efx577"
-		mainServiceTaskElement   = "ServiceTask_157wf2b"
-		giveUpServiceTaskElement = "GiveUpServiceTask_0ab12cd"
-		messageName              = "globalMsgRefTimerNIInst"
-		correlationKey           = "correlation-key-receive-timer-ni-inst"
+		bpmnFile               = "receive-task-boundary-timer-noninterrupting-instantiating.bpmn"
+		bpmnProcessId          = "Process_timer_ni_instantiating"
+		receiveTaskElement     = "ReceiveTask_1efx577"
+		mainServiceTaskElement = "ServiceTask_157wf2b"
+		messageName            = "globalMsgRefTimerNIInst"
 	)
 
 	definition, err := deployGetDefinition(t, "receive_task/"+bpmnFile, bpmnProcessId)
@@ -357,46 +255,16 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingTimer(t *testing.T) 
 
 	assertManualStartRejected(t, definition.Key)
 
-	t.Run("instantiating message creates the instance and the non-interrupting timer fires", func(t *testing.T) {
-		publishInstantiatingMessage(t, messageName, &map[string]any{})
+	t.Run("instantiating message creates the instance and drives the main flow past the receive task", func(t *testing.T) {
+		publishInstantiatingMessage(t, messageName, &map[string]any{"approved": true})
 		instanceKey := waitForActiveInstanceKeyByBpmnProcessId(t, bpmnProcessId)
 
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
 
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			created, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
-			if !assert.NoError(collect, err) {
-				return
-			}
-			assert.Equal(collect, 1, len(created), "the give-up boundary timer should be created")
-		}, 2*time.Second, 100*time.Millisecond, "boundary timer should be created")
+		job := waitForProcessInstanceJobByElementId(t, instanceKey, mainServiceTaskElement, public.JobStateActive)
+		require.Equal(t, mainServiceTaskElement, job.ElementId)
 
-		// The non-interrupting timer fires and the give-up branch reaches its own service task while the
-		// receive task keeps waiting.
-		giveUpJob := waitForProcessInstanceJobByElementId(t, instanceKey, giveUpServiceTaskElement, public.JobStateActive)
-		require.Equal(t, giveUpServiceTaskElement, giveUpJob.ElementId)
-
-		fetched, err := getProcessInstance(t, instanceKey)
-		require.NoError(t, err)
-		require.Equal(t, true, fetched.Variables["timerFired"], "boundary timer output variable should be propagated to the instance")
-		require.Nil(t, fetched.Variables["approved"], "main flow message variables must not be set when the give-up flow runs")
-
-		require.Equal(t, 1, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-			"receive task message subscription must remain active after a non-interrupting timer fires")
-
-		require.NoError(t, completeJob(t, giveUpJob.Key, map[string]any{}))
-		require.Never(t, func() bool {
-			pi, err := getProcessInstance(t, instanceKey)
-			return err == nil && pi.State == zenclient.ProcessInstanceStateCompleted
-		}, 500*time.Millisecond, 100*time.Millisecond,
-			"instance must not complete while the receive task is still waiting")
-
-		// Finally correlate the receive message to complete the main flow and the instance.
-		require.NoError(t, publishMessage(t, messageName, correlationKey, &map[string]any{
-			"approved": true,
-		}))
-		completeJobForElementId(t, instanceKey, mainServiceTaskElement, map[string]any{})
-		waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
+		assertInstantiatingTimerBoundaryConsumed(t, store, instanceKey, receiveTaskElement, job.Key)
 	})
 }

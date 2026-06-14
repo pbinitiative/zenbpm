@@ -115,7 +115,8 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 	}
 
 	processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
-	if _, err := engine.CreateInstanceWithStartingElements(ctx, defSub.ProcessDefinitionKey, []string{defSub.ElementId}, variables, nil); err != nil {
+	instance, err := engine.CreateInstanceWithStartingElements(ctx, defSub.ProcessDefinitionKey, []string{defSub.ElementId}, variables, nil)
+	if err != nil {
 		if pdErr == nil {
 			if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &processDefinition); rearmErr != nil {
 				return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w; additionally failed to re-arm subscription: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err, rearmErr)
@@ -123,7 +124,43 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 		}
 		return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err)
 	}
+
+	if err := engine.completeInstantiatingReceiveTask(ctx, instance.ProcessInstance().Key, defSub.ElementId, variables); err != nil {
+		return fmt.Errorf("failed to complete instantiating receive task %s for process instance %d of definition %d: %w", defSub.ElementId, instance.ProcessInstance().Key, defSub.ProcessDefinitionKey, err)
+	}
 	return nil
+}
+
+// completeInstantiatingReceiveTask correlates the triggering message onto the receive task's own message
+// subscription of a freshly instantiated process instance, driving the token past the receive task.
+func (engine *Engine) completeInstantiatingReceiveTask(ctx context.Context, processInstanceKey int64, receiveTaskId string, variables map[string]any) error {
+	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, processInstanceKey)
+	if err != nil {
+		return fmt.Errorf("failed to find process instance %d: %w", processInstanceKey, err)
+	}
+	receiveTask := findReceiveTaskById(&instance.ProcessInstance().Definition.Definitions.Process, receiveTaskId)
+	if receiveTask == nil {
+		return fmt.Errorf("failed to find instantiating receive task %s in process definition %d", receiveTaskId, instance.ProcessInstance().Definition.Key)
+	}
+
+	subscriptions, err := engine.persistence.FindProcessInstanceMessageSubscriptions(ctx, processInstanceKey, runtime.ActivityStateActive)
+	if err != nil {
+		return fmt.Errorf("failed to find active message subscriptions for process instance %d: %w", processInstanceKey, err)
+	}
+	for _, subscription := range subscriptions {
+		tokenSub, ok := subscription.(*runtime.TokenMessageSubscription)
+		if !ok || tokenSub.MessageSubscription().ElementId != receiveTaskId {
+			continue
+		}
+		owns, err := engine.receiveTaskOwnsSubscription(ctx, instance, receiveTask, tokenSub)
+		if err != nil {
+			return fmt.Errorf("failed to resolve receive task subscription for instantiating receive task %s in process instance %d: %w", receiveTaskId, processInstanceKey, err)
+		}
+		if owns {
+			return engine.PublishMessageOnToken(ctx, tokenSub, variables)
+		}
+	}
+	return fmt.Errorf("no active message subscription found for instantiating receive task %s in process instance %d", receiveTaskId, processInstanceKey)
 }
 
 // rearmInstantiatingReceiveTaskSubscriptions re-creates the process-definition-level message subscriptions for

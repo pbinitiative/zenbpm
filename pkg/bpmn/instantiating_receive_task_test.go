@@ -74,8 +74,9 @@ func TestInstantiatingReceiveTask_RegisterCreatesDefinitionSubscription(t *testi
 }
 
 // TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates verifies the full instantiation
-// behaviour: publishing the message (with a nil correlation key) creates a new active process instance waiting
-// on the receive task, consumes the definition subscription, and—while that instance is active—a second
+// behaviour: publishing the message (with a nil correlation key) creates a new active process instance, the
+// same message immediately satisfies the receive task so the token transitions past it (no receive-task
+// subscriptions remain), consumes the definition subscription, and—while that instance is active—a second
 // publish does not create another instance. After re-arming, a fresh definition subscription is available.
 func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *testing.T) {
 	store := inmemory.NewStorage()
@@ -98,9 +99,10 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 	assert.Equal(t, "value", instance.ProcessInstance().VariableHolder.GetLocalVariable("messagePayloadVar"),
 		"variables published with the instantiating message must be propagated to the new instance")
 
-	// The receive task waits: its own subscription plus the boundary message subscription are both active.
-	assert.Equal(t, 2, activeTokenSubscriptionsForElement(store, instantiatingReceiveTaskElement),
-		"the receive task and its boundary message subscription should both be active")
+	// The triggering message both instantiates the process and satisfies the receive task, so the token
+	// transitions past it: neither the receive task's own subscription nor its boundary subscription remain.
+	assert.Equal(t, 0, activeTokenSubscriptionsForElement(store, instantiatingReceiveTaskElement),
+		"the receive task and its boundary subscription must be consumed by the instantiating message")
 
 	// The definition subscription was consumed and is intentionally NOT renewed while the instance is active.
 	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {

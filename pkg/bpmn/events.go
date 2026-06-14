@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 
@@ -73,14 +74,9 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
 	}
 
-	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
+	outputVariables, err := engine.propagateAndSaveOutputVariables(ctx, batch, instance, listener.Output, variables)
 	if err != nil {
-		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
-	}
-	err = batch.SaveProcessInstance(ctx, instance)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+		return nil, err
 	}
 
 	if listener.CancellActivity {
@@ -156,6 +152,64 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 	}
 
 	return tokens, nil
+}
+
+func (engine *Engine) publishMessageOnReceiveTask(ctx context.Context, batch *EngineBatch, receiveTask *bpmn20.TReceiveTask, message *runtime.TokenMessageSubscription, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
+	token := message.Token
+
+	err := engine.cancelBoundarySubscriptions(ctx, batch, instance.ProcessInstance().Key, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cancel boundary subscriptions for receive task %s: %w", receiveTask.GetId(), err)
+	}
+
+	message.State = runtime.ActivityStateCompleted
+	err = batch.SaveMessageSubscription(ctx, message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
+	}
+
+	outputVariables, err := engine.propagateAndSaveReceiveTaskOutputVariables(ctx, batch, instance, token, receiveTask.Output, variables)
+	if err != nil {
+		return nil, err
+	}
+
+	err = batch.UpdateOutputFlowElementInstance(ctx,
+		runtime.FlowElementInstance{
+			Key:             token.ElementInstanceKey,
+			OutputVariables: outputVariables,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens, err := engine.handleElementTransition(ctx, batch, instance, receiveTask, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process ReceiveTask flow transition %s: %w", receiveTask.GetId(), err)
+	}
+
+	return tokens, nil
+}
+
+func (engine *Engine) propagateAndSaveReceiveTaskOutputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, token runtime.ExecutionToken, output []extensions.TIoMapping, variables map[string]interface{}) (map[string]interface{}, error) {
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, token.ElementInstanceKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load receive task flow element instance %d: %w", token.ElementInstanceKey, err)
+	}
+	inputVariables := make(map[string]interface{}, len(flowElementInstance.InputVariables))
+	for key, value := range flowElementInstance.InputVariables {
+		inputVariables[key] = value
+	}
+
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, inputVariables)
+	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(output, variables, engine.evaluateExpression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to propagate receive task variables to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	if err = batch.SaveProcessInstance(ctx, instance); err != nil {
+		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	return outputVariables, nil
 }
 
 func (engine *Engine) cancelBoundarySubscriptions(ctx context.Context, batch *EngineBatch, processInstanceKey int64, token runtime.ExecutionToken) error {
@@ -338,6 +392,16 @@ func (engine *Engine) createMessageCatchEvent(
 }
 
 func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.ProcessDefinition, instance *runtime.ProcessInstance, messageDef bpmn20.TMessageEventDefinition) (string, error) {
+	var localVars map[string]interface{}
+	if instance != nil {
+		localVars = (*instance).ProcessInstance().VariableHolder.LocalVariables()
+	} else {
+		localVars = map[string]interface{}{}
+	}
+	return engine.evaluateMessageCorrelationKey(processDefinition, localVars, messageDef)
+}
+
+func (engine *Engine) evaluateMessageCorrelationKey(processDefinition runtime.ProcessDefinition, localVars map[string]interface{}, messageDef bpmn20.TMessageEventDefinition) (string, error) {
 	message, err := processDefinition.Definitions.GetMessageByRef(messageDef.MessageRef)
 	if err != nil {
 		return "", fmt.Errorf("failed to create message subscription: %w", err)
@@ -345,10 +409,7 @@ func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.Process
 
 	correlationKey := message.Extension.CorrelationKey
 	if strings.HasPrefix(message.Extension.CorrelationKey, "=") {
-		var localVars map[string]interface{}
-		if instance != nil {
-			localVars = (*instance).ProcessInstance().VariableHolder.LocalVariables()
-		} else {
+		if localVars == nil {
 			localVars = map[string]interface{}{}
 		}
 		correlationKeyResult, err := engine.evaluateExpression(message.Extension.CorrelationKey, localVars)
@@ -371,6 +432,19 @@ func (engine *Engine) getMessageName(processDefinition runtime.ProcessDefinition
 		return "", fmt.Errorf("failed to get message name: %w", err)
 	}
 	return message.Name, nil
+}
+
+func (engine *Engine) propagateAndSaveOutputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, output []extensions.TIoMapping, variables map[string]interface{}) (map[string]interface{}, error) {
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(output, variables, engine.evaluateExpression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	err = batch.SaveProcessInstance(ctx, instance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save changes to process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+	return outputVariables, nil
 }
 
 func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ite *bpmn20.TIntermediateThrowEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

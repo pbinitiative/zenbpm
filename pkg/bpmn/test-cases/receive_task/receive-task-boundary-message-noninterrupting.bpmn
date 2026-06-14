@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_0hehbug" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="Process_msg_ni" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1xwsg77</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:receiveTask id="ReceiveTask_1efx577" name="ReceiveTask" messageRef="Message_3chd4fk">
+      <bpmn:incoming>Flow_1xwsg77</bpmn:incoming>
+      <bpmn:outgoing>Flow_1qem27j</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sequenceFlow id="Flow_1xwsg77" sourceRef="StartEvent_1" targetRef="ReceiveTask_1efx577" />
+    <bpmn:endEvent id="SuccessEndEvent_1pdvsd5">
+      <bpmn:incoming>Flow_1ndfrbh</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ServiceTask_157wf2b" name="ServiceTask">
+      <bpmn:incoming>Flow_1qem27j</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ndfrbh</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1qem27j" sourceRef="ReceiveTask_1efx577" targetRef="ServiceTask_157wf2b" />
+    <bpmn:sequenceFlow id="Flow_1ndfrbh" sourceRef="ServiceTask_157wf2b" targetRef="SuccessEndEvent_1pdvsd5" />
+    <bpmn:boundaryEvent id="GiveUpMessage_15clklw" cancelActivity="false" attachedToRef="ReceiveTask_1efx577">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=true" target="boundaryFired" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_0k7ypez</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_1mtxjyg" messageRef="Message_boundary" />
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="GiveUpServiceTask_0ab12cd" name="GiveUpServiceTask">
+      <bpmn:incoming>Flow_0k7ypez</bpmn:incoming>
+      <bpmn:outgoing>Flow_0giveup1</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0k7ypez" sourceRef="GiveUpMessage_15clklw" targetRef="GiveUpServiceTask_0ab12cd" />
+    <bpmn:endEvent id="GiveUpEndEvent_1pcopap">
+      <bpmn:incoming>Flow_0giveup1</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0giveup1" sourceRef="GiveUpServiceTask_0ab12cd" targetRef="GiveUpEndEvent_1pcopap" />
+  </bpmn:process>
+  <bpmn:message id="Message_3chd4fk" name="globalMsgRefMsgNI">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;correlation-key-receive-msg-ni&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_boundary" name="boundaryMsgRefNI">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;correlation-key-boundary-msg-ni&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_msg_ni">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1yw0kv1_di" bpmnElement="ReceiveTask_1efx577">
+        <dc:Bounds x="310" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1pdvsd5_di" bpmnElement="SuccessEndEvent_1pdvsd5">
+        <dc:Bounds x="652" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1itoz0d_di" bpmnElement="ServiceTask_157wf2b">
+        <dc:Bounds x="480" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_giveup_di" bpmnElement="GiveUpServiceTask_0ab12cd">
+        <dc:Bounds x="480" y="242" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1pcopap_di" bpmnElement="GiveUpEndEvent_1pcopap">
+        <dc:Bounds x="652" y="264" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_05gl4vu_di" bpmnElement="GiveUpMessage_15clklw">
+        <dc:Bounds x="342" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="328" y="245" width="65" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1xwsg77_di" bpmnElement="Flow_1xwsg77">
+        <di:waypoint x="218" y="120" />
+        <di:waypoint x="310" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1qem27j_di" bpmnElement="Flow_1qem27j">
+        <di:waypoint x="410" y="120" />
+        <di:waypoint x="480" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ndfrbh_di" bpmnElement="Flow_1ndfrbh">
+        <di:waypoint x="580" y="120" />
+        <di:waypoint x="652" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0k7ypez_di" bpmnElement="Flow_0k7ypez">
+        <di:waypoint x="360" y="178" />
+        <di:waypoint x="360" y="282" />
+        <di:waypoint x="480" y="282" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0giveup1_di" bpmnElement="Flow_0giveup1">
+        <di:waypoint x="580" y="282" />
+        <di:waypoint x="652" y="282" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

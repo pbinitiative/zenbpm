@@ -36,6 +36,7 @@ type Querier interface {
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (DecisionInstance, error)
 	// workaround for sqlc which does not replace params in order by
 	FindDecisionInstancesPage(ctx context.Context, arg FindDecisionInstancesPageParams) ([]FindDecisionInstancesPageRow, error)
+	FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error)
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)

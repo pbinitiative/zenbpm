@@ -37,6 +37,7 @@ type timerManager struct {
 	pollTimerFunc    pollTimerFunc
 	waitingTimers    []waitingTimer
 	waitingTimersWg  *sync.WaitGroup
+	runWg            *sync.WaitGroup
 }
 
 func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFunc, pollTimerDelay time.Duration) *timerManager {
@@ -46,6 +47,7 @@ func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFu
 		pollTimerDelay:   pollTimerDelay,
 		waitingTimers:    []waitingTimer{},
 		waitingTimersWg:  &sync.WaitGroup{},
+		runWg:            &sync.WaitGroup{},
 		ctxCancelFunc:    cancel,
 		mu:               &sync.RWMutex{},
 		ch:               make(chan runtime.Timer),
@@ -121,7 +123,7 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 			return
 		}
 		tm.removeTimer(timer)
-		tm.processTimerFunc(context.Background(), timer)
+		tm.processTimerFunc(tm.ctx, timer)
 	case t := <-pollTicker.C:
 		nextPoll := t.Add(tm.pollTimerDelay)
 		toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)
@@ -159,13 +161,18 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 	tm.waitingTimersWg.Add(1)
 	go func() {
 		t := time.NewTimer(time.Until(tft.DueAt))
+		defer t.Stop()
+		defer tm.waitingTimersWg.Done()
 		select {
 		case <-t.C:
-			tm.ch <- tft
+			select {
+			case tm.ch <- tft:
+			case <-timerCtx.Done():
+			case <-tm.ctx.Done():
+			}
 		case <-timerCtx.Done():
 		case <-tm.ctx.Done():
 		}
-		tm.waitingTimersWg.Done()
 	}()
 }
 
@@ -173,11 +180,22 @@ func (tm *timerManager) start() {
 	tm.mu.Lock()
 	tm.nextPoll = time.Now().Add(tm.pollTimerDelay)
 	tm.mu.Unlock()
-	go tm.run()
+	tm.runWg.Add(1)
+	go func() {
+		defer tm.runWg.Done()
+		tm.run()
+	}()
 }
 
 func (tm *timerManager) stop() {
 	tm.ctxCancelFunc()
+	tm.mu.RLock()
+	waitingTimers := append([]waitingTimer(nil), tm.waitingTimers...)
+	tm.mu.RUnlock()
+	for _, wt := range waitingTimers {
+		wt.cancel()
+	}
+	tm.runWg.Wait()
 	tm.waitingTimersWg.Wait()
 	close(tm.ch)
 }

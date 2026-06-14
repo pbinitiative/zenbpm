@@ -186,6 +186,8 @@ type MessageStorageReader interface {
 
 	FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
 
+	FindDefinitionMessageSubscription(ctx context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error)
+
 	// FindProcessInstanceMessageSubscriptions return message subscriptions for process instance that are in Active or Ready state
 	FindProcessInstanceMessageSubscriptions(ctx context.Context, processInstanceKey int64, state bpmnruntime.ActivityState) ([]bpmnruntime.MessageSubscription, error)
 

@@ -800,6 +800,19 @@ func (engine *Engine) processFlowNode(
 			return tokens, nil
 		}
 		return engine.handleActivity(ctx, batch, instance, activity, currentToken, activity.Element())
+	case *bpmn20.TReceiveTask:
+		if element.GetMultiInstance() != nil {
+			tokens, err := engine.handleMultiInstanceActivity(ctx, batch, instance, element, activity, currentToken)
+			if err != nil {
+				return nil, fmt.Errorf("failed to process MultiInstance%d: %w", activity.GetKey(), err)
+			}
+			return tokens, nil
+		}
+		tokens, err := engine.handleReceiveTask(ctx, batch, instance, element, currentToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process ReceiveTask %d: %w", activity.GetKey(), err)
+		}
+		return tokens, nil
 	case *bpmn20.TIntermediateCatchEvent:
 		// intermediate catch events following event based gateway are handled in event based gateway
 		tokens, err := engine.createIntermediateCatchEvent(ctx, batch, instance, element, currentToken)
@@ -1238,6 +1251,104 @@ func (engine *Engine) handleDefaultElementTransition(
 		)
 	}
 	return resTokens, nil
+}
+
+func (engine *Engine) handleReceiveTask(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TReceiveTask,
+	currentToken runtime.ExecutionToken,
+) ([]runtime.ExecutionToken, error) {
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	token, err := engine.createReceiveTaskSubscription(ctx, batch, instance, element, currentToken, variableHolder)
+	if err != nil {
+		return []runtime.ExecutionToken{token}, fmt.Errorf("failed to create message subscription for receive task %s: %w", element.GetId(), err)
+	}
+
+	// The receive task is now waiting for the message; subscribe to its boundary events (e.g. timers).
+	err = engine.createBoundaryEventSubscriptions(ctx, batch, token, instance, element)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create boundary event subscriptions for receive task %s: %w", element.GetId(), err)
+	}
+
+	return []runtime.ExecutionToken{token}, nil
+}
+
+func (engine *Engine) createReceiveTaskSubscription(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TReceiveTask,
+	currentToken runtime.ExecutionToken,
+	variableHolder runtime.VariableHolder,
+) (runtime.ExecutionToken, error) {
+	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return currentToken, fmt.Errorf("failed to evaluate receive task input variables for %s: %w", element.GetId(), err)
+	}
+
+	err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                currentToken.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		ElementId:          element.GetId(),
+		CreatedAt:          time.Now(),
+		ExecutionTokenKey:  currentToken.Key,
+		InputVariables:     variableHolder.LocalVariables(),
+		OutputVariables:    nil,
+	})
+	if err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return currentToken, fmt.Errorf("failed to save receive task flow element instance %s: %w", element.GetId(), err)
+	}
+
+	messageDef := bpmn20.TMessageEventDefinition{MessageRef: element.MessageRef}
+	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, variableHolder.LocalVariables(), messageDef)
+	if err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return currentToken, fmt.Errorf("failed to evaluate receive task correlation key %s: %w", element.GetId(), err)
+	}
+	messageName, err := engine.getMessageName(*instance.ProcessInstance().Definition, messageDef)
+	if err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return currentToken, fmt.Errorf("failed to evaluate receive task message name %s: %w", element.GetId(), err)
+	}
+
+	subscription := &runtime.TokenMessageSubscription{
+		Token:              currentToken,
+		ProcessInstanceKey: instance.ProcessInstance().Key,
+		CorrelationKey:     correlationKey,
+		MessageSubscriptionData: runtime.MessageSubscriptionData{
+			Key:                  engine.generateKey(),
+			ElementId:            element.GetId(),
+			Name:                 messageName,
+			State:                runtime.ActivityStateActive,
+			ProcessDefinitionKey: instance.ProcessInstance().Definition.Key,
+			CreatedAt:            time.Now(),
+		},
+	}
+	if err = batch.SaveMessageSubscription(ctx, subscription); err != nil {
+		currentToken.State = runtime.TokenStateFailed
+		return currentToken, fmt.Errorf("failed to save receive task message subscription %s: %w", element.GetId(), err)
+	}
+
+	currentToken.State = runtime.TokenStateWaiting
+	return currentToken, nil
+}
+
+func (engine *Engine) createMultiInstanceReceiveTask(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element *bpmn20.TReceiveTask,
+	currentToken runtime.ExecutionToken,
+	variableHolder runtime.VariableHolder,
+) (runtime.ActivityState, error) {
+	_, err := engine.createReceiveTaskSubscription(ctx, batch, instance, element, currentToken, variableHolder)
+	if err != nil {
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to save message subscription for multi instance receive task %s: %w", element.GetId(), err)
+	}
+	return runtime.ActivityStateActive, nil
 }
 
 func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, ice *bpmn20.TIntermediateCatchEvent, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {

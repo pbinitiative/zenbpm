@@ -20,6 +20,14 @@ func (engine *Engine) RegisterProcessDefinitionSubscriptions(ctx context.Context
 		return fmt.Errorf("failed to create subscriptions for start events of process definition %d: %w", processDefinitionKey, err)
 	}
 
+	// Register definition-level message subscriptions for instantiating receive tasks (instantiate="true").
+	// Publishing the corresponding message (with a nil correlation key) creates a new process instance that
+	// starts at the receive task, similar to a message start event.
+	err = engine.createInstantiatingReceiveTaskSubscriptions(ctx, batch, processDefinition)
+	if err != nil {
+		return fmt.Errorf("failed to create subscriptions for instantiating receive tasks of process definition %d: %w", processDefinitionKey, err)
+	}
+
 	err = batch.Flush(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to flush batch for process definition %d: %w", processDefinitionKey, err)

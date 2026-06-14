@@ -54,6 +54,49 @@ func (q *Queries) DeleteProcessInstancesMessageSubscriptions(ctx context.Context
 	return err
 }
 
+const findDefinitionMessageSubscription = `-- name: FindDefinitionMessageSubscription :one
+SELECT
+    "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type
+FROM
+    message_subscription
+WHERE
+    process_definition_key = ?1
+    AND element_id = ?2
+    AND name = ?3
+    AND state = ?4
+    AND type = 3
+`
+
+type FindDefinitionMessageSubscriptionParams struct {
+	ProcessDefinitionKey int64  `json:"process_definition_key"`
+	ElementID            string `json:"element_id"`
+	Name                 string `json:"name"`
+	State                int64  `json:"state"`
+}
+
+func (q *Queries) FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error) {
+	row := q.db.QueryRowContext(ctx, findDefinitionMessageSubscription,
+		arg.ProcessDefinitionKey,
+		arg.ElementID,
+		arg.Name,
+		arg.State,
+	)
+	var i MessageSubscription
+	err := row.Scan(
+		&i.Key,
+		&i.ElementID,
+		&i.ProcessDefinitionKey,
+		&i.ProcessInstanceKey,
+		&i.Name,
+		&i.State,
+		&i.CreatedAt,
+		&i.CorrelationKey,
+		&i.ExecutionToken,
+		&i.Type,
+	)
+	return i, err
+}
+
 const findMessageSubscriptionByNameAndCorrelationKeyAndState = `-- name: FindMessageSubscriptionByNameAndCorrelationKeyAndState :one
 SELECT
     "key", element_id, process_definition_key, process_instance_key, name, state, created_at, correlation_key, execution_token, type

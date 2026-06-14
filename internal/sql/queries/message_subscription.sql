@@ -46,6 +46,18 @@ WHERE
     AND name = @name
     AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key);
 
+-- name: FindDefinitionMessageSubscription :one
+SELECT
+    *
+FROM
+    message_subscription
+WHERE
+    process_definition_key = @process_definition_key
+    AND element_id = @element_id
+    AND name = @name
+    AND state = @state
+    AND type = 3;
+
 -- name: GetMessageSubscriptionByKey :one
 SELECT
     *

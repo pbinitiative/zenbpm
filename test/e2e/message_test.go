@@ -90,6 +90,37 @@ func TestRestApiMessage(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("publish message multiInstance receive task process", func(t *testing.T) {
+		multiInstanceDefinition, err := deployGetUniqueDefinition(t, "receive_task/multi_instance_receive_task.bpmn")
+		assert.NoError(t, err)
+
+		instance, err = createProcessInstance(t, &multiInstanceDefinition.Key, map[string]any{
+			"testInputCollection": []string{"test1", "test2", "test3"},
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, instance.Key)
+
+		err = publishMessage(t, "boundary message", "5678", &map[string]any{
+			"test-var": "test",
+		})
+		assert.NoError(t, err)
+		processInstance, err := getProcessInstance(t, instance.Key)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, processInstance.Variables)
+		assert.NotEmpty(t, processInstance.Variables["test-var"])
+		assert.Equal(t, "test", processInstance.Variables["test-var"])
+
+		err = publishMessage(t, "boundary message", "5678", &map[string]any{
+			"test-var": "test",
+		})
+		assert.Error(t, err)
+
+		_, err = createProcessInstance(t, &definition.Key, map[string]any{
+			"testVar": 123,
+		})
+		assert.NoError(t, err)
+	})
+
 	t.Run("publish message call activity", func(t *testing.T) {
 		callActivityDefinition, err := deployGetUniqueDefinition(t, "call-activity-simple.bpmn")
 		assert.NoError(t, err)

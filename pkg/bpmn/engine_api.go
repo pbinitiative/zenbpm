@@ -261,6 +261,17 @@ mainLoop:
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}
+
+	if shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, process); rearmErr != nil {
+			engine.logger.Warn("failed to re-arm instantiating receive task subscriptions",
+				"processInstance", instance.ProcessInstance().Key,
+				"processDefinition", process.Key,
+				"err", rearmErr,
+			)
+		}
+	}
+
 	if runErr != nil {
 		return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
 	}
@@ -309,6 +320,14 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 // CreateInstance creates and runs the new process instance for a given process definition
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
+	// Process definitions with an instantiating receive task (instantiate="true") cannot be started
+	// manually if they do not also expose a plain start event: a new instance is only created when the
+	// receive task's message is published. Mixed models with a plain start event remain manually startable.
+	if receiveTasks := findInstantiatingReceiveTasks(&process.Definitions.Process); len(receiveTasks) > 0 && !hasPlainStartEvent(&process.Definitions.Process) {
+		return nil, newEngineErrorf("process definition %d (%s) cannot be started manually because it has an instantiating receive task %q; publish its message instead",
+			process.Key, process.BpmnProcessId, receiveTasks[0].GetId())
+	}
+
 	batch := engine.persistence.NewBatch()
 	instance, executionTokens, err := engine.createInstance(
 		ctx,
@@ -411,6 +430,11 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 	err = batch.Flush(ctx)
 	if err != nil {
 		return err
+	}
+	if shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, instance.ProcessInstance().Definition); rearmErr != nil {
+			return fmt.Errorf("failed to re-arm instantiating receive task subscriptions for process instance %d: %w", instance.ProcessInstance().Key, rearmErr)
+		}
 	}
 	return nil
 }

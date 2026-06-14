@@ -1715,6 +1715,29 @@ func (rq *DB) FindMessageSubscriptionByName(ctx context.Context, name string, co
 	return res, nil
 }
 
+func (rq *DB) FindDefinitionMessageSubscription(ctx context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	dbMessageSub, err := rq.Queries.FindDefinitionMessageSubscription(ctx, sql.FindDefinitionMessageSubscriptionParams{
+		ProcessDefinitionKey: processDefinitionKey,
+		ElementID:            elementId,
+		Name:                 name,
+		State:                int64(state),
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("can't find definition message subscription for processDefinition=%d elementId=%s name=%s: %w",
+			processDefinitionKey, elementId, name, err)
+	}
+
+	res, err := rq.inflateMessageSubscription(ctx, dbMessageSub, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inflate definition message subscription for processDefinition=%d elementId=%s name=%s: %w",
+			processDefinitionKey, elementId, name, err)
+	}
+	return res, nil
+}
+
 func (rq *DB) inflateMessageSubscription(ctx context.Context, dbMessage sql.MessageSubscription, messageToken *bpmnruntime.ExecutionToken) (bpmnruntime.MessageSubscription, error) {
 	switch bpmnruntime.MessageSubscriptionType(dbMessage.Type) {
 	case bpmnruntime.MessageSubscriptionTypeToken:

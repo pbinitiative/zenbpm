@@ -123,7 +123,7 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 			return
 		}
 		tm.removeTimer(timer)
-		tm.processTimerFunc(tm.ctx, timer)
+		tm.processTimerFunc(context.WithoutCancel(tm.ctx), timer)
 	case t := <-pollTicker.C:
 		nextPoll := t.Add(tm.pollTimerDelay)
 		toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)

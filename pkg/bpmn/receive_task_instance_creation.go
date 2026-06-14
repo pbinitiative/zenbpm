@@ -114,13 +114,14 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 		return fmt.Errorf("failed to flush instantiating receive task consumption batch (subscription=%d, definition=%d): %w", defSub.Key, defSub.ProcessDefinitionKey, err)
 	}
 
-	processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
 	instance, err := engine.CreateInstanceWithStartingElements(ctx, defSub.ProcessDefinitionKey, []string{defSub.ElementId}, variables, nil)
 	if err != nil {
-		if pdErr == nil {
-			if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &processDefinition); rearmErr != nil {
-				return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w; additionally failed to re-arm subscription: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err, rearmErr)
-			}
+		processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
+		if pdErr != nil {
+			return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w; additionally failed to load process definition to re-arm subscription: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err, pdErr)
+		}
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &processDefinition); rearmErr != nil {
+			return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w; additionally failed to re-arm subscription: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err, rearmErr)
 		}
 		return fmt.Errorf("failed to create process instance for instantiating receive task %s of definition %d: %w", defSub.ElementId, defSub.ProcessDefinitionKey, err)
 	}

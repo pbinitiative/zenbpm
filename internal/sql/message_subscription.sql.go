@@ -74,6 +74,8 @@ type FindDefinitionMessageSubscriptionParams struct {
 	State                int64  `json:"state"`
 }
 
+// Matches only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+// See pkg/bpmn/runtime/types.go for the discriminator constants.
 func (q *Queries) FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error) {
 	row := q.db.QueryRowContext(ctx, findDefinitionMessageSubscription,
 		arg.ProcessDefinitionKey,

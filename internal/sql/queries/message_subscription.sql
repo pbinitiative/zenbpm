@@ -47,6 +47,8 @@ WHERE
     AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key);
 
 -- name: FindDefinitionMessageSubscription :one
+-- Matches only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+-- See pkg/bpmn/runtime/types.go for the discriminator constants.
 SELECT
     *
 FROM

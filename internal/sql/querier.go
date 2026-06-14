@@ -36,6 +36,8 @@ type Querier interface {
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (DecisionInstance, error)
 	// workaround for sqlc which does not replace params in order by
 	FindDecisionInstancesPage(ctx context.Context, arg FindDecisionInstancesPageParams) ([]FindDecisionInstancesPageRow, error)
+	// Matches only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+	// See pkg/bpmn/runtime/types.go for the discriminator constants.
 	FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error)
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)

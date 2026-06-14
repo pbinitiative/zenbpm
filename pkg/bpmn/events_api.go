@@ -84,7 +84,9 @@ func (engine *Engine) receiveTaskOwnsSubscription(ctx context.Context, instance 
 func handleMessagePublicationError(ctx context.Context, batch *EngineBatch, message *runtime.TokenMessageSubscription, instance runtime.ProcessInstance, err error, fmtMsg string, args ...interface{}) error {
 	message.State = runtime.ActivityStateFailed
 	instance.ProcessInstance().State = runtime.ActivityStateFailed
-	batch.WriteMessageIncident(ctx, message, instance, err)
+	if incidentErr := batch.WriteMessageIncident(ctx, message, instance, err); incidentErr != nil {
+		err = errors.Join(err, incidentErr)
+	}
 	flushErr := batch.Flush(ctx)
 	if flushErr != nil {
 		return errors.Join(newEngineErrorf("failed to flush and "+fmtMsg, args...), flushErr)
@@ -159,6 +161,8 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 			return handleMessagePublicationError(ctx, &batch, message, instance, err,
 				"failed to publish message %s to receive task in instance %d. ", message.Name, message.ProcessInstanceKey)
 		}
+		// Persist returned tokens explicitly: multi-instance receive-task transitions can yield tokens in a
+		// non-Running state (e.g. Completed/Waiting), which RunProcessInstance's main loop skips and never saves.
 		for _, tok := range tokens {
 			err = batch.SaveToken(ctx, tok)
 			if err != nil {

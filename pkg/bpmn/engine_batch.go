@@ -153,12 +153,17 @@ func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.
 	b.b.SaveIncident(ctx, createNewIncidentFromToken(err, token, b.engine))
 }
 
-func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) {
+func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
 	b.b = b.engine.persistence.NewBatch()
 	b.preFlushActions = []func() error{}
 	b.postFlushActions = []func(){}
-	b.b.SaveMessageSubscription(ctx, message)
-	b.b.SaveProcessInstance(ctx, instance)
+	if saveErr := b.b.SaveMessageSubscription(ctx, message); saveErr != nil {
+		return fmt.Errorf("failed to save message subscription for incident: %w", saveErr)
+	}
+	if saveErr := b.b.SaveProcessInstance(ctx, instance); saveErr != nil {
+		return fmt.Errorf("failed to save process instance for incident: %w", saveErr)
+	}
+	return nil
 }
 
 func (b *EngineBatch) AddPreFlushAction(ctx context.Context, f func() error) {

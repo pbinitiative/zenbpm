@@ -395,8 +395,6 @@ func (engine *Engine) getMessageCorrelationKey(processDefinition runtime.Process
 	var localVars map[string]interface{}
 	if instance != nil {
 		localVars = (*instance).ProcessInstance().VariableHolder.LocalVariables()
-	} else {
-		localVars = map[string]interface{}{}
 	}
 	return engine.evaluateMessageCorrelationKey(processDefinition, localVars, messageDef)
 }

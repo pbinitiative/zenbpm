@@ -16,35 +16,6 @@ const (
 	instantiatingReceiveMessageName = "globalMsgRefMsgIInst"
 )
 
-func activeTokenSubscriptionsForElement(store *inmemory.Storage, elementId string) int {
-	count := 0
-	for _, sub := range store.MessageSubscriptions {
-		tokenSub, ok := sub.(*runtime.TokenMessageSubscription)
-		if !ok {
-			continue
-		}
-		if tokenSub.MessageSubscription().ElementId == elementId &&
-			tokenSub.MessageSubscription().State == runtime.ActivityStateActive {
-			count++
-		}
-	}
-	return count
-}
-
-// setupInstantiatingReceiveTaskTest creates a new storage and engine,
-// loads the instantiating receive task BPMN, and registers its subscriptions.
-func setupInstantiatingReceiveTaskTest(t *testing.T) (*inmemory.Storage, *Engine, *runtime.ProcessDefinition) {
-	store := inmemory.NewStorage()
-	engine := NewEngine(EngineWithStorage(store))
-	require.NoError(t, engine.Start(t.Context()))
-
-	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
-	require.NoError(t, err)
-	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
-
-	return store, &engine, def
-}
-
 // TestInstantiatingReceiveTask_RegisterCreatesDefinitionSubscription verifies that deploying a process whose
 // only entry point is an instantiating ReceiveTask registers exactly one definition-level message subscription
 // (with no correlation key, like a message start event) and that such a definition cannot be started manually.
@@ -240,6 +211,35 @@ func TestInstantiatingReceiveTask_ManualStartAllowedWhenPlainStartEventExists(t 
 	instance, err := engine.CreateInstanceByKey(t.Context(), def.Key, map[string]any{})
 	require.NoError(t, err)
 	assert.NotNil(t, instance)
+}
+
+func activeTokenSubscriptionsForElement(store *inmemory.Storage, elementId string) int {
+	count := 0
+	for _, sub := range store.MessageSubscriptions {
+		tokenSub, ok := sub.(*runtime.TokenMessageSubscription)
+		if !ok {
+			continue
+		}
+		if tokenSub.MessageSubscription().ElementId == elementId &&
+			tokenSub.MessageSubscription().State == runtime.ActivityStateActive {
+			count++
+		}
+	}
+	return count
+}
+
+// setupInstantiatingReceiveTaskTest creates a new storage and engine,
+// loads the instantiating receive task BPMN, and registers its subscriptions.
+func setupInstantiatingReceiveTaskTest(t *testing.T) (*inmemory.Storage, *Engine, *runtime.ProcessDefinition) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+
+	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
+	require.NoError(t, err)
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
+
+	return store, &engine, def
 }
 
 // activeInstancesForDefinition returns all active process instances in the store for the given definition.

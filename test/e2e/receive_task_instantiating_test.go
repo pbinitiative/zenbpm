@@ -14,71 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// publishInstantiatingMessage publishes a message with a nil correlation key. Instantiating receive tasks
-// register a definition-level message subscription (no correlation key), exactly like message start events,
-// so the engine routes a nil-correlation-key publish to that subscription and creates a new process instance.
-// The publish is retried because, after a previous instance completes, the definition subscription is
-// re-armed asynchronously and may briefly be unavailable.
-func publishInstantiatingMessage(t testing.TB, messageName string, vars *map[string]any) {
-	t.Helper()
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		resp, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
-			CorrelationKey: nil,
-			MessageName:    messageName,
-			Variables:      vars,
-		})
-		if !assert.NoError(collect, err) {
-			return
-		}
-		assert.Equal(collect, http.StatusCreated, resp.StatusCode(),
-			"publishing the instantiating message %s should create a new process instance", messageName)
-	}, 10*time.Second, 100*time.Millisecond, "instantiating message %s should be publishable", messageName)
-}
-
-// waitForActiveInstanceKeyByBpmnProcessId waits until exactly one Active process instance exists for the given
-// bpmn process id and returns its key. Previously completed instances (from earlier scenarios) are ignored.
-func waitForActiveInstanceKeyByBpmnProcessId(t testing.TB, bpmnProcessId string) int64 {
-	t.Helper()
-
-	var activeKey int64
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		resp, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &bpmnProcessId,
-		})
-		if !assert.NoError(collect, err) || !assert.NotNil(collect, resp.JSON200) {
-			return
-		}
-		found := int64(0)
-		count := 0
-		for _, partition := range resp.JSON200.Partitions {
-			for _, item := range partition.Items {
-				if item.State == zenclient.ProcessInstanceStateActive {
-					found = item.Key
-					count++
-				}
-			}
-		}
-		if !assert.Equal(collect, 1, count, "exactly one active instance should exist for %s", bpmnProcessId) {
-			return
-		}
-		activeKey = found
-	}, 10*time.Second, 100*time.Millisecond, "an active process instance for %s should be created by the instantiating message", bpmnProcessId)
-	return activeKey
-}
-
-// assertManualStartRejected verifies that a process definition backed by an instantiating receive task
-// (with no plain start event) cannot be started manually via the create-process-instance API.
-func assertManualStartRejected(t testing.TB, definitionKey int64) {
-	t.Helper()
-	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
-		ProcessDefinitionKey: &definitionKey,
-		Variables:            &map[string]any{},
-	})
-	require.NoError(t, err)
-	require.NotEqual(t, http.StatusCreated, resp.StatusCode(),
-		"manually starting a process definition with an instantiating receive task must be rejected")
-}
-
 // TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage covers
 // receive-task-boundary-message-interrupting-instantiating.bpmn, where the process starts directly with an
 // instantiating ReceiveTask (instantiate="true") that has an interrupting boundary message attached.
@@ -177,26 +112,6 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingMessage(t *testing.T
 	})
 }
 
-// assertInstantiatingTimerBoundaryConsumed verifies that, after the instantiating message has satisfied the
-// receive task, no receive-task subscription and no created boundary timer remain, the expected message
-// variables are present on the instance, and then completes the job and waits for the instance to finish.
-func assertInstantiatingTimerBoundaryConsumed(t *testing.T, store storage.Storage, instanceKey int64, receiveTaskElement string, jobKey int64) {
-	t.Helper()
-	require.Equal(t, 0, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
-		"the receive task subscription must be consumed by the instantiating message")
-	created, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
-	require.NoError(t, err)
-	require.Empty(t, created, "the boundary timer must be cancelled once the instantiating message satisfies the receive task")
-
-	fetched, err := getProcessInstance(t, instanceKey)
-	require.NoError(t, err)
-	require.Equal(t, true, fetched.Variables["approved"], "instantiating message variables should be propagated to the instance")
-	require.Nil(t, fetched.Variables["timerFired"], "boundary timer output must not be set; the receive task completed on instantiation")
-
-	require.NoError(t, completeJob(t, jobKey, map[string]any{}))
-	waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
-}
-
 func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 	cleanProcessInstances(t)
 
@@ -257,4 +172,89 @@ func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingTimer(t *testing.T) 
 
 		assertInstantiatingTimerBoundaryConsumed(t, store, instanceKey, receiveTaskElement, job.Key)
 	})
+}
+
+// publishInstantiatingMessage publishes a message with a nil correlation key. Instantiating receive tasks
+// register a definition-level message subscription (no correlation key), exactly like message start events,
+// so the engine routes a nil-correlation-key publish to that subscription and creates a new process instance.
+// The publish is retried because, after a previous instance completes, the definition subscription is
+// re-armed asynchronously and may briefly be unavailable.
+func publishInstantiatingMessage(t testing.TB, messageName string, vars *map[string]any) {
+	t.Helper()
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		resp, err := app.restClient.PublishMessageWithResponse(t.Context(), zenclient.PublishMessageJSONRequestBody{
+			CorrelationKey: nil,
+			MessageName:    messageName,
+			Variables:      vars,
+		})
+		if !assert.NoError(collect, err) {
+			return
+		}
+		assert.Equal(collect, http.StatusCreated, resp.StatusCode(),
+			"publishing the instantiating message %s should create a new process instance", messageName)
+	}, 10*time.Second, 100*time.Millisecond, "instantiating message %s should be publishable", messageName)
+}
+
+// waitForActiveInstanceKeyByBpmnProcessId waits until exactly one Active process instance exists for the given
+// bpmn process id and returns its key. Previously completed instances (from earlier scenarios) are ignored.
+func waitForActiveInstanceKeyByBpmnProcessId(t testing.TB, bpmnProcessId string) int64 {
+	t.Helper()
+
+	var activeKey int64
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		resp, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: &bpmnProcessId,
+		})
+		if !assert.NoError(collect, err) || !assert.NotNil(collect, resp.JSON200) {
+			return
+		}
+		found := int64(0)
+		count := 0
+		for _, partition := range resp.JSON200.Partitions {
+			for _, item := range partition.Items {
+				if item.State == zenclient.ProcessInstanceStateActive {
+					found = item.Key
+					count++
+				}
+			}
+		}
+		if !assert.Equal(collect, 1, count, "exactly one active instance should exist for %s", bpmnProcessId) {
+			return
+		}
+		activeKey = found
+	}, 10*time.Second, 100*time.Millisecond, "an active process instance for %s should be created by the instantiating message", bpmnProcessId)
+	return activeKey
+}
+
+// assertManualStartRejected verifies that a process definition backed by an instantiating receive task
+// (with no plain start event) cannot be started manually via the create-process-instance API.
+func assertManualStartRejected(t testing.TB, definitionKey int64) {
+	t.Helper()
+	resp, err := app.restClient.CreateProcessInstanceWithResponse(t.Context(), zenclient.CreateProcessInstanceJSONRequestBody{
+		ProcessDefinitionKey: &definitionKey,
+		Variables:            &map[string]any{},
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, http.StatusCreated, resp.StatusCode(),
+		"manually starting a process definition with an instantiating receive task must be rejected")
+}
+
+// assertInstantiatingTimerBoundaryConsumed verifies that, after the instantiating message has satisfied the
+// receive task, no receive-task subscription and no created boundary timer remain, the expected message
+// variables are present on the instance, and then completes the job and waits for the instance to finish.
+func assertInstantiatingTimerBoundaryConsumed(t *testing.T, store storage.Storage, instanceKey int64, receiveTaskElement string, jobKey int64) {
+	t.Helper()
+	require.Equal(t, 0, activeReceiveTaskSubscriptions(t, store, instanceKey, receiveTaskElement),
+		"the receive task subscription must be consumed by the instantiating message")
+	created, err := store.FindProcessInstanceTimers(t.Context(), instanceKey, bpmnruntime.TimerStateCreated)
+	require.NoError(t, err)
+	require.Empty(t, created, "the boundary timer must be cancelled once the instantiating message satisfies the receive task")
+
+	fetched, err := getProcessInstance(t, instanceKey)
+	require.NoError(t, err)
+	require.Equal(t, true, fetched.Variables["approved"], "instantiating message variables should be propagated to the instance")
+	require.Nil(t, fetched.Variables["timerFired"], "boundary timer output must not be set; the receive task completed on instantiation")
+
+	require.NoError(t, completeJob(t, jobKey, map[string]any{}))
+	waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
 }

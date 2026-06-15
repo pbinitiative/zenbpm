@@ -13,6 +13,7 @@ const (
 	parallelGatewaySplitToEndPath           = "testdata/gateway_parallel/parallel_gateway_split_to_end_events.bpmn"
 	parallelGatewayNestedPath               = "testdata/gateway_parallel/parallel_gateway_nested.bpmn"
 	parallelGatewaySplitJoinToEndEventsPath = "testdata/gateway_parallel/parallel_gateways_split_join_to_end_events.bpmn"
+	parallelGatewayReenteredPath            = "testdata/gateway_parallel/parallel_gateway_reentered_join.bpmn"
 )
 
 func TestParallelGatewayFlow(t *testing.T) {
@@ -195,5 +196,32 @@ func TestParallelGatewayFlow(t *testing.T) {
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceTokenState(t, processInstance.Key, "end_event", runtime.TokenStateCompleted)
+	})
+
+	t.Run("Re-entered join waits for current activation only", func(t *testing.T) {
+		processInstance := deployAndCreateUniqueProcessDefinition(t, parallelGatewayReenteredPath, nil)
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_a")
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_b")
+
+		completeJobsForElementIds(t, processInstance.Key, "service_task_a", "service_task_b")
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_after_join")
+
+		completeJobForElementId(t, processInstance.Key, "service_task_after_join", map[string]any{"loop": true})
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_a")
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_b")
+
+		completeJobForElementId(t, processInstance.Key, "service_task_a", nil)
+		assertProcessInstanceHasNoActiveJobByElementId(t, processInstance.Key, "service_task_after_join")
+
+		completeJobForElementId(t, processInstance.Key, "service_task_b", nil)
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_after_join")
+
+		completeJobForElementId(t, processInstance.Key, "service_task_after_join", map[string]any{"loop": false})
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
+		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 	})
 }

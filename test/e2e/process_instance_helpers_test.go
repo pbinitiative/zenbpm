@@ -358,11 +358,36 @@ func assertProcessInstanceTokenStates(t testing.TB, processInstanceKey int64, el
 			}
 		}
 
-		require.Len(collect, matchedStates, expectedCount, "process instance %d should expose %d tokens for element %s", processInstanceKey, expectedCount, elementId)
+		assert.Len(collect, matchedStates, expectedCount, "process instance %d should expose %d tokens for element %s", processInstanceKey, expectedCount, elementId)
 		for i, state := range matchedStates {
 			assert.Equal(collect, expectedState, state, "process instance %d token %d for element %s should be in state %s", processInstanceKey, i, elementId, expectedState)
 		}
 	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain %d tokens for element %s in state %s", processInstanceKey, expectedCount, elementId, expectedState)
+}
+
+func assertProcessInstanceTokenCount(t testing.TB, processInstanceKey int64, elementId string, expectedCount int) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(processInstanceKey))
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		tokens, err := store.GetAllTokensForProcessInstance(t.Context(), processInstanceKey)
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		matchedCount := 0
+		for _, token := range tokens {
+			if token.ElementId == elementId {
+				matchedCount++
+			}
+		}
+
+		assert.Equal(collect, expectedCount, matchedCount, "process instance %d should expose %d tokens for element %s", processInstanceKey, expectedCount, elementId)
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should contain %d tokens for element %s", processInstanceKey, expectedCount, elementId)
 }
 
 func assertProcessInstanceIsCompleted(t testing.TB, processInstanceKey int64, tokenElementId string) {

@@ -127,6 +127,13 @@ func (engine *Engine) publishMessageOnReceiveTaskInstanceCreation(ctx context.Co
 	}
 
 	if err := engine.completeInstantiatingReceiveTask(ctx, instance.ProcessInstance().Key, defSub.ElementId, variables); err != nil {
+		processDefinition, pdErr := engine.persistence.FindProcessDefinitionByKey(ctx, defSub.ProcessDefinitionKey)
+		if pdErr != nil {
+			return fmt.Errorf("failed to complete instantiating receive task %s for process instance %d of definition %d: %w; additionally failed to load process definition to re-arm subscription: %w", defSub.ElementId, instance.ProcessInstance().Key, defSub.ProcessDefinitionKey, err, pdErr)
+		}
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &processDefinition); rearmErr != nil {
+			return fmt.Errorf("failed to complete instantiating receive task %s for process instance %d of definition %d: %w; additionally failed to re-arm subscription: %w", defSub.ElementId, instance.ProcessInstance().Key, defSub.ProcessDefinitionKey, err, rearmErr)
+		}
 		return fmt.Errorf("failed to complete instantiating receive task %s for process instance %d of definition %d: %w", defSub.ElementId, instance.ProcessInstance().Key, defSub.ProcessDefinitionKey, err)
 	}
 	return nil
@@ -174,6 +181,9 @@ func (engine *Engine) rearmInstantiatingReceiveTaskSubscriptions(ctx context.Con
 	if len(receiveTasks) == 0 {
 		return nil
 	}
+
+	engine.instantiatingRearmMu.Lock()
+	defer engine.instantiatingRearmMu.Unlock()
 
 	batch := engine.persistence.NewBatch()
 	rearmed := false

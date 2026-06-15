@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -160,8 +161,29 @@ func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnrunt
 	if saveErr := b.b.SaveMessageSubscription(ctx, message); saveErr != nil {
 		return fmt.Errorf("failed to save message subscription for incident: %w", saveErr)
 	}
+	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
 	if saveErr := b.b.SaveProcessInstance(ctx, instance); saveErr != nil {
 		return fmt.Errorf("failed to save process instance for incident: %w", saveErr)
+	}
+	var incident bpmnruntime.Incident
+	if tokenSub, ok := message.(*bpmnruntime.TokenMessageSubscription); ok {
+		tokenSub.Token.State = bpmnruntime.TokenStateFailed
+		if saveErr := b.b.SaveToken(ctx, tokenSub.Token); saveErr != nil {
+			return fmt.Errorf("failed to save token for message incident: %w", saveErr)
+		}
+		incident = createNewIncidentFromToken(err, tokenSub.Token, b.engine)
+	} else {
+		data := message.MessageSubscription()
+		incident = bpmnruntime.Incident{
+			Key:                b.engine.generateKey(),
+			ElementId:          data.ElementId,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			Message:            err.Error(),
+			CreatedAt:          time.Now(),
+		}
+	}
+	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
+		return fmt.Errorf("failed to save message incident: %w", saveErr)
 	}
 	return nil
 }

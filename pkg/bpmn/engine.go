@@ -55,6 +55,12 @@ type Engine struct {
 
 	// cache that holds process instances being processed by the engine
 	runningInstances *RunningInstancesCache
+
+	// instantiatingRearmMu serializes the check-then-insert of process-definition-level message
+	// subscriptions for instantiating receive tasks. It closes the TOCTOU window where two
+	// concurrently-completing instances of the same definition would both observe "no active
+	// definition subscription" and both insert one, leaving duplicate active subscriptions.
+	instantiatingRearmMu *sync.Mutex
 }
 
 type EngineOption = func(*Engine)
@@ -74,20 +80,21 @@ func NewEngine(options ...EngineOption) Engine {
 	jsRuntime := js.NewJsRuntime(1, 1)
 
 	engine := Engine{
-		context:          ctx,
-		contextCancel:    cancel,
-		taskhandlersMu:   &sync.RWMutex{},
-		taskHandlers:     []*taskHandler{},
-		exporters:        []exporter.EventExporter{},
-		persistence:      persistence,
-		logger:           logger,
-		runningInstances: newRunningInstanceCache(),
-		tracer:           tracer,
-		meter:            meter,
-		metrics:          metrics,
-		feelRuntime:      feelRuntime,
-		jsRuntime:        jsRuntime,
-		dmnEngine:        dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
+		context:              ctx,
+		contextCancel:        cancel,
+		taskhandlersMu:       &sync.RWMutex{},
+		taskHandlers:         []*taskHandler{},
+		exporters:            []exporter.EventExporter{},
+		persistence:          persistence,
+		logger:               logger,
+		runningInstances:     newRunningInstanceCache(),
+		instantiatingRearmMu: &sync.Mutex{},
+		tracer:               tracer,
+		meter:                meter,
+		metrics:              metrics,
+		feelRuntime:          feelRuntime,
+		jsRuntime:            jsRuntime,
+		dmnEngine:            dmn.NewEngine(dmn.EngineWithStorage(persistence), dmn.EngineWithFeel(feelRuntime)),
 	}
 
 	for _, option := range options {
@@ -1303,7 +1310,14 @@ func (engine *Engine) createReceiveTaskSubscription(
 	}
 
 	messageDef := bpmn20.TMessageEventDefinition{MessageRef: element.MessageRef}
-	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, variableHolder.LocalVariables(), messageDef)
+	correlationContext := make(map[string]interface{})
+	for key, value := range instance.ProcessInstance().VariableHolder.LocalVariables() {
+		correlationContext[key] = value
+	}
+	for key, value := range variableHolder.LocalVariables() {
+		correlationContext[key] = value
+	}
+	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, correlationContext, messageDef)
 	if err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to evaluate receive task correlation key %s: %w", element.GetId(), err)

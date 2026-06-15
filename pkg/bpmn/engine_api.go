@@ -71,7 +71,39 @@ func (engine *Engine) Start(ctx context.Context) error {
 		}
 	}
 
+	if err := engine.recoverInstantiatingReceiveTaskSubscriptions(engine.context); err != nil {
+		engine.logger.Error(fmt.Sprintf("failed to recover instantiating receive task subscriptions: %s", err.Error()))
+	}
+
 	return nil
+}
+
+// recoverInstantiatingReceiveTaskSubscriptions ensures every instantiating receive task of the latest version
+// of each deployed process definition has an active process-definition-level message subscription.
+func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.Context) error {
+	definitions, err := engine.persistence.FindAllProcessDefinitions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load process definitions for instantiating receive task recovery: %w", err)
+	}
+
+	latestByProcessId := make(map[string]runtime.ProcessDefinition)
+	for _, def := range definitions {
+		if len(findInstantiatingReceiveTasks(&def.Definitions.Process)) == 0 {
+			continue
+		}
+		if existing, ok := latestByProcessId[def.BpmnProcessId]; !ok || def.Version > existing.Version {
+			latestByProcessId[def.BpmnProcessId] = def
+		}
+	}
+
+	var errs []error
+	for _, def := range latestByProcessId {
+		definition := def
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &definition); rearmErr != nil {
+			errs = append(errs, fmt.Errorf("failed to recover instantiating receive task subscriptions for definition %d: %w", definition.Key, rearmErr))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (engine *Engine) Stop() {
@@ -112,6 +144,20 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	process := instance.ProcessInstance().Definition
 	runningExecutionTokens := executionTokens
 	var runErr error
+
+	// Re-arm instantiating receive-task definition subscriptions on EVERY exit path
+	defer func() {
+		if !shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
+			return
+		}
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, process); rearmErr != nil {
+			engine.logger.Warn("failed to re-arm instantiating receive task subscriptions",
+				"processInstance", instance.ProcessInstance().Key,
+				"processDefinition", process.Key,
+				"err", rearmErr,
+			)
+		}
+	}()
 
 	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -260,16 +306,6 @@ mainLoop:
 		engine.metrics.ProcessesEnded.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
-	}
-
-	if shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
-		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, process); rearmErr != nil {
-			engine.logger.Warn("failed to re-arm instantiating receive task subscriptions",
-				"processInstance", instance.ProcessInstance().Key,
-				"processDefinition", process.Key,
-				"err", rearmErr,
-			)
-		}
 	}
 
 	if runErr != nil {

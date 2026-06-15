@@ -108,6 +108,8 @@ WHERE
     state = ?1
     AND name = ?2
     AND ((?3 IS NULL AND correlation_key IS NULL) OR correlation_key = ?3)
+ORDER BY key ASC
+LIMIT 1
 `
 
 type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
@@ -116,6 +118,8 @@ type FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams struct {
 	CorrelationKey interface{} `json:"correlation_key"`
 }
 
+// Deterministic tie-break: when multiple subscriptions share (name, correlation_key, state) always resolve
+// to the lowest key rather than an arbitrary row.
 func (q *Queries) FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error) {
 	row := q.db.QueryRowContext(ctx, findMessageSubscriptionByNameAndCorrelationKeyAndState, arg.State, arg.Name, arg.CorrelationKey)
 	var i MessageSubscription

@@ -117,8 +117,6 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage(t *testing.T) {
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
 
-		// The instantiating message drives the token straight to the service task; no receive-task or boundary
-		// subscription remains active.
 		job := waitForProcessInstanceActiveJobByElementId(t, instanceKey, mainServiceTaskElement)
 		require.Equal(t, mainServiceTaskElement, job.ElementId)
 
@@ -139,8 +137,6 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingMessage(t *testing.T) {
 	})
 }
 
-// TestInstantiatingReceiveTaskBoundaryWithNonInterruptingMessage covers
-// receive-task-boundary-message-noninterrupting-instantiating.bpmn.
 func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingMessage(t *testing.T) {
 	cleanProcessInstances(t)
 
@@ -201,8 +197,6 @@ func assertInstantiatingTimerBoundaryConsumed(t *testing.T, store storage.Storag
 	waitForProcessInstanceState(t, instanceKey, zenclient.ProcessInstanceStateCompleted)
 }
 
-// TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer covers
-// receive-task-boundary-timer-interrupting-instantiating.bpmn.
 func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 	cleanProcessInstances(t)
 
@@ -227,8 +221,6 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 		store, err := app.node.GetPartitionStore(t.Context(), zenflake.GetPartitionId(instanceKey))
 		require.NoError(t, err)
 
-		// The instantiating message satisfies the receive task immediately, so the boundary timer is cancelled
-		// and the token transitions to the service task.
 		job := waitForProcessInstanceActiveJobByElementId(t, instanceKey, serviceTaskElement)
 		require.Equal(t, serviceTaskElement, job.ElementId)
 
@@ -236,8 +228,6 @@ func TestInstantiatingReceiveTaskBoundaryWithInterruptingTimer(t *testing.T) {
 	})
 }
 
-// TestInstantiatingReceiveTaskBoundaryWithNonInterruptingTimer covers
-// receive-task-boundary-timer-noninterrupting-instantiating.bpmn.
 func TestInstantiatingReceiveTaskBoundaryWithNonInterruptingTimer(t *testing.T) {
 	cleanProcessInstances(t)
 

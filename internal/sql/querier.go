@@ -59,6 +59,8 @@ type Querier interface {
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)
 	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionID string) (DmnResourceDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
+	// Deterministic tie-break: when multiple subscriptions share (name, correlation_key, state) always resolve
+	// to the lowest key rather than an arbitrary row.
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)

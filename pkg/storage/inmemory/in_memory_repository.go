@@ -313,6 +313,16 @@ func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	return res, nil
 }
 
+func (mem *Storage) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.ProcessDefinition, 0, len(mem.ProcessDefinitions))
+	for _, def := range mem.ProcessDefinitions {
+		res = append(res, def)
+	}
+	return res, nil
+}
+
 func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
@@ -717,6 +727,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
+	var match bpmnruntime.MessageSubscription
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.MessageSubscription().State != state {
 			continue
@@ -725,14 +736,20 @@ func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name stri
 			continue
 		}
 		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(sub)
-		if correlationKey == nil && subCorrelationKey == "" {
-			return sub, nil
+		if correlationKey == nil && subCorrelationKey != "" {
+			continue
 		}
-		if correlationKey != nil && subCorrelationKey == *correlationKey {
-			return sub, nil
+		if correlationKey != nil && subCorrelationKey != *correlationKey {
+			continue
+		}
+		if match == nil || sub.MessageSubscription().Key < match.MessageSubscription().Key {
+			match = sub
 		}
 	}
-	return nil, storage.ErrNotFound
+	if match == nil {
+		return nil, storage.ErrNotFound
+	}
+	return match, nil
 }
 
 func (mem *Storage) FindDefinitionMessageSubscription(ctx context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
@@ -817,6 +834,16 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 	// New insert: reject if it would collide on (state=Active, name, correlationKey) with another already-active subscription.
 	for _, message := range mem.MessageSubscriptions {
 		if subscription.Type() == bpmnruntime.MessageSubscriptionTypeDefinition || message.Type() == bpmnruntime.MessageSubscriptionTypeDefinition {
+			if subscription.Type() == bpmnruntime.MessageSubscriptionTypeDefinition &&
+				message.Type() == bpmnruntime.MessageSubscriptionTypeDefinition &&
+				subscription.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+				message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+				message.MessageSubscription().ProcessDefinitionKey == subscription.MessageSubscription().ProcessDefinitionKey &&
+				message.MessageSubscription().ElementId == subscription.MessageSubscription().ElementId &&
+				message.MessageSubscription().Name == subscription.MessageSubscription().Name {
+				return fmt.Errorf("active definition message subscription for definition %d element %q name %q already exists",
+					subscription.MessageSubscription().ProcessDefinitionKey, subscription.MessageSubscription().ElementId, subscription.MessageSubscription().Name)
+			}
 			continue
 		}
 		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(subscription)

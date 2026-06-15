@@ -16,9 +16,6 @@ const (
 	instantiatingReceiveMessageName = "globalMsgRefMsgIInst"
 )
 
-// activeTokenSubscriptionsForElement counts the active TokenMessageSubscriptions registered against the given
-// element id (the receive task's own subscription and any attached boundary message subscriptions are both
-// registered against the receive task element).
 func activeTokenSubscriptionsForElement(store *inmemory.Storage, elementId string) int {
 	count := 0
 	for _, sub := range store.MessageSubscriptions {
@@ -32,6 +29,20 @@ func activeTokenSubscriptionsForElement(store *inmemory.Storage, elementId strin
 		}
 	}
 	return count
+}
+
+// setupInstantiatingReceiveTaskTest creates a new storage and engine,
+// loads the instantiating receive task BPMN, and registers its subscriptions.
+func setupInstantiatingReceiveTaskTest(t *testing.T) (*inmemory.Storage, *Engine, *runtime.ProcessDefinition) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+
+	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
+	require.NoError(t, err)
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
+
+	return store, &engine, def
 }
 
 // TestInstantiatingReceiveTask_RegisterCreatesDefinitionSubscription verifies that deploying a process whose
@@ -88,7 +99,6 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 	require.NoError(t, err)
 	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
 
-	// Publishing with a nil correlation key routes to the definition subscription and creates an instance.
 	require.NoError(t, engine.PublishMessageByName(t.Context(), instantiatingReceiveMessageName, nil, map[string]any{
 		"messagePayloadVar": "value",
 	}))
@@ -99,8 +109,6 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 	assert.Equal(t, "value", instance.ProcessInstance().VariableHolder.GetLocalVariable("messagePayloadVar"),
 		"variables published with the instantiating message must be propagated to the new instance")
 
-	// The triggering message both instantiates the process and satisfies the receive task, so the token
-	// transitions past it: neither the receive task's own subscription nor its boundary subscription remain.
 	assert.Equal(t, 0, activeTokenSubscriptionsForElement(store, instantiatingReceiveTaskElement),
 		"the receive task and its boundary subscription must be consumed by the instantiating message")
 
@@ -110,8 +118,6 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 			"the definition subscription must be Completed while an instance is active")
 	}
 
-	// Guard: while the instance is active there is no active definition subscription, so a second publish
-	// must not create another instance.
 	err = engine.PublishMessageByName(t.Context(), instantiatingReceiveMessageName, nil, map[string]any{})
 	require.Error(t, err, "publishing while an instance is active must not create a second instance")
 	require.Len(t, activeInstancesForDefinition(store, def.Key), 1,
@@ -130,14 +136,8 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 }
 
 func TestInstantiatingReceiveTask_CancelRearmsDefinitionSubscription(t *testing.T) {
-	store := inmemory.NewStorage()
-	engine := NewEngine(EngineWithStorage(store))
-	require.NoError(t, engine.Start(t.Context()))
+	store, engine, def := setupInstantiatingReceiveTaskTest(t)
 	defer engine.Stop()
-
-	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
-	require.NoError(t, err)
-	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
 
 	require.NoError(t, engine.PublishMessageByName(t.Context(), instantiatingReceiveMessageName, nil, map[string]any{}))
 	activeInstances := activeInstancesForDefinition(store, def.Key)
@@ -155,14 +155,8 @@ func TestInstantiatingReceiveTask_CancelRearmsDefinitionSubscription(t *testing.
 }
 
 func TestInstantiatingReceiveTask_CreateInstanceFailureRearmsDefinitionSubscription(t *testing.T) {
-	store := inmemory.NewStorage()
-	engine := NewEngine(EngineWithStorage(store))
-	require.NoError(t, engine.Start(t.Context()))
+	store, engine, def := setupInstantiatingReceiveTaskTest(t)
 	defer engine.Stop()
-
-	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
-	require.NoError(t, err)
-	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
 	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {
 		sub.MessageSubscription().State = runtime.ActivityStateCompleted
 		require.NoError(t, store.SaveMessageSubscription(t.Context(), sub))
@@ -179,7 +173,7 @@ func TestInstantiatingReceiveTask_CreateInstanceFailureRearmsDefinitionSubscript
 	}
 	require.NoError(t, store.SaveMessageSubscription(t.Context(), brokenSubscription))
 
-	err = engine.publishMessageOnReceiveTaskInstanceCreation(t.Context(), brokenSubscription, map[string]any{})
+	err := engine.publishMessageOnReceiveTaskInstanceCreation(t.Context(), brokenSubscription, map[string]any{})
 	require.Error(t, err)
 
 	activeDefSubs := 0
@@ -193,14 +187,8 @@ func TestInstantiatingReceiveTask_CreateInstanceFailureRearmsDefinitionSubscript
 }
 
 func TestInstantiatingReceiveTask_RearmIsScopedToDefinitionAndElement(t *testing.T) {
-	store := inmemory.NewStorage()
-	engine := NewEngine(EngineWithStorage(store))
-	require.NoError(t, engine.Start(t.Context()))
+	store, engine, def := setupInstantiatingReceiveTaskTest(t)
 	defer engine.Stop()
-
-	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
-	require.NoError(t, err)
-	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
 
 	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {
 		sub.MessageSubscription().State = runtime.ActivityStateCompleted

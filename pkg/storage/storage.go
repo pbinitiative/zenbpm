@@ -118,6 +118,9 @@ type ProcessDefinitionStorageReader interface {
 	// FindProcessDefinitionsById return zero or many registered processes with given ID
 	// result array is ordered by version number, from 1 (first) and largest version (last)
 	FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error)
+
+	// FindAllProcessDefinitions returns every registered process definition (all versions).
+	FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.ProcessDefinition, error)
 }
 
 type ProcessDefinitionStorageWriter interface {

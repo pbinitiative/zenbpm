@@ -839,6 +839,40 @@ func (rq *DB) FindProcessDefinitionsById(ctx context.Context, processId string) 
 	return res, nil
 }
 
+func (rq *DB) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.ProcessDefinition, error) {
+	dbDefinitions, err := rq.Queries.FindAllProcessDefinitions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find all process definitions: %w", err)
+	}
+
+	res := make([]bpmnruntime.ProcessDefinition, len(dbDefinitions))
+	for i, def := range dbDefinitions {
+		pd, ok := rq.pdCache.Get(def.Key)
+		if ok {
+			res[i] = pd
+			continue
+		}
+
+		var definitions bpmn20.TDefinitions
+		err = xml.Unmarshal([]byte(def.BpmnData), &definitions)
+		if err != nil {
+			return res, fmt.Errorf("failed to unmarshal xml data: %w", err)
+		}
+
+		res[i] = bpmnruntime.ProcessDefinition{
+			BpmnProcessId: def.BpmnProcessID,
+			Version:       int32(def.Version),
+			Key:           def.Key,
+			Definitions:   definitions,
+			BpmnData:      def.BpmnData,
+			BpmnChecksum:  [16]byte(def.BpmnChecksum),
+		}
+
+		rq.pdCache.Add(def.Key, res[i])
+	}
+	return res, nil
+}
+
 var _ storage.ProcessDefinitionStorageWriter = &DB{}
 
 func (rq *DB) SaveProcessDefinition(ctx context.Context, definition bpmnruntime.ProcessDefinition) error {
@@ -1256,6 +1290,43 @@ func (rq *DB) FindTimersTo(ctx context.Context, end time.Time) ([]bpmnruntime.Ti
 	}
 
 	return rq.inflateTimers(ctx, dbTimers)
+}
+
+// inflateTokensInItems populates token details from database for items that have token references.
+// It's a helper to avoid duplicating token loading/inflation logic across multiple functions.
+// works for both pointer and value token fields by using callback functions.
+func inflateTokensInItems(ctx context.Context, q *sql.Queries, items int, getTokenKey func(i int) int64, setToken func(i int, t bpmnruntime.ExecutionToken)) error {
+	tokensToLoad := make([]int64, 0)
+	for i := 0; i < items; i++ {
+		if key := getTokenKey(i); key != 0 {
+			tokensToLoad = append(tokensToLoad, key)
+		}
+	}
+
+	if len(tokensToLoad) == 0 {
+		return nil
+	}
+
+	loadedTokens, err := q.GetTokens(ctx, tokensToLoad)
+	if err != nil {
+		return fmt.Errorf("failed to load tokens: %w", err)
+	}
+
+	for _, loadedToken := range loadedTokens {
+		// we might have the same token registered for multiple items (event base gateway) so we have to go through whole array
+		for i := 0; i < items; i++ {
+			if getTokenKey(i) == loadedToken.Key {
+				setToken(i, bpmnruntime.ExecutionToken{
+					Key:                loadedToken.Key,
+					ElementInstanceKey: loadedToken.ElementInstanceKey,
+					ElementId:          loadedToken.ElementID,
+					ProcessInstanceKey: loadedToken.ProcessInstanceKey,
+					State:              bpmnruntime.TokenState(loadedToken.State),
+				})
+			}
+		}
+	}
+	return nil
 }
 
 func (rq *DB) inflateTimers(ctx context.Context, dbTimers []sql.Timer) ([]bpmnruntime.Timer, error) {

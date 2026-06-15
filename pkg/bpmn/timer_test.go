@@ -158,7 +158,7 @@ func TestNoninterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, countCompletedBoundaryTokens, 1)
 
-	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].Variables)
+	err = bpmnEngine.JobCompleteByKey(t.Context(), jobs[0].Key, jobs[0].InputVariables)
 	assert.NoError(t, err)
 
 	instance, err = bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)

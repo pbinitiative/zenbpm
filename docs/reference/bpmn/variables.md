@@ -26,3 +26,11 @@ For activities, define an output mapping whenever data should leave the activity
 ```
 
 For catching events, omit output mappings when the complete message or error payload should be copied into the catching scope. Add output mappings when only selected payload variables should be exposed.
+
+## Where output variables are stored
+
+When a job completes the full output variables returned by the job worker are stored on the `Job` record in the `outputVariables` field. These are available via the `/jobs` and `/process-instances/{key}/jobs` endpoints.
+
+When an output mapping is defined on the activity, only the explicitly mapped variables are propagated to the parent process scope. The mapped output variables are stored as historical data on the `FlowElementInstance` record, visible via the `/process-instances/{key}/history` endpoint.
+
+When no output mapping variable is defined, *no variables* are propagated to the parent process scope and `FlowElementInstance` have no output variables.

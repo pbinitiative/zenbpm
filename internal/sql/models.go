@@ -88,9 +88,10 @@ type Job struct {
 	Type               string         `json:"type"`
 	State              int64          `json:"state"`
 	CreatedAt          int64          `json:"created_at"`
-	Variables          string         `json:"variables"`
+	InputVariables     string         `json:"input_variables"`
 	ExecutionToken     int64          `json:"execution_token"`
 	Assignee           sql.NullString `json:"assignee"`
+	OutputVariables    sql.NullString `json:"output_variables"`
 }
 
 type MessageSubscription struct {

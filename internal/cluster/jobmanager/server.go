@@ -224,13 +224,13 @@ func (s *jobServer) distributeJobs() {
 				JobType:  &job.Type,
 				ClientId: ptr.To(string(clientID)),
 				Job: &proto.InternalJob{
-					Key:         &job.Key,
-					InstanceKey: &job.ProcessInstanceKey,
-					Variables:   []byte(job.Variables),
-					Type:        &job.Type,
-					State:       &job.State,
-					ElementId:   &job.ElementID,
-					CreatedAt:   &job.CreatedAt,
+					Key:            &job.Key,
+					InstanceKey:    &job.ProcessInstanceKey,
+					InputVariables: []byte(job.InputVariables),
+					Type:           &job.Type,
+					State:          &job.State,
+					ElementId:      &job.ElementID,
+					CreatedAt:      &job.CreatedAt,
 				},
 			})
 			JobsDistributed.Add(context.Background(), 1, metric.WithAttributes(

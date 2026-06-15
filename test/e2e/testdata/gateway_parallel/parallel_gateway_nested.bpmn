@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_parallel_gateway_nested" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="parallel_gateway_nested" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_outer_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_outer_split" sourceRef="start_event" targetRef="parallel_gateway_outer_split" />
+    <bpmn:parallelGateway id="parallel_gateway_outer_split">
+      <bpmn:incoming>Flow_start_to_outer_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_outer_split_to_outer_task</bpmn:outgoing>
+      <bpmn:outgoing>Flow_outer_split_to_inner_split</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_outer_split_to_outer_task" sourceRef="parallel_gateway_outer_split" targetRef="service_task_outer" />
+    <bpmn:serviceTask id="service_task_outer">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-outer" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_outer_split_to_outer_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_outer_task_to_outer_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_outer_task_to_outer_join" sourceRef="service_task_outer" targetRef="parallel_gateway_outer_join" />
+    <bpmn:sequenceFlow id="Flow_outer_split_to_inner_split" sourceRef="parallel_gateway_outer_split" targetRef="parallel_gateway_inner_split" />
+    <bpmn:parallelGateway id="parallel_gateway_inner_split">
+      <bpmn:incoming>Flow_outer_split_to_inner_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_inner_split_to_task_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_inner_split_to_task_b</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_inner_split_to_task_a" sourceRef="parallel_gateway_inner_split" targetRef="service_task_inner_a" />
+    <bpmn:sequenceFlow id="Flow_inner_split_to_task_b" sourceRef="parallel_gateway_inner_split" targetRef="service_task_inner_b" />
+    <bpmn:serviceTask id="service_task_inner_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-inner-a" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_inner_split_to_task_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_inner_task_a_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="service_task_inner_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-inner-b" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_inner_split_to_task_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_inner_task_b_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_inner_task_a_to_join" sourceRef="service_task_inner_a" targetRef="parallel_gateway_inner_join" />
+    <bpmn:sequenceFlow id="Flow_inner_task_b_to_join" sourceRef="service_task_inner_b" targetRef="parallel_gateway_inner_join" />
+    <bpmn:parallelGateway id="parallel_gateway_inner_join">
+      <bpmn:incoming>Flow_inner_task_a_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_inner_task_b_to_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_inner_join_to_after</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_inner_join_to_after" sourceRef="parallel_gateway_inner_join" targetRef="service_task_inner_after" />
+    <bpmn:serviceTask id="service_task_inner_after">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-inner-after" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_inner_join_to_after</bpmn:incoming>
+      <bpmn:outgoing>Flow_inner_after_to_outer_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_inner_after_to_outer_join" sourceRef="service_task_inner_after" targetRef="parallel_gateway_outer_join" />
+    <bpmn:parallelGateway id="parallel_gateway_outer_join">
+      <bpmn:incoming>Flow_outer_task_to_outer_join</bpmn:incoming>
+      <bpmn:incoming>Flow_inner_after_to_outer_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_outer_join_to_after</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_outer_join_to_after" sourceRef="parallel_gateway_outer_join" targetRef="service_task_after_outer_join" />
+    <bpmn:serviceTask id="service_task_after_outer_join">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-outer-after" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_outer_join_to_after</bpmn:incoming>
+      <bpmn:outgoing>Flow_after_outer_join_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_after_outer_join_to_end" sourceRef="service_task_after_outer_join" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_after_outer_join_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_gateway_nested">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="170" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_outer_split_di" bpmnElement="parallel_gateway_outer_split">
+        <dc:Bounds x="240" y="163" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_outer_di" bpmnElement="service_task_outer">
+        <dc:Bounds x="360" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_inner_split_di" bpmnElement="parallel_gateway_inner_split">
+        <dc:Bounds x="360" y="263" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_inner_b_di" bpmnElement="service_task_inner_b">
+        <dc:Bounds x="500" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_inner_join_di" bpmnElement="parallel_gateway_inner_join">
+        <dc:Bounds x="660" y="283" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_inner_after_di" bpmnElement="service_task_inner_after">
+        <dc:Bounds x="770" y="268" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_outer_join_di" bpmnElement="parallel_gateway_outer_join">
+        <dc:Bounds x="940" y="163" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_after_outer_join_di" bpmnElement="service_task_after_outer_join">
+        <dc:Bounds x="1060" y="148" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="1220" y="170" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_inner_a_di" bpmnElement="service_task_inner_a">
+        <dc:Bounds x="500" y="190" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_outer_split_di" bpmnElement="Flow_start_to_outer_split">
+        <di:waypoint x="186" y="188" />
+        <di:waypoint x="240" y="188" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_outer_split_to_outer_task_di" bpmnElement="Flow_outer_split_to_outer_task">
+        <di:waypoint x="265" y="163" />
+        <di:waypoint x="265" y="100" />
+        <di:waypoint x="360" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_outer_task_to_outer_join_di" bpmnElement="Flow_outer_task_to_outer_join">
+        <di:waypoint x="460" y="100" />
+        <di:waypoint x="965" y="100" />
+        <di:waypoint x="965" y="163" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_outer_split_to_inner_split_di" bpmnElement="Flow_outer_split_to_inner_split">
+        <di:waypoint x="265" y="213" />
+        <di:waypoint x="265" y="288" />
+        <di:waypoint x="360" y="288" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_split_to_task_a_di" bpmnElement="Flow_inner_split_to_task_a">
+        <di:waypoint x="385" y="263" />
+        <di:waypoint x="385" y="230" />
+        <di:waypoint x="500" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_split_to_task_b_di" bpmnElement="Flow_inner_split_to_task_b">
+        <di:waypoint x="385" y="313" />
+        <di:waypoint x="385" y="360" />
+        <di:waypoint x="500" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_task_a_to_join_di" bpmnElement="Flow_inner_task_a_to_join">
+        <di:waypoint x="600" y="230" />
+        <di:waypoint x="685" y="230" />
+        <di:waypoint x="685" y="283" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_task_b_to_join_di" bpmnElement="Flow_inner_task_b_to_join">
+        <di:waypoint x="600" y="360" />
+        <di:waypoint x="685" y="360" />
+        <di:waypoint x="685" y="333" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_join_to_after_di" bpmnElement="Flow_inner_join_to_after">
+        <di:waypoint x="710" y="308" />
+        <di:waypoint x="770" y="308" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_inner_after_to_outer_join_di" bpmnElement="Flow_inner_after_to_outer_join">
+        <di:waypoint x="870" y="308" />
+        <di:waypoint x="965" y="308" />
+        <di:waypoint x="965" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_outer_join_to_after_di" bpmnElement="Flow_outer_join_to_after">
+        <di:waypoint x="990" y="188" />
+        <di:waypoint x="1060" y="188" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_after_outer_join_to_end_di" bpmnElement="Flow_after_outer_join_to_end">
+        <di:waypoint x="1160" y="188" />
+        <di:waypoint x="1220" y="188" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

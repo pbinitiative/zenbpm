@@ -1368,10 +1368,17 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 	res := make([]bpmnruntime.Job, len(dbJobs))
 	tokensToLoad := make([]int64, len(dbJobs))
 	for i, job := range dbJobs {
-		var variables map[string]interface{}
-		err = json.Unmarshal([]byte(job.Variables), &variables)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
+		var inputVariables map[string]interface{}
+		if job.InputVariables != "" {
+			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
+			}
+		}
+		var outputVariables map[string]interface{}
+		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
+			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
+			}
 		}
 		var assignee *string
 		if job.Assignee.Valid {
@@ -1388,8 +1395,9 @@ func (rq *DB) GetJobsInStateByTokenKey(ctx context.Context, tokenKey int64, stat
 			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
-			Variables: variables,
-			Assignee:  assignee,
+			InputVariables:  inputVariables,
+			OutputVariables: outputVariables,
+			Assignee:        assignee,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1426,6 +1434,18 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 		if job.Assignee.Valid {
 			assignee = ptr.To(job.Assignee.String)
 		}
+		var inputVariables map[string]interface{}
+		if job.InputVariables != "" {
+			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
+			}
+		}
+		var outputVariables map[string]interface{}
+		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
+			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
+			}
+		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
 			ElementInstanceKey: job.ElementInstanceKey,
@@ -1437,7 +1457,9 @@ func (rq *DB) FindActiveJobsByType(ctx context.Context, jobType string) ([]bpmnr
 			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
-			Assignee: assignee,
+			InputVariables:  inputVariables,
+			OutputVariables: outputVariables,
+			Assignee:        assignee,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1481,10 +1503,17 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 	}
 	token := tokens[0]
 
-	var variables map[string]interface{}
-	err = json.Unmarshal([]byte(job.Variables), &variables)
-	if err != nil {
-		return res, fmt.Errorf("failed to unmarshal job variables: %w", err)
+	var inputVariables map[string]interface{}
+	if job.InputVariables != "" {
+		if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
+			return res, fmt.Errorf("failed to unmarshal job input variables: %w", err)
+		}
+	}
+	var outputVariables map[string]interface{}
+	if job.OutputVariables.Valid && job.OutputVariables.String != "" {
+		if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
+			return res, fmt.Errorf("failed to unmarshal job output variables: %w", err)
+		}
 	}
 	var assignee *string
 	if job.Assignee.Valid {
@@ -1506,8 +1535,9 @@ func (rq *DB) FindJobByJobKey(ctx context.Context, jobKey int64) (bpmnruntime.Jo
 			ProcessInstanceKey: token.ProcessInstanceKey,
 			State:              bpmnruntime.TokenState(token.State),
 		},
-		Variables: variables,
-		Assignee:  assignee,
+		InputVariables:  inputVariables,
+		OutputVariables: outputVariables,
+		Assignee:        assignee,
 	}
 	return res, nil
 }
@@ -1523,10 +1553,17 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 	res := make([]bpmnruntime.Job, len(dbJobs))
 	tokensToLoad := make([]int64, len(dbJobs))
 	for i, job := range dbJobs {
-		var variables map[string]interface{}
-		err = json.Unmarshal([]byte(job.Variables), &variables)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal job variables: %w", err)
+		var inputVariables map[string]interface{}
+		if job.InputVariables != "" {
+			if err := json.Unmarshal([]byte(job.InputVariables), &inputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job input variables: %w", err)
+			}
+		}
+		var outputVariables map[string]interface{}
+		if job.OutputVariables.Valid && job.OutputVariables.String != "" {
+			if err := json.Unmarshal([]byte(job.OutputVariables.String), &outputVariables); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal job output variables: %w", err)
+			}
 		}
 		res[i] = bpmnruntime.Job{
 			ElementId:          job.ElementID,
@@ -1539,7 +1576,8 @@ func (rq *DB) FindPendingProcessInstanceJobs(ctx context.Context, processInstanc
 			Token: bpmnruntime.ExecutionToken{
 				Key: job.ExecutionToken,
 			},
-			Variables: variables,
+			InputVariables:  inputVariables,
+			OutputVariables: outputVariables,
 		}
 		tokensToLoad[i] = job.ExecutionToken
 	}
@@ -1571,9 +1609,20 @@ func (rq *DB) SaveJob(ctx context.Context, job bpmnruntime.Job) error {
 }
 
 func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) error {
-	variableBytes, err := json.Marshal(job.Variables)
+	inputVariableBytes, err := json.Marshal(job.InputVariables)
 	if err != nil {
-		return fmt.Errorf("failed to marshal variables for job %d: %w", job.GetKey(), err)
+		return fmt.Errorf("failed to marshal input variables for job %d: %w", job.GetKey(), err)
+	}
+	var outputVariableBytes []byte
+	if job.OutputVariables != nil {
+		outputVariableBytes, err = json.Marshal(job.OutputVariables)
+		if err != nil {
+			return fmt.Errorf("failed to marshal output variables for job %d: %w", job.GetKey(), err)
+		}
+	}
+	var outputVariables ssql.NullString
+	if outputVariableBytes != nil {
+		outputVariables = ssql.NullString{String: string(outputVariableBytes), Valid: true}
 	}
 	err = db.SaveJob(ctx, sql.SaveJobParams{
 		Key:                job.GetKey(),
@@ -1583,7 +1632,8 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 		Type:               job.Type,
 		State:              int64(job.GetState()),
 		CreatedAt:          job.CreatedAt.UnixMilli(),
-		Variables:          string(variableBytes),
+		InputVariables:     string(inputVariableBytes),
+		OutputVariables:    outputVariables,
 		ExecutionToken:     job.Token.Key,
 		Assignee:           sql.ToNullString(job.Assignee),
 	})

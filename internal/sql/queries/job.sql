@@ -1,10 +1,11 @@
 -- name: SaveJob :exec
-INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, variables, execution_token, assignee)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO job(key, element_id, element_instance_key, process_instance_key, type, state, created_at, input_variables, output_variables, execution_token, assignee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT
     DO UPDATE SET
         state = excluded.state,
-        variables = excluded.variables,
+        input_variables = excluded.input_variables,
+        output_variables = excluded.output_variables,
         assignee = excluded.assignee;
 
 -- name: DeleteProcessInstancesJobs :exec

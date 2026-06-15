@@ -91,7 +91,7 @@ func saveWaitingJob(t *testing.T, zpn *ZenPartitionNode, key int64) {
 		Type:               "test-job",
 		State:              1, // waiting
 		CreatedAt:          time.Now().UnixMilli(),
-		Variables:          "{}",
+		InputVariables:     "{}",
 		ExecutionToken:     key,
 		Assignee:           sql.NullString{},
 	}); err != nil {

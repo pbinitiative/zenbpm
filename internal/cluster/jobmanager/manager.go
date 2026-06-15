@@ -55,14 +55,14 @@ type JobManager struct {
 }
 
 type Job struct {
-	Key         int64
-	InstanceKey int64
-	Variables   []byte
-	Type        JobType
-	State       int64
-	ElementID   string
-	CreatedAt   int64
-	ClientID    ClientID
+	Key            int64
+	InstanceKey    int64
+	InputVariables []byte
+	Type           JobType
+	State          int64
+	ElementID      string
+	CreatedAt      int64
+	ClientID       ClientID
 }
 
 func New(

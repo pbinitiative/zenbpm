@@ -459,7 +459,8 @@ type Job struct {
 	Key                int64
 	State              ActivityState
 	Type               string
-	Variables          map[string]any
+	InputVariables     map[string]any
+	OutputVariables    map[string]any
 	CreatedAt          time.Time
 	Token              ExecutionToken
 	Assignee           *string

@@ -162,12 +162,7 @@ func (engine *Engine) failJobWithIncident(
 
 	job.State = runtime.ActivityStateFailed
 	if variables != nil {
-		if job.Variables == nil {
-			job.Variables = make(map[string]interface{}, len(variables))
-		}
-		for key, value := range variables {
-			job.Variables[key] = value
-		}
+		job.OutputVariables = variables
 	}
 	err := batch.SaveJob(ctx, job)
 	if err != nil {
@@ -288,7 +283,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	variableHolder.SetLocalVariables(job.Variables)
+	variableHolder.SetLocalVariables(job.InputVariables)
 
 	task := instance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
 	if task == nil {
@@ -317,10 +312,14 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	job.State = runtime.ActivityStateCompleted
+	job.OutputVariables = variables
 	batch.SaveJob(ctx, job)
 
 	messageEndEventHandled := false
 	activity, err := engine.getExecutionTokenActivity(ctx, instance, job.Token)
+	if err != nil {
+		return fmt.Errorf("failed to get execution token activity: %w", err)
+	}
 	switch element := activity.Element().(type) {
 	case *bpmn20.TEndEvent:
 		tokens, err = engine.handleExternalEndEventContinuation(ctx, &batch, instance, element, job.Token, tokens)

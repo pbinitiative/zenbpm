@@ -25,7 +25,7 @@ func TestParallelMultiInstanceUserTaskJobCompleteVariables(t *testing.T) {
 		// Complete in reverse order to verify each iteration owns its own output mapping result
 		// independently of completion order.
 		for i := len(jobs) - 1; i >= 0; i-- {
-			approver := jobs[i].Variables["approver"].(string)
+			approver := jobs[i].InputVariables["approver"].(string)
 			require.NoError(t, completeJob(t, jobs[i].Key, map[string]any{"approved": approvals[approver]}))
 		}
 

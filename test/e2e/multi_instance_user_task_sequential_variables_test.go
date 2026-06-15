@@ -56,12 +56,12 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		firstJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
-		require.Equal(t, "alice", firstJob.Variables["approver"], "first iteration job should bind input element to first collection entry")
+		require.Equal(t, "alice", firstJob.InputVariables["approver"], "first iteration job should bind input element to first collection entry")
 		err := completeJob(t, firstJob.Key, nil)
 		require.NoError(t, err)
 
 		secondJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
-		require.Equal(t, "bob", secondJob.Variables["approver"], "second iteration job should bind input element to second collection entry")
+		require.Equal(t, "bob", secondJob.InputVariables["approver"], "second iteration job should bind input element to second collection entry")
 		err = completeJob(t, secondJob.Key, nil)
 		require.NoError(t, err)
 
@@ -178,7 +178,7 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		seen := make([]any, 0, 3)
 		for i := 0; i < 3; i++ {
 			job := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
-			seen = append(seen, job.Variables["approver"])
+			seen = append(seen, job.InputVariables["approver"])
 			require.NoError(t, completeJob(t, job.Key, nil))
 		}
 
@@ -204,11 +204,11 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 		firstChild := waitForChildProcessInstance(t, processInstance.Key, 0)
 
 		firstJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
-		require.Equal(t, "alice", firstJob.Variables["approver"], "iteration scope must shadow same-named parent variable")
+		require.Equal(t, "alice", firstJob.InputVariables["approver"], "iteration scope must shadow same-named parent variable")
 		require.NoError(t, completeJob(t, firstJob.Key, nil))
 
 		secondJob := waitForProcessInstanceActiveJobByElementId(t, firstChild.Key, "user_task")
-		require.Equal(t, "bob", secondJob.Variables["approver"], "iteration scope must shadow same-named parent variable across iterations")
+		require.Equal(t, "bob", secondJob.InputVariables["approver"], "iteration scope must shadow same-named parent variable across iterations")
 		require.NoError(t, completeJob(t, secondJob.Key, nil))
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")

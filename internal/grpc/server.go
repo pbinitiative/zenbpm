@@ -203,12 +203,12 @@ func (s *Server) sendClientJobs(stream grpc.BidiStreamingServer[proto.JobStreamR
 		case job := <-clientCh:
 			err := sendJobStreamResponse(stream, sendMu, &proto.JobStreamResponse{
 				Job: &proto.WaitingJob{
-					Key:         &job.Key,
-					InstanceKey: &job.InstanceKey,
-					Variables:   job.Variables,
-					Type:        ptr.To(string(job.Type)),
-					ElementId:   &job.ElementID,
-					CreatedAt:   &job.CreatedAt,
+					Key:            &job.Key,
+					InstanceKey:    &job.InstanceKey,
+					InputVariables: job.InputVariables,
+					Type:           ptr.To(string(job.Type)),
+					ElementId:      &job.ElementID,
+					CreatedAt:      &job.CreatedAt,
 				},
 			})
 			if err != nil {

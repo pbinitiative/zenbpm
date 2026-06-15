@@ -54,7 +54,7 @@ func TestTimerCycleStartEvent_CronEverySecond(t *testing.T) {
 
 	// Cancel any Created definition-level timer for this definition so the cron does not fire again.
 	store := mustGetPartitionStore(t, parentInstances[0].Key)
-	cancelCreatedDefinitionLevelTimers(t, store, definitionKey)
+	require.NoError(t, cancelCreatedDefinitionLevelTimers(store, definitionKey))
 
 	// After cancellation, the instance count must remain at 2 (no further firings).
 	require.Never(t, func() bool {
@@ -68,7 +68,8 @@ func TestTimerCycleStartEvent_CronEverySecond(t *testing.T) {
 		if page.JSON200.TotalCount > 2 {
 			return true
 		}
-		cancelCreatedDefinitionLevelTimers(t, store, definitionKey)
+		// Runs in a testify background goroutine: never call t/require here.
+		_ = cancelCreatedDefinitionLevelTimers(store, definitionKey)
 		return false
 	}, 3*time.Second, 100*time.Millisecond, "cron cycle should be deactivated — no 3rd process instance should appear")
 
@@ -157,16 +158,23 @@ func mustGetPartitionStore(t *testing.T, instanceKey int64) storage.Storage {
 
 // cancelCreatedDefinitionLevelTimers marks every Created definition-level timer (ProcessInstanceKey == nil)
 // for the given process definition as Cancelled so the cycle stops firing.
-func cancelCreatedDefinitionLevelTimers(t *testing.T, store storage.Storage, definitionKey int64) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+// It returns an error instead of asserting because it is also invoked from inside the require.Never
+// condition closure, which testify runs in a background goroutine. Calling t/require assertions from a
+// non-test goroutine panics with "Fail in goroutine after <test> has completed" once the test finishes.
+func cancelCreatedDefinitionLevelTimers(store storage.Storage, definitionKey int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	created, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateCreated)
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("failed to find created definition-level timers for definition %d: %w", definitionKey, err)
+	}
 	for _, timer := range filterDefinitionLevelTimers(created) {
 		timer.TimerState = bpmnruntime.TimerStateCancelled
-		require.NoError(t, store.SaveTimer(ctx, timer))
+		if err := store.SaveTimer(ctx, timer); err != nil {
+			return fmt.Errorf("failed to cancel definition-level timer %d: %w", timer.Key, err)
+		}
 	}
+	return nil
 }
 
 // assertDefinitionLevelTriggeredTimers asserts that exactly expectedCount triggered

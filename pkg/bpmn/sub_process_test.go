@@ -797,7 +797,9 @@ func TestMultiInstanceParallelSubProcessCorrelateBoundaryEventFailsToCreateParal
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState(), "Child instance should be completed")
 	countFailed := 0
 	multiInstanceActive := 0
-	for _, p := range engineStorage.ProcessInstances {
+	// Iterate over a locked snapshot: engine goroutines mutate the storage map concurrently,
+	// so ranging over the raw map here causes "concurrent map iteration and map write".
+	for _, p := range engineStorage.Copy().ProcessInstances {
 		if p.ProcessInstance().State == runtime.ActivityStateFailed && p.Type() == runtime.ProcessTypeSubProcess {
 			countFailed++
 		}

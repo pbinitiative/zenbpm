@@ -1139,39 +1139,6 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, batch *EngineB
 	return []runtime.ExecutionToken{currentToken}, nil
 }
 
-func (engine *Engine) handleInclusiveGateway(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TInclusiveGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
-	// TODO: handle incoming mapping
-	outgoing := element.GetOutgoingAssociation()
-	activatedFlows, err := engine.inclusivelyFilterByConditionExpression(outgoing, element.GetDefaultFlow(), instance.ProcessInstance().VariableHolder.LocalVariables())
-	if err != nil {
-		instance.ProcessInstance().State = runtime.ActivityStateFailed
-		return nil, fmt.Errorf("failed to filter outgoing associations from InclusiveGateway: %w", err)
-	}
-	resTokens := make([]runtime.ExecutionToken, len(activatedFlows)+1)
-	currentToken.State = runtime.TokenStateCompleted
-	resTokens[0] = currentToken
-	for i, flow := range activatedFlows {
-		newToken := runtime.ExecutionToken{
-			Key:                engine.generateKey(),
-			ElementInstanceKey: engine.generateKey(),
-			ElementId:          flow.GetTargetRef().GetId(),
-			ProcessInstanceKey: instance.ProcessInstance().Key,
-			State:              runtime.TokenStateRunning,
-		}
-		batch.SaveFlowElementInstance(ctx,
-			runtime.FlowElementInstance{
-				Key:                engine.generateKey(),
-				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
-				ElementId:          flow.GetId(),
-				CreatedAt:          time.Now(),
-				ExecutionTokenKey:  newToken.Key,
-			},
-		)
-		resTokens[i+1] = newToken
-	}
-	return resTokens, nil
-}
-
 // TODO: check each use of this method and add change to how variables are added to process instance
 func (engine *Engine) handleElementTransition(
 	ctx context.Context,

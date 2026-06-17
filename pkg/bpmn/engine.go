@@ -1083,35 +1083,6 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 	return resTokens, nil
 }
 
-func (engine *Engine) handleEventBasedGateway(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, element *bpmn20.TEventBasedGateway, currentToken runtime.ExecutionToken) ([]runtime.ExecutionToken, error) {
-	outgoing := element.GetOutgoingAssociation()
-	resTokens := make([]runtime.ExecutionToken, 0, 2)
-	// complete token that activated gateway
-	currentToken.State = runtime.TokenStateCompleted
-	resTokens = append(resTokens, currentToken)
-	// generate new gateway token
-	gatewayToken := runtime.ExecutionToken{
-		Key:                engine.generateKey(),
-		ElementInstanceKey: engine.generateKey(),
-		ElementId:          element.GetId(),
-		ProcessInstanceKey: instance.ProcessInstance().Key,
-		State:              runtime.TokenStateWaiting,
-	}
-	for _, flow := range outgoing {
-		switch targetElem := flow.GetTargetRef().(type) {
-		case *bpmn20.TIntermediateCatchEvent:
-			tokens, err := engine.createIntermediateCatchEvent(ctx, batch, instance, targetElem, gatewayToken)
-			resTokens = append(resTokens, tokens...)
-			if err != nil {
-				return resTokens, fmt.Errorf("failed to handle IntermediateCatchEvent: %w", err)
-			}
-		default:
-			return resTokens, fmt.Errorf("unsupported element after EventBasedGateway: id=%q, type=%T", flow.GetTargetRef().GetId(), flow.GetTargetRef())
-		}
-	}
-	return resTokens, nil
-}
-
 // handleExclusiveGateway handles Exclusive gateway behaviour
 // A diverging Exclusive Gateway (Decision) is used to create alternative paths within a Process flow. This is basically
 // the “diversion point in the road” for a Process. For a given instance of the Process, only one of the paths can be taken.

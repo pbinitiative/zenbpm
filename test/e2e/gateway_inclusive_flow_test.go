@@ -12,6 +12,7 @@ import (
 
 const inclusiveGatewaySplitJoinPath = "testdata/gateway_inclusive/inclusive_gateway_split_join.bpmn"
 const inclusiveGatewaySplitToEndEventsPath = "testdata/gateway_inclusive/inclusive_gateway_split_to_end_events.bpmn"
+const inclusiveGatewayReentryPath = "testdata/gateway_inclusive/inclusive_gateway_reentry.bpmn"
 
 func TestInclusiveGatewayFlow(t *testing.T) {
 	t.Run("One active branch completes only the selected split path", func(t *testing.T) {
@@ -125,6 +126,37 @@ func TestInclusiveGatewayFlow(t *testing.T) {
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceTokenState(t, processInstance.Key, "end_event", runtime.TokenStateCompleted)
+	})
+
+	t.Run("Re-entering the split gateway completes after the loop condition changes", func(t *testing.T) {
+		processInstance := deployAndCreateInclusiveGatewayInstance(t, inclusiveGatewayReentryPath, map[string]any{
+			"loopCount": 0,
+		})
+		t.Cleanup(func() {
+			cleanupOwnedProcessInstance(t, processInstance.Key)
+		})
+
+		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task_loop")
+
+		completeJobForElementId(t, processInstance.Key, "service_task_loop", map[string]any{
+			"loopCount": 2,
+		})
+
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
+		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
+		assertProcessInstanceHasNoActiveJobByElementId(t, processInstance.Key, "service_task_loop")
+		assertProcessInstanceTokenState(t, processInstance.Key, "end_event_completed", runtime.TokenStateCompleted)
+		assertExactProcessInstanceHistory(t, processInstance.Key, []string{
+			"start_event",
+			"Flow_start_to_gateway",
+			"inclusive_gateway_loop",
+			"Flow_gateway_to_loop_task",
+			"service_task_loop",
+			"Flow_loop_task_to_gateway",
+			"inclusive_gateway_loop",
+			"Flow_gateway_to_end",
+			"end_event_completed",
+		})
 	})
 }
 

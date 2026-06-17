@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_inclusive_gateway_reentry" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="inclusive_gateway_reentry" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_gateway</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_gateway" sourceRef="start_event" targetRef="inclusive_gateway_loop" />
+    <bpmn:sequenceFlow id="Flow_gateway_to_loop_task" sourceRef="inclusive_gateway_loop" targetRef="service_task_loop" />
+    <bpmn:serviceTask id="service_task_loop">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-reentry-loop" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=loopCount" target="loopCount" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gateway_to_loop_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_loop_task_to_gateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_loop_task_to_gateway" sourceRef="service_task_loop" targetRef="inclusive_gateway_loop" />
+    <bpmn:endEvent id="end_event_completed">
+      <bpmn:incoming>Flow_gateway_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:inclusiveGateway id="inclusive_gateway_loop" default="Flow_gateway_to_loop_task">
+      <bpmn:incoming>Flow_start_to_gateway</bpmn:incoming>
+      <bpmn:incoming>Flow_loop_task_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_end</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_loop_task</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_gateway_to_end" sourceRef="inclusive_gateway_loop" targetRef="end_event_completed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= loopCount &gt;= 2</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="inclusive_gateway_reentry">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_loop_di" bpmnElement="service_task_loop">
+        <dc:Bounds x="360" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_0bhi0wi_di" bpmnElement="inclusive_gateway_loop">
+        <dc:Bounds x="240" y="175" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_completed_di" bpmnElement="end_event_completed">
+        <dc:Bounds x="392" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_gateway_di" bpmnElement="Flow_start_to_gateway">
+        <di:waypoint x="186" y="200" />
+        <di:waypoint x="240" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_loop_task_di" bpmnElement="Flow_gateway_to_loop_task">
+        <di:waypoint x="290" y="200" />
+        <di:waypoint x="360" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_loop_task_to_gateway_di" bpmnElement="Flow_loop_task_to_gateway">
+        <di:waypoint x="410" y="160" />
+        <di:waypoint x="410" y="100" />
+        <di:waypoint x="265" y="100" />
+        <di:waypoint x="265" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0qnmf95_di" bpmnElement="Flow_gateway_to_end">
+        <di:waypoint x="265" y="225" />
+        <di:waypoint x="265" y="300" />
+        <di:waypoint x="392" y="300" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_inclusive_gateway_split_join" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="inclusive_gateway_split_join" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_split" sourceRef="start_event" targetRef="inclusive_gateway_split" />
+    <bpmn:inclusiveGateway id="inclusive_gateway_split" default="Flow_split_to_default">
+      <bpmn:incoming>Flow_start_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_task_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_task_b</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_task_c</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_default</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_split_to_task_a" sourceRef="inclusive_gateway_split" targetRef="service_task_a">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeA</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_task_b" sourceRef="inclusive_gateway_split" targetRef="service_task_b">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeB</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_task_c" sourceRef="inclusive_gateway_split" targetRef="service_task_c">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeC</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_default" sourceRef="inclusive_gateway_split" targetRef="service_task_default" />
+    <bpmn:serviceTask id="service_task_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-a" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_a_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="service_task_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-b" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_b_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="service_task_c">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-c" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_c</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_c_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="service_task_default">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-default" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_default</bpmn:incoming>
+      <bpmn:outgoing>Flow_default_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_task_a_to_join" sourceRef="service_task_a" targetRef="inclusive_gateway_join" />
+    <bpmn:sequenceFlow id="Flow_task_b_to_join" sourceRef="service_task_b" targetRef="inclusive_gateway_join" />
+    <bpmn:sequenceFlow id="Flow_task_c_to_join" sourceRef="service_task_c" targetRef="inclusive_gateway_join" />
+    <bpmn:sequenceFlow id="Flow_default_to_join" sourceRef="service_task_default" targetRef="inclusive_gateway_join" />
+    <bpmn:inclusiveGateway id="inclusive_gateway_join">
+      <bpmn:incoming>Flow_task_a_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_task_b_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_task_c_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_default_to_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_join_to_after</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_join_to_after" sourceRef="inclusive_gateway_join" targetRef="service_task_after_join" />
+    <bpmn:serviceTask id="service_task_after_join">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="inclusive-after" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_join_to_after</bpmn:incoming>
+      <bpmn:outgoing>Flow_after_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_after_to_end" sourceRef="service_task_after_join" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_after_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="inclusive_gateway_split_join">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="230" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inclusive_gateway_split_di" bpmnElement="inclusive_gateway_split">
+        <dc:Bounds x="240" y="223" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inclusive_gateway_join_di" bpmnElement="inclusive_gateway_join">
+        <dc:Bounds x="540" y="223" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_after_join_di" bpmnElement="service_task_after_join">
+        <dc:Bounds x="660" y="208" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="830" y="230" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_c_di" bpmnElement="service_task_c">
+        <dc:Bounds x="360" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_default_di" bpmnElement="service_task_default">
+        <dc:Bounds x="360" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_b_di" bpmnElement="service_task_b">
+        <dc:Bounds x="360" y="208" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_a_di" bpmnElement="service_task_a">
+        <dc:Bounds x="360" y="90" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_split_di" bpmnElement="Flow_start_to_split">
+        <di:waypoint x="186" y="248" />
+        <di:waypoint x="240" y="248" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_a_di" bpmnElement="Flow_split_to_task_a">
+        <di:waypoint x="265" y="223" />
+        <di:waypoint x="265" y="130" />
+        <di:waypoint x="360" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_b_di" bpmnElement="Flow_split_to_task_b">
+        <di:waypoint x="290" y="248" />
+        <di:waypoint x="360" y="248" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_c_di" bpmnElement="Flow_split_to_task_c">
+        <di:waypoint x="265" y="273" />
+        <di:waypoint x="265" y="370" />
+        <di:waypoint x="360" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_default_di" bpmnElement="Flow_split_to_default">
+        <di:waypoint x="265" y="273" />
+        <di:waypoint x="265" y="480" />
+        <di:waypoint x="360" y="480" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_a_to_join_di" bpmnElement="Flow_task_a_to_join">
+        <di:waypoint x="460" y="130" />
+        <di:waypoint x="565" y="130" />
+        <di:waypoint x="565" y="223" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_b_to_join_di" bpmnElement="Flow_task_b_to_join">
+        <di:waypoint x="460" y="248" />
+        <di:waypoint x="540" y="248" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_c_to_join_di" bpmnElement="Flow_task_c_to_join">
+        <di:waypoint x="460" y="370" />
+        <di:waypoint x="565" y="370" />
+        <di:waypoint x="565" y="273" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_default_to_join_di" bpmnElement="Flow_default_to_join">
+        <di:waypoint x="460" y="480" />
+        <di:waypoint x="565" y="480" />
+        <di:waypoint x="565" y="273" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_join_to_after_di" bpmnElement="Flow_join_to_after">
+        <di:waypoint x="590" y="248" />
+        <di:waypoint x="660" y="248" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_after_to_end_di" bpmnElement="Flow_after_to_end">
+        <di:waypoint x="760" y="248" />
+        <di:waypoint x="830" y="248" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_inclusive_gateway_split_to_end_events" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="inclusive_gateway_split_to_end_events" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_split</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_split" sourceRef="start_event" targetRef="inclusive_gateway_split" />
+    <bpmn:inclusiveGateway id="inclusive_gateway_split" default="Flow_split_to_default">
+      <bpmn:incoming>Flow_start_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_end_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_end_b</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_end_c</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_default</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_split_to_end_a" sourceRef="inclusive_gateway_split" targetRef="end_event_a">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeA</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_end_b" sourceRef="inclusive_gateway_split" targetRef="end_event_b">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeB</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_end_c" sourceRef="inclusive_gateway_split" targetRef="end_event_c">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeC</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_split_to_default" sourceRef="inclusive_gateway_split" targetRef="end_event_default" />
+    <bpmn:endEvent id="end_event_a">
+      <bpmn:incoming>Flow_split_to_end_a</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_event_b">
+      <bpmn:incoming>Flow_split_to_end_b</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_event_c">
+      <bpmn:incoming>Flow_split_to_end_c</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_event_default">
+      <bpmn:incoming>Flow_split_to_default</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="inclusive_gateway_split_to_end_events">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inclusive_gateway_split_di" bpmnElement="inclusive_gateway_split">
+        <dc:Bounds x="240" y="173" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_a_di" bpmnElement="end_event_a">
+        <dc:Bounds x="390" y="60" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_b_di" bpmnElement="end_event_b">
+        <dc:Bounds x="390" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_c_di" bpmnElement="end_event_c">
+        <dc:Bounds x="390" y="260" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_default_di" bpmnElement="end_event_default">
+        <dc:Bounds x="390" y="360" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_split_di" bpmnElement="Flow_start_to_split">
+        <di:waypoint x="186" y="198" />
+        <di:waypoint x="240" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_end_a_di" bpmnElement="Flow_split_to_end_a">
+        <di:waypoint x="265" y="173" />
+        <di:waypoint x="265" y="78" />
+        <di:waypoint x="390" y="78" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_end_b_di" bpmnElement="Flow_split_to_end_b">
+        <di:waypoint x="290" y="198" />
+        <di:waypoint x="390" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_end_c_di" bpmnElement="Flow_split_to_end_c">
+        <di:waypoint x="265" y="223" />
+        <di:waypoint x="265" y="278" />
+        <di:waypoint x="390" y="278" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_default_di" bpmnElement="Flow_split_to_default">
+        <di:waypoint x="265" y="223" />
+        <di:waypoint x="265" y="378" />
+        <di:waypoint x="390" y="378" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

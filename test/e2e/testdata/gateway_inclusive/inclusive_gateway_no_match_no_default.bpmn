@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_inclusive_gateway_no_match_no_default" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="inclusive_gateway_no_match_no_default" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_gateway</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_gateway" sourceRef="start_event" targetRef="inclusive_gateway" />
+    <bpmn:inclusiveGateway id="inclusive_gateway">
+      <bpmn:incoming>Flow_start_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_end_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_end_b</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_gateway_to_end_a" sourceRef="inclusive_gateway" targetRef="end_event_a">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeA</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gateway_to_end_b" sourceRef="inclusive_gateway" targetRef="end_event_b">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=routeB</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="end_event_a">
+      <bpmn:incoming>Flow_gateway_to_end_a</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_event_b">
+      <bpmn:incoming>Flow_gateway_to_end_b</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="inclusive_gateway_no_match_no_default">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="inclusive_gateway_di" bpmnElement="inclusive_gateway">
+        <dc:Bounds x="240" y="153" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_a_di" bpmnElement="end_event_a">
+        <dc:Bounds x="390" y="90" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_b_di" bpmnElement="end_event_b">
+        <dc:Bounds x="390" y="230" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_gateway_di" bpmnElement="Flow_start_to_gateway">
+        <di:waypoint x="186" y="178" />
+        <di:waypoint x="240" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_end_a_di" bpmnElement="Flow_gateway_to_end_a">
+        <di:waypoint x="265" y="153" />
+        <di:waypoint x="265" y="108" />
+        <di:waypoint x="390" y="108" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_end_b_di" bpmnElement="Flow_gateway_to_end_b">
+        <di:waypoint x="265" y="203" />
+        <di:waypoint x="265" y="248" />
+        <di:waypoint x="390" y="248" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

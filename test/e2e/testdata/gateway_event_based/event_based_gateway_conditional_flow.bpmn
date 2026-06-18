@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_event_based_gateway_conditional_flow" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="event-based-gateway-conditional-flow" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_gateway</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_gateway" sourceRef="start_event" targetRef="EventBasedGateway_1" />
+    <bpmn:eventBasedGateway id="EventBasedGateway_1">
+      <bpmn:incoming>Flow_start_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_message</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_timer</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+    <bpmn:sequenceFlow id="Flow_gateway_to_message" sourceRef="EventBasedGateway_1" targetRef="catch_message">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=shouldNotBeEvaluated</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gateway_to_timer" sourceRef="EventBasedGateway_1" targetRef="catch_timer" />
+    <bpmn:intermediateCatchEvent id="catch_message">
+      <bpmn:incoming>Flow_gateway_to_message</bpmn:incoming>
+      <bpmn:outgoing>Flow_message_to_end</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_gateway" messageRef="Message_gateway" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="catch_timer">
+      <bpmn:incoming>Flow_gateway_to_timer</bpmn:incoming>
+      <bpmn:outgoing>Flow_timer_to_end</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_gateway">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_message_to_end" sourceRef="catch_message" targetRef="end_message" />
+    <bpmn:sequenceFlow id="Flow_timer_to_end" sourceRef="catch_timer" targetRef="end_timer" />
+    <bpmn:endEvent id="end_message">
+      <bpmn:incoming>Flow_message_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_timer">
+      <bpmn:incoming>Flow_timer_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="Message_gateway" name="event-gateway-conditional-message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="event-based-gateway-conditional-flow">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EventBasedGateway_1_di" bpmnElement="EventBasedGateway_1">
+        <dc:Bounds x="240" y="115" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="catch_message_di" bpmnElement="catch_message">
+        <dc:Bounds x="350" y="62" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="catch_timer_di" bpmnElement="catch_timer">
+        <dc:Bounds x="350" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_message_di" bpmnElement="end_message">
+        <dc:Bounds x="480" y="62" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_timer_di" bpmnElement="end_timer">
+        <dc:Bounds x="480" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_gateway_di" bpmnElement="Flow_start_to_gateway">
+        <di:waypoint x="186" y="140" />
+        <di:waypoint x="240" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_message_di" bpmnElement="Flow_gateway_to_message">
+        <di:waypoint x="265" y="115" />
+        <di:waypoint x="265" y="80" />
+        <di:waypoint x="350" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_timer_di" bpmnElement="Flow_gateway_to_timer">
+        <di:waypoint x="265" y="165" />
+        <di:waypoint x="265" y="200" />
+        <di:waypoint x="350" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_message_to_end_di" bpmnElement="Flow_message_to_end">
+        <di:waypoint x="386" y="80" />
+        <di:waypoint x="480" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_timer_to_end_di" bpmnElement="Flow_timer_to_end">
+        <di:waypoint x="386" y="200" />
+        <di:waypoint x="480" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

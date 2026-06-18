@@ -185,3 +185,30 @@ func failJobForElementId(t testing.TB, processInstanceKey int64, elementId strin
 	job := waitForProcessInstanceActiveJobByElementId(t, processInstanceKey, elementId)
 	failJob(t, job.Key, errorCode, vars)
 }
+
+func waitForExactlyOneActiveJobAmong(t testing.TB, processInstanceKey int64, elementIDs ...string) string {
+	t.Helper()
+
+	var activeElementIds []string
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		jobs, err := getProcessInstanceJobs(t, processInstanceKey)
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		activeElementIds = activeElementIds[:0]
+		for _, job := range jobs {
+			if job.State != public.JobStateActive {
+				continue
+			}
+			for _, elementID := range elementIDs {
+				if job.ElementId == elementID {
+					activeElementIds = append(activeElementIds, elementID)
+				}
+			}
+		}
+		assert.Len(collect, activeElementIds, 1)
+	}, 5*time.Second, 100*time.Millisecond, "process instance %d should expose exactly one active job among %v", processInstanceKey, elementIDs)
+
+	return activeElementIds[0]
+}

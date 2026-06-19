@@ -430,7 +430,10 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 
 	processId, err := getProcessIdFromDefinition(data)
 	if err != nil {
-		return 0, false, zenerr.TechnicalError(fmt.Errorf("failed to get process definition id: %w", err))
+		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: %w", err))
+	}
+	if processId == "" {
+		return 0, false, zenerr.BadRequest(fmt.Errorf("failed to get process definition id: %w", err))
 	}
 
 	existingDefinitionKey, err := node.GetDefinitionKeyByProcessId(ctx, processId, data)

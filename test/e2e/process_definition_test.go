@@ -645,6 +645,16 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		require.NotNil(t, resp.JSON400)
 		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
 	})
+
+	t.Run("CreateProcessDefinition - 400 for unsupported BPMN element type", func(t *testing.T) {
+		resp, err := deployDefinitionRaw(t, "unsupported-receive-task.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "unsupported element type")
+		assert.Contains(t, resp.JSON400.Message, "receiveTask")
+	})
 }
 
 func getStringInBetweenTwoString(str string, startS string, endS string) (result string, found bool) {

@@ -555,6 +555,8 @@ func (s *Server) CreateProcessDefinition(ctx context.Context, request public.Cre
 			switch zerr.Code {
 			case zenerr.ClusterErrorCode:
 				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
+			case zenerr.BadRequestCode:
+				return public.CreateProcessDefinition400JSONResponse(zerr.ToApiError()), nil
 			default:
 				return public.CreateProcessDefinition500JSONResponse(zerr.ToApiError()), nil
 			}

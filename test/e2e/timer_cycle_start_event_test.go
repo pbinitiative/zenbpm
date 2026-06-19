@@ -57,20 +57,7 @@ func TestTimerCycleStartEvent_CronEverySecond(t *testing.T) {
 	cancelCreatedDefinitionLevelTimers(t, store, definitionKey)
 
 	// After cancellation, the instance count must remain at 2 (no further firings).
-	require.Never(t, func() bool {
-		page, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &uniqueProcessId,
-		})
-		if err != nil || page.JSON200 == nil {
-			return false
-		}
-		// In case the engine managed to schedule yet another timer after our cancel, sweep again.
-		if page.JSON200.TotalCount > 2 {
-			return true
-		}
-		cancelCreatedDefinitionLevelTimers(t, store, definitionKey)
-		return false
-	}, 3*time.Second, 100*time.Millisecond, "cron cycle should be deactivated — no 3rd process instance should appear")
+	assertProcessInstanceCountNeverExceeds(t, uniqueProcessId, store, definitionKey, 2, 3*time.Second, 100*time.Millisecond)
 
 	// Re-read instances after the stabilization window above and assert state/count.
 	parentInstances = listParentInstances(t, uniqueProcessId)
@@ -159,13 +146,58 @@ func mustGetPartitionStore(t *testing.T, instanceKey int64) storage.Storage {
 // for the given process definition as Cancelled so the cycle stops firing.
 func cancelCreatedDefinitionLevelTimers(t *testing.T, store storage.Storage, definitionKey int64) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	require.NoError(t, cancelCreatedDefinitionLevelTimersWithContext(t.Context(), store, definitionKey))
+}
+
+func cancelCreatedDefinitionLevelTimersWithContext(ctx context.Context, store storage.Storage, definitionKey int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	created, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateCreated)
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	for _, timer := range filterDefinitionLevelTimers(created) {
 		timer.TimerState = bpmnruntime.TimerStateCancelled
-		require.NoError(t, store.SaveTimer(ctx, timer))
+		if err := store.SaveTimer(ctx, timer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func assertProcessInstanceCountNeverExceeds(
+	t *testing.T,
+	bpmnProcessId string,
+	store storage.Storage,
+	definitionKey int64,
+	maxCount int,
+	waitFor time.Duration,
+	tick time.Duration,
+) {
+	t.Helper()
+
+	deadline := time.NewTimer(waitFor)
+	defer deadline.Stop()
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-deadline.C:
+			return
+		case <-ticker.C:
+			page, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+				BpmnProcessId: &bpmnProcessId,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, page)
+			require.NotNil(t, page.JSON200)
+			require.LessOrEqual(t, page.JSON200.TotalCount, maxCount,
+				"cron cycle should be deactivated; no 3rd process instance should appear")
+
+			// In case the engine managed to schedule another timer after our cancel, sweep again.
+			require.NoError(t, cancelCreatedDefinitionLevelTimersWithContext(t.Context(), store, definitionKey))
+		}
 	}
 }
 

@@ -39,16 +39,19 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, batch *EngineB
 	resTokens[0] = currentToken
 
 	for i, flow := range activatedFlows {
+		tokenKey := engine.generateKey()
+		sequenceFlowInstanceKey := engine.generateKey()
+		targetElementInstanceKey := engine.generateKey()
 		newToken := runtime.ExecutionToken{
-			Key:                engine.generateKey(),
-			ElementInstanceKey: engine.generateKey(),
+			Key:                tokenKey,
+			ElementInstanceKey: targetElementInstanceKey,
 			ElementId:          flow.GetTargetRef().GetId(),
 			ProcessInstanceKey: instance.ProcessInstance().Key,
 			State:              runtime.TokenStateRunning,
 		}
 		err := batch.SaveFlowElementInstance(ctx,
 			runtime.FlowElementInstance{
-				Key:                engine.generateKey(),
+				Key:                sequenceFlowInstanceKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
 				CreatedAt:          time.Now(),

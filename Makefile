@@ -53,7 +53,7 @@ $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 .PHONY: gosec
 gosec: $(GOSEC) ## Download gosec locally if necessary.
 $(GOSEC): $(LOCALBIN)
-	@test -s $(LOCALBIN)/gosec && $(LOCALBIN)/gosec -version | grep -q $(GOSEC_VERSION) || \
+	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
 PROTOC_OS:=$(OS)
@@ -115,8 +115,9 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: sast
-sast: gosec ## Run Go source SAST checks.
-	$(GOSEC) $(GOSEC_FLAGS) ./...
+sast: gosec ## Run Go source SAST checks. Reports are written to gosec-reports/.
+	@mkdir -p gosec-reports
+	$(GOSEC) $(GOSEC_FLAGS) -fmt sarif -out gosec-reports/gosec.sarif -stdout -verbose text ./...
 
 .PHONY: sast-strict
 sast-strict: GOSEC_FLAGS := -exclude-generated

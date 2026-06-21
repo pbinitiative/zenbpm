@@ -17,6 +17,7 @@ SQLC ?= $(LOCALBIN)/sqlc
 PROTOC ?= $(LOCALBIN)/protoc
 PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
+GOSEC ?= $(LOCALBIN)/gosec
 
 ## Setup PATH to point to tools binaries
 PATH := $(LOCALBIN):$(PATH)
@@ -28,6 +29,8 @@ PROTOC_VERSION ?= 33.4
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 GOLANG_CROSS_VERSION ?= v1.26.4
+GOSEC_VERSION ?= v2.27.1
+GOSEC_FLAGS ?= -exclude-generated -no-fail
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
@@ -46,6 +49,11 @@ protoc-gen-go-grpc: $(PROTOC_GEN_GO_GRPC) ## Download protoc locally if necessar
 $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 	@test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+.PHONY: gosec
+gosec: $(GOSEC) ## Download gosec locally if necessary.
+$(GOSEC): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
 PROTOC_OS:=$(OS)
 PROTOC_ARCH:=-$(ARCH)
@@ -104,6 +112,14 @@ fmt: ## Run go fmt against code.
 .PHONY: vet
 vet: ## Run go vet against code.
 	go vet ./...
+
+.PHONY: sast
+sast: gosec ## Run Go source SAST checks.
+	$(GOSEC) $(GOSEC_FLAGS) ./...
+
+.PHONY: sast-strict
+sast-strict: GOSEC_FLAGS := -exclude-generated
+sast-strict: sast ## Run Go source SAST checks and fail when findings are present.
 
 .PHONY: run
 run: ## Start this project locally with dev configuration

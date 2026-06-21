@@ -43,11 +43,21 @@ jobs:
         run: make gosec
 
       - name: run gosec
-        run: bin/gosec -exclude-generated -no-fail -fmt sarif -out gosec.sarif ./...
+        run: |
+          mkdir -p gosec-reports
+          bin/gosec -exclude-generated -no-fail -fmt sarif -out gosec-reports/gosec.sarif ./...
 
       - name: upload gosec sarif
-        if: ${{ always() && hashFiles('gosec.sarif') != '' }}
+        if: ${{ always() && hashFiles('gosec-reports/gosec.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: gosec.sarif
+          sarif_file: gosec-reports/gosec.sarif
           category: gosec
+
+      - name: upload gosec reports
+        if: ${{ always() && hashFiles('gosec-reports/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-reports-${{ github.run_id }}
+          path: gosec-reports/
+          retention-days: 90

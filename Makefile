@@ -53,6 +53,7 @@ $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 .PHONY: gosec
 gosec: $(GOSEC) ## Download gosec locally if necessary.
 $(GOSEC): $(LOCALBIN)
+	@test -s $(LOCALBIN)/gosec && $(LOCALBIN)/gosec -version | grep -q $(GOSEC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
 PROTOC_OS:=$(OS)

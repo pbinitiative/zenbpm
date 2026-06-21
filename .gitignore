@@ -18,6 +18,7 @@ cmd/zenbpm/__debug_*
 bin
 reports/
 trivy-reports/
+gosec-reports/
 node-*
 zen_bpm_node_*
 cover.out

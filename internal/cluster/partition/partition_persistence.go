@@ -195,7 +195,7 @@ func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Stateme
 }
 
 func (rq *DB) generateStatement(sql string, parameters ...interface{}) (*proto.Statement, error) {
-	resultParams := make([]*proto.Parameter, 0)
+	resultParams := make([]*proto.Parameter, 0, len(parameters))
 
 	for _, par := range parameters {
 		switch par := par.(type) {
@@ -332,6 +332,8 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 	}()
 	stmt, err := rq.generateStatement(sql, args...)
 	if err != nil {
+		execSpan.RecordError(err)
+		execSpan.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	result, err := rq.ExecuteStatements(ctx, []*proto.Statement{stmt})

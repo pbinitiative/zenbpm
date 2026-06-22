@@ -20,7 +20,7 @@ jobs:
       matrix:
         include:
           - language: go
-            build-mode: none
+            build-mode: autobuild
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4

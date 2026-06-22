@@ -2,6 +2,7 @@ package bpmn
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
@@ -104,6 +105,105 @@ func TestInstantiatingReceiveTask_PublishCreatesInstanceAndGuardsDuplicates(t *t
 		}
 	}
 	assert.Equal(t, 1, activeDefSubs, "re-arming must create exactly one fresh active definition subscription")
+}
+
+// TestInstantiatingReceiveTask_RecoveryDoesNotRearmWhileInstanceActive verifies that recovery (e.g. after a
+// node restart) does NOT re-arm the definition-level subscription of an instantiating receive task while a
+// process instance created by it is still alive. Re-arming in that situation would break the single-active
+// -instance guard and allow a second publish to spawn a duplicate concurrent instance.
+func TestInstantiatingReceiveTask_RecoveryDoesNotRearmWhileInstanceActive(t *testing.T) {
+	store, engine, def := setupInstantiatingReceiveTaskTest(t)
+	defer engine.Stop()
+
+	require.NoError(t, engine.PublishMessageByName(t.Context(), instantiatingReceiveMessageName, nil, map[string]any{}))
+	require.Len(t, activeInstancesForDefinition(store, def.Key), 1)
+	// While the instance is active the definition subscription is intentionally Completed (consumed).
+	require.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key))
+
+	require.NoError(t, engine.recoverInstantiatingReceiveTaskSubscriptions(t.Context()))
+	assert.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key),
+		"recovery must not re-arm the definition subscription while an instance created by the receive task is still active")
+
+	require.Error(t, engine.PublishMessageByName(t.Context(), instantiatingReceiveMessageName, nil, map[string]any{}))
+	require.Len(t, activeInstancesForDefinition(store, def.Key), 1,
+		"no additional process instance may be created by recovery while one is already active")
+}
+
+// TestInstantiatingReceiveTask_RecoveryRearmsWhenNoLiveInstance verifies the complementary case of the same
+// guard: when a subscription was consumed but no live instance exists (e.g. the node crashed after consuming
+// the subscription but before the instance was created), recovery must re-arm a fresh definition subscription.
+func TestInstantiatingReceiveTask_RecoveryRearmsWhenNoLiveInstance(t *testing.T) {
+	store, engine, def := setupInstantiatingReceiveTaskTest(t)
+	defer engine.Stop()
+
+	// Simulate a consumed-but-orphaned subscription: mark it Completed without any process instance existing.
+	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {
+		sub.MessageSubscription().State = runtime.ActivityStateCompleted
+		require.NoError(t, store.SaveMessageSubscription(t.Context(), sub))
+	}
+	require.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key))
+	require.Len(t, activeInstancesForDefinition(store, def.Key), 0)
+
+	require.NoError(t, engine.recoverInstantiatingReceiveTaskSubscriptions(t.Context()))
+	assert.Equal(t, 1, activeDefinitionSubscriptionsForDefinition(store, def.Key),
+		"recovery must re-arm a fresh definition subscription when the consumed subscription has no live instance")
+}
+
+func TestInstantiatingReceiveTask_RecoveryRearmsWhenOnlyUnrelatedInstanceActive(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	require.NoError(t, engine.Start(t.Context()))
+	defer engine.Stop()
+
+	def, err := engine.LoadFromBytes(t.Context(), []byte(mixedPlainStartAndInstantiatingReceiveTaskBPMN), engine.generateKey())
+	require.NoError(t, err)
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
+
+	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {
+		sub.MessageSubscription().State = runtime.ActivityStateCompleted
+		require.NoError(t, store.SaveMessageSubscription(t.Context(), sub))
+	}
+	require.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key))
+
+	plainStartInstance := &runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     def,
+			Key:            engine.generateKey(),
+			VariableHolder: runtime.NewVariableHolder(nil, nil),
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateActive,
+			StartElementId: new("StartEvent_plain"),
+		},
+	}
+	require.NoError(t, store.SaveProcessInstance(t.Context(), plainStartInstance))
+
+	require.NoError(t, engine.recoverInstantiatingReceiveTaskSubscriptions(t.Context()))
+	assert.Equal(t, 1, activeDefinitionSubscriptionsForDefinition(store, def.Key),
+		"an unrelated active instance of the same definition must not suppress receive-task recovery")
+}
+
+func TestInstantiatingReceiveTask_RecoveryCanBeScopedToOwningEngine(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(
+		EngineWithStorage(store),
+		EngineWithDefinitionSubscriptionRecoveryFilter(func(runtime.ProcessDefinition) bool { return false }),
+	)
+	require.NoError(t, engine.Start(t.Context()))
+	defer engine.Stop()
+
+	def, err := engine.LoadFromFile(t.Context(), instantiatingReceiveTaskBpmn)
+	require.NoError(t, err)
+	require.NoError(t, engine.RegisterProcessDefinitionSubscriptions(t.Context(), def.Key))
+
+	for _, sub := range definitionMessageSubscriptionsForDefinition(store, def.Key) {
+		sub.MessageSubscription().State = runtime.ActivityStateCompleted
+		require.NoError(t, store.SaveMessageSubscription(t.Context(), sub))
+	}
+	require.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key))
+
+	require.NoError(t, engine.recoverInstantiatingReceiveTaskSubscriptions(t.Context()))
+	assert.Equal(t, 0, activeDefinitionSubscriptionsForDefinition(store, def.Key),
+		"non-owning clustered engines must not recover definition-level subscriptions")
 }
 
 func TestInstantiatingReceiveTask_CancelRearmsDefinitionSubscription(t *testing.T) {
@@ -253,6 +353,18 @@ func activeInstancesForDefinition(store *inmemory.Storage, processDefinitionKey 
 		}
 	}
 	return out
+}
+
+// activeDefinitionSubscriptionsForDefinition counts the active (re-armed) definition-level message
+// subscriptions for the given definition.
+func activeDefinitionSubscriptionsForDefinition(store *inmemory.Storage, processDefinitionKey int64) int {
+	count := 0
+	for _, sub := range definitionMessageSubscriptionsForDefinition(store, processDefinitionKey) {
+		if sub.MessageSubscription().State == runtime.ActivityStateActive {
+			count++
+		}
+	}
+	return count
 }
 
 const mixedPlainStartAndInstantiatingReceiveTaskBPMN = `<?xml version="1.0" encoding="UTF-8"?>

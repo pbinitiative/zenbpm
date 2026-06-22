@@ -133,6 +133,19 @@ func (c Cluster) GetPartitionIdFromString(str string) uint32 {
 	return bitSum%uint32(len(c.Partitions)) + 1
 }
 
+// GetPartitionIdForMessageSubscriptionPointer returns the partition that owns the routing pointer for a
+// message subscription. Instance-level subscriptions are routed by their correlation key (so publishing with a
+// given key always reaches the same partition). Definition-level subscriptions (message start events and
+// instantiating receive tasks) have an empty correlation key; routing those by the empty string would pin every
+// definition pointer to a single partition, so they are routed by message name instead to spread them across
+// partitions. Save and lookup must always call this with the same arguments to stay consistent.
+func (c Cluster) GetPartitionIdForMessageSubscriptionPointer(name string, correlationKey string) uint32 {
+	if correlationKey == "" {
+		return c.GetPartitionIdFromString(name)
+	}
+	return c.GetPartitionIdFromString(correlationKey)
+}
+
 // +k8s:deepcopy-gen=true
 type ClusterConfig struct {
 	DesiredPartitions uint32 `json:"desiredPartitions"`

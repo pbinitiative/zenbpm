@@ -446,6 +446,26 @@ func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(ctx context.Co
 	return res, nil
 }
 
+func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.ProcessInstance, 0)
+	for _, processInstance := range mem.ProcessInstances {
+		piData := processInstance.ProcessInstance()
+		if piData.Definition == nil || piData.Definition.Key != processDefinitionKey {
+			continue
+		}
+		if piData.StartElementId == nil || *piData.StartElementId != startElementId {
+			continue
+		}
+		switch piData.GetState() {
+		case bpmnruntime.ActivityStateActive, bpmnruntime.ActivityStateReady:
+			res = append(res, processInstance)
+		}
+	}
+	return res, nil
+}
+
 var _ storage.ProcessInstanceStorageWriter = &Storage{}
 
 func (mem *Storage) SaveProcessInstance(ctx context.Context, processInstance bpmnruntime.ProcessInstance) error {

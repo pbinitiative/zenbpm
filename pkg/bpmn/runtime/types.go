@@ -121,6 +121,7 @@ type ProcessInstanceData struct {
 	VariableHolder VariableHolder
 	CreatedAt      time.Time
 	State          ActivityState
+	StartElementId *string
 }
 
 func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {

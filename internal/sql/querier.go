@@ -28,6 +28,7 @@ type Querier interface {
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
+	FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, arg FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams) ([]ProcessInstance, error)
 	FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)

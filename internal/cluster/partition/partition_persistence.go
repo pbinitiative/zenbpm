@@ -1000,6 +1000,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
+				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeMultiInstance:
@@ -1019,6 +1020,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
+				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeSubProcess:
@@ -1038,6 +1040,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
+				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeCallActivity:
@@ -1055,6 +1058,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				VariableHolder: bpmnruntime.NewVariableHolder(nil, variables),
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
+				StartElementId: sql.FromNullString(dbInstance.StartElementID),
 			},
 		}, nil
 	default:
@@ -1072,6 +1076,25 @@ func (rq *DB) FindProcessInstancesByParentExecutionTokenKey(ctx context.Context,
 		return res, fmt.Errorf("failed to find process instances by parentExecutionTokenKey %d: %w", parentExecutionTokenKey, err)
 	}
 
+	for _, dbInstance := range dbInstances {
+		inst, err := rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
+		if err != nil {
+			return res, fmt.Errorf("failed to inflate process instance: %w", err)
+		}
+		res = append(res, inst)
+	}
+	return res, nil
+}
+
+func (rq *DB) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
+	var res []bpmnruntime.ProcessInstance
+	dbInstances, err := rq.Queries.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx, sql.FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams{
+		ProcessDefinitionKey: processDefinitionKey,
+		StartElementID:       sql.ToNullString(&startElementId),
+	})
+	if err != nil {
+		return res, fmt.Errorf("failed to find active process instances by definition key %d and start element %s: %w", processDefinitionKey, startElementId, err)
+	}
 	for _, dbInstance := range dbInstances {
 		inst, err := rq.inflateProcessInstance(ctx, rq.Queries, dbInstance)
 		if err != nil {
@@ -1163,6 +1186,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		ParentProcessTargetElementID:          parentProcessTargetElementID,
 		ParentProcessTargetElementInstanceKey: parentProcessTargetElementInstanceKey,
 		ProcessType:                           int64(processInstance.Type()),
+		StartElementID:                        sql.ToNullString(processInstance.ProcessInstance().StartElementId),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)
@@ -1716,7 +1740,7 @@ func SaveJobWith(ctx context.Context, db *sql.Queries, job bpmnruntime.Job) erro
 
 func (rq *DB) SaveMessageSubscriptionPointer(ctx context.Context, pointer sql.MessageSubscriptionPointer) error {
 	zenState := rq.zenState()
-	ptrPartitionId := zenState.GetPartitionIdFromString(pointer.CorrelationKey)
+	ptrPartitionId := zenState.GetPartitionIdForMessageSubscriptionPointer(pointer.Name, pointer.CorrelationKey)
 	upsertPointer := func() error {
 		err := rq.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
 			State:                  pointer.State,
@@ -2045,7 +2069,7 @@ func (rq *DB) SaveMessageSubscription(ctx context.Context, subscription bpmnrunt
 	case *bpmnruntime.InstanceMessageSubscription:
 		correlationKey = &subscription.CorrelationKey
 	case *bpmnruntime.DefinitionMessageSubscription:
-		correlationKey = nil
+		correlationKey = new("")
 	}
 	if correlationKey != nil {
 		err := rq.SaveMessageSubscriptionPointer(ctx, sql.MessageSubscriptionPointer{
@@ -2736,7 +2760,7 @@ func (b *DBBatch) SaveMessageSubscription(ctx context.Context, subscription bpmn
 	case *bpmnruntime.InstanceMessageSubscription:
 		correlationKey = &subscription.CorrelationKey
 	case *bpmnruntime.DefinitionMessageSubscription:
-		correlationKey = nil
+		correlationKey = new("")
 	}
 	if correlationKey != nil {
 		b.AddPreFlushAction(ctx, func() error {

@@ -188,25 +188,51 @@ func (engine *Engine) rearmInstantiatingReceiveTaskSubscriptions(ctx context.Con
 	batch := engine.persistence.NewBatch()
 	rearmed := false
 	for _, receiveTask := range receiveTasks {
-		subscription, err := engine.newReceiveTaskDefinitionSubscription(*processDefinition, receiveTask)
+		didRearm, err := engine.queueInstantiatingReceiveTaskRearm(ctx, batch, processDefinition, receiveTask)
 		if err != nil {
 			return err
 		}
-		existing, err := engine.persistence.FindDefinitionMessageSubscription(ctx, processDefinition.Key, receiveTask.GetId(), subscription.Name, runtime.ActivityStateActive)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return errors.Join(newEngineErrorf("failed to look up definition message subscription for receive task %s (%s)", receiveTask.GetId(), subscription.Name), err)
-		}
-		if existing != nil {
-			// A definition subscription is already active (e.g. re-armed by another instance); nothing to do.
-			continue
-		}
-		if err := batch.SaveMessageSubscription(ctx, subscription); err != nil {
-			return fmt.Errorf("failed to re-arm definition message subscription for instantiating receive task %s of definition %d: %w", receiveTask.GetId(), processDefinition.Key, err)
-		}
-		rearmed = true
+		rearmed = rearmed || didRearm
 	}
 	if !rearmed {
 		return nil
 	}
 	return batch.Flush(ctx)
+}
+
+func (engine *Engine) rearmInstantiatingReceiveTaskSubscription(ctx context.Context, processDefinition *runtime.ProcessDefinition, receiveTask *bpmn20.TReceiveTask) error {
+	if processDefinition == nil || receiveTask == nil {
+		return nil
+	}
+	engine.instantiatingRearmMu.Lock()
+	defer engine.instantiatingRearmMu.Unlock()
+
+	batch := engine.persistence.NewBatch()
+	rearmed, err := engine.queueInstantiatingReceiveTaskRearm(ctx, batch, processDefinition, receiveTask)
+	if err != nil {
+		return err
+	}
+	if !rearmed {
+		return nil
+	}
+	return batch.Flush(ctx)
+}
+
+func (engine *Engine) queueInstantiatingReceiveTaskRearm(ctx context.Context, batch storage.Batch, processDefinition *runtime.ProcessDefinition, receiveTask *bpmn20.TReceiveTask) (bool, error) {
+	subscription, err := engine.newReceiveTaskDefinitionSubscription(*processDefinition, receiveTask)
+	if err != nil {
+		return false, err
+	}
+	existing, err := engine.persistence.FindDefinitionMessageSubscription(ctx, processDefinition.Key, receiveTask.GetId(), subscription.Name, runtime.ActivityStateActive)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return false, errors.Join(newEngineErrorf("failed to look up definition message subscription for receive task %s (%s)", receiveTask.GetId(), subscription.Name), err)
+	}
+	if existing != nil {
+		// A definition subscription is already active (e.g. re-armed by another instance); nothing to do.
+		return false, nil
+	}
+	if err := batch.SaveMessageSubscription(ctx, subscription); err != nil {
+		return false, fmt.Errorf("failed to re-arm definition message subscription for instantiating receive task %s of definition %d: %w", receiveTask.GetId(), processDefinition.Key, err)
+	}
+	return true, nil
 }

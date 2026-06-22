@@ -61,6 +61,12 @@ type Engine struct {
 	// concurrently-completing instances of the same definition would both observe "no active
 	// definition subscription" and both insert one, leaving duplicate active subscriptions.
 	instantiatingRearmMu *sync.Mutex
+
+	// recoverDefinitionSubscriptions reports whether this engine owns startup recovery of
+	// process-definition-level subscriptions for the supplied definition. Standalone engines recover all
+	// definitions; clustered partition engines use this to keep recovery on the deployment-selected owner
+	// partition only.
+	recoverDefinitionSubscriptions func(runtime.ProcessDefinition) bool
 }
 
 type EngineOption = func(*Engine)
@@ -143,6 +149,12 @@ func EngineWithLogger(logger hclog.Logger) EngineOption {
 func EngineWithPollTimerDelay(d time.Duration) EngineOption {
 	return func(engine *Engine) {
 		engine.pollTimerDelay = d
+	}
+}
+
+func EngineWithDefinitionSubscriptionRecoveryFilter(filter func(runtime.ProcessDefinition) bool) EngineOption {
+	return func(engine *Engine) {
+		engine.recoverDefinitionSubscriptions = filter
 	}
 }
 
@@ -462,6 +474,9 @@ func (engine *Engine) createInstanceWithStartingElements(
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
 		startNodeIds = append(startNodeIds, startNode.GetId())
+	}
+	if len(startNodeIds) == 1 {
+		instance.ProcessInstance().StartElementId = new(startNodeIds[0])
 	}
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("start-instance-on-elements: %s %s", instance.ProcessInstance().Definition.BpmnProcessId, startNodeIds), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),

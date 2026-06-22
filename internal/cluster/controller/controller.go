@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
+	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/script"
 	"github.com/pbinitiative/zenbpm/pkg/script/feel"
 	"github.com/pbinitiative/zenbpm/pkg/script/js"
@@ -378,9 +381,29 @@ func (c *Controller) createEngine(ctx context.Context, db *partition.DB, feelRun
 		return nil, err
 	}
 
-	engine := bpmn.NewEngine(bpmn.EngineWithStorageAndFeel(db, feelRuntime), bpmn.EngineWithJs(jsRuntime))
 	c.logger.Info(fmt.Sprintf("Engine created for partition %d", db.Partition))
-	return &engine, nil
+	return new(bpmn.NewEngine(
+		bpmn.EngineWithStorageAndFeel(db, feelRuntime),
+		bpmn.EngineWithJs(jsRuntime),
+		bpmn.EngineWithDefinitionSubscriptionRecoveryFilter(func(definition bpmnruntime.ProcessDefinition) bool {
+			return db.Partition == definitionSubscriptionPartition(c.store.ClusterState(), definition.BpmnProcessId)
+		}),
+	)), nil
+}
+
+func definitionSubscriptionPartition(clusterState state.Cluster, processId string) uint32 {
+	partitionIds := make([]uint32, 0, len(clusterState.Partitions))
+	for partitionId := range clusterState.Partitions {
+		partitionIds = append(partitionIds, partitionId)
+	}
+	sort.Slice(partitionIds, func(i, j int) bool { return partitionIds[i] < partitionIds[j] })
+	if len(partitionIds) == 0 {
+		return 0
+	}
+
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(processId))
+	return partitionIds[int(hash.Sum32()%uint32(len(partitionIds)))]
 }
 
 func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionId uint32) {

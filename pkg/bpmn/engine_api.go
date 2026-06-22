@@ -99,8 +99,24 @@ func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.C
 	var errs []error
 	for _, def := range latestByProcessId {
 		definition := def
-		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, &definition); rearmErr != nil {
-			errs = append(errs, fmt.Errorf("failed to recover instantiating receive task subscriptions for definition %d: %w", definition.Key, rearmErr))
+		if engine.recoverDefinitionSubscriptions != nil && !engine.recoverDefinitionSubscriptions(definition) {
+			continue
+		}
+		for _, receiveTask := range findInstantiatingReceiveTasks(&definition.Definitions.Process) {
+			activeInstances, err := engine.persistence.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx, definition.Key, receiveTask.GetId())
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to check active process instances for definition %d receive task %s during instantiating receive task recovery: %w", definition.Key, receiveTask.GetId(), err))
+				continue
+			}
+			if len(activeInstances) > 0 {
+				// A live instance created by this instantiating receive task already exists; re-arming now would
+				// violate the single-active-instance guard. The subscription will be re-armed when that instance
+				// finishes (see RunProcessInstance's re-arm defer).
+				continue
+			}
+			if rearmErr := engine.rearmInstantiatingReceiveTaskSubscription(ctx, &definition, receiveTask); rearmErr != nil {
+				errs = append(errs, fmt.Errorf("failed to recover instantiating receive task subscription for definition %d receive task %s: %w", definition.Key, receiveTask.GetId(), rearmErr))
+			}
 		}
 	}
 	return errors.Join(errs...)

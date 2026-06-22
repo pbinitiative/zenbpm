@@ -224,6 +224,20 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		assert.Equal(t, inst.ProcessInstance().CreatedAt.Truncate(time.Millisecond), instance.ProcessInstance().CreatedAt.Truncate(time.Millisecond))
 		assert.Equal(t, inst.ProcessInstance().VariableHolder, instance.ProcessInstance().VariableHolder)
 
+		inst.ProcessInstance().StartElementId = new("storage-test-start")
+		err = s.SaveProcessInstance(t.Context(), inst)
+		assert.NoError(t, err)
+
+		activeByDef, err := s.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(t.Context(), st.processDefinition.Key, "storage-test-start")
+		assert.NoError(t, err)
+		assert.True(t, containsProcessInstanceKey(activeByDef, inst.ProcessInstance().Key),
+			"active instance must be returned by FindActiveProcessInstancesByDefinitionKeyAndStartElementId")
+
+		activeByOtherStart, err := s.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(t.Context(), st.processDefinition.Key, "other-start")
+		assert.NoError(t, err)
+		assert.False(t, containsProcessInstanceKey(activeByOtherStart, inst.ProcessInstance().Key),
+			"active instance must not be returned for a different start element")
+
 		//testRefresh
 		instance.ProcessInstance().State = bpmnruntime.ActivityStateTerminated
 		err = s.SaveProcessInstance(t.Context(), instance)
@@ -232,9 +246,10 @@ func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *
 		assert.NoError(t, err)
 		assert.Equal(t, bpmnruntime.ActivityStateTerminated, inst.ProcessInstance().State)
 
-		// TODO: uncomment once its implemented
-		// assert.Equal(t, len(inst.Activities), len(instance.Activities))
-		// assert.Equal(t, inst.Activities[0], instance.Activities[0])
+		activeByDef, err = s.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(t.Context(), st.processDefinition.Key, "storage-test-start")
+		assert.NoError(t, err)
+		assert.False(t, containsProcessInstanceKey(activeByDef, inst.ProcessInstance().Key),
+			"terminated instance must not be returned by FindActiveProcessInstancesByDefinitionKeyAndStartElementId")
 	}
 }
 
@@ -979,4 +994,14 @@ func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage,
 		assert.Equal(t, dmnResourceDefinitionKey, decisionDefinitions[0].DmnResourceDefinitionKey)
 		assert.Equal(t, dec.Id, decisionDefinitions[0].Id)
 	}
+}
+
+// containsProcessInstanceKey reports whether the given slice of process instances contains an instance with the supplied key.
+func containsProcessInstanceKey(instances []bpmnruntime.ProcessInstance, key int64) bool {
+	for _, inst := range instances {
+		if inst.ProcessInstance().Key == key {
+			return true
+		}
+	}
+	return false
 }

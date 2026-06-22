@@ -360,8 +360,8 @@ func TestReceiveTaskBoundaryMessageWithSameNameUsesCorrelationKey(t *testing.T) 
 	err = bpmnEngine.PublishMessageByName(t.Context(), "shared receive boundary message", boundaryCorrelationKey, nil)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]
-		return ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
+		processInstance, findErr := engineStorage.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		return findErr == nil && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
 	}, 2*time.Second, 50*time.Millisecond)
 	instance, err = bpmnEngine.FindProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	require.NoError(t, err)
@@ -611,7 +611,7 @@ func TestMultiInstanceSubProcessStartsAndCompletesJobByKey(t *testing.T) {
 	assert.NoError(t, err)
 	var foundMultiInstance runtime.MultiInstanceInstance
 	assert.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeMultiInstance && *pi.(*runtime.MultiInstanceInstance).GetParentProcessInstanceKey() == instance.ProcessInstance().Key {
 				foundMultiInstance = *pi.(*runtime.MultiInstanceInstance)
 				return true
@@ -621,7 +621,7 @@ func TestMultiInstanceSubProcessStartsAndCompletesJobByKey(t *testing.T) {
 	}, 500*time.Millisecond, 100*time.Millisecond)
 	var foundInstance runtime.SubProcessInstance
 	assert.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeSubProcess && *pi.(*runtime.SubProcessInstance).GetParentProcessInstanceKey() == foundMultiInstance.Key {
 				foundInstance = *pi.(*runtime.SubProcessInstance)
 				return true
@@ -631,7 +631,7 @@ func TestMultiInstanceSubProcessStartsAndCompletesJobByKey(t *testing.T) {
 	}, 500*time.Millisecond, 100*time.Millisecond)
 	findAndCompleteSubProcessJob(t, foundInstance.ProcessInstance().Key, 10*time.Second, map[string]interface{}{"testJobOutput": "newJobVal1"})
 	assert.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeSubProcess && foundInstance.ProcessInstance().Key != pi.ProcessInstance().Key && *pi.(*runtime.SubProcessInstance).GetParentProcessInstanceKey() == foundMultiInstance.Key {
 				foundInstance = *pi.(*runtime.SubProcessInstance)
 				return true
@@ -663,7 +663,7 @@ func TestMultiInstanceSubProcessCorrelateBoundaryEvent(t *testing.T) {
 	// Find the multi-instance wrapper so we can scope sub-process searches to this test
 	var foundMultiInstance runtime.MultiInstanceInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeMultiInstance && *pi.(*runtime.MultiInstanceInstance).GetParentProcessInstanceKey() == instance.ProcessInstance().Key {
 				foundMultiInstance = *pi.(*runtime.MultiInstanceInstance)
 				return true
@@ -673,7 +673,7 @@ func TestMultiInstanceSubProcessCorrelateBoundaryEvent(t *testing.T) {
 	}, 2*time.Second, 50*time.Millisecond)
 	var foundChildInstance runtime.ProcessInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeSubProcess &&
 				pi.ProcessInstance().State == runtime.ActivityStateCompleted &&
 				*pi.(*runtime.SubProcessInstance).GetParentProcessInstanceKey() == foundMultiInstance.ProcessInstance().Key {
@@ -775,7 +775,7 @@ func TestMultiInstanceParallelSubProcessCorrelateBoundaryEventFailsToCreateParal
 	}, 2*time.Second, 50*time.Millisecond)
 	var foundChildInstance runtime.ProcessInstance
 	assert.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() == runtime.ProcessTypeSubProcess && pi.ProcessInstance().State == runtime.ActivityStateCompleted {
 				foundChildInstance = pi
 				return true
@@ -908,10 +908,8 @@ func expectedMultiInstanceReceiveTaskOutput(items []string) []string {
 func assertMultiInstanceReceiveTaskCompletion(t *testing.T, instance runtime.ProcessInstance, expectedItems []string) {
 	t.Helper()
 	assert.Eventually(t, func() bool {
-		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
-			return true
-		}
-		return false
+		processInstance, findErr := engineStorage.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		return findErr == nil && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
 	}, 2*time.Second, 50*time.Millisecond)
 	updatedInstance, err := bpmnEngine.FindProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
@@ -933,10 +931,8 @@ func assertMultiInstanceReceiveTaskCompletion(t *testing.T, instance runtime.Pro
 func assertMultiInstanceReceiveTaskSkipsWithEmptyOutput(t *testing.T, instance runtime.ProcessInstance) {
 	t.Helper()
 	assert.Eventually(t, func() bool {
-		if processInstance, ok := engineStorage.ProcessInstances[instance.ProcessInstance().Key]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
-			return true
-		}
-		return false
+		processInstance, findErr := engineStorage.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		return findErr == nil && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
 	}, 2*time.Second, 50*time.Millisecond)
 	updatedInstance, err := bpmnEngine.FindProcessInstance(t.Context(), instance.ProcessInstance().Key)
 	assert.NoError(t, err)
@@ -973,7 +969,7 @@ func findChildCallActivityInstance(t *testing.T, parentInstanceKey int64) runtim
 	t.Helper()
 	var found runtime.CallActivityInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() != runtime.ProcessTypeCallActivity {
 				continue
 			}
@@ -992,7 +988,7 @@ func findChildSubProcessInstance(t *testing.T, parentInstanceKey int64) runtime.
 	t.Helper()
 	var found runtime.SubProcessInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() != runtime.ProcessTypeSubProcess {
 				continue
 			}
@@ -1011,7 +1007,7 @@ func findChildMultiInstanceInstance(t *testing.T, parentInstanceKey int64) runti
 	t.Helper()
 	var found runtime.MultiInstanceInstance
 	require.Eventually(t, func() bool {
-		for _, pi := range engineStorage.ProcessInstances {
+		for _, pi := range engineStorage.ProcessInstancesSnapshot() {
 			if pi.Type() != runtime.ProcessTypeMultiInstance {
 				continue
 			}
@@ -1029,10 +1025,8 @@ func findChildMultiInstanceInstance(t *testing.T, parentInstanceKey int64) runti
 func waitForProcessCompletion(t *testing.T, instanceKey int64, timeout, interval time.Duration) {
 	t.Helper()
 	assert.Eventually(t, func() bool {
-		if processInstance, ok := engineStorage.ProcessInstances[instanceKey]; ok && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted {
-			return true
-		}
-		return false
+		processInstance, findErr := engineStorage.FindProcessInstanceByKey(t.Context(), instanceKey)
+		return findErr == nil && processInstance.ProcessInstance().State == runtime.ActivityStateCompleted
 	}, timeout, interval)
 }
 
@@ -1092,7 +1086,7 @@ func loadCanAutoLiquidateDMN(t *testing.T) {
 
 // logFlakyTestDiagnostics prints engine state for debugging flaky parallel tests.
 func logFlakyTestDiagnostics() {
-	for _, s := range engineStorage.ProcessInstances {
+	for _, s := range engineStorage.ProcessInstancesSnapshot() {
 		println(s.ProcessInstance().Key)
 		println(s.ProcessInstance().State.String())
 		println(fmt.Sprint(s.ProcessInstance().VariableHolder.GetLocalVariable("testOutputCollection")))

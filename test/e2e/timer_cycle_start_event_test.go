@@ -182,3 +182,18 @@ func assertDefinitionLevelTriggeredTimers(t *testing.T, anyInstanceKey, definiti
 	}, 10*time.Second, 100*time.Millisecond,
 		"expected exactly %d triggered definition-level timers for definition %d", expectedCount, definitionKey)
 }
+
+func assertProcessInstanceCountNeverExceeds(t *testing.T, bpmnProcessId string, store storage.Storage, definitionKey int64, maxCount int, duration, interval time.Duration) {
+	t.Helper()
+	require.Never(t, func() bool {
+		if len(listParentInstances(t, bpmnProcessId)) > maxCount {
+			return true
+		}
+		triggered, err := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateTriggered)
+		if err != nil {
+			return false
+		}
+		return len(filterDefinitionLevelTimers(triggered)) > maxCount
+	}, duration, interval,
+		"process instance / triggered timer count for %q must never exceed %d", bpmnProcessId, maxCount)
+}

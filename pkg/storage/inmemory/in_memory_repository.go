@@ -37,6 +37,20 @@ func (mem *Storage) GenerateId() int64 {
 	return rand.Int63()
 }
 
+// ProcessInstancesSnapshot returns a copy of all stored process instances taken under a read lock.
+// Callers (notably tests) must use this instead of ranging over the ProcessInstances map directly,
+// since the engine writes to that map from its worker goroutines and a concurrent map
+// iteration/write triggers a fatal runtime error.
+func (mem *Storage) ProcessInstancesSnapshot() []bpmnruntime.ProcessInstance {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	out := make([]bpmnruntime.ProcessInstance, 0, len(mem.ProcessInstances))
+	for _, pi := range mem.ProcessInstances {
+		out = append(out, pi)
+	}
+	return out
+}
+
 func NewStorage() *Storage {
 	return &Storage{
 		DmnResourceDefinitions: make(map[int64]dmnruntime.DmnResourceDefinition),

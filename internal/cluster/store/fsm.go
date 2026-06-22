@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/pbinitiative/zenbpm/internal/cluster/command/proto"
 	"github.com/pbinitiative/zenbpm/internal/cluster/state"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -64,7 +65,9 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		f.previousChangeCtxCancel = cancel
-		go f.clusterStateChangeObserver(ctx)
+		safego.Go("cluster-state-change-observer", f.store.logger, func() {
+			f.clusterStateChangeObserver(ctx)
+		})
 	}
 	f.store.appliedTarget.Signal(l.Index)
 	return res

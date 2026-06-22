@@ -31,7 +31,6 @@ import (
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/config"
 	otelPkg "github.com/pbinitiative/zenbpm/internal/otel"
-	"github.com/pbinitiative/zenbpm/internal/profile"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -195,7 +194,7 @@ func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Stateme
 	return results, nil
 }
 
-func (rq *DB) generateStatement(sql string, parameters ...interface{}) *proto.Statement {
+func (rq *DB) generateStatement(sql string, parameters ...interface{}) (*proto.Statement, error) {
 	resultParams := make([]*proto.Parameter, 0)
 
 	for _, par := range parameters {
@@ -271,21 +270,21 @@ func (rq *DB) generateStatement(sql string, parameters ...interface{}) *proto.St
 				resultParams = append(resultParams, &proto.Parameter{})
 			}
 		default:
-			rq.logger.Error(fmt.Sprintf("Unknown parameter type: %T", par))
-			if profile.Current == profile.DEV || profile.Current == profile.TEST {
-				panic(fmt.Sprintf("Unknown parameter type: %T", par))
-			}
+			return nil, fmt.Errorf("unsupported SQL parameter type %T for query %q", par, sql)
 		}
 
 	}
 	return &proto.Statement{
 		Sql:        sql,
 		Parameters: resultParams,
-	}
+	}, nil
 }
 
 func (rq *DB) queryDatabase(ctx context.Context, query string, parameters ...interface{}) ([]*proto.QueryRows, error) {
-	stmts := rq.generateStatement(query, parameters...)
+	stmts, err := rq.generateStatement(query, parameters...)
+	if err != nil {
+		return nil, err
+	}
 
 	qr := &proto.QueryRequest{
 		Request: &proto.Request{
@@ -331,7 +330,11 @@ func (rq *DB) ExecContext(ctx context.Context, sql string, args ...interface{}) 
 	defer func() {
 		execSpan.End()
 	}()
-	result, err := rq.ExecuteStatements(ctx, []*proto.Statement{rq.generateStatement(sql, args...)})
+	stmt, err := rq.generateStatement(sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	result, err := rq.ExecuteStatements(ctx, []*proto.Statement{stmt})
 
 	if err != nil {
 		execSpan.RecordError(err)
@@ -2542,7 +2545,10 @@ func (d *DBBatch) getLogger() hclog.Logger {
 }
 
 func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interface{}) (ssql.Result, error) {
-	stmt := rq.db.generateStatement(sql, args...)
+	stmt, err := rq.db.generateStatement(sql, args...)
+	if err != nil {
+		return nil, err
+	}
 	rq.stmtToRun = append(rq.stmtToRun, stmt)
 	return rqliteResult{}, nil
 }

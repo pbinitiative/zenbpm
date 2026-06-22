@@ -215,7 +215,9 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 			c.handlePartitionStateLeaving(ctx, partitionId)
 			c.partitionsMu.Unlock()
 		default:
-			panic(fmt.Sprintf("unexpected store.NodePartitionState: %#v", partition.State))
+			c.logger.Error("encountered unexpected partition state, skipping partition",
+				"partitionId", partitionId, "state", partition.State)
+			continue
 		}
 	}
 	// TODO:

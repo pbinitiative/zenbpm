@@ -18,6 +18,7 @@ PROTOC ?= $(LOCALBIN)/protoc
 PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 GOSEC ?= $(LOCALBIN)/gosec
+CODEQL ?= $(LOCALBIN)/codeql/codeql
 
 ## Setup PATH to point to tools binaries
 PATH := $(LOCALBIN):$(PATH)
@@ -35,6 +36,23 @@ GOSEC_REPORT_DIR ?= gosec-reports
 GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
 GOSEC_HTML_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.html
 GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
+
+CODEQL_VERSION ?= v2.25.6
+CODEQL_REPORT_DIR ?= codeql-reports
+CODEQL_SARIF_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.sarif
+CODEQL_DB ?= $(CODEQL_REPORT_DIR)/codeql-db
+# Map GOOS/GOARCH to CodeQL bundle zip naming
+CODEQL_OS ?= linux64
+ifeq ("$(OS)", "darwin")
+  ifeq ("$(ARCH)", "arm64")
+    CODEQL_OS = osx-arm64
+  else
+    CODEQL_OS = osx64
+  endif
+endif
+ifeq ("$(OS)", "windows")
+  CODEQL_OS = win64
+endif
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
@@ -59,6 +77,17 @@ gosec: $(GOSEC) ## Download gosec locally if necessary.
 $(GOSEC): $(LOCALBIN)
 	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+
+.PHONY: codeql-cli
+codeql-cli: $(CODEQL) ## Download CodeQL CLI locally if necessary.
+$(CODEQL): $(LOCALBIN)
+	@if [ ! -s "$@" ]; then \
+		echo "Downloading CodeQL CLI $(CODEQL_VERSION) for $(CODEQL_OS)..."; \
+		curl -sSL "https://github.com/github/codeql-cli-binaries/releases/download/$(CODEQL_VERSION)/codeql-$(CODEQL_OS).zip" \
+		  -o /tmp/codeql.zip; \
+		unzip -q -o /tmp/codeql.zip -d $(LOCALBIN); \
+		rm /tmp/codeql.zip; \
+	fi
 
 PROTOC_OS:=$(OS)
 PROTOC_ARCH:=-$(ARCH)
@@ -127,6 +156,17 @@ sast: gosec ## Run Go source SAST checks. Reports are written to gosec-reports/.
 .PHONY: sast-strict
 sast-strict: GOSEC_FLAGS := -exclude-generated
 sast-strict: sast ## Run Go source SAST checks and fail when findings are present.
+
+.PHONY: codeql
+codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written to codeql-reports/.
+	@mkdir -p $(CODEQL_REPORT_DIR)
+	$(CODEQL) database create $(CODEQL_DB) --language=go --build-mode=autobuild --overwrite
+	$(CODEQL) database analyze $(CODEQL_DB) \
+		--download \
+		codeql/go-queries:codeql-suites/go-security-extended.qls \
+		--format=sarif-latest \
+		--output=$(CODEQL_SARIF_REPORT)
+	@echo "CodeQL SARIF report written to: $(CODEQL_SARIF_REPORT)"
 
 .PHONY: run
 run: ## Start this project locally with dev configuration

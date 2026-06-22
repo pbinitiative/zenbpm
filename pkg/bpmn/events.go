@@ -266,6 +266,7 @@ type GatewayEvent interface {
 func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *EngineBatch, gateway *bpmn20.TEventBasedGateway, event GatewayEvent, instance runtime.ProcessInstance, variables map[string]interface{}) ([]runtime.ExecutionToken, error) {
 	outgoing := gateway.GetOutgoingAssociation()
 	var catchEvent *bpmn20.TIntermediateCatchEvent
+	var catchFlow bpmn20.SequenceFlow
 	for _, flow := range outgoing {
 		if flow.GetTargetRef().GetId() != event.GetId() {
 			continue
@@ -278,11 +279,13 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 			continue
 		}
 		catchEvent = e
+		catchFlow = flow
 	}
 	if catchEvent == nil {
 		return nil, nil
 	}
 	var token runtime.ExecutionToken
+	var outputVariables map[string]any
 	switch catchEvent.EventDefinition.(type) {
 	case bpmn20.TMessageEventDefinition:
 		message := event.(*runtime.TokenMessageSubscription)
@@ -293,7 +296,8 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		}
 		token = message.Token
 		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-		if _, err = variableHolder.PropagateMappedOutputsOrAll(catchEvent.Output, variables, engine.evaluateExpression); err != nil {
+		outputVariables, err = variableHolder.PropagateMappedOutputsOrAll(catchEvent.Output, variables, engine.evaluateExpression)
+		if err != nil {
 			return nil, err
 		}
 		err = batch.SaveProcessInstance(ctx, instance)
@@ -312,6 +316,33 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		}
 		token = *timer.Token
 	}
+
+	err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                engine.generateKey(),
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          catchFlow.GetId(),
+		CreatedAt:          time.Now(),
+		ExecutionTokenKey:  token.Key,
+		InputVariables:     nil,
+		OutputVariables:    nil,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to save event gateway flow history %s: %w", catchFlow.GetId(), err)
+	}
+
+	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                engine.generateKey(),
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          catchEvent.GetId(),
+		CreatedAt:          time.Now(),
+		ExecutionTokenKey:  token.Key,
+		InputVariables:     nil,
+		OutputVariables:    outputVariables,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to save event gateway catch event history %s: %w", catchEvent.GetId(), err)
+	}
+
 	msubs, err := engine.persistence.FindTokenMessageSubscriptions(ctx, token.Key, runtime.ActivityStateActive)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find message subscriptions to cancel for token %+v", token.Key)

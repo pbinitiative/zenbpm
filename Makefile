@@ -95,7 +95,7 @@ generate: sqlc protoc protoc-gen-go protoc-gen-go-grpc ## Run all the generators
 	@PATH=$(LOCALBIN):$(PATH) go generate ./...
 	@$(SQLC) generate
 	@cp internal/sql/db.go.template internal/sql/db.go
-	@sed -i "/Foreign[[:space:]]\+interface{}[[:space:]]\+\`json:\"foreign\"\`/d" internal/sql/models.go
+	@perl -i -ne 'print unless /Foreign\s+interface\{\}\s+`json:"foreign"`/' internal/sql/models.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

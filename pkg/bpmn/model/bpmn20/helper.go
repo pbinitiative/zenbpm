@@ -100,6 +100,9 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 			if flow == nil {
 				continue
 			}
+			if flow.GetConditionExpression() != "" {
+				return fmt.Errorf("unsupported element configuration: eventBasedGateway id=%q has conditional outgoing flow '%s'", gw.GetId(), flow.GetId())
+			}
 			if _, ok := flow.GetTargetRef().(*TIntermediateCatchEvent); !ok {
 				return fmt.Errorf("unsupported element configuration: eventBasedGateway id=%q has non-IntermediateCatchEvent target '%s'", gw.GetId(), flow.GetTargetRef().GetId())
 			}

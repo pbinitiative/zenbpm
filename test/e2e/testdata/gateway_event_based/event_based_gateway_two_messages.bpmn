@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_event_based_gateway_two_messages" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="event-based-gateway-two-messages" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_gateway</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_gateway" sourceRef="start_event" targetRef="event_based_gateway" />
+    <bpmn:eventBasedGateway id="event_based_gateway">
+      <bpmn:incoming>Flow_start_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_message_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_message_b</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+    <bpmn:sequenceFlow id="Flow_gateway_to_message_a" sourceRef="event_based_gateway" targetRef="catch_message_a" />
+    <bpmn:sequenceFlow id="Flow_gateway_to_message_b" sourceRef="event_based_gateway" targetRef="catch_message_b" />
+    <bpmn:intermediateCatchEvent id="catch_message_a">
+      <bpmn:incoming>Flow_gateway_to_message_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_message_a_to_task</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_gateway_a" messageRef="Message_gateway_a" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="catch_message_b">
+      <bpmn:incoming>Flow_gateway_to_message_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_message_b_to_task</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_gateway_b" messageRef="Message_gateway_b" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_message_a_to_task" sourceRef="catch_message_a" targetRef="task_message_a" />
+    <bpmn:sequenceFlow id="Flow_message_b_to_task" sourceRef="catch_message_b" targetRef="task_message_b" />
+    <bpmn:serviceTask id="task_message_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="event-based-message-only-a-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_message_a_to_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_message_a_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="task_message_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="event-based-message-only-b-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_message_b_to_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_message_b_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="end_message_a">
+      <bpmn:incoming>Flow_message_a_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_message_b">
+      <bpmn:incoming>Flow_message_b_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_message_a_to_end" sourceRef="task_message_a" targetRef="end_message_a" />
+    <bpmn:sequenceFlow id="Flow_message_b_to_end" sourceRef="task_message_b" targetRef="end_message_b" />
+  </bpmn:process>
+  <bpmn:message id="Message_gateway_a" name="event-gateway-message-a">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_gateway_b" name="event-gateway-message-b">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="event-based-gateway-two-messages">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="event_based_gateway_di" bpmnElement="event_based_gateway">
+        <dc:Bounds x="240" y="115" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="catch_message_a_di" bpmnElement="catch_message_a">
+        <dc:Bounds x="350" y="62" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="catch_message_b_di" bpmnElement="catch_message_b">
+        <dc:Bounds x="350" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="task_message_a_di" bpmnElement="task_message_a">
+        <dc:Bounds x="450" y="40" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="task_message_b_di" bpmnElement="task_message_b">
+        <dc:Bounds x="450" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_message_a_di" bpmnElement="end_message_a">
+        <dc:Bounds x="620" y="62" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_message_b_di" bpmnElement="end_message_b">
+        <dc:Bounds x="620" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_gateway_di" bpmnElement="Flow_start_to_gateway">
+        <di:waypoint x="186" y="140" />
+        <di:waypoint x="240" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_message_a_di" bpmnElement="Flow_gateway_to_message_a">
+        <di:waypoint x="265" y="115" />
+        <di:waypoint x="265" y="80" />
+        <di:waypoint x="350" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_message_b_di" bpmnElement="Flow_gateway_to_message_b">
+        <di:waypoint x="265" y="165" />
+        <di:waypoint x="265" y="200" />
+        <di:waypoint x="350" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_message_a_to_task_di" bpmnElement="Flow_message_a_to_task">
+        <di:waypoint x="386" y="80" />
+        <di:waypoint x="450" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_message_b_to_task_di" bpmnElement="Flow_message_b_to_task">
+        <di:waypoint x="386" y="200" />
+        <di:waypoint x="450" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_message_a_to_end_di" bpmnElement="Flow_message_a_to_end">
+        <di:waypoint x="550" y="80" />
+        <di:waypoint x="620" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_message_b_to_end_di" bpmnElement="Flow_message_b_to_end">
+        <di:waypoint x="550" y="200" />
+        <di:waypoint x="620" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

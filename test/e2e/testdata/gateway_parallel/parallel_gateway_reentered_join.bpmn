@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_parallel_gateway_reentered_join" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="parallel_gateway_reentered_join" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>Flow_start_to_merge</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_merge" sourceRef="start_event" targetRef="loop_merge" />
+    <bpmn:exclusiveGateway id="loop_merge">
+      <bpmn:incoming>Flow_start_to_merge</bpmn:incoming>
+      <bpmn:incoming>Flow_loop_to_merge</bpmn:incoming>
+      <bpmn:outgoing>Flow_merge_to_split</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_merge_to_split" sourceRef="loop_merge" targetRef="parallel_gateway_split" />
+    <bpmn:parallelGateway id="parallel_gateway_split">
+      <bpmn:incoming>Flow_merge_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_task_a</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_task_b</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_split_to_task_a" sourceRef="parallel_gateway_split" targetRef="service_task_a" />
+    <bpmn:sequenceFlow id="Flow_split_to_task_b" sourceRef="parallel_gateway_split" targetRef="service_task_b" />
+    <bpmn:serviceTask id="service_task_a">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-reentered-a" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_a</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_a_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="service_task_b">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-reentered-b" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_split_to_task_b</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_b_to_join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_task_a_to_join" sourceRef="service_task_a" targetRef="parallel_gateway_join" />
+    <bpmn:sequenceFlow id="Flow_task_b_to_join" sourceRef="service_task_b" targetRef="parallel_gateway_join" />
+    <bpmn:parallelGateway id="parallel_gateway_join">
+      <bpmn:incoming>Flow_task_a_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_task_b_to_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_join_to_after</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sequenceFlow id="Flow_join_to_after" sourceRef="parallel_gateway_join" targetRef="service_task_after_join" />
+    <bpmn:serviceTask id="service_task_after_join">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="parallel-reentered-after" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=loop" target="loop" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_join_to_after</bpmn:incoming>
+      <bpmn:outgoing>Flow_after_to_decision</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_after_to_decision" sourceRef="service_task_after_join" targetRef="loop_decision" />
+    <bpmn:exclusiveGateway id="loop_decision" default="Flow_decision_to_end">
+      <bpmn:incoming>Flow_after_to_decision</bpmn:incoming>
+      <bpmn:outgoing>Flow_loop_to_merge</bpmn:outgoing>
+      <bpmn:outgoing>Flow_decision_to_end</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_loop_to_merge" sourceRef="loop_decision" targetRef="loop_merge">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= loop</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_decision_to_end" sourceRef="loop_decision" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_decision_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="parallel_gateway_reentered_join">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="185" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="loop_merge_di" bpmnElement="loop_merge" isMarkerVisible="true">
+        <dc:Bounds x="235" y="178" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_split_di" bpmnElement="parallel_gateway_split">
+        <dc:Bounds x="340" y="178" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_a_di" bpmnElement="service_task_a">
+        <dc:Bounds x="470" y="105" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_b_di" bpmnElement="service_task_b">
+        <dc:Bounds x="470" y="245" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parallel_gateway_join_di" bpmnElement="parallel_gateway_join">
+        <dc:Bounds x="650" y="178" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_after_join_di" bpmnElement="service_task_after_join">
+        <dc:Bounds x="780" y="163" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="loop_decision_di" bpmnElement="loop_decision" isMarkerVisible="true">
+        <dc:Bounds x="955" y="178" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_di" bpmnElement="end_event">
+        <dc:Bounds x="1090" y="185" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_merge_di" bpmnElement="Flow_start_to_merge">
+        <di:waypoint x="186" y="203" />
+        <di:waypoint x="235" y="203" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_merge_to_split_di" bpmnElement="Flow_merge_to_split">
+        <di:waypoint x="285" y="203" />
+        <di:waypoint x="340" y="203" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_a_di" bpmnElement="Flow_split_to_task_a">
+        <di:waypoint x="365" y="178" />
+        <di:waypoint x="365" y="145" />
+        <di:waypoint x="470" y="145" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_task_b_di" bpmnElement="Flow_split_to_task_b">
+        <di:waypoint x="365" y="228" />
+        <di:waypoint x="365" y="285" />
+        <di:waypoint x="470" y="285" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_a_to_join_di" bpmnElement="Flow_task_a_to_join">
+        <di:waypoint x="570" y="145" />
+        <di:waypoint x="675" y="145" />
+        <di:waypoint x="675" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_b_to_join_di" bpmnElement="Flow_task_b_to_join">
+        <di:waypoint x="570" y="285" />
+        <di:waypoint x="675" y="285" />
+        <di:waypoint x="675" y="228" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_join_to_after_di" bpmnElement="Flow_join_to_after">
+        <di:waypoint x="700" y="203" />
+        <di:waypoint x="780" y="203" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_after_to_decision_di" bpmnElement="Flow_after_to_decision">
+        <di:waypoint x="880" y="203" />
+        <di:waypoint x="955" y="203" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_loop_to_merge_di" bpmnElement="Flow_loop_to_merge">
+        <di:waypoint x="980" y="228" />
+        <di:waypoint x="980" y="390" />
+        <di:waypoint x="260" y="390" />
+        <di:waypoint x="260" y="228" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_decision_to_end_di" bpmnElement="Flow_decision_to_end">
+        <di:waypoint x="1005" y="203" />
+        <di:waypoint x="1090" y="203" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

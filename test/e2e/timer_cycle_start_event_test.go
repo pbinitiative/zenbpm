@@ -54,24 +54,10 @@ func TestTimerCycleStartEvent_CronEverySecond(t *testing.T) {
 
 	// Cancel any Created definition-level timer for this definition so the cron does not fire again.
 	store := mustGetPartitionStore(t, parentInstances[0].Key)
-	require.NoError(t, cancelCreatedDefinitionLevelTimers(store, definitionKey))
+	cancelCreatedDefinitionLevelTimers(t, store, definitionKey)
 
 	// After cancellation, the instance count must remain at 2 (no further firings).
-	require.Never(t, func() bool {
-		page, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-			BpmnProcessId: &uniqueProcessId,
-		})
-		if err != nil || page.JSON200 == nil {
-			return false
-		}
-		// In case the engine managed to schedule yet another timer after our cancel, sweep again.
-		if page.JSON200.TotalCount > 2 {
-			return true
-		}
-		// Runs in a testify background goroutine: never call t/require here.
-		_ = cancelCreatedDefinitionLevelTimers(store, definitionKey)
-		return false
-	}, 3*time.Second, 100*time.Millisecond, "cron cycle should be deactivated — no 3rd process instance should appear")
+	assertProcessInstanceCountNeverExceeds(t, uniqueProcessId, store, definitionKey, 2, 3*time.Second, 100*time.Millisecond)
 
 	// Re-read instances after the stabilization window above and assert state/count.
 	parentInstances = listParentInstances(t, uniqueProcessId)
@@ -158,11 +144,13 @@ func mustGetPartitionStore(t *testing.T, instanceKey int64) storage.Storage {
 
 // cancelCreatedDefinitionLevelTimers marks every Created definition-level timer (ProcessInstanceKey == nil)
 // for the given process definition as Cancelled so the cycle stops firing.
-// It returns an error instead of asserting because it is also invoked from inside the require.Never
-// condition closure, which testify runs in a background goroutine. Calling t/require assertions from a
-// non-test goroutine panics with "Fail in goroutine after <test> has completed" once the test finishes.
-func cancelCreatedDefinitionLevelTimers(store storage.Storage, definitionKey int64) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func cancelCreatedDefinitionLevelTimers(t *testing.T, store storage.Storage, definitionKey int64) {
+	t.Helper()
+	require.NoError(t, cancelCreatedDefinitionLevelTimersWithContext(t.Context(), store, definitionKey))
+}
+
+func cancelCreatedDefinitionLevelTimersWithContext(ctx context.Context, store storage.Storage, definitionKey int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	created, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateCreated)
 	if err != nil {

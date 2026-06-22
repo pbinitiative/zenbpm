@@ -31,6 +31,10 @@ PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 GOLANG_CROSS_VERSION ?= v1.26.4
 GOSEC_VERSION ?= v2.27.1
 GOSEC_FLAGS ?= -exclude-generated -no-fail
+GOSEC_REPORT_DIR ?= gosec-reports
+GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
+GOSEC_HTML_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.html
+GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
@@ -116,8 +120,9 @@ vet: ## Run go vet against code.
 
 .PHONY: sast
 sast: gosec ## Run Go source SAST checks. Reports are written to gosec-reports/.
-	@mkdir -p gosec-reports
-	$(GOSEC) $(GOSEC_FLAGS) -fmt sarif -out gosec-reports/gosec.sarif -stdout -verbose text ./...
+	@mkdir -p $(GOSEC_REPORT_DIR)
+	$(GOSEC) $(GOSEC_REPORT_FLAGS) -fmt sarif -out $(GOSEC_SARIF_REPORT) ./...
+	$(GOSEC) $(GOSEC_FLAGS) -fmt html -out $(GOSEC_HTML_REPORT) -stdout -verbose text ./...
 
 .PHONY: sast-strict
 sast-strict: GOSEC_FLAGS := -exclude-generated

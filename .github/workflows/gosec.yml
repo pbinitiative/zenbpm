@@ -46,6 +46,7 @@ jobs:
         run: |
           mkdir -p gosec-reports
           bin/gosec -exclude-generated -no-fail -fmt sarif -out gosec-reports/gosec.sarif ./...
+          bin/gosec -exclude-generated -no-fail -fmt html -out gosec-reports/gosec.html ./...
 
       - name: upload gosec sarif
         if: ${{ always() && hashFiles('gosec-reports/gosec.sarif') != '' }}

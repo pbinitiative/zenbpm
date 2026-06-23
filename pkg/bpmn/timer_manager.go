@@ -164,7 +164,11 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 		defer t.Stop()
 		select {
 		case <-t.C:
-			tm.ch <- tft
+			select {
+			case tm.ch <- tft:
+			case <-timerCtx.Done():
+			case <-tm.ctx.Done():
+			}
 		case <-timerCtx.Done():
 		case <-tm.ctx.Done():
 		}

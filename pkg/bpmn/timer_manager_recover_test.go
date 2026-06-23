@@ -77,3 +77,43 @@ func TestTimerWaiterRecoversPanic(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond,
 		"safego should have recovered the panic and logged the goroutine name")
 }
+
+func TestTimerManagerStopDoesNotDeadlock(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "timer-manager-test",
+		Level:  hclog.Error,
+		Output: &syncBuffer{},
+	})
+
+	tm := &timerManager{
+		pollTimerDelay:  10 * time.Minute,
+		mu:              &sync.RWMutex{},
+		ctx:             ctx,
+		ctxCancelFunc:   cancel,
+		ch:              make(chan runtime.Timer),
+		logger:          logger,
+		waitingTimers:   []waitingTimer{},
+		waitingTimersWg: &sync.WaitGroup{},
+	}
+
+	tm.addWaitingTimer(runtime.Timer{
+		Key:   rand.Int63(),
+		DueAt: time.Now().Add(-1 * time.Second),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	stopped := make(chan struct{})
+	go func() {
+		tm.stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stop() deadlocked: timer-waiter blocked on send to tm.ch with no reader")
+	}
+}

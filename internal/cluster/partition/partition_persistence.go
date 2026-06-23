@@ -2564,10 +2564,8 @@ func (rq *DBBatch) QueryContext(ctx context.Context, query string, args ...inter
 }
 
 func (rq *DBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	// QueryRowContext cannot return an error (its signature returns only *sql.Row and
-	// database/sql does not allow constructing a *sql.Row carrying an error), so this
-	// unsupported operation fails fast by panicking.
-	panic("QueryRowContext is not supported by RqLiteDBBatch")
+	// Return a row carrying the error (surfaced on Scan), matching DB.QueryRowContext.
+	return sql.ConstructRow(ctx, []string{}, []string{}, nil, fmt.Errorf("QueryRowContext is not supported by RqLiteDBBatch"))
 }
 
 var _ storage.Batch = &DBBatch{}

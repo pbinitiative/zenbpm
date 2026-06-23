@@ -194,15 +194,23 @@ func TestTimerGetState(t *testing.T) {
 		name     string
 		state    TimerState
 		expected ActivityState
+		wantErr  bool
 	}{
-		{"Created returns Active", TimerStateCreated, ActivityStateActive},
-		{"Triggered returns Completed", TimerStateTriggered, ActivityStateCompleted},
-		{"Cancelled returns Withdrawn", TimerStateCancelled, ActivityStateWithdrawn},
+		{"Created returns Active", TimerStateCreated, ActivityStateActive, false},
+		{"Triggered returns Completed", TimerStateTriggered, ActivityStateCompleted, false},
+		{"Cancelled returns Withdrawn", TimerStateCancelled, ActivityStateWithdrawn, false},
+		{"Unknown state returns error", TimerState(99), 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			timer := Timer{TimerState: tt.state}
-			assert.Equal(t, tt.expected, timer.GetState())
+			got, err := timer.GetState()
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, got)
 		})
 	}
 }

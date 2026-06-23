@@ -434,16 +434,16 @@ func (t Timer) EqualTo(t2 Timer) bool {
 	return false
 }
 
-func (t Timer) GetState() ActivityState {
+func (t Timer) GetState() (ActivityState, error) {
 	switch t.TimerState {
 	case TimerStateCreated:
-		return ActivityStateActive
+		return ActivityStateActive, nil
 	case TimerStateTriggered:
-		return ActivityStateCompleted
+		return ActivityStateCompleted, nil
 	case TimerStateCancelled:
-		return ActivityStateWithdrawn
+		return ActivityStateWithdrawn, nil
 	}
-	panic(fmt.Sprintf("[invariant check] missing mapping for timer state=%s", t.TimerState))
+	return 0, fmt.Errorf("missing ActivityState mapping for timer state=%s", t.TimerState)
 }
 
 type Activity interface {

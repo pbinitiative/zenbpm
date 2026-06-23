@@ -287,7 +287,9 @@ func (s *jobServer) handleJobStreamRecv(stream *nodeSub) {
 		case proto.SubscribeJobRequest_TYPE_UNSUBSCRIBE_ALL:
 			s.removeClient(ClientID(req.GetClientId()))
 		default:
-			panic(fmt.Sprintf("unexpected proto.SubscribeJobRequest_Type: %#v", req.Type))
+			s.logger.Error("received unexpected SubscribeJob request type, ignoring",
+				"type", req.GetType(), "streamNodeId", stream.nodeID)
+			continue
 		}
 	}
 }

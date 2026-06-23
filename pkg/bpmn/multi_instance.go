@@ -98,6 +98,8 @@ func (engine *Engine) handleMultiInstanceActivity(ctx context.Context, batch *En
 		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TSendTask:
 		activityResult, err = engine.createInternalTask(ctx, batch, instance, element, currentToken, variableHolder)
+	case *bpmn20.TReceiveTask:
+		activityResult, err = engine.createMultiInstanceReceiveTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TUserTask:
 		activityResult, err = engine.createUserTask(ctx, batch, instance, element, currentToken, variableHolder)
 	case *bpmn20.TCallActivity:

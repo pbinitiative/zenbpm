@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"time"
 
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
@@ -153,12 +154,38 @@ func (b *EngineBatch) WriteTokenIncident(ctx context.Context, token bpmnruntime.
 	b.b.SaveIncident(ctx, createNewIncidentFromToken(err, token, b.engine))
 }
 
-func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) {
+func (b *EngineBatch) WriteMessageIncident(ctx context.Context, message bpmnruntime.MessageSubscription, instance bpmnruntime.ProcessInstance, err error) error {
 	b.b = b.engine.persistence.NewBatch()
 	b.preFlushActions = []func() error{}
 	b.postFlushActions = []func(){}
-	b.b.SaveMessageSubscription(ctx, message)
-	b.b.SaveProcessInstance(ctx, instance)
+	if saveErr := b.b.SaveMessageSubscription(ctx, message); saveErr != nil {
+		return fmt.Errorf("failed to save message subscription for incident: %w", saveErr)
+	}
+	instance.ProcessInstance().State = bpmnruntime.ActivityStateFailed
+	if saveErr := b.b.SaveProcessInstance(ctx, instance); saveErr != nil {
+		return fmt.Errorf("failed to save process instance for incident: %w", saveErr)
+	}
+	var incident bpmnruntime.Incident
+	if tokenSub, ok := message.(*bpmnruntime.TokenMessageSubscription); ok {
+		tokenSub.Token.State = bpmnruntime.TokenStateFailed
+		if saveErr := b.b.SaveToken(ctx, tokenSub.Token); saveErr != nil {
+			return fmt.Errorf("failed to save token for message incident: %w", saveErr)
+		}
+		incident = createNewIncidentFromToken(err, tokenSub.Token, b.engine)
+	} else {
+		data := message.MessageSubscription()
+		incident = bpmnruntime.Incident{
+			Key:                b.engine.generateKey(),
+			ElementId:          data.ElementId,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			Message:            err.Error(),
+			CreatedAt:          time.Now(),
+		}
+	}
+	if saveErr := b.b.SaveIncident(ctx, incident); saveErr != nil {
+		return fmt.Errorf("failed to save message incident: %w", saveErr)
+	}
+	return nil
 }
 
 func (b *EngineBatch) AddPreFlushAction(ctx context.Context, f func() error) {

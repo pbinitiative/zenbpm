@@ -71,7 +71,55 @@ func (engine *Engine) Start(ctx context.Context) error {
 		}
 	}
 
+	if err := engine.recoverInstantiatingReceiveTaskSubscriptions(engine.context); err != nil {
+		engine.logger.Error(fmt.Sprintf("failed to recover instantiating receive task subscriptions: %s", err.Error()))
+	}
+
 	return nil
+}
+
+// recoverInstantiatingReceiveTaskSubscriptions ensures every instantiating receive task of the latest version
+// of each deployed process definition has an active process-definition-level message subscription.
+func (engine *Engine) recoverInstantiatingReceiveTaskSubscriptions(ctx context.Context) error {
+	definitions, err := engine.persistence.FindAllProcessDefinitions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load process definitions for instantiating receive task recovery: %w", err)
+	}
+
+	latestByProcessId := make(map[string]runtime.ProcessDefinition)
+	for _, def := range definitions {
+		if len(findInstantiatingReceiveTasks(&def.Definitions.Process)) == 0 {
+			continue
+		}
+		if existing, ok := latestByProcessId[def.BpmnProcessId]; !ok || def.Version > existing.Version {
+			latestByProcessId[def.BpmnProcessId] = def
+		}
+	}
+
+	var errs []error
+	for _, def := range latestByProcessId {
+		definition := def
+		if engine.recoverDefinitionSubscriptions != nil && !engine.recoverDefinitionSubscriptions(definition) {
+			continue
+		}
+		for _, receiveTask := range findInstantiatingReceiveTasks(&definition.Definitions.Process) {
+			activeInstances, err := engine.persistence.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx, definition.Key, receiveTask.GetId())
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to check active process instances for definition %d receive task %s during instantiating receive task recovery: %w", definition.Key, receiveTask.GetId(), err))
+				continue
+			}
+			if len(activeInstances) > 0 {
+				// A live instance created by this instantiating receive task already exists; re-arming now would
+				// violate the single-active-instance guard. The subscription will be re-armed when that instance
+				// finishes (see RunProcessInstance's re-arm defer).
+				continue
+			}
+			if rearmErr := engine.rearmInstantiatingReceiveTaskSubscription(ctx, &definition, receiveTask); rearmErr != nil {
+				errs = append(errs, fmt.Errorf("failed to recover instantiating receive task subscription for definition %d receive task %s: %w", definition.Key, receiveTask.GetId(), rearmErr))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (engine *Engine) Stop() {
@@ -112,6 +160,20 @@ func (engine *Engine) RunProcessInstance(ctx context.Context, instance runtime.P
 	process := instance.ProcessInstance().Definition
 	runningExecutionTokens := executionTokens
 	var runErr error
+
+	// Re-arm instantiating receive-task definition subscriptions on EVERY exit path
+	defer func() {
+		if !shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
+			return
+		}
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, process); rearmErr != nil {
+			engine.logger.Warn("failed to re-arm instantiating receive task subscriptions",
+				"processInstance", instance.ProcessInstance().Key,
+				"processDefinition", process.Key,
+				"err", rearmErr,
+			)
+		}
+	}()
 
 	ctx, instanceSpan := engine.tracer.Start(ctx, fmt.Sprintf("run-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -261,6 +323,7 @@ mainLoop:
 			attribute.String("bpmn_process_id", instance.ProcessInstance().Definition.BpmnProcessId),
 		))
 	}
+
 	if runErr != nil {
 		return errors.Join(newEngineErrorf("failed to run process instance %d", instance.ProcessInstance().Key), runErr)
 	}
@@ -309,6 +372,14 @@ func (engine *Engine) CreateInstanceByKey(ctx context.Context, definitionKey int
 // CreateInstance creates and runs the new process instance for a given process definition
 // Might return BpmnEngineError, if process key was not found
 func (engine *Engine) CreateInstance(ctx context.Context, process *runtime.ProcessDefinition, variableContext map[string]interface{}) (runtime.ProcessInstance, error) {
+	// Process definitions with an instantiating receive task (instantiate="true") cannot be started
+	// manually if they do not also expose a plain start event: a new instance is only created when the
+	// receive task's message is published. Mixed models with a plain start event remain manually startable.
+	if receiveTasks := findInstantiatingReceiveTasks(&process.Definitions.Process); len(receiveTasks) > 0 && !hasPlainStartEvent(&process.Definitions.Process) {
+		return nil, newEngineErrorf("process definition %d (%s) cannot be started manually because it has an instantiating receive task %q; publish its message instead",
+			process.Key, process.BpmnProcessId, receiveTasks[0].GetId())
+	}
+
 	batch := engine.persistence.NewBatch()
 	instance, executionTokens, err := engine.createInstance(
 		ctx,
@@ -411,6 +482,11 @@ func (engine *Engine) CancelInstanceByKey(ctx context.Context, instanceKey int64
 	err = batch.Flush(ctx)
 	if err != nil {
 		return err
+	}
+	if shouldRearmInstantiatingReceiveTaskSubscriptions(instance.ProcessInstance().State) {
+		if rearmErr := engine.rearmInstantiatingReceiveTaskSubscriptions(ctx, instance.ProcessInstance().Definition); rearmErr != nil {
+			return fmt.Errorf("failed to re-arm instantiating receive task subscriptions for process instance %d: %w", instance.ProcessInstance().Key, rearmErr)
+		}
 	}
 	return nil
 }

@@ -37,6 +37,20 @@ func (mem *Storage) GenerateId() int64 {
 	return rand.Int63()
 }
 
+// ProcessInstancesSnapshot returns a copy of all stored process instances taken under a read lock.
+// Callers (notably tests) must use this instead of ranging over the ProcessInstances map directly,
+// since the engine writes to that map from its worker goroutines and a concurrent map
+// iteration/write triggers a fatal runtime error.
+func (mem *Storage) ProcessInstancesSnapshot() []bpmnruntime.ProcessInstance {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	out := make([]bpmnruntime.ProcessInstance, 0, len(mem.ProcessInstances))
+	for _, pi := range mem.ProcessInstances {
+		out = append(out, pi)
+	}
+	return out
+}
+
 func NewStorage() *Storage {
 	return &Storage{
 		DmnResourceDefinitions: make(map[int64]dmnruntime.DmnResourceDefinition),
@@ -313,6 +327,16 @@ func (mem *Storage) FindProcessDefinitionByKey(ctx context.Context, processDefin
 	return res, nil
 }
 
+func (mem *Storage) FindAllProcessDefinitions(ctx context.Context) ([]bpmnruntime.ProcessDefinition, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.ProcessDefinition, 0, len(mem.ProcessDefinitions))
+	for _, def := range mem.ProcessDefinitions {
+		res = append(res, def)
+	}
+	return res, nil
+}
+
 func (mem *Storage) FindProcessDefinitionsById(ctx context.Context, processId string) ([]bpmnruntime.ProcessDefinition, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
@@ -417,6 +441,26 @@ func (mem *Storage) FindProcessInstancesByParentExecutionTokenKey(ctx context.Co
 			}
 		default:
 			continue
+		}
+	}
+	return res, nil
+}
+
+func (mem *Storage) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	res := make([]bpmnruntime.ProcessInstance, 0)
+	for _, processInstance := range mem.ProcessInstances {
+		piData := processInstance.ProcessInstance()
+		if piData.Definition == nil || piData.Definition.Key != processDefinitionKey {
+			continue
+		}
+		if piData.StartElementId == nil || *piData.StartElementId != startElementId {
+			continue
+		}
+		switch piData.GetState() {
+		case bpmnruntime.ActivityStateActive, bpmnruntime.ActivityStateReady:
+			res = append(res, processInstance)
 		}
 	}
 	return res, nil
@@ -717,6 +761,7 @@ func (mem *Storage) FindProcessInstanceMessageSubscriptions(ctx context.Context,
 func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name string, correlationKey *string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
 	mem.mu.RLock()
 	defer mem.mu.RUnlock()
+	var match bpmnruntime.MessageSubscription
 	for _, sub := range mem.MessageSubscriptions {
 		if sub.MessageSubscription().State != state {
 			continue
@@ -725,11 +770,36 @@ func (mem *Storage) FindMessageSubscriptionByName(ctx context.Context, name stri
 			continue
 		}
 		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(sub)
-		if correlationKey == nil && subCorrelationKey == "" {
-			return sub, nil
+		if correlationKey == nil && subCorrelationKey != "" {
+			continue
 		}
-		if correlationKey != nil && subCorrelationKey == *correlationKey {
-			return sub, nil
+		if correlationKey != nil && subCorrelationKey != *correlationKey {
+			continue
+		}
+		if match == nil || sub.MessageSubscription().Key < match.MessageSubscription().Key {
+			match = sub
+		}
+	}
+	if match == nil {
+		return nil, storage.ErrNotFound
+	}
+	return match, nil
+}
+
+func (mem *Storage) FindDefinitionMessageSubscription(ctx context.Context, processDefinitionKey int64, elementId string, name string, state bpmnruntime.ActivityState) (bpmnruntime.MessageSubscription, error) {
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+	for _, sub := range mem.MessageSubscriptions {
+		defSub, ok := sub.(*bpmnruntime.DefinitionMessageSubscription)
+		if !ok {
+			continue
+		}
+		data := defSub.MessageSubscription()
+		if data.ProcessDefinitionKey == processDefinitionKey &&
+			data.ElementId == elementId &&
+			data.Name == name &&
+			data.State == state {
+			return defSub, nil
 		}
 	}
 	return nil, storage.ErrNotFound
@@ -797,6 +867,19 @@ func (mem *Storage) SaveMessageSubscription(ctx context.Context, subscription bp
 	}
 	// New insert: reject if it would collide on (state=Active, name, correlationKey) with another already-active subscription.
 	for _, message := range mem.MessageSubscriptions {
+		if subscription.Type() == bpmnruntime.MessageSubscriptionTypeDefinition || message.Type() == bpmnruntime.MessageSubscriptionTypeDefinition {
+			if subscription.Type() == bpmnruntime.MessageSubscriptionTypeDefinition &&
+				message.Type() == bpmnruntime.MessageSubscriptionTypeDefinition &&
+				subscription.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+				message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&
+				message.MessageSubscription().ProcessDefinitionKey == subscription.MessageSubscription().ProcessDefinitionKey &&
+				message.MessageSubscription().ElementId == subscription.MessageSubscription().ElementId &&
+				message.MessageSubscription().Name == subscription.MessageSubscription().Name {
+				return fmt.Errorf("active definition message subscription for definition %d element %q name %q already exists",
+					subscription.MessageSubscription().ProcessDefinitionKey, subscription.MessageSubscription().ElementId, subscription.MessageSubscription().Name)
+			}
+			continue
+		}
 		subCorrelationKey, _ := getMessageSubscriptionCorrelationKey(subscription)
 		messageCorrelationKey, _ := getMessageSubscriptionCorrelationKey(message)
 		if message.MessageSubscription().State == bpmnruntime.ActivityStateActive &&

@@ -37,6 +37,8 @@ type timerManager struct {
 	pollTimerFunc    pollTimerFunc
 	waitingTimers    []waitingTimer
 	waitingTimersWg  *sync.WaitGroup
+	runWg            *sync.WaitGroup
+	shuttingDown     bool
 }
 
 func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFunc, pollTimerDelay time.Duration) *timerManager {
@@ -46,6 +48,7 @@ func newTimerManager(processTimerFunc processTimerFunc, pollTimeFunc pollTimerFu
 		pollTimerDelay:   pollTimerDelay,
 		waitingTimers:    []waitingTimer{},
 		waitingTimersWg:  &sync.WaitGroup{},
+		runWg:            &sync.WaitGroup{},
 		ctxCancelFunc:    cancel,
 		mu:               &sync.RWMutex{},
 		ch:               make(chan runtime.Timer),
@@ -121,7 +124,7 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 			return
 		}
 		tm.removeTimer(timer)
-		tm.processTimerFunc(context.Background(), timer)
+		tm.processTimerFunc(context.WithoutCancel(tm.ctx), timer)
 	case t := <-pollTicker.C:
 		nextPoll := t.Add(tm.pollTimerDelay)
 		toFireTimers, err := tm.pollTimerFunc(tm.ctx, nextPoll)
@@ -140,16 +143,16 @@ func (tm *timerManager) runOnce(pollTicker *time.Ticker) (continueTimer bool) {
 }
 
 func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
-	tm.mu.RLock()
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if tm.shuttingDown {
+		return
+	}
 	for _, wt := range tm.waitingTimers {
 		if wt.timer.Key == tft.Key {
-			tm.mu.RUnlock()
 			return
 		}
 	}
-	tm.mu.RUnlock()
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
 	timerCtx, timerCancel := context.WithCancel(context.Background())
 	tm.waitingTimers = append(tm.waitingTimers, waitingTimer{
 		ctx:    timerCtx,
@@ -159,13 +162,18 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 	tm.waitingTimersWg.Add(1)
 	go func() {
 		t := time.NewTimer(time.Until(tft.DueAt))
+		defer t.Stop()
+		defer tm.waitingTimersWg.Done()
 		select {
 		case <-t.C:
-			tm.ch <- tft
+			select {
+			case tm.ch <- tft:
+			case <-timerCtx.Done():
+			case <-tm.ctx.Done():
+			}
 		case <-timerCtx.Done():
 		case <-tm.ctx.Done():
 		}
-		tm.waitingTimersWg.Done()
 	}()
 }
 
@@ -173,11 +181,22 @@ func (tm *timerManager) start() {
 	tm.mu.Lock()
 	tm.nextPoll = time.Now().Add(tm.pollTimerDelay)
 	tm.mu.Unlock()
-	go tm.run()
+	tm.runWg.Add(1)
+	go func() {
+		defer tm.runWg.Done()
+		tm.run()
+	}()
 }
 
 func (tm *timerManager) stop() {
+	tm.mu.Lock()
+	tm.shuttingDown = true
+	waitingTimers := append([]waitingTimer(nil), tm.waitingTimers...)
+	tm.mu.Unlock()
 	tm.ctxCancelFunc()
+	for _, wt := range waitingTimers {
+		wt.cancel()
+	}
+	tm.runWg.Wait()
 	tm.waitingTimersWg.Wait()
-	close(tm.ch)
 }

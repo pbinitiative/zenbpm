@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS unique_active_definition_message_subscription;

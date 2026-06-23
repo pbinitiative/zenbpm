@@ -28,6 +28,7 @@ type Querier interface {
 	DeleteProcessInstancesTokens(ctx context.Context, keys []int64) error
 	FindActiveInstances(ctx context.Context) ([]int64, error)
 	FindActiveJobsByType(ctx context.Context, type_ string) ([]Job, error)
+	FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, arg FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams) ([]ProcessInstance, error)
 	FindAllDmnResourceDefinitions(ctx context.Context, arg FindAllDmnResourceDefinitionsParams) ([]FindAllDmnResourceDefinitionsRow, error)
 	FindAllJobs(ctx context.Context, arg FindAllJobsParams) ([]Job, error)
 	FindAllProcessDefinitions(ctx context.Context) ([]ProcessDefinition, error)
@@ -36,6 +37,9 @@ type Querier interface {
 	FindDecisionInstanceByKey(ctx context.Context, key int64) (DecisionInstance, error)
 	// workaround for sqlc which does not replace params in order by
 	FindDecisionInstancesPage(ctx context.Context, arg FindDecisionInstancesPageParams) ([]FindDecisionInstancesPageRow, error)
+	// Matches only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+	// See pkg/bpmn/runtime/types.go for the discriminator constants.
+	FindDefinitionMessageSubscription(ctx context.Context, arg FindDefinitionMessageSubscriptionParams) (MessageSubscription, error)
 	FindDmnResourceDefinitionByKey(ctx context.Context, key int64) (DmnResourceDefinition, error)
 	FindDmnResourceDefinitionsById(ctx context.Context, dmnResourceDefinitionID string) ([]DmnResourceDefinition, error)
 	FindElementTimers(ctx context.Context, arg FindElementTimersParams) ([]Timer, error)
@@ -56,6 +60,8 @@ type Querier interface {
 	FindLatestDecisionDefinitionByIdAndVersionTag(ctx context.Context, arg FindLatestDecisionDefinitionByIdAndVersionTagParams) (DecisionDefinition, error)
 	FindLatestDmnResourceDefinitionById(ctx context.Context, dmnResourceDefinitionID string) (DmnResourceDefinition, error)
 	FindLatestProcessDefinitionById(ctx context.Context, bpmnProcessID string) (ProcessDefinition, error)
+	// Deterministic tie-break: when multiple subscriptions share (name, correlation_key, state) always resolve
+	// to the lowest key rather than an arbitrary row.
 	FindMessageSubscriptionByNameAndCorrelationKeyAndState(ctx context.Context, arg FindMessageSubscriptionByNameAndCorrelationKeyAndStateParams) (MessageSubscription, error)
 	FindMessageSubscriptionPointer(ctx context.Context, arg FindMessageSubscriptionPointerParams) (MessageSubscriptionPointer, error)
 	FindProcessDefinitionByKey(ctx context.Context, key int64) (ProcessDefinition, error)

@@ -705,6 +705,8 @@ func TestMessageEventMultiInstance(t *testing.T) {
 		"TestMessageEventMultiInstanceParallelSubProcess":  "./test-cases/multi_instance_parallel_sub_process_task.bpmn",
 		"TestMessageEventMultiInstanceSubProcess":          "./test-cases/multi_instance_sub_process_task.bpmn",
 		"TestMessageEventMultiInstanceServiceTask":         "./test-cases/multi_instance_service_task.bpmn",
+		"TestMessageEventMultiInstanceReceiveTask":         "./test-cases/receive_task/multi_instance_receive_task.bpmn",
+		"TestMessageEventMultiInstanceParallelReceiveTask": "./test-cases/receive_task/multi_instance_parallel_receive_task.bpmn",
 	}
 	for testName, filePath := range bpmnFiles {
 		process, err := bpmnEngine.LoadFromFile(t.Context(), filePath)
@@ -718,12 +720,21 @@ func TestMessageEventMultiInstance(t *testing.T) {
 			instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
 			assert.NoError(t, err)
 
-			time.Sleep(1 * time.Second)
+			// wait until the boundary message subscription has been created for the multi instance activity
+			assert.Eventually(t, func() bool {
+				count := 0
+				for _, message := range engineStorage.MessageSubscriptions {
+					if message.MessageSubscription().Name == "boundary message" && message.MessageSubscription().State == runtime.ActivityStateActive {
+						count++
+					}
+				}
+				return count == 1
+			}, 2*time.Second, 50*time.Millisecond)
 
 			// when
 			count := 0
 			for _, message := range engineStorage.MessageSubscriptions {
-				if message.MessageSubscription().Name == "boundary message" {
+				if message.MessageSubscription().Name == "boundary message" && message.MessageSubscription().State == runtime.ActivityStateActive {
 					err = bpmnEngine.PublishMessage(t.Context(), message, nil)
 					assert.NoError(t, err)
 					count++

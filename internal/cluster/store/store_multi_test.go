@@ -197,20 +197,19 @@ func TestMultiNodeSimple(t *testing.T) {
 			s1.raft.AppliedIndex() == s2.raft.AppliedIndex()
 	}, 50*time.Millisecond, 10*time.Second)
 
-	// Verify that each node has the same state of partition
-	verifyChangedNodeState := func(t *testing.T, s *Store) {
-		t.Helper()
+	// Verify that each node has the same state of partition.
+	verifyChangedNodeState := func(s *Store) bool {
 		if s.state.Partitions[testPartitionId].LeaderId != s1.ID() {
-			t.Logf("node %s has invalid leader of partition %d", s.ID(), testPartitionId)
-			t.Fail()
+			return false
 		}
 		if _, ok := s.state.Nodes[s2.ID()].Partitions[testPartitionId]; ok {
-			t.Logf("expected node s2 to not have test partition")
-			t.Fail()
+			return false
 		}
+		return true
 	}
-	verifyChangedNodeState(t, s1)
-	verifyChangedNodeState(t, s2)
+	testPoll(t, func() bool {
+		return verifyChangedNodeState(s1) && verifyChangedNodeState(s2)
+	}, 50*time.Millisecond, 10*time.Second)
 }
 
 func TestMultiNodePeerObservations(t *testing.T) {

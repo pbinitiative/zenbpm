@@ -640,10 +640,11 @@ func (engine *ZenDmnEngine) evaluateDecisionTable(decisionTable *dmn.TDecisionTa
 		}
 	}
 
-	return EvaluateHitPolicyOutput(decisionTable, decisionId, decisionTable.HitPolicy, decisionTable.HitPolicyAggregation, matchedRules),
-		matchedRules,
-		evaluatedInputs,
-		nil
+	hitPolicyOutput, err := EvaluateHitPolicyOutput(decisionTable, decisionId, decisionTable.HitPolicy, decisionTable.HitPolicyAggregation, matchedRules)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return hitPolicyOutput, matchedRules, evaluatedInputs, nil
 }
 
 func isUnique(list []dmn.TOutput) bool {

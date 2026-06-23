@@ -2556,15 +2556,18 @@ func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interfac
 }
 
 func (rq *DBBatch) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {
-	panic("PrepareContext not supported by RqLiteDBBatch")
+	return nil, fmt.Errorf("PrepareContext is not supported by RqLiteDBBatch")
 }
 
 func (rq *DBBatch) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	panic("QueryContext not supported by RqLiteDBBatch")
+	return nil, fmt.Errorf("QueryContext is not supported by RqLiteDBBatch")
 }
 
 func (rq *DBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	panic("QueryRowContext not supported by RqLiteDBBatch")
+	// QueryRowContext cannot return an error (its signature returns only *sql.Row and
+	// database/sql does not allow constructing a *sql.Row carrying an error), so this
+	// unsupported operation fails fast by panicking.
+	panic("QueryRowContext is not supported by RqLiteDBBatch")
 }
 
 var _ storage.Batch = &DBBatch{}

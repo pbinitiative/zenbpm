@@ -170,50 +170,50 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	case protoc.Command_TYPE_UNKNOWN:
 		fallthrough
 	default:
-		panic("unexpected protoc.Command_Type")
+		return nil, fmt.Errorf("unexpected command type: %v", req.GetType())
 	}
 }
 
 func (s *Server) ClusterBackup(ctx context.Context, req *proto.ClusterBackupRequest) (*proto.ClusterBackupResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "ClusterBackup is not implemented")
 }
 
 func (s *Server) ClusterRestore(ctx context.Context, req *proto.ClusterRestoreRequest) (*proto.ClusterRestoreResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "ClusterRestore is not implemented")
 }
 
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "ConfigurationUpdate is not implemented")
 }
 
 func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartitionRequest) (*proto.AssignPartitionResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "AssignPartition is not implemented")
 }
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
 func (s *Server) PartitionBackup(ctx context.Context, req *proto.PartitionBackupRequest) (*proto.PartitionBackupResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "PartitionBackup is not implemented")
 }
 func (s *Server) PartitionRestore(ctx context.Context, req *proto.PartitionRestoreRequest) (*proto.PartitionRestoreResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "PartitionRestore is not implemented")
 }
 func (s *Server) PartitionNodeLeaderChange(context.Context, *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "PartitionNodeLeaderChange is not implemented")
 }
 func (s *Server) AddPartitionNode(context.Context, *proto.AddPartitionNodeRequest) (*proto.AddPartitionNodeResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "AddPartitionNode is not implemented")
 }
 func (s *Server) RemovePartitionNode(context.Context, *proto.RemovePartitionNodeRequest) (*proto.RemovePartitionNodeResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "RemovePartitionNode is not implemented")
 }
 
 func (s *Server) ResumePartitionNode(context.Context, *proto.ResumePartitionNodeRequest) (*proto.ResumePartitionNodeResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "ResumePartitionNode is not implemented")
 }
 
 func (s *Server) ShutdownPartitionNode(context.Context, *proto.ShutdownPartitionNodeRequest) (*proto.ShutdownPartitionNodeResponse, error) {
-	panic("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "ShutdownPartitionNode is not implemented")
 }
 
 func (s *Server) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {

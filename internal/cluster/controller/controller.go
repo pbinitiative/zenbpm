@@ -401,23 +401,23 @@ func (c *Controller) handlePartitionStateLeaving(ctx context.Context, partitionI
 }
 
 func (c *Controller) partitionResumeNode(id string, partitionId uint32) error {
-	panic("unimplemented")
+	return fmt.Errorf("partitionResumeNode is not implemented")
 }
 
 func (c *Controller) partitionRemoveNode(id string, partitionId uint32) error {
-	panic("unimplemented")
+	return fmt.Errorf("partitionRemoveNode is not implemented")
 }
 
 func (c *Controller) partitionLeaderChange(s raft.ServerID, partitionId uint32) error {
-	panic("unimplemented")
+	return fmt.Errorf("partitionLeaderChange is not implemented")
 }
 
 func (c *Controller) partitionShutdownNode(s raft.ServerID, partitionId uint32) error {
-	panic("unimplemented")
+	return fmt.Errorf("partitionShutdownNode is not implemented")
 }
 
 func (c *Controller) partitionAddNewNode(s raft.Server, partitionId uint32) error {
-	panic("unimplemented")
+	return fmt.Errorf("partitionAddNewNode is not implemented")
 }
 
 func (c *Controller) Stop() error {

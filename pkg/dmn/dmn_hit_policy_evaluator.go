@@ -1,10 +1,12 @@
 package dmn
 
 import (
+	"fmt"
+
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 )
 
-func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId string, hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) map[string]interface{} {
+func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId string, hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) (map[string]interface{}, error) {
 	switch hitPolicy {
 	case dmn.HitPolicyCollect:
 		switch hitPolicyAggregation {
@@ -17,20 +19,20 @@ func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId strin
 		case dmn.HitPolicyAggregationCount:
 			return evaluateCollectCountOutput(matchedRules)
 		default:
-			return evaluateCollectOutput(decisionTable, decisionId, matchedRules)
+			return evaluateCollectOutput(decisionTable, decisionId, matchedRules), nil
 		}
 	case dmn.HitPolicyFirst:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	case dmn.HitPolicyPriority:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	case dmn.HitPolicyAny:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	case dmn.HitPolicyRuleOrder:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	case dmn.HitPolicyOutputOrder:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	default:
-		return evaluateUniqueOutput(decisionTable, decisionId, matchedRules)
+		return evaluateUniqueOutput(decisionTable, decisionId, matchedRules), nil
 	}
 }
 
@@ -55,20 +57,20 @@ func evaluateCollectOutput(decisionTable *dmn.TDecisionTable, decisionId string,
 	return finalResult
 }
 
-func evaluateCollectSumOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectSumOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect sum hit policy aggregation is not implemented")
 }
 
-func evaluateCollectMinOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectMinOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect min hit policy aggregation is not implemented")
 }
 
-func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect max hit policy aggregation is not implemented")
 }
 
-func evaluateCollectCountOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectCountOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect count hit policy aggregation is not implemented")
 }
 
 func evaluateFirstRuleOutput(decisionTable *dmn.TDecisionTable, decisionId string, matchedRules []EvaluatedRule) map[string]interface{} {
@@ -92,22 +94,6 @@ func evaluateFirstRuleOutput(decisionTable *dmn.TDecisionTable, decisionId strin
 
 	finalResult[decisionId] = result
 	return finalResult
-}
-
-func evaluatePriorityOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateAnyOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateRuleOrderOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateOutputOrderOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
 }
 
 func evaluateUniqueOutput(decision *dmn.TDecisionTable, decisionId string, matchedRules []EvaluatedRule) map[string]interface{} {

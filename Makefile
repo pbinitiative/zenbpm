@@ -40,6 +40,7 @@ GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
 CODEQL_VERSION ?= v2.25.6
 CODEQL_REPORT_DIR ?= codeql-reports
 CODEQL_SARIF_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.sarif
+CODEQL_HTML_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.html
 CODEQL_DB ?= $(CODEQL_REPORT_DIR)/codeql-db
 # Map GOOS/GOARCH to CodeQL bundle zip naming
 CODEQL_OS ?= linux64
@@ -167,6 +168,8 @@ codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written 
 		--format=sarif-latest \
 		--output=$(CODEQL_SARIF_REPORT)
 	@echo "CodeQL SARIF report written to: $(CODEQL_SARIF_REPORT)"
+	python3 scripts/ci/sarif_to_html.py $(CODEQL_SARIF_REPORT) $(CODEQL_HTML_REPORT)
+	@echo "CodeQL HTML report written to: $(CODEQL_HTML_REPORT)"
 
 .PHONY: run
 run: ## Start this project locally with dev configuration

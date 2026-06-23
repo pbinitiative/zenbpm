@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Definitions_Decision_hit_policy_collect_max" name="Hit Policy Collect MAX Test" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_collect_max" name="DMN Hit Policy Collect MAX">
+    <decisionTable id="hit_policy_collect_max_table" hitPolicy="COLLECT" aggregation="MAX">
+      <input id="input_collect_max_score" label="Score">
+        <inputExpression id="inputExpression_collect_max_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_collect_max_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_collect_max_score_at_least_1">
+        <inputEntry id="input_collect_max_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_collect_max_score_at_least_1">
+          <text>10</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_collect_max_score_at_least_2">
+        <inputEntry id="input_collect_max_score_at_least_2">
+          <text>&gt;= 2</text>
+        </inputEntry>
+        <outputEntry id="output_collect_max_score_at_least_2">
+          <text>2.5</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_collect_max_score_at_least_3">
+        <inputEntry id="input_collect_max_score_at_least_3">
+          <text>&gt;= 3</text>
+        </inputEntry>
+        <outputEntry id="output_collect_max_score_at_least_3">
+          <text>-4</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_hit_policy_collect_max">
+      <dmndi:DMNShape id="DMNShape_hit_policy_collect_max" dmnElementRef="dmn_hit_policy_collect_max">
+        <dc:Bounds height="80" width="180" x="150" y="150" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

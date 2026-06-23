@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"sort"
 	"testing"
@@ -54,6 +56,34 @@ func deployAndGetUniqueProcessDefinition(t *testing.T, filePath string) zenclien
 	}
 
 	return processDefinition
+}
+
+func deployProcessDefinitionContent(t testing.TB, filename string, content []byte) *zenclient.CreateProcessDefinitionResponse {
+	t.Helper()
+
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	part, err := writer.CreateFormFile("resource", filename)
+	require.NoError(t, err, fmt.Errorf("failed to create form file: %w", err))
+
+	_, err = part.Write(content)
+	require.NoError(t, err, fmt.Errorf("failed to write file to multipart form: %w", err))
+
+	err = writer.Close()
+	require.NoError(t, err, fmt.Errorf("failed to close multipart writer: %w", err))
+
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	require.NoError(t, err, fmt.Errorf("failed to deploy process definition: %w", err))
+
+	isErrorResponse := resp.StatusCode() >= 400
+	require.False(t, isErrorResponse, "failed to deploy process definition: %s", string(resp.Body))
+
+	definition := public.CreateProcessDefinition201JSONResponse{}
+	err = json.Unmarshal(resp.Body, &definition)
+	require.NoError(t, err, fmt.Errorf("failed to unmarshal create definition response: %w", err))
+
+	return resp
 }
 
 func deployAndCreateUniqueProcessDefinition(t *testing.T, filePath string, variables map[string]any) zenclient.ProcessInstance {

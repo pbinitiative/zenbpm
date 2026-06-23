@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_collect_min_multi_output_incident" name="Hit Policy Collect MIN Multi Output Incident" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_collect_min_multi_output_incident" name="DMN Hit Policy Collect MIN Multi Output Incident">
+    <decisionTable id="hit_policy_collect_min_multi_output_incident_table" hitPolicy="COLLECT" aggregation="MIN">
+      <input id="input_collect_min_multi_output_incident_score" label="Score">
+        <inputExpression id="inputExpression_collect_min_multi_output_incident_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_collect_min_multi_output_incident_discount" label="Discount" name="discount" typeRef="number" />
+      <output id="output_collect_min_multi_output_incident_reason" label="Reason" name="reason" typeRef="string" />
+      <rule id="rule_collect_min_multi_output_incident_score_at_least_1">
+        <inputEntry id="input_collect_min_multi_output_incident_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_collect_min_multi_output_incident_discount_at_least_1">
+          <text>10</text>
+        </outputEntry>
+        <outputEntry id="output_collect_min_multi_output_incident_reason_at_least_1">
+          <text>"base"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

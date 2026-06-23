@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Definitions_Decision_hit_policy_rule_order" name="Hit Policy Rule Order Test" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_rule_order" name="DMN Hit Policy Rule Order">
+    <decisionTable id="hit_policy_rule_order_table" hitPolicy="RULE ORDER">
+      <input id="input_rule_order_score" label="Score">
+        <inputExpression id="inputExpression_rule_order_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_rule_order_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_rule_order_score_at_least_1">
+        <inputEntry id="input_rule_order_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_score_at_least_1">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_rule_order_score_at_least_2">
+        <inputEntry id="input_rule_order_score_at_least_2">
+          <text>&gt;= 2</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_score_at_least_2">
+          <text>5</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_rule_order_score_at_least_3">
+        <inputEntry id="input_rule_order_score_at_least_3">
+          <text>&gt;= 3</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_score_at_least_3">
+          <text>15</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_hit_policy_rule_order">
+      <dmndi:DMNShape id="DMNShape_hit_policy_rule_order" dmnElementRef="dmn_hit_policy_rule_order">
+        <dc:Bounds height="80" width="180" x="150" y="150" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

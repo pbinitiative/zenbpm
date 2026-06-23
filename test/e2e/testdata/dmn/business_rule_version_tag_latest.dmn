@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="business_rule_version_tag_test" name="Business Rule Version Tag Test" namespace="http://example.com/dmn">
+  <decision id="dmn_business_rule_version_tag" name="DMN Business Rule Version Tag">
+    <decisionTable id="business_rule_version_tag_latest_table" hitPolicy="FIRST">
+      <input id="input_version_tag_score" label="Score">
+        <inputExpression id="inputExpression_version_tag_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_version_tag_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_version_tag_score_at_least_0">
+        <inputEntry id="input_version_tag_score_at_least_0">
+          <text>&gt;= 0</text>
+        </inputEntry>
+        <outputEntry id="output_version_tag_score_at_least_0">
+          <text>99</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

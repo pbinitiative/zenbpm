@@ -13,6 +13,6 @@ type THeader struct {
 type TCalledDecision struct {
 	DecisionId     string `xml:"decisionId,attr"`
 	ResultVariable string `xml:"resultVariable,attr"`
-	BindingType    string `xml:"bindingType"`
-	VersionTag     string `xml:"versionTag"`
+	BindingType    string `xml:"bindingType,attr"`
+	VersionTag     string `xml:"versionTag,attr"`
 }

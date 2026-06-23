@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_first_unnamed_output" name="Hit Policy First Unnamed Output" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_first_unnamed_output" name="DMN Hit Policy First Unnamed Output">
+    <decisionTable id="hit_policy_first_unnamed_output_table" hitPolicy="FIRST">
+      <input id="input_first_unnamed_output_score" label="Score">
+        <inputExpression id="inputExpression_first_unnamed_output_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_first_unnamed_output_discount" label="Discount" typeRef="number" />
+      <rule id="rule_first_unnamed_output_score_at_least_1">
+        <inputEntry id="input_first_unnamed_output_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_first_unnamed_output_score_at_least_1">
+          <text>42</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

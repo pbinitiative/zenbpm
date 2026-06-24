@@ -51,6 +51,7 @@ func TestTimerWaiterRecoversPanic(t *testing.T) {
 		logger:          logger,
 		waitingTimers:   []waitingTimer{},
 		waitingTimersWg: &sync.WaitGroup{},
+		runWg:           &sync.WaitGroup{},
 	}
 
 	close(tm.ch)
@@ -96,6 +97,7 @@ func TestTimerManagerStopDoesNotDeadlock(t *testing.T) {
 		logger:          logger,
 		waitingTimers:   []waitingTimer{},
 		waitingTimersWg: &sync.WaitGroup{},
+		runWg:           &sync.WaitGroup{},
 	}
 
 	tm.addWaitingTimer(runtime.Timer{

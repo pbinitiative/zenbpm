@@ -646,78 +646,66 @@ func (node *ZenNode) ResolveIncident(ctx context.Context, key int64) error {
 	return nil
 }
 
-func (node *ZenNode) PublishMessageStartProcessInstance(ctx context.Context, name string, variables map[string]any) error {
-	state := node.store.ClusterState()
-	candidateNode, err := state.GetLeastStressedPartitionLeader()
-	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("failed to get node to publish message to create process instance: %w", err))
-	}
-	client, err := node.client.For(candidateNode.Addr)
-	if err != nil {
-		return zenerr.TechnicalError(fmt.Errorf("failed to get client to publish message to create process instance: %w", err))
-	}
-	vars, err := json.Marshal(variables)
-	if err != nil {
-		return zenerr.BadRequest(fmt.Errorf("failed to marshal variables to create process instance: %w", err))
-	}
-	var historyTTL *int64
-	if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
-		val := int64(node.controller.Config.Persistence.InstanceHistoryTTL)
-		historyTTL = &val
-	}
-
-	resp, err := client.PublishMessageStartProcessInstance(ctx, &proto.PublishMessageStartProcessInstanceRequest{
-		MessageName: &name,
-		Variables:   vars,
-		HistoryTTL:  historyTTL,
-	})
-	if err != nil {
-		return zenerr.ClusterError(fmt.Errorf("client call to publish message failed: %w", err))
-	}
-	if resp.Error != nil {
-		return zenerr.ToZenError(resp.Error, fmt.Errorf("client call to publish message failed"))
-	}
-
-	return nil
-}
-
 func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlationKey *string, variables map[string]any) error {
 	if correlationKey == nil {
-		err := node.PublishMessageStartProcessInstance(ctx, name, variables)
-		return err
+		return node.publishDefinitionMessageByName(ctx, name, variables)
 	}
+	return node.publishCorrelatedMessageByName(ctx, name, *correlationKey, variables)
+}
 
-	partitionId := node.store.ClusterState().GetPartitionIdFromString(*correlationKey)
+func (node *ZenNode) publishCorrelatedMessageByName(ctx context.Context, name string, correlationKey string, variables map[string]any) error {
+	partitionId := node.store.ClusterState().GetPartitionIdForMessageSubscriptionPointer(name, correlationKey)
 	partitionNode := node.controller.GetPartition(ctx, partitionId)
 	if partitionNode == nil {
-		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, *correlationKey))
+		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for correlation key %s", partitionId, correlationKey))
 	}
 	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(
 		ctx,
 		name,
-		*correlationKey,
+		correlationKey,
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			node.logger.Warn(fmt.Sprintf(
 				"no instance-level message subscription for name=%q correlationKey=%q; falling back to definition-level start (correlationKey ignored)",
-				name, *correlationKey,
+				name, correlationKey,
 			))
-			err = node.PublishMessageStartProcessInstance(ctx, name, variables)
+			err = node.publishDefinitionMessageByName(ctx, name, variables)
 			if err != nil {
-				var zerr *zenerr.ZenError
-				if errors.As(err, &zerr) && zerr.Code == zenerr.NotFoundCode {
-					return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q (and correlationKey %q)", name, *correlationKey))
+				if zerr, ok := errors.AsType[*zenerr.ZenError](err); ok && zerr.Code == zenerr.NotFoundCode {
+					return zenerr.NotFound(fmt.Errorf("no active message subscription found for name %q (and correlationKey %q)", name, correlationKey))
 				}
-				return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q (and correlationKey %q): %w", name, *correlationKey, err))
+				return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q (and correlationKey %q): %w", name, correlationKey, err))
 			}
 			return nil
 		}
-		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, *correlationKey, err))
+		return zenerr.TechnicalError(fmt.Errorf("failed to find message subscription for name %q and correlationKey %q: %w", name, correlationKey, err))
 	}
 
-	partitionId = zenflake.GetPartitionId(msPointer.MessageSubscriptionKey)
-	client, err := node.client.PartitionLeader(partitionId)
+	return node.publishMessageBySubscriptionKey(ctx, msPointer.MessageSubscriptionKey, variables)
+}
+
+func (node *ZenNode) publishDefinitionMessageByName(ctx context.Context, name string, variables map[string]any) error {
+	const definitionCorrelationKey = ""
+	partitionId := node.store.ClusterState().GetPartitionIdForMessageSubscriptionPointer(name, definitionCorrelationKey)
+	partitionNode := node.controller.GetPartition(ctx, partitionId)
+	if partitionNode == nil {
+		return zenerr.TechnicalError(fmt.Errorf("partition %d not found for definition-level message %q", partitionId, name))
+	}
+
+	msPointer, err := partitionNode.DB.FindActiveMessageSubscriptionPointer(ctx, name, definitionCorrelationKey)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return zenerr.NotFound(fmt.Errorf("no active definition-level message subscription found for name %q", name))
+		}
+		return zenerr.TechnicalError(fmt.Errorf("failed to find definition-level message subscription for name %q: %w", name, err))
+	}
+	return node.publishMessageBySubscriptionKey(ctx, msPointer.MessageSubscriptionKey, variables)
+}
+
+func (node *ZenNode) publishMessageBySubscriptionKey(ctx context.Context, messageSubscriptionKey int64, variables map[string]any) error {
+	partitionId := zenflake.GetPartitionId(messageSubscriptionKey)
+	partitionClient, err := node.client.PartitionLeader(partitionId)
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("failed to get partition leader: %w", err))
 	}
@@ -727,9 +715,16 @@ func (node *ZenNode) PublishMessage(ctx context.Context, name string, correlatio
 		return zenerr.TechnicalError(fmt.Errorf("failed to marshal variables: %w", err))
 	}
 
-	resp, err := client.PublishMessage(ctx, &proto.PublishMessageRequest{
-		Key:       &msPointer.MessageSubscriptionKey,
-		Variables: vars,
+	var historyTTL *int64
+	if node.controller.Config.Persistence.InstanceHistoryTTL != 0 {
+		val := int64(node.controller.Config.Persistence.InstanceHistoryTTL)
+		historyTTL = &val
+	}
+
+	resp, err := partitionClient.PublishMessage(ctx, &proto.PublishMessageRequest{
+		Key:        &messageSubscriptionKey,
+		Variables:  vars,
+		HistoryTTL: historyTTL,
 	})
 	if err != nil {
 		return zenerr.ClusterError(fmt.Errorf("client call to publish message failed: %w", err))

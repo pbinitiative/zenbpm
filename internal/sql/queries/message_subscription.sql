@@ -44,7 +44,25 @@ FROM
 WHERE
     state = @state
     AND name = @name
-    AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key);
+    AND ((@correlation_key IS NULL AND correlation_key IS NULL) OR correlation_key = @correlation_key)
+-- Deterministic tie-break: when multiple subscriptions share (name, correlation_key, state) always resolve
+-- to the lowest key rather than an arbitrary row.
+ORDER BY key ASC
+LIMIT 1;
+
+-- name: FindDefinitionMessageSubscription :one
+-- Matches only definition-level rows (type 3 == runtime.MessageSubscriptionTypeDefinition).
+-- See pkg/bpmn/runtime/types.go for the discriminator constants.
+SELECT
+    *
+FROM
+    message_subscription
+WHERE
+    process_definition_key = @process_definition_key
+    AND element_id = @element_id
+    AND name = @name
+    AND state = @state
+    AND type = 3;
 
 -- name: GetMessageSubscriptionByKey :one
 SELECT

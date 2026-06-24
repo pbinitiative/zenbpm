@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_receive_boundary_same_name" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="ReceiveTask_Boundary_Same_Name_Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_receive</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:receiveTask id="ReceiveTask_same_name" name="ReceiveTask" messageRef="Message_receive_same_name">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=approved" target="approved" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_receive</bpmn:incoming>
+      <bpmn:outgoing>Flow_receive_main</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:serviceTask id="ServiceTask_main" name="MainServiceTask">
+      <bpmn:incoming>Flow_receive_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_main">
+      <bpmn:incoming>Flow_main_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="BoundaryMessage_same_name" attachedToRef="ReceiveTask_same_name">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=true" target="boundaryFired" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_boundary_end</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_boundary_same_name" messageRef="Message_boundary_same_name" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="EndEvent_boundary">
+      <bpmn:incoming>Flow_boundary_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start_receive" sourceRef="StartEvent_1" targetRef="ReceiveTask_same_name" />
+    <bpmn:sequenceFlow id="Flow_receive_main" sourceRef="ReceiveTask_same_name" targetRef="ServiceTask_main" />
+    <bpmn:sequenceFlow id="Flow_main_end" sourceRef="ServiceTask_main" targetRef="EndEvent_main" />
+    <bpmn:sequenceFlow id="Flow_boundary_end" sourceRef="BoundaryMessage_same_name" targetRef="EndEvent_boundary" />
+  </bpmn:process>
+  <bpmn:message id="Message_receive_same_name" name="shared receive boundary message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=&#34;receive-correlation-key&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_boundary_same_name" name="shared receive boundary message">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=&#34;boundary-correlation-key&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="ReceiveTask_Boundary_Same_Name_Process">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1"><dc:Bounds x="150" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ReceiveTask_same_name_di" bpmnElement="ReceiveTask_same_name"><dc:Bounds x="260" y="78" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_main_di" bpmnElement="ServiceTask_main"><dc:Bounds x="430" y="78" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_main_di" bpmnElement="EndEvent_main"><dc:Bounds x="600" y="100" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryMessage_same_name_di" bpmnElement="BoundaryMessage_same_name"><dc:Bounds x="292" y="140" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_boundary_di" bpmnElement="EndEvent_boundary"><dc:Bounds x="292" y="250" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_receive_di" bpmnElement="Flow_start_receive"><di:waypoint x="186" y="118" /><di:waypoint x="260" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_receive_main_di" bpmnElement="Flow_receive_main"><di:waypoint x="360" y="118" /><di:waypoint x="430" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_end_di" bpmnElement="Flow_main_end"><di:waypoint x="530" y="118" /><di:waypoint x="600" y="118" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_boundary_end_di" bpmnElement="Flow_boundary_end"><di:waypoint x="310" y="176" /><di:waypoint x="310" y="250" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

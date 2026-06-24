@@ -1,11 +1,12 @@
 -- name: SaveProcessInstance :exec
-INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO process_instance(key, process_definition_key, created_at, state, variables, parent_process_execution_token, parent_process_target_element_id, parent_process_target_element_instance_key, process_type, business_key, start_element_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (key)
     DO UPDATE SET
         state = excluded.state,
         variables = excluded.variables,
-        business_key = excluded.business_key;
+        business_key = excluded.business_key,
+        start_element_id = excluded.start_element_id;
 
 -- name: SetProcessInstanceTTL :exec
 UPDATE
@@ -46,6 +47,16 @@ FROM
     process_instance
 WHERE
     state IN (1, 8);
+
+-- name: FindActiveProcessInstancesByDefinitionKeyAndStartElementId :many
+SELECT
+    *
+FROM
+    process_instance
+WHERE
+    process_definition_key = @process_definition_key
+    AND start_element_id = @start_element_id
+    AND state IN (1, 8);
 
 -- name: DeleteProcessInstances :exec
 DELETE FROM process_instance

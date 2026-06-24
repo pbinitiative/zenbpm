@@ -416,6 +416,7 @@ message PublishMessageStartProcessInstanceRequest {
 message PublishMessageRequest {
   int64 key = 1;
   bytes variables = 2;
+  int64 historyTTL = 3;
 }
 
 message PublishMessageResponse {

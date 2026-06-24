@@ -11,6 +11,7 @@ const (
 	ElementTypeUserTask     ElementType = "USER_TASK"
 	ElementTypeSequenceFlow ElementType = "SEQUENCE_FLOW"
 	ElementBusinessRuleTask ElementType = "BUSINESS_RULE_TASK"
+	ElementTypeReceiveTask  ElementType = "RECEIVE_TASK"
 )
 
 type Activity interface {
@@ -133,6 +134,15 @@ type TSendTask struct {
 }
 
 func (sendTask TSendTask) GetType() ElementType { return ElementTypeServiceTask }
+
+type TReceiveTask struct {
+	TActivity
+	MessageRef string `xml:"messageRef,attr"`
+	// Instantiate, when true, allows the receive task to start a new process instance.
+	Instantiate bool `xml:"instantiate,attr"`
+}
+
+func (receiveTask TReceiveTask) GetType() ElementType { return ElementTypeReceiveTask }
 
 type TUserTask struct {
 	TTask

@@ -244,7 +244,18 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 		}
 	}
 
-	err := batch.SaveFlowElementInstance(ctx,
+	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+	propagatedVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.Output, nil, engine.evaluateExpression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to propagate boundary timer output variables for %s: %w", listener.GetId(), err)
+	}
+	if len(propagatedVariables) > 0 {
+		if err := batch.SaveProcessInstance(ctx, instance); err != nil {
+			return nil, fmt.Errorf("failed to save process instance %d after boundary timer variable propagation: %w", instance.ProcessInstance().Key, err)
+		}
+	}
+
+	err = batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                engine.generateKey(),
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -252,7 +263,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  token.Key,
 			InputVariables:     nil,
-			OutputVariables:    nil,
+			OutputVariables:    propagatedVariables,
 		},
 	)
 	if err != nil {

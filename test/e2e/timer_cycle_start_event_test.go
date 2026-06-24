@@ -154,51 +154,15 @@ func cancelCreatedDefinitionLevelTimersWithContext(ctx context.Context, store st
 	defer cancel()
 	created, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateCreated)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to find created definition-level timers for definition %d: %w", definitionKey, err)
 	}
 	for _, timer := range filterDefinitionLevelTimers(created) {
 		timer.TimerState = bpmnruntime.TimerStateCancelled
 		if err := store.SaveTimer(ctx, timer); err != nil {
-			return err
+			return fmt.Errorf("failed to cancel definition-level timer %d: %w", timer.Key, err)
 		}
 	}
 	return nil
-}
-
-func assertProcessInstanceCountNeverExceeds(
-	t *testing.T,
-	bpmnProcessId string,
-	store storage.Storage,
-	definitionKey int64,
-	maxCount int,
-	waitFor time.Duration,
-	tick time.Duration,
-) {
-	t.Helper()
-
-	deadline := time.NewTimer(waitFor)
-	defer deadline.Stop()
-	ticker := time.NewTicker(tick)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-deadline.C:
-			return
-		case <-ticker.C:
-			page, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
-				BpmnProcessId: &bpmnProcessId,
-			})
-			require.NoError(t, err)
-			require.NotNil(t, page)
-			require.NotNil(t, page.JSON200)
-			require.LessOrEqual(t, page.JSON200.TotalCount, maxCount,
-				"cron cycle should be deactivated; no 3rd process instance should appear")
-
-			// In case the engine managed to schedule another timer after our cancel, sweep again.
-			require.NoError(t, cancelCreatedDefinitionLevelTimersWithContext(t.Context(), store, definitionKey))
-		}
-	}
 }
 
 // assertDefinitionLevelTriggeredTimers asserts that exactly expectedCount triggered
@@ -217,4 +181,19 @@ func assertDefinitionLevelTriggeredTimers(t *testing.T, anyInstanceKey, definiti
 			"expected %d triggered definition-level timers, got %d (all triggered: %d)", expectedCount, len(defLevel), len(triggered))
 	}, 10*time.Second, 100*time.Millisecond,
 		"expected exactly %d triggered definition-level timers for definition %d", expectedCount, definitionKey)
+}
+
+func assertProcessInstanceCountNeverExceeds(t *testing.T, bpmnProcessId string, store storage.Storage, definitionKey int64, maxCount int, duration, interval time.Duration) {
+	t.Helper()
+	require.Never(t, func() bool {
+		if len(listParentInstances(t, bpmnProcessId)) > maxCount {
+			return true
+		}
+		triggered, err := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateTriggered)
+		if err != nil {
+			return false
+		}
+		return len(filterDefinitionLevelTimers(triggered)) > maxCount
+	}, duration, interval,
+		"process instance / triggered timer count for %q must never exceed %d", bpmnProcessId, maxCount)
 }

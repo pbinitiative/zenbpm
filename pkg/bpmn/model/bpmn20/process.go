@@ -10,6 +10,7 @@ type TFlowElementsContainer struct {
 	UserTasks              []TUserTask               `xml:"userTask"`
 	BusinessRuleTask       []TBusinessRuleTask       `xml:"businessRuleTask"`
 	SendTask               []TSendTask               `xml:"sendTask"`
+	ReceiveTask            []TReceiveTask            `xml:"receiveTask"`
 	ParallelGateway        []TParallelGateway        `xml:"parallelGateway"`
 	ExclusiveGateway       []TExclusiveGateway       `xml:"exclusiveGateway"`
 	EventBasedGateway      []TEventBasedGateway      `xml:"eventBasedGateway"`
@@ -109,6 +110,11 @@ func (p *TProcess) GetFlowNodeById(id string) FlowNode {
 		}
 	}
 	for _, e := range p.SendTask {
+		if e.GetId() == id {
+			return &e
+		}
+	}
+	for _, e := range p.ReceiveTask {
 		if e.GetId() == id {
 			return &e
 		}

@@ -49,6 +49,51 @@ func (engine *Engine) PublishMessage(ctx context.Context, message runtime.Messag
 	return nil
 }
 
+// receiveTaskOwnsSubscription reports whether the correlated subscription belongs to the receive task's own
+// messageRef (as opposed to a message attached to one of its boundary message events). Boundary message
+// subscriptions are registered against the receive task token, so the dispatcher must compare both message
+// name and correlation key to route same-name messages correctly.
+func (engine *Engine) receiveTaskOwnsSubscription(ctx context.Context, instance runtime.ProcessInstance, receiveTask *bpmn20.TReceiveTask, message *runtime.TokenMessageSubscription) (bool, error) {
+	ownMessage, err := instance.ProcessInstance().Definition.Definitions.GetMessageByRef(receiveTask.MessageRef)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve message for receive task %s: %w", receiveTask.GetId(), err)
+	}
+	if ownMessage.Name != message.Name {
+		return false, nil
+	}
+
+	localVars := make(map[string]interface{})
+	for key, value := range instance.ProcessInstance().VariableHolder.LocalVariables() {
+		localVars[key] = value
+	}
+	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, message.Token.ElementInstanceKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to load receive task flow element instance %d: %w", message.Token.ElementInstanceKey, err)
+	}
+	for key, value := range flowElementInstance.InputVariables {
+		localVars[key] = value
+	}
+
+	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, localVars, bpmn20.TMessageEventDefinition{MessageRef: receiveTask.MessageRef})
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate correlation key for receive task %s: %w", receiveTask.GetId(), err)
+	}
+	return correlationKey == message.CorrelationKey, nil
+}
+
+func handleMessagePublicationError(ctx context.Context, batch *EngineBatch, message *runtime.TokenMessageSubscription, instance runtime.ProcessInstance, err error, fmtMsg string, args ...interface{}) error {
+	message.State = runtime.ActivityStateFailed
+	instance.ProcessInstance().State = runtime.ActivityStateFailed
+	if incidentErr := batch.WriteMessageIncident(ctx, message, instance, err); incidentErr != nil {
+		err = errors.Join(err, incidentErr)
+	}
+	flushErr := batch.Flush(ctx)
+	if flushErr != nil {
+		return errors.Join(newEngineErrorf("failed to flush and "+fmtMsg, args...), flushErr)
+	}
+	return errors.Join(newEngineErrorf(fmtMsg, args...), err)
+}
+
 func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtime.TokenMessageSubscription, variables map[string]any) (retErr error) {
 	instance, err := engine.persistence.FindProcessInstanceByKey(ctx, message.ProcessInstanceKey)
 	if err != nil {
@@ -92,14 +137,37 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 	case *bpmn20.TIntermediateCatchEvent:
 		tokens, err := engine.publishMessageOnListener(ctx, &batch, nodeT, message, instance, variables)
 		if err != nil {
-			message.State = runtime.ActivityStateFailed
-			instance.ProcessInstance().State = runtime.ActivityStateFailed
-			batch.WriteMessageIncident(ctx, message, instance, err)
-			err = batch.Flush(ctx)
+			return handleMessagePublicationError(ctx, &batch, message, instance, err,
+				"failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey)
+		}
+		err = batch.Flush(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to flush publish message batch %+v: %w", message, err)
+		}
+		return engine.RunProcessInstance(ctx, instance, tokens)
+	case *bpmn20.TReceiveTask:
+		ownMessage, err := engine.receiveTaskOwnsSubscription(ctx, instance, nodeT, message)
+		if err != nil {
+			return handleMessagePublicationError(ctx, &batch, message, instance, err,
+				"failed to publish message %s to receive task in instance %d. ", message.Name, message.ProcessInstanceKey)
+		}
+		var tokens []runtime.ExecutionToken
+		if ownMessage {
+			tokens, err = engine.publishMessageOnReceiveTask(ctx, &batch, nodeT, message, instance, variables)
+		} else {
+			tokens, err = engine.handleBoundaryMessage(ctx, &batch, message, instance, variables)
+		}
+		if err != nil {
+			return handleMessagePublicationError(ctx, &batch, message, instance, err,
+				"failed to publish message %s to receive task in instance %d. ", message.Name, message.ProcessInstanceKey)
+		}
+		// Persist returned tokens explicitly: multi-instance receive-task transitions can yield tokens in a
+		// non-Running state (e.g. Completed/Waiting), which RunProcessInstance's main loop skips and never saves.
+		for _, tok := range tokens {
+			err = batch.SaveToken(ctx, tok)
 			if err != nil {
-				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
+				return fmt.Errorf("failed to save token %d for publish message %+v: %w", tok.Key, message, err)
 			}
-			return errors.Join(newEngineErrorf("failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), err)
 		}
 		err = batch.Flush(ctx)
 		if err != nil {
@@ -109,14 +177,8 @@ func (engine *Engine) PublishMessageOnToken(ctx context.Context, message *runtim
 	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
 		tokens, err := engine.handleBoundaryMessage(ctx, &batch, message, instance, variables)
 		if err != nil {
-			message.State = runtime.ActivityStateFailed
-			instance.ProcessInstance().State = runtime.ActivityStateFailed
-			batch.WriteMessageIncident(ctx, message, instance, err)
-			flushErr := batch.Flush(ctx)
-			if flushErr != nil {
-				return errors.Join(newEngineErrorf("failed to flush and failed to publish message %s to listener in instance %d. ", message.Name, message.ProcessInstanceKey), flushErr)
-			}
-			return errors.Join(newEngineErrorf("failed to publish message %s to task %d. ", message.Name, message.ProcessInstanceKey), err)
+			return handleMessagePublicationError(ctx, &batch, message, instance, err,
+				"failed to publish message %s to task %d. ", message.Name, message.ProcessInstanceKey)
 		}
 		err = batch.Flush(ctx)
 		if err != nil {

@@ -268,11 +268,7 @@ func TestSaveMessageSubscription_DuplicateCheck(t *testing.T) {
 		assert.Equal(t, bpmnruntime.ActivityStateCompleted, result.MessageSubscription().State)
 	})
 
-	// Regression for the engine-level duplicate-correlation invariant on
-	// **definition** subscriptions: two active DefinitionMessageSubscriptions for the
-	// same message name must not be allowed to coexist (definition subs have nil
-	// correlationKey, but the (name, nil) tuple still uniquely identifies them).
-	t.Run("rejects duplicate active definition subscription with same name", func(t *testing.T) {
+	t.Run("rejects duplicate active definition subscriptions for same definition, element and name", func(t *testing.T) {
 		store := inmemory.NewStorage()
 
 		defSub1 := newDefinitionSub(1, "process-start", bpmnruntime.ActivityStateActive)
@@ -280,7 +276,20 @@ func TestSaveMessageSubscription_DuplicateCheck(t *testing.T) {
 
 		require.NoError(t, store.SaveMessageSubscription(ctx, defSub1))
 		err := store.SaveMessageSubscription(ctx, defSub2)
-		assert.Error(t, err, "two active definition subscriptions with the same name must not coexist")
+		assert.Error(t, err,
+			"at most one active definition subscription is allowed per (process_definition_key, element_id, name) to close the re-arm TOCTOU")
+	})
+
+	t.Run("allows active definition subscriptions with the same name for different elements", func(t *testing.T) {
+		store := inmemory.NewStorage()
+
+		defSub1 := newDefinitionSub(1, "process-start", bpmnruntime.ActivityStateActive)
+		defSub2 := newDefinitionSub(2, "process-start", bpmnruntime.ActivityStateActive)
+		defSub2.ElementId = "elem-def-2"
+
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSub1))
+		require.NoError(t, store.SaveMessageSubscription(ctx, defSub2),
+			"definition subscriptions on different elements must not collide")
 	})
 
 	t.Run("allows new active definition subscription once the previous one is Completed", func(t *testing.T) {

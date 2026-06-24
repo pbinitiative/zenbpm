@@ -1269,6 +1269,10 @@ func (s *Server) PublishMessage(ctx context.Context, req *proto.PublishMessageRe
 		return &proto.PublishMessageResponse{Error: zerr.ToProtoError()}, nil
 	}
 
+	if req.HistoryTTL != nil {
+		ctx = appcontext.WithHistoryTTL(ctx, types.TTL(*req.HistoryTTL))
+	}
+
 	if err := engine.PublishMessageByKey(ctx, req.GetKey(), vars); err != nil {
 		var zerr *zenerr.ZenError
 		if isErrNotFound(err) {
@@ -1294,7 +1298,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 		}, err
 	}
 
-	partitionId := s.store.ClusterState().GetPartitionIdFromString(req.GetCorrelationKey())
+	partitionId := s.store.ClusterState().GetPartitionIdForMessageSubscriptionPointer(req.GetName(), req.GetCorrelationKey())
 	if partition.PartitionId == partitionId && partition.IsLeader(ctx) {
 		err := partition.DB.Queries.SaveMessageSubscriptionPointer(ctx, sql.SaveMessageSubscriptionPointerParams{
 			State:                  req.GetState(),

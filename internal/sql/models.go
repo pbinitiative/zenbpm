@@ -142,6 +142,7 @@ type ProcessInstance struct {
 	ProcessType                           int64          `json:"process_type"`
 	HistoryTtlSec                         sql.NullInt64  `json:"history_ttl_sec"`
 	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
+	StartElementID                        sql.NullString `json:"start_element_id"`
 }
 
 type Timer struct {

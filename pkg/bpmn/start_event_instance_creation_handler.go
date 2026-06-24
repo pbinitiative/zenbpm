@@ -151,9 +151,22 @@ func findStartEventById(process *bpmn20.TProcess, id string) *bpmn20.TStartEvent
 	return nil
 }
 
-// publishMessageOnInstanceCreation activates a (definition-level) message start event by consuming the given DefinitionMessageSubscription,
-// registering a fresh subscription for follow-up messages and creating a new process instance.
+// publishMessageOnInstanceCreation activates a (definition-level) message subscription that creates a new
+// process instance. It routes to the instantiating receive task path when the subscription belongs to a
+// receive task marked with instantiate="true", otherwise it activates a message start event.
 func (engine *Engine) publishMessageOnInstanceCreation(ctx context.Context, message *runtime.DefinitionMessageSubscription, variables map[string]any) error {
+	processDefinition, err := engine.persistence.FindProcessDefinitionByKey(ctx, message.ProcessDefinitionKey)
+	if err != nil {
+		engine.logger.Warn("failed to load process definition while routing definition message subscription; treating as message start event",
+			"processDefinition", message.ProcessDefinitionKey,
+			"elementId", message.ElementId,
+			"subscription", message.Key,
+			"err", err,
+		)
+	} else if receiveTask := findReceiveTaskById(&processDefinition.Definitions.Process, message.ElementId); receiveTask != nil && receiveTask.Instantiate {
+		return engine.publishMessageOnReceiveTaskInstanceCreation(ctx, message, variables)
+	}
+
 	// Refreshed subscription is captured here so markConsumed below can save the up-to-date pointer.
 	current := message
 	return engine.handleStartEventInstanceCreation(ctx, startEventInstanceCreationTrigger{

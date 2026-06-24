@@ -119,7 +119,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 			batch.Clear(ctx)
 			return nil, nil, fmt.Errorf("failed to flush trigger timer batch %+v: %w", timer, err)
 		}
-	case *bpmn20.TServiceTask, *bpmn20.TSendTask, *bpmn20.TUserTask, *bpmn20.TBusinessRuleTask, *bpmn20.TCallActivity, *bpmn20.TSubProcess:
+	case bpmn20.Activity:
 		if timer.Token == nil {
 			return nil, nil, fmt.Errorf("timer %d does not have an associated token", timer.Key)
 		}

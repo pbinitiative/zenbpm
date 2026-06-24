@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 )
 
@@ -160,10 +161,10 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 		timer:  tft,
 	})
 	tm.waitingTimersWg.Add(1)
-	go func() {
+	safego.Go("timer-waiter", tm.logger, func() {
+		defer tm.waitingTimersWg.Done()
 		t := time.NewTimer(time.Until(tft.DueAt))
 		defer t.Stop()
-		defer tm.waitingTimersWg.Done()
 		select {
 		case <-t.C:
 			select {
@@ -174,7 +175,7 @@ func (tm *timerManager) addWaitingTimer(tft runtime.Timer) {
 		case <-timerCtx.Done():
 		case <-tm.ctx.Done():
 		}
-	}()
+	})
 }
 
 func (tm *timerManager) start() {

@@ -397,7 +397,7 @@ func (rq *DB) QueryRowContext(ctx context.Context, query string, args ...interfa
 	row := rows.Next()
 	if !row {
 
-		return sql.ConstructRow(ctx, []string{}, []string{}, nil, errors.New("No rows"))
+		return sql.ConstructRow(ctx, []string{}, []string{}, nil, sql.ErrNoRows)
 	} else {
 		return sql.ConstructRowFromRows(ctx, rows, nil)
 	}
@@ -2674,15 +2674,16 @@ func (rq *DBBatch) ExecContext(ctx context.Context, sql string, args ...interfac
 }
 
 func (rq *DBBatch) PrepareContext(ctx context.Context, sql string) (*ssql.Stmt, error) {
-	panic("PrepareContext not supported by RqLiteDBBatch")
+	return nil, fmt.Errorf("PrepareContext is not supported by RqLiteDBBatch")
 }
 
 func (rq *DBBatch) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	panic("QueryContext not supported by RqLiteDBBatch")
+	return nil, fmt.Errorf("QueryContext is not supported by RqLiteDBBatch")
 }
 
 func (rq *DBBatch) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	panic("QueryRowContext not supported by RqLiteDBBatch")
+	// Return a row carrying the error (surfaced on Scan), matching DB.QueryRowContext.
+	return sql.ConstructRow(ctx, []string{}, []string{}, nil, fmt.Errorf("QueryRowContext is not supported by RqLiteDBBatch"))
 }
 
 var _ storage.Batch = &DBBatch{}

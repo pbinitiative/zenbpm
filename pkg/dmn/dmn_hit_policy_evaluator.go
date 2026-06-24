@@ -1,10 +1,12 @@
 package dmn
 
 import (
+	"fmt"
+
 	"github.com/pbinitiative/zenbpm/pkg/dmn/model/dmn"
 )
 
-func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId string, hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) map[string]interface{} {
+func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId string, hitPolicy dmn.HitPolicy, hitPolicyAggregation dmn.HitPolicyAggregation, matchedRules []EvaluatedRule) (map[string]interface{}, error) {
 	switch hitPolicy {
 	case dmn.HitPolicyCollect:
 		switch hitPolicyAggregation {
@@ -17,18 +19,18 @@ func EvaluateHitPolicyOutput(decisionTable *dmn.TDecisionTable, decisionId strin
 		case dmn.HitPolicyAggregationCount:
 			return evaluateCollectCountOutput(matchedRules)
 		default:
-			return evaluateCollectOutput(decisionTable, decisionId, matchedRules)
+			return evaluateCollectOutput(decisionTable, decisionId, matchedRules), nil
 		}
 	case dmn.HitPolicyFirst:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules), nil
 	case dmn.HitPolicyPriority:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return nil, fmt.Errorf("priority hit policy is not implemented")
 	case dmn.HitPolicyAny:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return nil, fmt.Errorf("any hit policy is not implemented")
 	case dmn.HitPolicyRuleOrder:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return nil, fmt.Errorf("rule order hit policy is not implemented")
 	case dmn.HitPolicyOutputOrder:
-		return evaluateFirstRuleOutput(decisionTable, decisionId, matchedRules)
+		return nil, fmt.Errorf("output order hit policy is not implemented")
 	default:
 		return evaluateUniqueOutput(decisionTable, decisionId, matchedRules)
 	}
@@ -55,20 +57,20 @@ func evaluateCollectOutput(decisionTable *dmn.TDecisionTable, decisionId string,
 	return finalResult
 }
 
-func evaluateCollectSumOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectSumOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect sum hit policy aggregation is not implemented")
 }
 
-func evaluateCollectMinOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectMinOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect min hit policy aggregation is not implemented")
 }
 
-func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectMaxOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect max hit policy aggregation is not implemented")
 }
 
-func evaluateCollectCountOutput(matchedRules []EvaluatedRule) map[string]interface{} {
-	panic("Not implemented")
+func evaluateCollectCountOutput(matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("collect count hit policy aggregation is not implemented")
 }
 
 func evaluateFirstRuleOutput(decisionTable *dmn.TDecisionTable, decisionId string, matchedRules []EvaluatedRule) map[string]interface{} {
@@ -94,25 +96,12 @@ func evaluateFirstRuleOutput(decisionTable *dmn.TDecisionTable, decisionId strin
 	return finalResult
 }
 
-func evaluatePriorityOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateAnyOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateRuleOrderOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateOutputOrderOutput(matchedRules []EvaluatedRule) interface{} {
-	panic("Not implemented")
-}
-
-func evaluateUniqueOutput(decision *dmn.TDecisionTable, decisionId string, matchedRules []EvaluatedRule) map[string]interface{} {
+func evaluateUniqueOutput(decision *dmn.TDecisionTable, decisionId string, matchedRules []EvaluatedRule) (map[string]interface{}, error) {
+	// Unique hit policy requires that at most one rule matches; more than one is a
+	// violation. Return an error instead of silently producing a nil result, which
+	// could cause nil dereferences or wrong behavior downstream.
 	if len(matchedRules) > 1 {
-		return nil
+		return nil, fmt.Errorf("unique hit policy violation: multiple rules matched for decision %s", decisionId)
 	}
-	return evaluateFirstRuleOutput(decision, decisionId, matchedRules)
+	return evaluateFirstRuleOutput(decision, decisionId, matchedRules), nil
 }

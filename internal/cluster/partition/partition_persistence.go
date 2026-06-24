@@ -397,7 +397,7 @@ func (rq *DB) QueryRowContext(ctx context.Context, query string, args ...interfa
 	row := rows.Next()
 	if !row {
 
-		return sql.ConstructRow(ctx, []string{}, []string{}, nil, errors.New("No rows"))
+		return sql.ConstructRow(ctx, []string{}, []string{}, nil, sql.ErrNoRows)
 	} else {
 		return sql.ConstructRowFromRows(ctx, rows, nil)
 	}

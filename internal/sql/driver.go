@@ -410,6 +410,9 @@ func (rs *Rows) String() string {
 }
 
 func (r *Row) Scan(dest ...interface{}) error {
+	if r.err != nil {
+		return r.err
+	}
 	if r.values == nil {
 		return ErrNoRows
 	}

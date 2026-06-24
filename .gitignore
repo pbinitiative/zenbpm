@@ -19,6 +19,10 @@ bin
 reports/
 trivy-reports/
 gosec-reports/
+codeql-reports/
+revive-reports/
+errcheck-reports/
+staticcheck-reports/
 node-*
 zen_bpm_node_*
 cover.out

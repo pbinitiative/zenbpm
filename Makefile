@@ -19,6 +19,9 @@ PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
 GOSEC ?= $(LOCALBIN)/gosec
 CODEQL ?= $(LOCALBIN)/codeql/codeql
+STATICCHECK ?= $(LOCALBIN)/staticcheck
+ERRCHECK ?= $(LOCALBIN)/errcheck
+REVIVE ?= $(LOCALBIN)/revive
 
 ## Setup PATH to point to tools binaries
 PATH := $(LOCALBIN):$(PATH)
@@ -36,6 +39,26 @@ GOSEC_REPORT_DIR ?= gosec-reports
 GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
 GOSEC_HTML_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.html
 GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
+
+STATICCHECK_VERSION ?= v0.7.0
+STATICCHECK_REPORT_DIR ?= staticcheck-reports
+STATICCHECK_JSON_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.json
+STATICCHECK_SARIF_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.sarif
+STATICCHECK_HTML_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.html
+
+ERRCHECK_VERSION ?= v1.20.0
+ERRCHECK_REPORT_DIR ?= errcheck-reports
+ERRCHECK_TEXT_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.txt
+ERRCHECK_SARIF_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.sarif
+ERRCHECK_HTML_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.html
+
+REVIVE_VERSION ?= v1.15.0
+REVIVE_REPORT_DIR ?= revive-reports
+REVIVE_JSON_REPORT ?= $(REVIVE_REPORT_DIR)/revive.json
+REVIVE_SARIF_REPORT ?= $(REVIVE_REPORT_DIR)/revive.sarif
+REVIVE_HTML_REPORT ?= $(REVIVE_REPORT_DIR)/revive.html
+
+GO_TOOL_SARIF_CONVERTER ?= scripts/ci/go_tool_report_to_sarif.py
 
 CODEQL_VERSION ?= v2.25.6
 CODEQL_REPORT_DIR ?= codeql-reports
@@ -78,6 +101,24 @@ gosec: $(GOSEC) ## Download gosec locally if necessary.
 $(GOSEC): $(LOCALBIN)
 	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+
+.PHONY: staticcheck
+staticcheck: $(STATICCHECK) ## Download staticcheck locally if necessary.
+$(STATICCHECK): $(LOCALBIN)
+	@test -s $(LOCALBIN)/staticcheck && { [ "$(STATICCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/staticcheck | grep -q $(STATICCHECK_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+
+.PHONY: errcheck
+errcheck: $(ERRCHECK) ## Download errcheck locally if necessary.
+$(ERRCHECK): $(LOCALBIN)
+	@test -s $(LOCALBIN)/errcheck && { [ "$(ERRCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/errcheck | grep -q $(ERRCHECK_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
+
+.PHONY: revive
+revive: $(REVIVE) ## Download revive locally if necessary.
+$(REVIVE): $(LOCALBIN)
+	@test -s $(LOCALBIN)/revive && { [ "$(REVIVE_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/revive | grep -q $(REVIVE_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install github.com/mgechev/revive@$(REVIVE_VERSION)
 
 .PHONY: codeql-cli
 codeql-cli: $(CODEQL) ## Download CodeQL CLI locally if necessary.
@@ -157,6 +198,30 @@ sast: gosec ## Run Go source SAST checks. Reports are written to gosec-reports/.
 .PHONY: sast-strict
 sast-strict: GOSEC_FLAGS := -exclude-generated
 sast-strict: sast ## Run Go source SAST checks and fail when findings are present.
+
+.PHONY: staticcheck
+staticcheck: $(STATICCHECK) ## Run staticcheck and write JSON, SARIF, and HTML reports.
+	@mkdir -p $(STATICCHECK_REPORT_DIR)
+	@$(STATICCHECK) -f=json ./... > $(STATICCHECK_JSON_REPORT) || true
+	@python3 $(GO_TOOL_SARIF_CONVERTER) staticcheck $(STATICCHECK_JSON_REPORT) $(STATICCHECK_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(STATICCHECK_SARIF_REPORT) $(STATICCHECK_HTML_REPORT)
+
+.PHONY: errcheck
+errcheck: $(ERRCHECK) ## Run errcheck and write text, SARIF, and HTML reports.
+	@mkdir -p $(ERRCHECK_REPORT_DIR)
+	@$(ERRCHECK) -ignoregenerated ./... > $(ERRCHECK_TEXT_REPORT) || true
+	@python3 $(GO_TOOL_SARIF_CONVERTER) errcheck $(ERRCHECK_TEXT_REPORT) $(ERRCHECK_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(ERRCHECK_SARIF_REPORT) $(ERRCHECK_HTML_REPORT)
+
+.PHONY: revive
+revive: $(REVIVE) ## Run revive and write JSON, SARIF, and HTML reports.
+	@mkdir -p $(REVIVE_REPORT_DIR)
+	@$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) || true
+	@python3 $(GO_TOOL_SARIF_CONVERTER) revive $(REVIVE_JSON_REPORT) $(REVIVE_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(REVIVE_SARIF_REPORT) $(REVIVE_HTML_REPORT)
+
+.PHONY: go-static-analysis
+go-static-analysis: staticcheck errcheck revive ## Run staticcheck, errcheck, and revive reports.
 
 .PHONY: codeql
 codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written to codeql-reports/.

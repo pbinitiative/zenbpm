@@ -12,6 +12,11 @@ permissions:
   contents: read
   security-events: write
 
+# Concurrency cancellation
+concurrency:
+  group: release-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dev:
     uses: ./.github/workflows/release-reusable.yaml

@@ -6,6 +6,7 @@ Requires only Python 3 stdlib (json, sys, html, pathlib).
 import html
 import json
 import sys
+import traceback
 from pathlib import Path
 
 
@@ -147,6 +148,7 @@ def main() -> int:
         render(sys.argv[1], sys.argv[2])
     except Exception as exc:
         print(f"error: failed to convert {sys.argv[1]} to HTML: {exc}", file=sys.stderr)
+        traceback.print_exc()
         return 1
     return 0
 

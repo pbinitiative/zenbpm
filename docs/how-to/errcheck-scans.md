@@ -31,7 +31,7 @@ make go-static-analysis
 
 ### Direct invocation
 
-After running `make errcheck` to install the binary, you can invoke errcheck directly:
+`make errcheck` installs the binary (if needed) and runs the full report. To invoke errcheck directly instead:
 
 ```bash
 # Run and capture text output

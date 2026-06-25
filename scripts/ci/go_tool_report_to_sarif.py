@@ -6,6 +6,7 @@ Requires only Python 3 stdlib.
 import json
 import re
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,10 @@ LEVELS = {
     "note": "note",
 }
 
-ERRCHECK_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+):(?P<column>\d+):\s*(?P<message>.*)$")
+# errcheck's default text output is "path:line:col:\t<code>", but some versions
+# omit the trailing colon after the column. Make that colon optional and accept
+# either a tab or spaces as the separator so findings are never silently dropped.
+ERRCHECK_LINE_RE = re.compile(r"^(?P<file>.+?):(?P<line>\d+):(?P<column>\d+):?\s*(?P<message>.*)$")
 
 
 def load_json_or_ndjson(path: Path) -> Any:
@@ -87,6 +91,9 @@ def sarif_level(level: Any, default: str = "warning") -> str:
 
 
 def normalize_uri(uri: Any) -> str:
+    # SARIF/GitHub code-scanning expects artifact URIs relative to the repo root.
+    # This relies on the converter being invoked with the repo root as the current
+    # working directory, which the Makefile targets guarantee (`make` runs there).
     if not uri:
         return ""
     value = str(uri)
@@ -332,6 +339,7 @@ def main() -> int:
         render(sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3]))
     except Exception as exc:
         print(f"error: failed to convert {sys.argv[2]} to SARIF: {exc}", file=sys.stderr)
+        traceback.print_exc()
         return 1
     return 0
 

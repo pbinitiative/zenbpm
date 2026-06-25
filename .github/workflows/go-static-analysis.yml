@@ -9,6 +9,10 @@ on:
     - cron: '12 5 * * 2'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
@@ -39,19 +43,10 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: setup go
-        uses: actions/setup-go@v5
+      - name: setup go with cache
+        uses: ./.github/actions/setup-go-cache
         with:
-          go-version: '1.26'
-
-      - name: setup golang caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-            ${{ github.workspace }}/bin
-          key: ${{ runner.os }}-${{ matrix.tool }}-${{ env.STATICCHECK_VERSION }}-${{ env.ERRCHECK_VERSION }}-${{ env.REVIVE_VERSION }}-${{ hashFiles('**/go.sum') }}
+          cache-key: ${{ runner.os }}-${{ matrix.tool }}-${{ env.STATICCHECK_VERSION }}-${{ env.ERRCHECK_VERSION }}-${{ env.REVIVE_VERSION }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.tool }}-
             ${{ runner.os }}-go-static-analysis-

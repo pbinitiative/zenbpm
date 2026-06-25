@@ -31,7 +31,7 @@ make go-static-analysis
 
 ### Direct invocation
 
-After running `make staticcheck` to install the binary, you can invoke staticcheck directly:
+`make staticcheck` installs the binary (if needed) and runs the full report. To invoke staticcheck directly instead:
 
 ```bash
 # Run and capture JSON output

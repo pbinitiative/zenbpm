@@ -31,7 +31,7 @@ make go-static-analysis
 
 ### Direct invocation
 
-After running `make revive` to install the binary, you can invoke revive directly:
+`make revive` installs the binary (if needed) and runs the full report. To invoke revive directly instead:
 
 ```bash
 # Run and capture JSON output

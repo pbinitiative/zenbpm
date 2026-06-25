@@ -39,6 +39,8 @@ GOSEC_REPORT_DIR ?= gosec-reports
 GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
 GOSEC_HTML_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.html
 GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
+# When true, `make sast` exits non-zero if gosec reports any findings (used by sast-strict).
+GOSEC_FAIL_ON_FINDINGS ?= false
 
 STATICCHECK_VERSION ?= v0.7.0
 STATICCHECK_REPORT_DIR ?= staticcheck-reports
@@ -102,20 +104,17 @@ $(GOSEC): $(LOCALBIN)
 	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
-.PHONY: staticcheck
-staticcheck: $(STATICCHECK) ## Download staticcheck locally if necessary.
+# Install rules for the static-analysis binaries. The user-facing run targets
+# (staticcheck/errcheck/revive below) depend on these, so there is intentionally
+# no separate download alias target sharing the same name.
 $(STATICCHECK): $(LOCALBIN)
 	@test -s $(LOCALBIN)/staticcheck && { [ "$(STATICCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/staticcheck | grep -q $(STATICCHECK_VERSION); } || \
 	GOBIN=$(LOCALBIN) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 
-.PHONY: errcheck
-errcheck: $(ERRCHECK) ## Download errcheck locally if necessary.
 $(ERRCHECK): $(LOCALBIN)
 	@test -s $(LOCALBIN)/errcheck && { [ "$(ERRCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/errcheck | grep -q $(ERRCHECK_VERSION); } || \
 	GOBIN=$(LOCALBIN) go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
 
-.PHONY: revive
-revive: $(REVIVE) ## Download revive locally if necessary.
 $(REVIVE): $(LOCALBIN)
 	@test -s $(LOCALBIN)/revive && { [ "$(REVIVE_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/revive | grep -q $(REVIVE_VERSION); } || \
 	GOBIN=$(LOCALBIN) go install github.com/mgechev/revive@$(REVIVE_VERSION)
@@ -190,13 +189,16 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: sast
-sast: gosec ## Run Go source SAST checks. Reports are written to gosec-reports/.
+sast: $(GOSEC) ## Run Go source SAST checks (gosec). Reports are written to gosec-reports/.
 	@mkdir -p $(GOSEC_REPORT_DIR)
 	$(GOSEC) $(GOSEC_REPORT_FLAGS) -fmt sarif -out $(GOSEC_SARIF_REPORT) ./...
-	$(GOSEC) $(GOSEC_FLAGS) -fmt html -out $(GOSEC_HTML_REPORT) -stdout -verbose text ./...
+	@python3 scripts/ci/sarif_to_html.py $(GOSEC_SARIF_REPORT) $(GOSEC_HTML_REPORT)
+	@if [ "$(GOSEC_FAIL_ON_FINDINGS)" = "true" ]; then \
+		python3 -c "import json,sys; d=json.load(open('$(GOSEC_SARIF_REPORT)')); n=sum(len(r.get('results',[])) for r in d.get('runs',[])); print(f'gosec findings: {n}'); sys.exit(1 if n else 0)"; \
+	fi
 
 .PHONY: sast-strict
-sast-strict: GOSEC_FLAGS := -exclude-generated
+sast-strict: GOSEC_FAIL_ON_FINDINGS := true
 sast-strict: sast ## Run Go source SAST checks and fail when findings are present.
 
 .PHONY: staticcheck

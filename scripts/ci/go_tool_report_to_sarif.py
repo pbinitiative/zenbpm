@@ -321,13 +321,22 @@ def render(tool: str, input_path: Path, output_path: Path) -> None:
     print(f"SARIF report written to: {output_path}  ({len(results)} finding(s))")
 
 
-if __name__ == "__main__":
+def main() -> int:
     if len(sys.argv) != 4:
         print(
             f"Usage: {sys.argv[0]} <staticcheck|errcheck|revive> <input-report> <output.sarif>",
             file=sys.stderr,
         )
-        sys.exit(1)
-    render(sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3]))
+        return 1
+    try:
+        render(sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3]))
+    except Exception as exc:
+        print(f"error: failed to convert {sys.argv[2]} to SARIF: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 

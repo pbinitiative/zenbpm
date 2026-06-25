@@ -202,21 +202,42 @@ sast-strict: sast ## Run Go source SAST checks and fail when findings are presen
 .PHONY: staticcheck
 staticcheck: $(STATICCHECK) ## Run staticcheck and write JSON, SARIF, and HTML reports.
 	@mkdir -p $(STATICCHECK_REPORT_DIR)
-	@$(STATICCHECK) -f=json ./... > $(STATICCHECK_JSON_REPORT) || true
+	@set +e; \
+	$(STATICCHECK) -f=json ./... > $(STATICCHECK_JSON_REPORT) 2>$(STATICCHECK_REPORT_DIR)/staticcheck.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(STATICCHECK_JSON_REPORT) ]; then \
+		cat $(STATICCHECK_REPORT_DIR)/staticcheck.stderr >&2; \
+		exit $$status; \
+	fi
 	@python3 $(GO_TOOL_SARIF_CONVERTER) staticcheck $(STATICCHECK_JSON_REPORT) $(STATICCHECK_SARIF_REPORT)
 	@python3 scripts/ci/sarif_to_html.py $(STATICCHECK_SARIF_REPORT) $(STATICCHECK_HTML_REPORT)
 
 .PHONY: errcheck
 errcheck: $(ERRCHECK) ## Run errcheck and write text, SARIF, and HTML reports.
 	@mkdir -p $(ERRCHECK_REPORT_DIR)
-	@$(ERRCHECK) -ignoregenerated ./... > $(ERRCHECK_TEXT_REPORT) || true
+	@set +e; \
+	$(ERRCHECK) -ignoregenerated ./... > $(ERRCHECK_TEXT_REPORT) 2>$(ERRCHECK_REPORT_DIR)/errcheck.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(ERRCHECK_TEXT_REPORT) ]; then \
+		cat $(ERRCHECK_REPORT_DIR)/errcheck.stderr >&2; \
+		exit $$status; \
+	fi
 	@python3 $(GO_TOOL_SARIF_CONVERTER) errcheck $(ERRCHECK_TEXT_REPORT) $(ERRCHECK_SARIF_REPORT)
 	@python3 scripts/ci/sarif_to_html.py $(ERRCHECK_SARIF_REPORT) $(ERRCHECK_HTML_REPORT)
 
 .PHONY: revive
 revive: $(REVIVE) ## Run revive and write JSON, SARIF, and HTML reports.
 	@mkdir -p $(REVIVE_REPORT_DIR)
-	@$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) || true
+	@set +e; \
+	$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(REVIVE_JSON_REPORT) ]; then \
+		cat $(REVIVE_REPORT_DIR)/revive.stderr >&2; \
+		exit $$status; \
+	fi
 	@python3 $(GO_TOOL_SARIF_CONVERTER) revive $(REVIVE_JSON_REPORT) $(REVIVE_SARIF_REPORT)
 	@python3 scripts/ci/sarif_to_html.py $(REVIVE_SARIF_REPORT) $(REVIVE_HTML_REPORT)
 

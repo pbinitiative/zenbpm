@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def severity_badge(level: str) -> str:
+    level = str(level or "none")
     colours = {
         "error": "#d73a49",
         "warning": "#e36209",
@@ -24,10 +25,25 @@ def severity_badge(level: str) -> str:
     )
 
 
+def report_title(data: dict) -> str:
+    tool_names = []
+    for run in data.get("runs", []):
+        tool_name = run.get("tool", {}).get("driver", {}).get("name", "")
+        if tool_name and tool_name not in tool_names:
+            tool_names.append(tool_name)
+
+    if len(tool_names) == 1:
+        return f"{tool_names[0]} Report"
+    if len(tool_names) > 1:
+        return "SARIF Report: " + ", ".join(tool_names)
+    return "SARIF Report"
+
+
 def render(sarif_path: str, html_path: str) -> None:
     with open(sarif_path, encoding="utf-8") as f:
         data = json.load(f)
 
+    title = report_title(data)
     rows: list[str] = []
     for run in data.get("runs", []):
         tool_name = (
@@ -83,7 +99,7 @@ def render(sarif_path: str, html_path: str) -> None:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>CodeQL Security Report</title>
+<title>{html.escape(title)}</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
          margin: 0; padding: 24px; background: #f6f8fa; color: #24292e; }}
@@ -103,7 +119,7 @@ def render(sarif_path: str, html_path: str) -> None:
 </style>
 </head>
 <body>
-<h1>🔍 CodeQL Security Report</h1>
+<h1>🔍 {html.escape(title)}</h1>
 <p class="summary">Source: <code>{html.escape(sarif_path)}</code> &nbsp;|&nbsp;
    <strong>{total}</strong> finding(s)</p>
 <table>
@@ -117,13 +133,24 @@ def render(sarif_path: str, html_path: str) -> None:
 </body>
 </html>
 """
-    Path(html_path).write_text(page, encoding="utf-8")
+    output_path = Path(html_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(page, encoding="utf-8")
     print(f"HTML report written to: {html_path}  ({total} finding(s))")
 
 
-if __name__ == "__main__":
+def main() -> int:
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <input.sarif> <output.html>", file=sys.stderr)
-        sys.exit(1)
-    render(sys.argv[1], sys.argv[2])
+        return 1
+    try:
+        render(sys.argv[1], sys.argv[2])
+    except Exception as exc:
+        print(f"error: failed to convert {sys.argv[1]} to HTML: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 

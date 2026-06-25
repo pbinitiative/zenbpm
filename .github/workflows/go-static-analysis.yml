@@ -50,8 +50,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-            ~/work/zenbpm/zenbpm/bin
-          key: ${{ runner.os }}-${{ matrix.tool }}-${{ hashFiles('**/go.sum') }}
+            ${{ github.workspace }}/bin
+          key: ${{ runner.os }}-${{ matrix.tool }}-${{ env.STATICCHECK_VERSION }}-${{ env.ERRCHECK_VERSION }}-${{ env.REVIVE_VERSION }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.tool }}-
             ${{ runner.os }}-go-static-analysis-

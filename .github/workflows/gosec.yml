@@ -34,8 +34,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-            ~/work/zenbpm/zenbpm/bin
-          key: ${{ runner.os }}-gosec-${{ hashFiles('**/go.sum') }}
+            ${{ github.workspace }}/bin
+          key: ${{ runner.os }}-gosec-${{ env.GOSEC_VERSION }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-gosec-
 

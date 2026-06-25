@@ -1,6 +1,12 @@
 name: release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to publish, for example v1.2.3.
+        required: true
+        type: string
   push:
     tags:
       - v*
@@ -15,7 +21,8 @@ jobs:
     uses: ./.github/workflows/release-reusable.yaml
     with:
       release-command: make release
-      release-tag: ${{ github.ref_name }}
+      release-tag: ${{ inputs.version || github.ref_name }}
+      checkout-ref: ${{ inputs.version || github.ref }}
       artifact-prefix: trivy-release-reports
       publish: true
       security-scan: true

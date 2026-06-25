@@ -1,6 +1,7 @@
 name: dev
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - '**'
@@ -16,6 +17,7 @@ jobs:
     with:
       release-command: make release-dry-run
       release-tag: dev-${{ github.sha }}
+      checkout-ref: ${{ github.ref }}
       artifact-prefix: trivy-dev-reports
       publish: false
       security-scan: false

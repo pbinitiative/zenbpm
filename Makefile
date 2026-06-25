@@ -348,31 +348,28 @@ release-dev:
 		echo "\033[91mRELEASE_TAG is required for dev release\033[0m";\
 		exit 1;\
 	fi
-	@mkdir -p linux/amd64 linux/arm64
+	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
 	docker run \
 		--rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(HOME)/.docker:/root/.docker \
+		-v $(CURDIR)/.cache/go-build:/root/.cache/go-build \
+		-v $(CURDIR)/.cache/go-mod:/go/pkg/mod \
+		-v $(CURDIR)/.cache/goreleaser:/root/.cache/goreleaser \
 		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		-e BUILDX_BUILDER \
 		-e DOCKER_BUILDKIT=1 \
+		-e GOCACHE=/root/.cache/go-build \
+		-e GOMODCACHE=/go/pkg/mod \
 		-e IMAGE_NAME \
 		-e RELEASE_TAG \
-		--entrypoint bash \
+		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
+		-e GORELEASER_RELEASE_DISABLE=true \
+		-e GORELEASER_DOCKER_LATEST=false \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		-euo pipefail -c ' \
-			CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=x86_64-linux-gnu-gcc \
-				go build -ldflags "-s -w -X main.version=$${RELEASE_TAG#v}" \
-				-o linux/amd64/zenbpm ./cmd/zenbpm; \
-			CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
-				go build -ldflags "-s -w -X main.version=$${RELEASE_TAG#v}" \
-				-o linux/arm64/zenbpm ./cmd/zenbpm; \
-			docker buildx build \
-				--push \
-				--platform linux/amd64,linux/arm64 \
-				--tag "$${IMAGE_NAME}:$${RELEASE_TAG}" \
-				. \
-		'
+		--verbose \
+		release --clean --skip=validate
 
 .PHONY: release
 release:
@@ -388,6 +385,8 @@ release:
 		-e DOCKER_BUILDKIT=1 \
 		-e GOCACHE=/root/.cache/go-build \
 		-e GOMODCACHE=/go/pkg/mod \
+		-e GORELEASER_RELEASE_DISABLE=false \
+		-e GORELEASER_DOCKER_LATEST=true \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(HOME)/.docker:/root/.docker \
 		-v $(CURDIR)/.cache/go-build:/root/.cache/go-build \

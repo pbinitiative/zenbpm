@@ -81,7 +81,7 @@ dockers_v2:
     ids: 
      - zenbpm
     tags:
-      - latest
+      - "{{ if eq .Env.GORELEASER_DOCKER_LATEST \"true\" }}latest{{ end }}"
       - "{{ .Tag }}"
     platforms:
     - linux/amd64
@@ -103,6 +103,7 @@ changelog:
       - "^scripts:"
 
 release:
+  disable: "{{ .Env.GORELEASER_RELEASE_DISABLE }}"
   github:
     owner: pbinitiative
     name: zenbpm

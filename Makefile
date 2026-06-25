@@ -358,8 +358,9 @@ release-dev:
 		-e DOCKER_BUILDKIT=1 \
 		-e IMAGE_NAME \
 		-e RELEASE_TAG \
+		--entrypoint bash \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		bash -euo pipefail -c ' \
+		-euo pipefail -c ' \
 			CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=x86_64-linux-gnu-gcc \
 				go build -ldflags "-s -w -X main.version=$${RELEASE_TAG#v}" \
 				-o linux/amd64/zenbpm ./cmd/zenbpm; \

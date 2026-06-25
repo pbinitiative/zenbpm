@@ -15,11 +15,11 @@ jobs:
   dev:
     uses: ./.github/workflows/release-reusable.yaml
     with:
-      release-command: make release-dry-run
+      release-command: make release-dev
       release-tag: dev-${{ github.sha }}
       checkout-ref: ${{ github.ref }}
       artifact-prefix: trivy-dev-reports
-      publish: false
+      publish: true
       security-scan: false
       notify: false
     secrets: inherit

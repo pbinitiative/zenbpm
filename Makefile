@@ -348,13 +348,19 @@ release:
 		echo "\033[91m.release-env is required for release\033[0m";\
 		exit 1;\
 	fi
+	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
 	docker run \
 		--rm \
 		--env-file .release-env \
 		-e BUILDX_BUILDER \
 		-e DOCKER_BUILDKIT=1 \
+		-e GOCACHE=/root/.cache/go-build \
+		-e GOMODCACHE=/go/pkg/mod \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(HOME)/.docker:/root/.docker \
+		-v `pwd`/.cache/go-build:/root/.cache/go-build \
+		-v `pwd`/.cache/go-mod:/go/pkg/mod \
+		-v `pwd`/.cache/goreleaser:/root/.cache/goreleaser \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \

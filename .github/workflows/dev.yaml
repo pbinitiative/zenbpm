@@ -1,0 +1,23 @@
+name: dev
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  dev:
+    uses: ./.github/workflows/release-reusable.yaml
+    with:
+      release-command: make release-dry-run
+      release-tag: dev-${{ github.sha }}
+      artifact-prefix: trivy-dev-reports
+      publish: false
+      security-scan: false
+      notify: false
+    secrets: inherit

@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/release-reusable.yaml
     with:
       release-command: make release-dev
-      release-tag: dev-${{ github.sha }}
+      release-tag: dev
       checkout-ref: ${{ github.ref }}
       artifact-prefix: trivy-dev-reports
       publish: true

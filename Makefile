@@ -67,14 +67,13 @@ CODEQL_REPORT_DIR ?= codeql-reports
 CODEQL_SARIF_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.sarif
 CODEQL_HTML_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.html
 CODEQL_DB ?= $(CODEQL_REPORT_DIR)/codeql-db
-# Map GOOS/GOARCH to CodeQL bundle zip naming
+# Map GOOS/GOARCH to CodeQL bundle zip naming.
+# codeql-cli-binaries only ships a single macOS asset (codeql-osx64.zip, a
+# universal binary for both Intel and Apple Silicon), so darwin always maps to
+# osx64 regardless of ARCH.
 CODEQL_OS ?= linux64
 ifeq ("$(OS)", "darwin")
-  ifeq ("$(ARCH)", "arm64")
-    CODEQL_OS = osx-arm64
-  else
-    CODEQL_OS = osx64
-  endif
+  CODEQL_OS = osx64
 endif
 ifeq ("$(OS)", "windows")
   CODEQL_OS = win64
@@ -120,12 +119,13 @@ $(REVIVE): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mgechev/revive@$(REVIVE_VERSION)
 
 .PHONY: codeql-cli
-codeql-cli: $(CODEQL) ## Download CodeQL CLI locally if necessary.
+codeql-cli: $(CODEQL) ## Download CodeQL CLI locally if necessary. If wrong version is installed, it will be overwritten.
 $(CODEQL): $(LOCALBIN)
-	@if [ ! -s "$@" ]; then \
+	@if [ ! -s "$@" ] || ! "$@" version --format=terse 2>/dev/null | grep -q "$(CODEQL_VERSION:v%=%)"; then \
 		echo "Downloading CodeQL CLI $(CODEQL_VERSION) for $(CODEQL_OS)..."; \
-		curl -sSL "https://github.com/github/codeql-cli-binaries/releases/download/$(CODEQL_VERSION)/codeql-$(CODEQL_OS).zip" \
+		curl -fsSL "https://github.com/github/codeql-cli-binaries/releases/download/$(CODEQL_VERSION)/codeql-$(CODEQL_OS).zip" \
 		  -o /tmp/codeql.zip; \
+		rm -rf $(LOCALBIN)/codeql; \
 		unzip -q -o /tmp/codeql.zip -d $(LOCALBIN); \
 		rm /tmp/codeql.zip; \
 	fi

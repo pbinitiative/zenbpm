@@ -1505,11 +1505,42 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 		key := flowNode.GetKey()
 		createdAt := time.UnixMilli(flowNode.GetCreatedAt())
 		processInstanceKey := flowNode.GetProcessInstanceKey()
+
+		var completedAt *time.Time
+		if flowNode.CompletedAt != nil {
+			t := time.UnixMilli(flowNode.GetCompletedAt())
+			completedAt = &t
+		}
+
+		inputVars := map[string]any{}
+		if len(flowNode.GetInputVariables()) > 0 {
+			if err := json.Unmarshal(flowNode.GetInputVariables(), &inputVars); err != nil {
+				return public.GetHistory500JSONResponse(zenerr.TechnicalError(fmt.Errorf("failed to unmarshal input variables for flow element %d: %w", key, err)).ToApiError()), nil
+			}
+		}
+		if inputVars == nil {
+			inputVars = map[string]any{}
+		}
+
+		var outputVars *map[string]any
+		if len(flowNode.GetOutputVariables()) > 0 {
+			vars := map[string]any{}
+			if err := json.Unmarshal(flowNode.GetOutputVariables(), &vars); err != nil {
+				return public.GetHistory500JSONResponse(zenerr.TechnicalError(fmt.Errorf("failed to unmarshal output variables for flow element %d: %w", key, err)).ToApiError()), nil
+			}
+			if vars != nil {
+				outputVars = &vars
+			}
+		}
+
 		resp[i] = public.FlowElementHistory{
 			Key:                key,
 			CreatedAt:          createdAt,
+			CompletedAt:        completedAt,
 			ElementId:          flowNode.GetElementId(),
 			ProcessInstanceKey: processInstanceKey,
+			InputVariables:     inputVars,
+			OutputVariables:    outputVars,
 		}
 	}
 	return public.GetHistory200JSONResponse(public.FlowElementHistoryPage{

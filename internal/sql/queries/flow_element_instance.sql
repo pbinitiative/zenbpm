@@ -1,16 +1,17 @@
 -- name: SaveFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
-    VALUES (?, ? ,? ,?, ?, ?, ?)
+INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ? ,? ,?, ?, ?, ?, sqlc.narg('completed_at'))
 ON CONFLICT
     DO UPDATE SET
        input_variables = excluded.input_variables;
 
 -- name: UpdateOutputFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
-    VALUES (?, ? ,? ,?, ?, ?, ?)
+INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ? ,? ,?, ?, ?, ?, sqlc.narg('completed_at'))
 ON CONFLICT
     DO UPDATE SET
-       output_variables = excluded.output_variables;
+       output_variables = excluded.output_variables,
+       completed_at = COALESCE(flow_element_instance.completed_at, excluded.completed_at);
 
 -- name: DeleteFlowElementInstance :exec
 DELETE FROM flow_element_instance

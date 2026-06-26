@@ -6,6 +6,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetFlowElementInstanceHistory(t *testing.T) {
@@ -102,4 +103,61 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 	})
 
 	assert.NoError(t, err)
+}
+
+// TestGetFlowElementHistoryCompletedAtAndVariables verifies that the /history REST endpoint
+// surfaces the new `completedAt`, `inputVariables` and `outputVariables` fields after a
+// process executes, and that `completedAt` is only set for elements that complete
+// explicitly (e.g. a service task whose job is completed).
+func TestGetFlowElementHistoryCompletedAtAndVariables(t *testing.T) {
+	cleanProcessInstances(t)
+
+	definition, err := deployGetUniqueDefinition(t, "simple_task.bpmn")
+	assert.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.Key, nil)
+	assert.NoError(t, err)
+
+	// complete the service task job with an output variable that is mapped via the
+	// BPMN output mapping (source =variable_name -> target variable_name)
+	completeJobForElementId(t, instance.Key, "id", map[string]any{"variable_name": "done"})
+
+	history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance.Key, &zenclient.GetHistoryParams{})
+	assert.NoError(t, err)
+	require.NotNil(t, history.JSON200)
+
+	items := []zenclient.FlowElementHistory{}
+	if history.JSON200.Items != nil {
+		items = *history.JSON200.Items
+	}
+	assert.NotEmpty(t, items)
+
+	byElementID := make(map[string]zenclient.FlowElementHistory, len(items))
+	for _, item := range items {
+		byElementID[item.ElementId] = item
+	}
+
+	// service task completes via job completion -> CompletedAt set, output variables written
+	task, ok := byElementID["id"]
+	assert.True(t, ok, "service task 'id' should be present in history")
+	assert.NotNil(t, task.CompletedAt, "service task should have CompletedAt set after job completion")
+	assert.NotNil(t, task.OutputVariables, "service task should have OutputVariables set after completion")
+	if task.OutputVariables != nil {
+		assert.Equal(t, map[string]any{"variable_name": "done"}, *task.OutputVariables,
+			"service task output variables should reflect the mapped job output")
+	}
+	assert.NotNil(t, task.InputVariables, "service task should carry InputVariables")
+
+	// synchronous elements never call Update -> CompletedAt stays nil, no OutputVariables
+	for _, elementID := range []string{"StartEvent_1", "Flow_0xt1d7q", "Flow_1vz4oo2"} {
+		fe, found := byElementID[elementID]
+		assert.True(t, found, "element %s should be present in history", elementID)
+		assert.Nil(t, fe.CompletedAt, "element %s should have nil CompletedAt (no explicit completion)", elementID)
+		assert.Nil(t, fe.OutputVariables, "element %s should have nil OutputVariables (no completion)", elementID)
+		assert.NotNil(t, fe.InputVariables, "element %s should always carry InputVariables", elementID)
+	}
+
+	endEvent, ok := byElementID["Event_1j4mcqg"]
+	assert.True(t, ok, "end event 'Event_1j4mcqg' should be present in history")
+	assert.NotNil(t, endEvent.CompletedAt, "plain end event should have CompletedAt set when the process completes")
 }

@@ -224,6 +224,7 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 			ExecutionTokenKey:  match.scope.token.Key,
 			InputVariables:     nil,
 			OutputVariables:    propagatedVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 	if err != nil {

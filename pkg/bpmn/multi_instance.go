@@ -348,8 +348,12 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		return err
 	}
 	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:             updatedParentToken.ElementInstanceKey,
-		OutputVariables: map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		Key:                updatedParentToken.ElementInstanceKey,
+		ProcessInstanceKey: parentInstance.ProcessInstance().GetInstanceKey(),
+		ElementId:          parentElement.GetId(),
+		ExecutionTokenKey:  updatedParentToken.Key,
+		OutputVariables:    map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
 		return err

@@ -49,6 +49,8 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
+		st.TestFlowElementInstanceCompletedAt,
+		st.TestFlowElementInstanceUpdateOutputInsertPath,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
 	}
@@ -688,6 +690,74 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t 
 		}
 		err := s.SaveFlowElementInstance(t.Context(), historyItem)
 		assert.Nil(t, err)
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceCompletedAt(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		saved := bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-completed",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{},
+		}
+		err := s.SaveFlowElementInstance(t.Context(), saved)
+		assert.Nil(t, err)
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.Equal(t, saved.ElementId, read.ElementId)
+		assert.Nil(t, read.CompletedAt, "CompletedAt should be nil after Save with no completion")
+
+		completed := time.Now().Truncate(time.Millisecond)
+		err = s.UpdateOutputFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:             r,
+			OutputVariables: map[string]any{"out": "put"},
+			CompletedAt:     &completed,
+		})
+		assert.Nil(t, err)
+
+		updated, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.NotNil(t, updated.CompletedAt, "CompletedAt should be set after Update")
+		if updated.CompletedAt != nil {
+			assert.True(t, updated.CompletedAt.Equal(completed), "CompletedAt mismatch: got %v want %v", *updated.CompletedAt, completed)
+		}
+		assert.Equal(t, map[string]any{"out": "put"}, updated.OutputVariables, "OutputVariables should be updated")
+		assert.Equal(t, saved.InputVariables, updated.InputVariables, "InputVariables should be preserved")
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceUpdateOutputInsertPath(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		completed := time.Now().Truncate(time.Millisecond)
+		err := s.UpdateOutputFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-update-insert",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{"out": "put"},
+			CompletedAt:        &completed,
+		})
+		assert.Nil(t, err)
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.Equal(t, "test-elem-update-insert", read.ElementId)
+		assert.Equal(t, map[string]any{"in": "v"}, read.InputVariables,
+			"InputVariables should be populated even when the row was created via UpdateOutput")
+		assert.Equal(t, map[string]any{"out": "put"}, read.OutputVariables,
+			"OutputVariables should be populated")
+		assert.NotNil(t, read.CompletedAt, "CompletedAt should be set")
 	}
 }
 

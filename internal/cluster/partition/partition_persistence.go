@@ -2281,18 +2281,19 @@ func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, p
 		var inputVariables map[string]any
 		err = json.Unmarshal([]byte(flowElementInstance.InputVariables), &inputVariables)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+			return nil, fmt.Errorf("failed to unmarshal input variables for flow element instance %d: %w", flowElementInstance.Key, err)
 		}
 		var outputVariables map[string]any
 		err = json.Unmarshal([]byte(flowElementInstance.OutputVariables), &outputVariables)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+			return nil, fmt.Errorf("failed to unmarshal output variables for flow element instance %d: %w", flowElementInstance.Key, err)
 		}
 		result = append(result, bpmnruntime.FlowElementInstance{
 			Key:                flowElementInstance.Key,
 			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 			ElementId:          flowElementInstance.ElementID,
 			CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
+			CompletedAt:        nullInt64ToTimePtr(flowElementInstance.CompletedAt),
 			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
 			InputVariables:     inputVariables,
 			OutputVariables:    outputVariables,
@@ -2319,12 +2320,12 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 	var inputVariables map[string]any
 	err = json.Unmarshal([]byte(flowElementInstance.InputVariables), &inputVariables)
 	if err != nil {
-		return res, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+		return res, fmt.Errorf("failed to unmarshal input variables for flow element instance %d: %w", flowElementInstance.Key, err)
 	}
 	var outputVariables map[string]any
 	err = json.Unmarshal([]byte(flowElementInstance.OutputVariables), &outputVariables)
 	if err != nil {
-		return res, fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+		return res, fmt.Errorf("failed to unmarshal output variables for flow element instance %d: %w", flowElementInstance.Key, err)
 	}
 
 	return bpmnruntime.FlowElementInstance{
@@ -2332,6 +2333,7 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 		ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 		ElementId:          flowElementInstance.ElementID,
 		CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
+		CompletedAt:        nullInt64ToTimePtr(flowElementInstance.CompletedAt),
 		ExecutionTokenKey:  flowElementInstance.Key,
 		InputVariables:     inputVariables,
 		OutputVariables:    outputVariables,
@@ -2353,6 +2355,10 @@ func (rq *DB) UpdateOutputFlowElementInstance(ctx context.Context, flowElementIn
 }
 
 func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, flowElementInstance bpmnruntime.FlowElementInstance) error {
+	inputVariablesString, err := json.Marshal(flowElementInstance.InputVariables)
+	if err != nil {
+		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
+	}
 	outputVariablesString, err := json.Marshal(flowElementInstance.OutputVariables)
 	if err != nil {
 		return fmt.Errorf("failed to marshal variables for flow element instance %d: %w", flowElementInstance.Key, err)
@@ -2365,7 +2371,9 @@ func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, f
 			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 			CreatedAt:          flowElementInstance.CreatedAt.UnixMilli(),
 			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
+			InputVariables:     string(inputVariablesString),
 			OutputVariables:    string(outputVariablesString),
+			CompletedAt:        timePtrToNullInt64(flowElementInstance.CompletedAt),
 		},
 	)
 }
@@ -2389,8 +2397,27 @@ func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element b
 			ExecutionTokenKey:  element.ExecutionTokenKey,
 			InputVariables:     string(inputVariablesString),
 			OutputVariables:    string(outputVariablesString),
+			CompletedAt:        ssql.NullInt64{},
 		},
 	)
+}
+
+func nullInt64ToTimePtr(n ssql.NullInt64) *time.Time {
+	if !n.Valid {
+		return nil
+	}
+	t := time.UnixMilli(n.Int64)
+	return &t
+}
+
+func timePtrToNullInt64(t *time.Time) ssql.NullInt64 {
+	if t == nil {
+		return ssql.NullInt64{}
+	}
+	return ssql.NullInt64{
+		Int64: t.UnixMilli(),
+		Valid: true,
+	}
 }
 
 var _ storage.IncidentStorageReader = &DB{}
@@ -2418,6 +2445,7 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 		ProcessInstanceKey: incident.ProcessInstanceKey,
 		Message:            incident.Message,
 		CreatedAt:          time.UnixMilli(incident.CreatedAt),
+		ResolvedAt:         nullInt64ToTimePtr(incident.ResolvedAt),
 		Token: bpmnruntime.ExecutionToken{
 			Key:                tokenKey,
 			ElementInstanceKey: tokenElementInstanceKey,
@@ -2425,10 +2453,6 @@ func buildIncident(incident sql.Incident, token sql.ExecutionToken) bpmnruntime.
 			ProcessInstanceKey: tokenProcessInstanceKey,
 			State:              bpmnruntime.TokenState(token.State),
 		},
-	}
-	if incident.ResolvedAt.Valid {
-		resolvedAt := time.UnixMilli(incident.ResolvedAt.Int64)
-		res.ResolvedAt = &resolvedAt
 	}
 	return res
 }
@@ -2534,11 +2558,8 @@ func SaveIncidentWith(ctx context.Context, db *sql.Queries, incident bpmnruntime
 		ProcessInstanceKey: incident.ProcessInstanceKey,
 		Message:            incident.Message,
 		CreatedAt:          incident.CreatedAt.UnixMilli(),
-		ResolvedAt: ssql.NullInt64{
-			Int64: ptr.Deref(incident.ResolvedAt, time.Now()).UnixMilli(),
-			Valid: incident.ResolvedAt != nil,
-		},
-		ExecutionToken: incident.Token.Key,
+		ResolvedAt:         timePtrToNullInt64(incident.ResolvedAt),
+		ExecutionToken:     incident.Token.Key,
 	})
 }
 

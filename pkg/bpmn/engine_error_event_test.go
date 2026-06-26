@@ -24,6 +24,40 @@ func TestJobFailOnServiceTaskWithMatchingErrorBoundaryIsCaught(t *testing.T) {
 	assertProcessInstanceWithoutIncident(t, createdProcessInstance, job)
 }
 
+func TestBoundaryErrorEventCompletedAt(t *testing.T) {
+	createdProcessInstance := createProcessInstance(t, "service_task/service_task_with_error_boundary_event.bpmn")
+
+	job := findJobForProcessInstance(createdProcessInstance.ProcessInstance().Key, "service-task-error-boundary")
+	require.NotZero(t, job.Key, "expected to find service-task-error-boundary job created for process instance")
+
+	before := time.Now()
+	errorCode := "42"
+	err := bpmnEngine.JobFailByKey(t.Context(), job.Key, "expected boundary error", &errorCode, nil)
+	require.NoError(t, err)
+	after := time.Now()
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), createdProcessInstance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	var boundary *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "boundary-error-main-task" {
+			boundary = &flowElements[i]
+			break
+		}
+	}
+	assert.NotNil(t, boundary, "boundary error event 'boundary-error-main-task' should be in history")
+	if boundary == nil {
+		return
+	}
+	assert.NotNil(t, boundary.CompletedAt,
+		"boundary error event should have CompletedAt set after the boundary fires")
+	if boundary.CompletedAt != nil {
+		assert.False(t, boundary.CompletedAt.Before(before), "CompletedAt should be >= fail start time (%v)", before)
+		assert.False(t, boundary.CompletedAt.After(after), "CompletedAt should be <= fail end time (%v)", after)
+	}
+}
+
 func TestJobFailOnServiceTaskWithMismatchingErrorBoundaryCreatesIncident(t *testing.T) {
 	createdProcessInstance := createProcessInstance(t, "service_task/service_task_with_error_boundary_event.bpmn")
 

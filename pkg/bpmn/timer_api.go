@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -108,6 +109,16 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 		//TODO: BUG ? Tokens are never saved
 		if timer.Token == nil {
 			return nil, nil, fmt.Errorf("timer %d does not have an associated token", timer.Key)
+		}
+		err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                timer.Token.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          nodeT.GetId(),
+			ExecutionTokenKey:  timer.Token.Key,
+			CompletedAt:        new(time.Now()),
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to update flow element instance for intermediate timer catch event %s: %w", nodeT.GetId(), err)
 		}
 		tokens, err = engine.handleElementTransition(ctx, &batch, instance, nodeT, *timer.Token)
 		if err != nil {

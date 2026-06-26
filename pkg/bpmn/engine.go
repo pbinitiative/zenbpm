@@ -1039,8 +1039,12 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 	batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
-			Key:             currentToken.ElementInstanceKey,
-			OutputVariables: outputVariables,
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          element.GetId(),
+			ExecutionTokenKey:  currentToken.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 
@@ -1295,6 +1299,17 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
 		}
 		updatedTokens = append(updatedTokens, currentToken)
+
+		err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          endEvent.GetId(),
+			ExecutionTokenKey:  currentToken.Key,
+			CompletedAt:        new(time.Now()),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update flow element instance for plain end event %s: %w", endEvent.GetId(), err)
+		}
 	}
 	return updatedTokens, nil
 }

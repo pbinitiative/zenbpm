@@ -185,15 +185,35 @@ func assertDefinitionLevelTriggeredTimers(t *testing.T, anyInstanceKey, definiti
 
 func assertProcessInstanceCountNeverExceeds(t *testing.T, bpmnProcessId string, store storage.Storage, definitionKey int64, maxCount int, duration, interval time.Duration) {
 	t.Helper()
-	require.Never(t, func() bool {
-		if len(listParentInstances(t, bpmnProcessId)) > maxCount {
-			return true
+	ctx, cancel := context.WithTimeout(context.Background(), duration+time.Second)
+	defer cancel()
+	deadline := time.Now().Add(duration)
+	for time.Now().Before(deadline) {
+		if count := listParentInstancesCount(ctx, bpmnProcessId); count > maxCount {
+			t.Fatalf("process instance count for %q must never exceed %d (got %d)", bpmnProcessId, maxCount, count)
 		}
-		triggered, err := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateTriggered)
-		if err != nil {
-			return false
+		triggered, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateTriggered)
+		if err == nil && len(filterDefinitionLevelTimers(triggered)) > maxCount {
+			t.Fatalf("triggered definition-level timer count for definition %d must never exceed %d (got %d)", definitionKey, maxCount, len(filterDefinitionLevelTimers(triggered)))
 		}
-		return len(filterDefinitionLevelTimers(triggered)) > maxCount
-	}, duration, interval,
-		"process instance / triggered timer count for %q must never exceed %d", bpmnProcessId, maxCount)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+	}
+}
+
+func listParentInstancesCount(ctx context.Context, bpmnProcessId string) int {
+	page, err := app.restClient.GetProcessInstancesWithResponse(ctx, &zenclient.GetProcessInstancesParams{
+		BpmnProcessId: &bpmnProcessId,
+	})
+	if err != nil || page == nil || page.JSON200 == nil {
+		return 0
+	}
+	count := 0
+	for _, p := range page.JSON200.Partitions {
+		count += len(p.Items)
+	}
+	return count
 }

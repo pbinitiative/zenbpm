@@ -904,11 +904,19 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		totalCount = int32(flowElements[0].TotalCount)
 	}
 	for i, flowElement := range flowElements {
+		var completedAt *int64
+		if flowElement.CompletedAt.Valid {
+			ms := flowElement.CompletedAt.Int64
+			completedAt = &ms
+		}
 		result[i] = &proto.FlowElement{
 			Key:                &flowElement.Key,
 			ElementId:          &flowElement.ElementID,
 			ProcessInstanceKey: &flowElement.ProcessInstanceKey,
 			CreatedAt:          &flowElement.CreatedAt,
+			CompletedAt:        completedAt,
+			InputVariables:     []byte(flowElement.InputVariables),
+			OutputVariables:    []byte(flowElement.OutputVariables),
 		}
 	}
 

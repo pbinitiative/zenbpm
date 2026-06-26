@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
@@ -283,8 +284,12 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		return errors.Join(newEngineErrorf("failed to map output variables for job: %+v", job))
 	}
 	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:             job.Token.ElementInstanceKey,
-		OutputVariables: outputVariables,
+		Key:                job.Token.ElementInstanceKey,
+		ProcessInstanceKey: job.ProcessInstanceKey,
+		ElementId:          job.Token.ElementId,
+		ExecutionTokenKey:  job.Token.Key,
+		OutputVariables:    outputVariables,
+		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
 		return err

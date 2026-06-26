@@ -3428,7 +3428,7 @@ components:
           description: Variables provided to the job at creation/activation time (from BPMN input mappings)
         outputVariables:
           type: object
-          description: Output variables set on job completion or failure
+          description: Output variables set on job completion or failure (full output before mapping)
         assignee:
           type: string
           description: Assignee (user assigned to this job)
@@ -3497,6 +3497,7 @@ components:
         - processInstanceKey
         - createdAt
         - elementId
+        - inputVariables
       properties:
         key:
           type: integer
@@ -3507,8 +3508,17 @@ components:
         createdAt:
           type: string
           format: date-time
+        completedAt:
+          type: string
+          format: date-time
         elementId:
           type: string
+        inputVariables:
+          type: object
+          description: Variables provided to the flow element at creation time (from BPMN input mappings)
+        outputVariables:
+          type: object
+          description: Output variables produced by the flow element on completion (after BPMN output mapping)
     IncidentPage:
       type: object
       allOf:

@@ -264,6 +264,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			ExecutionTokenKey:  token.Key,
 			InputVariables:     nil,
 			OutputVariables:    propagatedVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 	if err != nil {

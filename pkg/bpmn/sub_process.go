@@ -263,10 +263,13 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+	if err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
 		OutputVariables: output,
-	})
+		CompletedAt:     new(time.Now()),
+	}); err != nil {
+		return fmt.Errorf("failed to update flow element instance for sub process %s: %w", parentElement.GetId(), err)
+	}
 
 	// for nested event subprocesses: complete parent event subprocesses recursively going up
 	if isEventSubProcess && parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted && parentInstance.Type() == runtime.ProcessTypeSubProcess {
@@ -361,10 +364,13 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 		batch.SaveToken(ctx, tok)
 	}
 	batch.SaveProcessInstance(ctx, parentInstance)
-	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
 		OutputVariables: output,
-	})
+		CompletedAt:     new(time.Now()),
+	}); err != nil {
+		return fmt.Errorf("failed to update flow element instance for call activity %s: %w", parentElement.GetId(), err)
+	}
 
 	batch.AddPostFlushAction(ctx, func() {
 		safego.Go("parent-continuation-call-activity", engine.logger, func() {

@@ -17,6 +17,11 @@ SQLC ?= $(LOCALBIN)/sqlc
 PROTOC ?= $(LOCALBIN)/protoc
 PROTOC_GEN_GO ?= $(LOCALBIN)/protoc-gen-go
 PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
+GOSEC ?= $(LOCALBIN)/gosec
+CODEQL ?= $(LOCALBIN)/codeql/codeql
+STATICCHECK ?= $(LOCALBIN)/staticcheck
+ERRCHECK ?= $(LOCALBIN)/errcheck
+REVIVE ?= $(LOCALBIN)/revive
 
 ## Setup PATH to point to tools binaries
 PATH := $(LOCALBIN):$(PATH)
@@ -28,6 +33,51 @@ PROTOC_VERSION ?= 33.4
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 GOLANG_CROSS_VERSION ?= v1.26.4
+GOSEC_VERSION ?= v2.27.1
+GOSEC_FLAGS ?= -exclude-generated -no-fail
+GOSEC_REPORT_DIR ?= gosec-reports
+GOSEC_SARIF_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.sarif
+GOSEC_HTML_REPORT ?= $(GOSEC_REPORT_DIR)/gosec.html
+GOSEC_REPORT_FLAGS = $(filter-out -no-fail,$(GOSEC_FLAGS)) -no-fail
+# When true, `make sast` exits non-zero if gosec reports any findings (used by sast-strict).
+GOSEC_FAIL_ON_FINDINGS ?= false
+
+STATICCHECK_VERSION ?= v0.7.0
+STATICCHECK_REPORT_DIR ?= staticcheck-reports
+STATICCHECK_JSON_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.json
+STATICCHECK_SARIF_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.sarif
+STATICCHECK_HTML_REPORT ?= $(STATICCHECK_REPORT_DIR)/staticcheck.html
+
+ERRCHECK_VERSION ?= v1.20.0
+ERRCHECK_REPORT_DIR ?= errcheck-reports
+ERRCHECK_TEXT_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.txt
+ERRCHECK_SARIF_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.sarif
+ERRCHECK_HTML_REPORT ?= $(ERRCHECK_REPORT_DIR)/errcheck.html
+
+REVIVE_VERSION ?= v1.15.0
+REVIVE_REPORT_DIR ?= revive-reports
+REVIVE_JSON_REPORT ?= $(REVIVE_REPORT_DIR)/revive.json
+REVIVE_SARIF_REPORT ?= $(REVIVE_REPORT_DIR)/revive.sarif
+REVIVE_HTML_REPORT ?= $(REVIVE_REPORT_DIR)/revive.html
+
+GO_TOOL_SARIF_CONVERTER ?= scripts/ci/go_tool_report_to_sarif.py
+
+CODEQL_VERSION ?= v2.25.6
+CODEQL_REPORT_DIR ?= codeql-reports
+CODEQL_SARIF_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.sarif
+CODEQL_HTML_REPORT ?= $(CODEQL_REPORT_DIR)/codeql.html
+CODEQL_DB ?= $(CODEQL_REPORT_DIR)/codeql-db
+# Map GOOS/GOARCH to CodeQL bundle zip naming.
+# codeql-cli-binaries only ships a single macOS asset (codeql-osx64.zip, a
+# universal binary for both Intel and Apple Silicon), so darwin always maps to
+# osx64 regardless of ARCH.
+CODEQL_OS ?= linux64
+ifeq ("$(OS)", "darwin")
+  CODEQL_OS = osx64
+endif
+ifeq ("$(OS)", "windows")
+  CODEQL_OS = win64
+endif
 
 .PHONY: sqlc
 sqlc: $(SQLC) ## Download sqlc locally if necessary. If wrong version is installed, it will be overwritten.
@@ -46,6 +96,39 @@ protoc-gen-go-grpc: $(PROTOC_GEN_GO_GRPC) ## Download protoc locally if necessar
 $(PROTOC_GEN_GO_GRPC): $(LOCALBIN)
 	@test -s $(LOCALBIN)/protoc-gen-go-grpc && $(LOCALBIN)/protoc-gen-go-grpc --version | grep -q $(PROTOC_GEN_GO_GRPC_VERSION) || \
 	GOBIN=$(LOCALBIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+.PHONY: gosec
+gosec: $(GOSEC) ## Download gosec locally if necessary.
+$(GOSEC): $(LOCALBIN)
+	@test -s $(LOCALBIN)/gosec && go version -m $(LOCALBIN)/gosec | grep -q $(GOSEC_VERSION) || \
+	GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+
+# Install rules for the static-analysis binaries. The user-facing run targets
+# (staticcheck/errcheck/revive below) depend on these, so there is intentionally
+# no separate download alias target sharing the same name.
+$(STATICCHECK): $(LOCALBIN)
+	@test -s $(LOCALBIN)/staticcheck && { [ "$(STATICCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/staticcheck | grep -q $(STATICCHECK_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+
+$(ERRCHECK): $(LOCALBIN)
+	@test -s $(LOCALBIN)/errcheck && { [ "$(ERRCHECK_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/errcheck | grep -q $(ERRCHECK_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
+
+$(REVIVE): $(LOCALBIN)
+	@test -s $(LOCALBIN)/revive && { [ "$(REVIVE_VERSION)" = "latest" ] || go version -m $(LOCALBIN)/revive | grep -q $(REVIVE_VERSION); } || \
+	GOBIN=$(LOCALBIN) go install github.com/mgechev/revive@$(REVIVE_VERSION)
+
+.PHONY: codeql-cli
+codeql-cli: $(CODEQL) ## Download CodeQL CLI locally if necessary. If wrong version is installed, it will be overwritten.
+$(CODEQL): $(LOCALBIN)
+	@if [ ! -s "$@" ] || ! "$@" version --format=terse 2>/dev/null | grep -q "$(CODEQL_VERSION:v%=%)"; then \
+		echo "Downloading CodeQL CLI $(CODEQL_VERSION) for $(CODEQL_OS)..."; \
+		curl -fsSL "https://github.com/github/codeql-cli-binaries/releases/download/$(CODEQL_VERSION)/codeql-$(CODEQL_OS).zip" \
+		  -o /tmp/codeql.zip; \
+		rm -rf $(LOCALBIN)/codeql; \
+		unzip -q -o /tmp/codeql.zip -d $(LOCALBIN); \
+		rm /tmp/codeql.zip; \
+	fi
 
 PROTOC_OS:=$(OS)
 PROTOC_ARCH:=-$(ARCH)
@@ -104,6 +187,77 @@ fmt: ## Run go fmt against code.
 .PHONY: vet
 vet: ## Run go vet against code.
 	go vet ./...
+
+.PHONY: sast
+sast: $(GOSEC) ## Run Go source SAST checks (gosec). Reports are written to gosec-reports/.
+	@mkdir -p $(GOSEC_REPORT_DIR)
+	$(GOSEC) $(GOSEC_REPORT_FLAGS) -fmt sarif -out $(GOSEC_SARIF_REPORT) ./...
+	@python3 scripts/ci/sarif_to_html.py $(GOSEC_SARIF_REPORT) $(GOSEC_HTML_REPORT)
+	@if [ "$(GOSEC_FAIL_ON_FINDINGS)" = "true" ]; then \
+		python3 -c "import json,sys; d=json.load(open('$(GOSEC_SARIF_REPORT)')); n=sum(len(r.get('results',[])) for r in d.get('runs',[])); print(f'gosec findings: {n}'); sys.exit(1 if n else 0)"; \
+	fi
+
+.PHONY: sast-strict
+sast-strict: GOSEC_FAIL_ON_FINDINGS := true
+sast-strict: sast ## Run Go source SAST checks and fail when findings are present.
+
+.PHONY: staticcheck
+staticcheck: $(STATICCHECK) ## Run staticcheck and write JSON, SARIF, and HTML reports.
+	@mkdir -p $(STATICCHECK_REPORT_DIR)
+	@set +e; \
+	$(STATICCHECK) -f=json ./... > $(STATICCHECK_JSON_REPORT) 2>$(STATICCHECK_REPORT_DIR)/staticcheck.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(STATICCHECK_JSON_REPORT) ]; then \
+		cat $(STATICCHECK_REPORT_DIR)/staticcheck.stderr >&2; \
+		exit $$status; \
+	fi
+	@python3 $(GO_TOOL_SARIF_CONVERTER) staticcheck $(STATICCHECK_JSON_REPORT) $(STATICCHECK_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(STATICCHECK_SARIF_REPORT) $(STATICCHECK_HTML_REPORT)
+
+.PHONY: errcheck
+errcheck: $(ERRCHECK) ## Run errcheck and write text, SARIF, and HTML reports.
+	@mkdir -p $(ERRCHECK_REPORT_DIR)
+	@set +e; \
+	$(ERRCHECK) -ignoregenerated ./... > $(ERRCHECK_TEXT_REPORT) 2>$(ERRCHECK_REPORT_DIR)/errcheck.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(ERRCHECK_TEXT_REPORT) ]; then \
+		cat $(ERRCHECK_REPORT_DIR)/errcheck.stderr >&2; \
+		exit $$status; \
+	fi
+	@python3 $(GO_TOOL_SARIF_CONVERTER) errcheck $(ERRCHECK_TEXT_REPORT) $(ERRCHECK_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(ERRCHECK_SARIF_REPORT) $(ERRCHECK_HTML_REPORT)
+
+.PHONY: revive
+revive: $(REVIVE) ## Run revive and write JSON, SARIF, and HTML reports.
+	@mkdir -p $(REVIVE_REPORT_DIR)
+	@set +e; \
+	$(REVIVE) -formatter json ./... > $(REVIVE_JSON_REPORT) 2>$(REVIVE_REPORT_DIR)/revive.stderr; \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 0 ] && [ ! -s $(REVIVE_JSON_REPORT) ]; then \
+		cat $(REVIVE_REPORT_DIR)/revive.stderr >&2; \
+		exit $$status; \
+	fi
+	@python3 $(GO_TOOL_SARIF_CONVERTER) revive $(REVIVE_JSON_REPORT) $(REVIVE_SARIF_REPORT)
+	@python3 scripts/ci/sarif_to_html.py $(REVIVE_SARIF_REPORT) $(REVIVE_HTML_REPORT)
+
+.PHONY: go-static-analysis
+go-static-analysis: staticcheck errcheck revive ## Run staticcheck, errcheck, and revive reports.
+
+.PHONY: codeql
+codeql: codeql-cli ## Run CodeQL security analysis locally. Reports are written to codeql-reports/.
+	@mkdir -p $(CODEQL_REPORT_DIR)
+	$(CODEQL) database create $(CODEQL_DB) --language=go --build-mode=autobuild --overwrite
+	$(CODEQL) database analyze $(CODEQL_DB) \
+		--download \
+		codeql/go-queries:codeql-suites/go-security-extended.qls \
+		--format=sarif-latest \
+		--output=$(CODEQL_SARIF_REPORT)
+	@echo "CodeQL SARIF report written to: $(CODEQL_SARIF_REPORT)"
+	python3 scripts/ci/sarif_to_html.py $(CODEQL_SARIF_REPORT) $(CODEQL_HTML_REPORT)
+	@echo "CodeQL HTML report written to: $(CODEQL_HTML_REPORT)"
 
 .PHONY: run
 run: ## Start this project locally with dev configuration

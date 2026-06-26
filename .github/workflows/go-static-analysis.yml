@@ -1,0 +1,71 @@
+name: Go static analysis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '12 5 * * 2'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  STATICCHECK_VERSION: v0.7.0
+  ERRCHECK_VERSION: v1.20.0
+  REVIVE_VERSION: v1.15.0
+
+jobs:
+  analyze:
+    name: ${{ matrix.tool }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tool: staticcheck
+            report-dir: staticcheck-reports
+            sarif-file: staticcheck-reports/staticcheck.sarif
+          - tool: errcheck
+            report-dir: errcheck-reports
+            sarif-file: errcheck-reports/errcheck.sarif
+          - tool: revive
+            report-dir: revive-reports
+            sarif-file: revive-reports/revive.sarif
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup go with cache
+        uses: ./.github/actions/setup-go-cache
+        with:
+          cache-key: ${{ runner.os }}-${{ matrix.tool }}-${{ env.STATICCHECK_VERSION }}-${{ env.ERRCHECK_VERSION }}-${{ env.REVIVE_VERSION }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.tool }}-
+            ${{ runner.os }}-go-static-analysis-
+
+      - name: run ${{ matrix.tool }}
+        run: make ${{ matrix.tool }}
+
+      - name: upload ${{ matrix.tool }} sarif
+        if: ${{ always() && hashFiles(matrix.sarif-file) != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ matrix.sarif-file }}
+          category: ${{ matrix.tool }}
+
+      - name: upload ${{ matrix.tool }} reports
+        if: ${{ always() && hashFiles(format('{0}/**', matrix.report-dir)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-reports-${{ github.run_id }}
+          path: ${{ matrix.report-dir }}/
+          retention-days: 90
+

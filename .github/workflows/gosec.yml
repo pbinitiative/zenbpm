@@ -1,0 +1,53 @@
+name: gosec
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GOSEC_VERSION: v2.27.1
+
+jobs:
+  gosec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup go with cache
+        uses: ./.github/actions/setup-go-cache
+        with:
+          cache-key: ${{ runner.os }}-gosec-${{ env.GOSEC_VERSION }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-gosec-
+
+      - name: run gosec
+        run: make sast
+
+      - name: upload gosec sarif
+        if: ${{ always() && hashFiles('gosec-reports/gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: gosec-reports/gosec.sarif
+          category: gosec
+
+      - name: upload gosec reports
+        if: ${{ always() && hashFiles('gosec-reports/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec-reports-${{ github.run_id }}
+          path: gosec-reports/
+          retention-days: 90

@@ -38,6 +38,8 @@ jobs:
         run: echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: run generate
         run: make generate
+      - name: check go mod tidy
+        run: go mod tidy -diff
       - name: run tests
         run: make test
       - name: run e2e tests

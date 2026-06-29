@@ -198,7 +198,8 @@ func (engine *Engine) activateErrorEventSubprocess(
 			return nil, nil, err
 		}
 		if instance.ProcessInstance().State == runtime.ActivityStateCompleted ||
-			instance.ProcessInstance().State == runtime.ActivityStateTerminated {
+			instance.ProcessInstance().State == runtime.ActivityStateTerminated ||
+			instance.ProcessInstance().State == runtime.ActivityStateFailed {
 			return nil, nil, nil
 		}
 	}

@@ -32,7 +32,7 @@ SQLC_VERSION ?= v1.29.0
 PROTOC_VERSION ?= 33.4
 PROTOC_GEN_GO_VERSION ?= v1.36.5
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
-GOLANG_CROSS_VERSION ?= v1.26.4
+GOLANG_CROSS_VERSION ?= v1.26.3
 GOSEC_VERSION ?= v2.27.1
 GOSEC_FLAGS ?= -exclude-generated -no-fail
 GOSEC_REPORT_DIR ?= gosec-reports
@@ -337,10 +337,39 @@ release-dry-run:
 	@docker run \
 		--rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v `pwd`:/go/src/$(PACKAGE_NAME) \
+		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish
+
+.PHONY: release-dev
+release-dev:
+	@if [ -z "$${RELEASE_TAG:-}" ]; then \
+		echo "\033[91mRELEASE_TAG is required for dev release\033[0m";\
+		exit 1;\
+	fi
+	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
+	docker run \
+		--rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(HOME)/.docker:/root/.docker \
+		-v $(CURDIR)/.cache/go-build:/root/.cache/go-build \
+		-v $(CURDIR)/.cache/go-mod:/go/pkg/mod \
+		-v $(CURDIR)/.cache/goreleaser:/root/.cache/goreleaser \
+		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
+		-w /go/src/$(PACKAGE_NAME) \
+		-e BUILDX_BUILDER \
+		-e DOCKER_BUILDKIT=1 \
+		-e GOCACHE=/root/.cache/go-build \
+		-e GOMODCACHE=/go/pkg/mod \
+		-e IMAGE_NAME \
+		-e RELEASE_TAG \
+		-e GORELEASER_CURRENT_TAG=$${RELEASE_TAG} \
+		-e GORELEASER_RELEASE_DISABLE=true \
+		-e GORELEASER_DOCKER_LATEST=false \
+		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		--verbose \
+		release --clean --skip=validate
 
 .PHONY: release
 release:
@@ -348,14 +377,22 @@ release:
 		echo "\033[91m.release-env is required for release\033[0m";\
 		exit 1;\
 	fi
+	@mkdir -p .cache/go-build .cache/go-mod .cache/goreleaser
 	docker run \
 		--rm \
 		--env-file .release-env \
 		-e BUILDX_BUILDER \
 		-e DOCKER_BUILDKIT=1 \
+		-e GOCACHE=/root/.cache/go-build \
+		-e GOMODCACHE=/go/pkg/mod \
+		-e GORELEASER_RELEASE_DISABLE=false \
+		-e GORELEASER_DOCKER_LATEST=true \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(HOME)/.docker:/root/.docker \
-		-v `pwd`:/go/src/$(PACKAGE_NAME) \
+		-v $(CURDIR)/.cache/go-build:/root/.cache/go-build \
+		-v $(CURDIR)/.cache/go-mod:/go/pkg/mod \
+		-v $(CURDIR)/.cache/goreleaser:/root/.cache/goreleaser \
+		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--verbose \

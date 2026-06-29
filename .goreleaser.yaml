@@ -9,7 +9,6 @@ before:
   hooks:
     - apt-get update
     - apt-get install unzip # install unzip for the docker image
-    - go mod tidy
     - make generate
 
 builds:
@@ -81,7 +80,7 @@ dockers_v2:
     ids: 
      - zenbpm
     tags:
-      - latest
+      - '{{ if and (eq .Env.GORELEASER_DOCKER_LATEST "true") (eq .Prerelease "") }}latest{{ end }}'
       - "{{ .Tag }}"
     platforms:
     - linux/amd64
@@ -103,6 +102,7 @@ changelog:
       - "^scripts:"
 
 release:
+  disable: "{{ .Env.GORELEASER_RELEASE_DISABLE }}"
   github:
     owner: pbinitiative
     name: zenbpm

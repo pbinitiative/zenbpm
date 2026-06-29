@@ -71,4 +71,4 @@ A thin single-line circle.
 ```
 
 ## Current Implementation
-Start event "None", "Timer" and "Message" are supported.
+Start event "None", "Timer", "Message" and "Error" are supported.

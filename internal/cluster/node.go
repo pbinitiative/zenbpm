@@ -337,12 +337,12 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	for _, currentPartition := range clusterState.Partitions {
+		partitionId := currentPartition.Id
 
 		group.Go(func() error {
 			return node.deployDmnResourceDefinitionToPartition(
 				groupCtx,
-				clusterState,
-				currentPartition.LeaderId,
+				partitionId,
 				definitionKey.Int64(),
 				data,
 			)
@@ -356,7 +356,26 @@ func (node *ZenNode) DeployDmnResourceDefinitionToAllPartitions(ctx context.Cont
 	return definitionKey.Int64(), false, nil
 }
 
+// deployDmnResourceDefinitionToPartition deploys to the given partition's current
+// leader, retrying transient failures and re-resolving the leader each attempt
+// so the deploy follows leadership changes during cluster churn.
 func (node *ZenNode) deployDmnResourceDefinitionToPartition(
+	ctx context.Context,
+	partitionId uint32,
+	definitionKey int64,
+	data []byte,
+) error {
+	return node.retryDeploy(ctx, func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return errTransientDeploy
+		}
+		return node.deployDmnResourceDefinitionToPartitionOnce(ctx, clusterState, leaderId, definitionKey, data)
+	})
+}
+
+func (node *ZenNode) deployDmnResourceDefinitionToPartitionOnce(
 	ctx context.Context,
 	clusterState state.Cluster,
 	partitionLeaderId string,
@@ -504,14 +523,12 @@ func (node *ZenNode) DeployProcessDefinitionToAllPartitions(ctx context.Context,
 	subscriptionPartitionId := partitionIds[partitionIdx]
 	group, groupCtx := errgroup.WithContext(ctx)
 	for _, partitionId := range partitionIds {
-		leaderId := clusterState.Partitions[partitionId].LeaderId
 		registerProcessDefinitionSubscriptions := subscriptionPartitionId == partitionId
 
 		group.Go(func() error {
 			return node.deployProcessDefinitionToPartition(
 				groupCtx,
-				clusterState,
-				leaderId,
+				partitionId,
 				definitionKey.Int64(),
 				data,
 				resourceName,
@@ -565,7 +582,78 @@ func (node *ZenNode) GetDefinitionKeyByProcessId(ctx context.Context, processId 
 	return 0, nil
 }
 
+// transientDeployError reports whether a deploy error reflects a transient
+// condition during partition leadership churn — the routed leader's engine has
+// not started yet, or its rqlite store is briefly not open. Such deploys are
+// safe to retry against the current leader.
+func transientDeployError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no engine available") ||
+		strings.Contains(msg, "no engines available") ||
+		strings.Contains(msg, "store not open")
+}
+
+// errTransientDeploy marks a deploy attempt that should be retried even though
+// its error message is not itself a transient marker — e.g. the partition has no
+// elected leader yet.
+var errTransientDeploy = errors.New("transient deploy condition")
+
+const (
+	deployRetryFor      = 15 * time.Second
+	deployRetryInterval = 250 * time.Millisecond
+)
+
+// retryDeploy runs a deploy attempt, retrying transient failures (engine not yet
+// started / store not open / no leader) against a freshly resolved leader until
+// it succeeds, the context is cancelled, or the retry window elapses. The deploy
+// key is caller-assigned and deploys are idempotent on it, so retries are safe.
+func (node *ZenNode) retryDeploy(ctx context.Context, attempt func() error) error {
+	deadline := time.Now().Add(deployRetryFor)
+	var lastErr error
+	for {
+		err := attempt()
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errTransientDeploy) && !transientDeployError(err) {
+			return err
+		}
+		lastErr = err
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			if errors.Is(lastErr, errTransientDeploy) {
+				return zenerr.ClusterError(fmt.Errorf("no partition leader available to deploy to within %s", deployRetryFor))
+			}
+			return lastErr
+		}
+		time.Sleep(deployRetryInterval)
+	}
+}
+
+// deployProcessDefinitionToPartition deploys to the given partition's current
+// leader, retrying transient failures and re-resolving the leader each attempt
+// so the deploy follows leadership changes during cluster churn.
 func (node *ZenNode) deployProcessDefinitionToPartition(
+	ctx context.Context,
+	partitionId uint32,
+	definitionKey int64,
+	data []byte,
+	resourceName string,
+	registerProcessDefinitionSubscriptions bool,
+) error {
+	return node.retryDeploy(ctx, func() error {
+		clusterState := node.store.ClusterState()
+		leaderId := clusterState.Partitions[partitionId].LeaderId
+		if leaderId == "" {
+			return errTransientDeploy
+		}
+		return node.deployProcessDefinitionToPartitionOnce(ctx, clusterState, leaderId, definitionKey, data, resourceName, registerProcessDefinitionSubscriptions)
+	})
+}
+
+func (node *ZenNode) deployProcessDefinitionToPartitionOnce(
 	ctx context.Context,
 	clusterState state.Cluster,
 	partitionLeaderId string,

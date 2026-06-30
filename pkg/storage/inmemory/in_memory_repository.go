@@ -1050,7 +1050,13 @@ func (mem *Storage) UpdateOutputFlowElementInstance(ctx context.Context, flowEle
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
 	elementInstance := mem.FlowElementInstance[flowElementInstance.Key]
-	elementInstance.OutputVariables = flowElementInstance.OutputVariables
+	// Mirror the SQL behaviour: INSERT ... ON CONFLICT DO UPDATE
+	if elementInstance.Key == 0 {
+		elementInstance = flowElementInstance
+	} else {
+		elementInstance.OutputVariables = flowElementInstance.OutputVariables
+		elementInstance.CompletedAt = flowElementInstance.CompletedAt
+	}
 	mem.FlowElementInstance[flowElementInstance.Key] = elementInstance
 	return nil
 }

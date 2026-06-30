@@ -126,6 +126,41 @@ func TestInterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 
 }
 
+func TestInterruptingBoundaryTimerEventCompletedAt(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-interrupting.bpmn")
+	assert.NoError(t, err)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	// The boundary timer is PT1S; wait for it to fire and the process to complete.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		updated, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		assert.NoError(t, err)
+		if updated.ProcessInstance().State == runtime.ActivityStateCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	var boundary *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "Event_1n9fcqj" {
+			boundary = &flowElements[i]
+			break
+		}
+	}
+	assert.NotNil(t, boundary, "boundary timer event 'Event_1n9fcqj' should be in history")
+	if boundary == nil {
+		return
+	}
+	assert.NotNil(t, boundary.CompletedAt,
+		"boundary timer event should have CompletedAt set after the boundary timer fires")
+}
+
 func TestNoninterruptingBoundaryEventTimerCatchTriggered(t *testing.T) {
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/timer-boundary-event-noninterrupting.bpmn")
 	assert.NoError(t, err)

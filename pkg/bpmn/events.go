@@ -22,13 +22,25 @@ func (engine *Engine) publishMessageOnListener(ctx context.Context, batch *Engin
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
-	_, err = variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
+	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(listener.Output, variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate variables to process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
 	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
+	}
+
+	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                message.Token.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          listener.GetId(),
+		ExecutionTokenKey:  message.Token.Key,
+		OutputVariables:    outputVariables,
+		CompletedAt:        new(time.Now()),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update flow element instance for intermediate message catch event %s: %w", listener.GetId(), err)
 	}
 
 	tokens, err := engine.handleElementTransition(ctx, batch, instance, listener, message.Token)
@@ -140,6 +152,7 @@ func (engine *Engine) publishMessageOnBoundaryListener(ctx context.Context, batc
 			ExecutionTokenKey:  token.Key,
 			InputVariables:     nil,
 			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 	if err != nil {
@@ -175,8 +188,12 @@ func (engine *Engine) publishMessageOnReceiveTask(ctx context.Context, batch *En
 
 	err = batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
-			Key:             token.ElementInstanceKey,
-			OutputVariables: outputVariables,
+			Key:                token.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          receiveTask.GetId(),
+			ExecutionTokenKey:  token.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 	if err != nil {
@@ -325,12 +342,13 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		ExecutionTokenKey:  token.Key,
 		InputVariables:     nil,
 		OutputVariables:    nil,
+		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to save event gateway flow history %s: %w", catchFlow.GetId(), err)
 	}
 
-	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                engine.generateKey(),
 		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 		ElementId:          catchEvent.GetId(),
@@ -338,6 +356,7 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		ExecutionTokenKey:  token.Key,
 		InputVariables:     nil,
 		OutputVariables:    outputVariables,
+		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to save event gateway catch event history %s: %w", catchEvent.GetId(), err)

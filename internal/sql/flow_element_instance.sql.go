@@ -49,7 +49,7 @@ func (q *Queries) DeleteFlowElementInstance(ctx context.Context, keys []int64) e
 
 const findFlowElementInstances = `-- name: FindFlowElementInstances :many
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables,
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at,
     COUNT(*) OVER() AS total_count
 FROM flow_element_instance
 WHERE
@@ -70,14 +70,15 @@ type FindFlowElementInstancesParams struct {
 }
 
 type FindFlowElementInstancesRow struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ExecutionTokenKey  int64  `json:"execution_token_key"`
-	CreatedAt          int64  `json:"created_at"`
-	InputVariables     string `json:"input_variables"`
-	OutputVariables    string `json:"output_variables"`
-	TotalCount         int64  `json:"total_count"`
+	Key                int64         `json:"key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	ExecutionTokenKey  int64         `json:"execution_token_key"`
+	CreatedAt          int64         `json:"created_at"`
+	InputVariables     string        `json:"input_variables"`
+	OutputVariables    string        `json:"output_variables"`
+	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	TotalCount         int64         `json:"total_count"`
 }
 
 func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElementInstancesParams) ([]FindFlowElementInstancesRow, error) {
@@ -102,6 +103,7 @@ func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElem
 			&i.CreatedAt,
 			&i.InputVariables,
 			&i.OutputVariables,
+			&i.CompletedAt,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -119,7 +121,7 @@ func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElem
 
 const getFlowElementInstanceByKey = `-- name: GetFlowElementInstanceByKey :one
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at
 FROM
     flow_element_instance
 WHERE
@@ -137,13 +139,14 @@ func (q *Queries) GetFlowElementInstanceByKey(ctx context.Context, key int64) (F
 		&i.CreatedAt,
 		&i.InputVariables,
 		&i.OutputVariables,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const getFlowElementInstanceByTokenKey = `-- name: GetFlowElementInstanceByTokenKey :one
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at
 FROM
     flow_element_instance
 WHERE
@@ -162,13 +165,14 @@ func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executio
 		&i.CreatedAt,
 		&i.InputVariables,
 		&i.OutputVariables,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const getFlowElementInstances = `-- name: GetFlowElementInstances :many
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables,
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at,
     COUNT(*) OVER() AS total_count
 FROM
     flow_element_instance
@@ -190,14 +194,15 @@ type GetFlowElementInstancesParams struct {
 }
 
 type GetFlowElementInstancesRow struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ExecutionTokenKey  int64  `json:"execution_token_key"`
-	CreatedAt          int64  `json:"created_at"`
-	InputVariables     string `json:"input_variables"`
-	OutputVariables    string `json:"output_variables"`
-	TotalCount         int64  `json:"total_count"`
+	Key                int64         `json:"key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	ExecutionTokenKey  int64         `json:"execution_token_key"`
+	CreatedAt          int64         `json:"created_at"`
+	InputVariables     string        `json:"input_variables"`
+	OutputVariables    string        `json:"output_variables"`
+	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	TotalCount         int64         `json:"total_count"`
 }
 
 func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElementInstancesParams) ([]GetFlowElementInstancesRow, error) {
@@ -222,6 +227,7 @@ func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElemen
 			&i.CreatedAt,
 			&i.InputVariables,
 			&i.OutputVariables,
+			&i.CompletedAt,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -238,21 +244,22 @@ func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElemen
 }
 
 const saveFlowElementInstance = `-- name: SaveFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
-    VALUES (?, ? ,? ,?, ?, ?, ?)
+INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ? ,? ,?, ?, ?, ?, ?8)
 ON CONFLICT
     DO UPDATE SET
        input_variables = excluded.input_variables
 `
 
 type SaveFlowElementInstanceParams struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	CreatedAt          int64  `json:"created_at"`
-	ExecutionTokenKey  int64  `json:"execution_token_key"`
-	InputVariables     string `json:"input_variables"`
-	OutputVariables    string `json:"output_variables"`
+	Key                int64         `json:"key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	CreatedAt          int64         `json:"created_at"`
+	ExecutionTokenKey  int64         `json:"execution_token_key"`
+	InputVariables     string        `json:"input_variables"`
+	OutputVariables    string        `json:"output_variables"`
+	CompletedAt        sql.NullInt64 `json:"completed_at"`
 }
 
 func (q *Queries) SaveFlowElementInstance(ctx context.Context, arg SaveFlowElementInstanceParams) error {
@@ -264,26 +271,29 @@ func (q *Queries) SaveFlowElementInstance(ctx context.Context, arg SaveFlowEleme
 		arg.ExecutionTokenKey,
 		arg.InputVariables,
 		arg.OutputVariables,
+		arg.CompletedAt,
 	)
 	return err
 }
 
 const updateOutputFlowElementInstance = `-- name: UpdateOutputFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables)
-    VALUES (?, ? ,? ,?, ?, ?, ?)
+INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ? ,? ,?, ?, ?, ?, ?8)
 ON CONFLICT
     DO UPDATE SET
-       output_variables = excluded.output_variables
+       output_variables = excluded.output_variables,
+       completed_at = COALESCE(flow_element_instance.completed_at, excluded.completed_at)
 `
 
 type UpdateOutputFlowElementInstanceParams struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	CreatedAt          int64  `json:"created_at"`
-	ExecutionTokenKey  int64  `json:"execution_token_key"`
-	InputVariables     string `json:"input_variables"`
-	OutputVariables    string `json:"output_variables"`
+	Key                int64         `json:"key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	CreatedAt          int64         `json:"created_at"`
+	ExecutionTokenKey  int64         `json:"execution_token_key"`
+	InputVariables     string        `json:"input_variables"`
+	OutputVariables    string        `json:"output_variables"`
+	CompletedAt        sql.NullInt64 `json:"completed_at"`
 }
 
 func (q *Queries) UpdateOutputFlowElementInstance(ctx context.Context, arg UpdateOutputFlowElementInstanceParams) error {
@@ -295,6 +305,7 @@ func (q *Queries) UpdateOutputFlowElementInstance(ctx context.Context, arg Updat
 		arg.ExecutionTokenKey,
 		arg.InputVariables,
 		arg.OutputVariables,
+		arg.CompletedAt,
 	)
 	return err
 }

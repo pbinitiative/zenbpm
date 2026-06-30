@@ -621,3 +621,122 @@ func TestExclusiveGatewaySequenceFlowSavedInHistory(t *testing.T) {
 	assert.Contains(t, elementIds, "Flow_1y8jegt",
 		"Sequence flow 'Flow_1y8jegt' (start to gateway) should be in history. Got: %v", elementIds)
 }
+
+// TestFlowElementInstanceCompletedAt verifies that CompletedAt is populated only for
+// elements that go through the explicit completion path (UpdateOutputFlowElementInstance),
+// such as service tasks, and remains nil for synchronous elements (start event, end event,
+// sequence flows, gateways).
+func TestFlowElementInstanceCompletedAt(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	assert.NoError(t, err)
+
+	handler := bpmnEngine.NewTaskHandler().Type("TestType").Handler(func(job ActivatedJob) {
+		job.SetOutputVariable("variable_name", "done")
+		job.Complete()
+	})
+	defer bpmnEngine.RemoveHandler(handler)
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	byID := make(map[string]runtime.FlowElementInstance, len(flowElements))
+	for _, fe := range flowElements {
+		byID[fe.ElementId] = fe
+	}
+
+	// service task completes via UpdateOutputFlowElementInstance -> CompletedAt must be set
+	task, ok := byID["id"]
+	assert.True(t, ok, "service task 'id' should be in history")
+	assert.NotNil(t, task.CompletedAt, "service task should have CompletedAt set after completion")
+	assert.Equal(t, map[string]any{"variable_name": "done"}, task.OutputVariables,
+		"service task should have its mapped output variables")
+	assert.NotNil(t, task.InputVariables, "service task should carry input variables")
+
+	// synchronous elements never call Update -> CompletedAt stays nil
+	for _, elementID := range []string{"StartEvent_1", "Flow_0xt1d7q", "Flow_1vz4oo2"} {
+		fe, found := byID[elementID]
+		assert.True(t, found, "element %s should be in history", elementID)
+		assert.Nil(t, fe.CompletedAt, "element %s should have nil CompletedAt (no explicit completion)", elementID)
+	}
+
+	endEvent, ok := byID["Event_1j4mcqg"]
+	assert.True(t, ok, "end event 'Event_1j4mcqg' should be in history")
+	assert.NotNil(t, endEvent.CompletedAt, "plain end event should have CompletedAt set when the process completes")
+}
+
+func TestIntermediateTimerCatchEventCompletedAt(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/simple-timer-catch-event.bpmn")
+	assert.NoError(t, err)
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	// The bpmn defines a PT1S timer; wait for it to fire and the process to complete.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		updated, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+		assert.NoError(t, err)
+		if updated.ProcessInstance().State == runtime.ActivityStateCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	updated, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), instance.ProcessInstance().Key)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, updated.ProcessInstance().State,
+		"process should have completed after the intermediate timer fired")
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	var catchEvent *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "Event_14lg07w" {
+			catchEvent = &flowElements[i]
+			break
+		}
+	}
+	assert.NotNil(t, catchEvent, "intermediate timer catch event 'Event_14lg07w' should be in history")
+	if catchEvent == nil {
+		return
+	}
+	assert.NotNil(t, catchEvent.CompletedAt,
+		"intermediate timer catch event should have CompletedAt set after the timer fires")
+}
+
+func TestPlainEndEventCompletedAtWithMultipleTokens(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/parallel-gateway-flow.bpmn")
+	assert.NoError(t, err)
+
+	a1H := bpmnEngine.NewTaskHandler().Id("id-a-1").Handler(func(job ActivatedJob) { job.Complete() })
+	defer bpmnEngine.RemoveHandler(a1H)
+	b1H := bpmnEngine.NewTaskHandler().Id("id-b-1").Handler(func(job ActivatedJob) { job.Complete() })
+	defer bpmnEngine.RemoveHandler(b1H)
+	b2H := bpmnEngine.NewTaskHandler().Id("id-b-2").Handler(func(job ActivatedJob) { job.Complete() })
+	defer bpmnEngine.RemoveHandler(b2H)
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	endEventRows := make([]runtime.FlowElementInstance, 0, 2)
+	for _, fe := range flowElements {
+		if fe.ElementId == "Event_1qu1nt8" {
+			endEventRows = append(endEventRows, fe)
+		}
+	}
+	assert.Equal(t, 2, len(endEventRows),
+		"expected two FlowElementInstance rows for the end event (one per parallel token)")
+
+	for i, fe := range endEventRows {
+		assert.NotNil(t, fe.CompletedAt,
+			"end event row %d (key %d) should have CompletedAt set", i, fe.Key)
+	}
+}

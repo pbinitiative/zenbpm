@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +97,7 @@ func TestAsymmetricPartition(t *testing.T) {
 				continue
 			}
 			for _, node := range s.Nodes {
-				if node.Role == 2 { // RoleLeader
+				if node.Role == state.RoleLeader.String() {
 					return true
 				}
 			}
@@ -213,7 +214,7 @@ func TestNoSplitBrain(t *testing.T) {
 			continue
 		}
 		for _, node := range s.Nodes {
-			if node.ID == n.ID && node.Role == 2 { // RoleLeader
+			if node.ID == n.ID && node.Role == state.RoleLeader.String() {
 				leaderCount++
 			}
 		}

@@ -151,10 +151,11 @@ func TestMessageCorrelationAcrossNodes(t *testing.T) {
 	require.NotZero(t, instanceKey)
 
 	// Publish message via node B
+	correlationKey := "test-key"
 	msgResp, err := nodeB.RestClient.PublishMessageWithResponse(context.Background(),
 		zenclient.PublishMessageJSONRequestBody{
 			MessageName:    "test-message",
-			CorrelationKey: "test-key",
+			CorrelationKey: &correlationKey,
 		})
 	// Message might fail if the process doesn't have a matching catch event
 	// but we verify the cross-node routing works

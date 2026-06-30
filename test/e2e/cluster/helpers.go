@@ -31,13 +31,13 @@ type clusterStatus struct {
 		Addr       string `json:"addr"`
 		ID         string `json:"id"`
 		Partitions map[string]struct {
-			ID    int64 `json:"id"`
-			Role  int64 `json:"role"`
-			State int64 `json:"state"`
+			ID    int64  `json:"id"`
+			Role  string `json:"role"`
+			State string `json:"state"`
 		} `json:"partitions"`
-		Role     int64 `json:"role"`
-		State    int64 `json:"state"`
-		Suffrage int64 `json:"suffrage"`
+		Role     string `json:"role"`
+		State    string `json:"state"`
+		Suffrage string `json:"suffrage"`
 	} `json:"nodes"`
 	Partitions map[string]struct {
 		ID       int64  `json:"id"`
@@ -92,7 +92,7 @@ func WaitForHealthy(t *testing.T, tc *TestCluster, timeout time.Duration) {
 		// All node partitions are initialized
 		for _, node := range s.Nodes {
 			for _, p := range node.Partitions {
-				if p.State != int64(state.NodePartitionStateInitialized) {
+				if p.State != state.NodePartitionStateInitialized.String() {
 					return false
 				}
 			}
@@ -109,7 +109,7 @@ func WaitForHealthy(t *testing.T, tc *TestCluster, timeout time.Duration) {
 // can leave the surviving members with stale logs and block re-election.
 func WaitForPartitions(t *testing.T, tc *TestCluster, count int, timeout time.Duration) {
 	t.Helper()
-	const nodePartitionStateInitialized = 5
+	nodePartitionStateInitialized := state.NodePartitionStateInitialized.String()
 	require.Eventually(t, func() bool {
 		running := tc.RunningNodes()
 		if len(running) == 0 {
@@ -230,7 +230,7 @@ func AssertPartitionHasLeader(t *testing.T, tc *TestCluster, partitionID uint32)
 	leaderCount := 0
 	for _, node := range s.Nodes {
 		for _, np := range node.Partitions {
-			if np.ID == int64(partitionID) && np.Role == int64(state.RoleLeader) {
+			if np.ID == int64(partitionID) && np.Role == state.RoleLeader.String() {
 				leaderCount++
 			}
 		}

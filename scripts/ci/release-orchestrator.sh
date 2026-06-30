@@ -3,8 +3,7 @@ set -euo pipefail
 
 require_env() {
   local name=$1
-  local -n value_ref=$name
-  if [ -z "${value_ref:-}" ]; then
+  if ! [[ -v $name ]] || [ -z "${!name}" ]; then
     echo "$name is required" >&2
     exit 1
   fi

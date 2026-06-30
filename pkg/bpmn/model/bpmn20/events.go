@@ -64,8 +64,6 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.MessageEventDefinition)
 	}
 	if tempStruct.ErrorEventDefinition != nil {
-		// BPMN Error Start Events are always interrupting.
-		startEvent.IsInterrupting = true
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.ErrorEventDefinition)
 	}
 	return nil

@@ -28,23 +28,6 @@ func TestJobErrorCaughtByMatchingErrorEventSubprocess(t *testing.T) {
 	assertTokenElementIds(t, completed, nil, []string{"should-not-happen-end"})
 }
 
-// TestJobErrorCaughtByErrorEventSubprocessWithNonInterruptingXml verifies that Error Start Events
-// are still treated as interrupting even if the BPMN XML incorrectly sets isInterrupting=false.
-func TestJobErrorCaughtByErrorEventSubprocessWithNonInterruptingXml(t *testing.T) {
-	instance := createErrorEventSubprocessInstance(t, "error-event-subprocess-error-start-non-interrupting-xml.bpmn")
-
-	job := findJobForProcessInstance(instance.ProcessInstance().Key, "service-task-error-event-subprocess")
-	require.NotZero(t, job.Key, "expected to find the main service task job")
-
-	require.NoError(t, bpmnEngine.JobFailByKey(t.Context(), job.Key, "boom", new("42"), nil))
-
-	completed := waitForErrorEventSubprocessParentCompleted(t, instance.ProcessInstance().Key)
-	assert.Equal(t, "error-caught-despite-non-interrupting-xml", completed.ProcessInstance().GetVariable("subProcessResult"))
-	assertJobState(t, job, runtime.ActivityStateTerminated)
-	assertIncidentCount(t, completed, 0)
-	assertTokenElementIds(t, completed, nil, []string{"should-not-happen-end"})
-}
-
 // TestJobErrorWithNonMatchingCodeIsNotCaughtByErrorEventSubprocess verifies that a job error whose
 // error code does not match the error event subprocess falls through to incident handling and leaves
 // the parent process instance active.

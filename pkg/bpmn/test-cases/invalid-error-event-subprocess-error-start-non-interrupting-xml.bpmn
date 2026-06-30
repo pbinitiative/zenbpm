@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_error_event_subprocess_non_interrupting_xml" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
-  <bpmn:process id="error-event-subprocess-non-interrupting-xml" name="Error Event Subprocess Non Interrupting XML" isExecutable="true">
+  <bpmn:process id="invalid-error-event-subprocess-error-start-non-interrupting-xml" name="Error Event Subprocess Non Interrupting XML" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
     </bpmn:startEvent>
@@ -34,7 +34,7 @@
   </bpmn:process>
   <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="error-event-subprocess-non-interrupting-xml">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="invalid-error-event-subprocess-error-start-non-interrupting-xml">
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
         <dc:Bounds x="162" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>

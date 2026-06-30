@@ -37,7 +37,7 @@ func TestErrorStartEventParsesFromBpmn(t *testing.T) {
 	assert.Equal(t, "42", bpmnError.ErrorCode)
 }
 
-func TestErrorStartEventParsesAsInterruptingEvenWhenXmlDisablesIt(t *testing.T) {
+func TestErrorStartEventNonInterruptingXmlIsRejected(t *testing.T) {
 	const xmlData = `
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_error_start_non_interrupting_xml">
   <bpmn:process id="error-start-non-interrupting-xml" isExecutable="true">
@@ -52,10 +52,6 @@ func TestErrorStartEventParsesAsInterruptingEvenWhenXmlDisablesIt(t *testing.T) 
 
 	var definitions TDefinitions
 	err := xml.Unmarshal([]byte(strings.TrimSpace(xmlData)), &definitions)
-	require.NoError(t, err)
-
-	require.Equal(t, 1, len(definitions.Process.SubProcess))
-	require.Equal(t, 1, len(definitions.Process.SubProcess[0].TProcess.StartEvents))
-	assert.True(t, definitions.Process.SubProcess[0].TProcess.StartEvents[0].IsInterrupting,
-		"error start events must be interrupting even when XML contains isInterrupting=false")
+	require.Error(t, err, "a non-interrupting error start event must be rejected at parse/deployment time")
+	assert.Contains(t, err.Error(), "non-interrupting error start event")
 }

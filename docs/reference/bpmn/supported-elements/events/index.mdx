@@ -1,0 +1,128 @@
+---
+sidebar_position: 1
+---
+
+# Events
+
+An event represents something that happens during the course of a process. Events affect the flow of the process and usually have a cause (trigger) or an impact (result).
+
+<table className="bpmn-coverage bpmn-events">
+  <thead>
+    <tr>
+      <th rowSpan="2">Type</th>
+      <th>Start</th>
+      <th colSpan="2">Intermediate</th>
+      <th colSpan="2">Boundary</th>
+      <th>End</th>
+    </tr>
+    <tr>
+      <th>Normal</th>
+      <th>Catch</th>
+      <th>Throw</th>
+      <th>Interrupting</th>
+      <th>Non-Interrupting</th>
+      <th>Normal</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>None</td>
+      <td><a href="./start-events/none-start-event"><img className="bpmn-supported" src="/img/bpmn/events/none-start.svg" alt="None Start Event" /></a></td>
+      <td></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/none-intermediate-throw.svg" alt="None Intermediate Throw Event" /></td>
+      <td></td>
+      <td></td>
+      <td><a href="./end-events/none-end-event"><img className="bpmn-supported" src="/img/bpmn/events/none-end.svg" alt="None End Event" /></a></td>
+    </tr>
+    <tr>
+      <td>Message</td>
+      <td><a href="./start-events/message-start-event"><img className="bpmn-supported" src="/img/bpmn/events/message-start.svg" alt="Message Start Event" /></a></td>
+      <td><a href="./intermediate-events/message-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-catch.svg" alt="Message Intermediate Catch Event" /></a></td>
+      <td><a href="./intermediate-events/message-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-throw.svg" alt="Message Intermediate Throw Event" /></a></td>
+      <td><a href="./boundary-events/message-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/message-boundary-interrupting.svg" alt="Message Boundary Event (interrupting)" /></a></td>
+      <td><a href="./boundary-events/message-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/message-boundary-non-interrupting.svg" alt="Message Boundary Event (non-interrupting)" /></a></td>
+      <td><a href="./end-events/message-end-event"><img className="bpmn-supported" src="/img/bpmn/events/message-end.svg" alt="Message End Event" /></a></td>
+    </tr>
+    <tr>
+      <td>Timer</td>
+      <td><a href="./start-events/timer-start-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-start.svg" alt="Timer Start Event" /></a></td>
+      <td><a href="./intermediate-events/timer-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-intermediate-catch.svg" alt="Timer Intermediate Catch Event" /></a></td>
+      <td></td>
+      <td><a href="./boundary-events/timer-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-boundary-interrupting.svg" alt="Timer Boundary Event (interrupting)" /></a></td>
+      <td><a href="./boundary-events/timer-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-boundary-non-interrupting.svg" alt="Timer Boundary Event (non-interrupting)" /></a></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Escalation</td>
+      <td></td>
+      <td></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-intermediate-throw.svg" alt="Escalation Intermediate Throw Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-boundary-interrupting.svg" alt="Escalation Boundary Event (interrupting)" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-boundary-non-interrupting.svg" alt="Escalation Boundary Event (non-interrupting)" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-end.svg" alt="Escalation End Event" /></td>
+    </tr>
+    <tr>
+      <td>Conditional</td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-start.svg" alt="Conditional Start Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-intermediate-catch.svg" alt="Conditional Intermediate Catch Event" /></td>
+      <td></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-boundary-interrupting.svg" alt="Conditional Boundary Event (interrupting)" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-boundary-non-interrupting.svg" alt="Conditional Boundary Event (non-interrupting)" /></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Link</td>
+      <td></td>
+      <td><a href="./intermediate-events/link-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-catch.svg" alt="Link Intermediate Catch Event" /></a></td>
+      <td><a href="./intermediate-events/link-intermediate-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-throw.svg" alt="Link Intermediate Throw Event" /></a></td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Error</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td><a href="./boundary-events/error-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/error-boundary-interrupting.svg" alt="Error Boundary Event (interrupting)" /></a></td>
+      <td></td>
+      <td><a href="./end-events/error-end-event"><img className="bpmn-supported" src="/img/bpmn/events/error-end.svg" alt="Error End Event" /></a></td>
+    </tr>
+    <tr>
+      <td>Signal</td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-start.svg" alt="Signal Start Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-intermediate-catch.svg" alt="Signal Intermediate Catch Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-intermediate-throw.svg" alt="Signal Intermediate Throw Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-boundary-interrupting.svg" alt="Signal Boundary Event (interrupting)" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-boundary-non-interrupting.svg" alt="Signal Boundary Event (non-interrupting)" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-end.svg" alt="Signal End Event" /></td>
+    </tr>
+    <tr>
+      <td>Compensation</td>
+      <td></td>
+      <td></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-intermediate-throw.svg" alt="Compensation Intermediate Throw Event" /></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-boundary-interrupting.svg" alt="Compensation Boundary Event (interrupting)" /></td>
+      <td></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-end.svg" alt="Compensation End Event" /></td>
+    </tr>
+  </tbody>
+</table>
+
+Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Signal, Compensation, Cancel
+
+## Start events
+
+Start events denote the beginning of a process or subprocess. A Start Event defines the beginning of a process instance: it has no incoming sequence flows and exactly one outgoing sequence flow. It creates a new process instance when triggered, and a process can have multiple start events, each with a different trigger type.
+
+## Intermediate events
+
+Intermediate events occur between the start and end of a process. They are either **catching** — waiting to react to something that happens — or **throwing** — indicating that something has happened and continuing immediately. Catch events pause the flow until the awaited trigger occurs; throw events execute once the token reaches them and continue onward without waiting.
+
+## Boundary events
+
+Boundary events model what should happen if an event occurs while an activity is active. A Boundary Event is attached to the border of an activity and triggers when a specific condition is met while the activity is active, creating an alternative path out of that activity. It can be **interrupting** — the attached activity is cancelled and the token moves along the boundary event's outgoing flow — or **non-interrupting** — the activity continues and a new parallel token is created on the outgoing flow.
+
+## End events
+
+End events denote the end of a particular sequence flow. An End Event marks the completion of a process path and has no outgoing sequence flows. A process may have multiple end events, and the process instance completes once all active tokens have reached an end event.

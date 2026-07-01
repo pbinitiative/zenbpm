@@ -1,4 +1,4 @@
-# How to Send and Receive Messages
+# Send and Receive Messages
 
 Messages allow external systems to communicate with running process instances. They are used to trigger **Message Start Events**, **Message Intermediate Catch Events**, and **Message Boundary Events**.
 

@@ -1,4 +1,4 @@
-# How to Implement a Job Worker
+# Implement a Job Worker
 
 A Job Worker handles the execution of **Service Tasks** in a BPMN process. When the BPMN engine reaches a Service Task, it creates a job and waits for a worker to pick it up, execute the business logic, and report the result.
 

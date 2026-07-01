@@ -1,0 +1,8 @@
+{
+  "label": "Intermediate events",
+  "position": 2,
+  "link": {
+    "type": "doc",
+    "id": "reference/bpmn/supported-elements/events/intermediate-events/index"
+  }
+}

@@ -1,4 +1,4 @@
-# How to Handle Errors
+# Handle Errors
 
 ZenBPM supports BPMN error handling through **Error End Events** and **Error Boundary Events**. This allows you to model expected failure scenarios directly in the process diagram.
 

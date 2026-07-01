@@ -1,4 +1,4 @@
-# How to Use Process Variables
+# Use Process Variables
 
 Process variables store data within a process instance. They are available to all elements in the process scope and can be read or updated at any point during execution.
 

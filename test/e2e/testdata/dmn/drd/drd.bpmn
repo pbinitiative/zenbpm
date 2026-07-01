@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_business_rule_drd_approval" targetNamespace="https://zenbpm.io/bpmn/drd-approval">
+  <bpmn:process id="process_drd_approval" name="DRD Approval Process" isExecutable="true">
+    <bpmn:startEvent id="start_event" name="Start">
+      <bpmn:outgoing>flow_start_to_business_rule</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_start_to_business_rule" sourceRef="start_event" targetRef="business_rule_task_determine_approval" />
+    <bpmn:businessRuleTask id="business_rule_task_determine_approval" name="Determine Approval Result">
+      <bpmn:extensionElements>
+        <zeebe:calledDecision decisionId="determineApprovalResult" resultVariable="result" />
+        <zeebe:ioMapping>
+          <zeebe:output source="=result.approval_result" target="result.approval_result" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_start_to_business_rule</bpmn:incoming>
+      <bpmn:outgoing>flow_business_rule_to_end</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="flow_business_rule_to_end" sourceRef="business_rule_task_determine_approval" targetRef="end_event" />
+    <bpmn:endEvent id="end_event" name="End">
+      <bpmn:incoming>flow_business_rule_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_business_rule_drd_approval">
+    <bpmndi:BPMNPlane id="BPMNPlane_business_rule_drd_approval" bpmnElement="process_drd_approval">
+      <bpmndi:BPMNShape id="BPMNShape_start_event" bpmnElement="start_event">
+        <dc:Bounds x="160" y="120" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_business_rule_task" bpmnElement="business_rule_task_determine_approval">
+        <dc:Bounds x="270" y="98" width="180" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_end_event" bpmnElement="end_event">
+        <dc:Bounds x="530" y="120" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow_start_to_business_rule" bpmnElement="flow_start_to_business_rule">
+        <di:waypoint x="196" y="138" />
+        <di:waypoint x="270" y="138" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_flow_business_rule_to_end" bpmnElement="flow_business_rule_to_end">
+        <di:waypoint x="450" y="138" />
+        <di:waypoint x="530" y="138" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

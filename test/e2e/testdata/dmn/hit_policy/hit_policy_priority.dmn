@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_priority" name="Hit Policy Priority" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_priority" name="DMN Hit Policy Priority">
+    <decisionTable id="hit_policy_priority_table" hitPolicy="PRIORITY">
+      <input id="input_priority_score" label="Score">
+        <inputExpression id="inputExpression_priority_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_priority_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_priority_score_at_least_1">
+        <inputEntry id="input_priority_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_priority_score_at_least_1">
+          <text>10</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

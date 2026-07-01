@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions_drd_dependency_chain" name="DRD Dependency Chain" namespace="https://zenbpm.io/dmn/drd-dependency-chain">
+  <inputData id="input_amount" name="amount">
+    <variable id="input_amount_variable" name="amount" typeRef="number" />
+  </inputData>
+
+  <decision id="drdChainRisk" name="drdChainRisk">
+    <informationRequirement>
+      <requiredInput href="#input_amount" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdChainRisk" hitPolicy="FIRST">
+      <input id="chain_risk_input_amount" label="Amount">
+        <inputExpression id="chain_risk_input_amount_expression" typeRef="number">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="chain_risk_output" label="Risk level" name="risk_level" typeRef="string" />
+      <rule id="chain_risk_rule_low">
+        <inputEntry id="chain_risk_rule_low_amount">
+          <text>&lt; 1000</text>
+        </inputEntry>
+        <outputEntry id="chain_risk_rule_low_output">
+          <text>"LOW"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="drdChainReview" name="drdChainReview">
+    <informationRequirement>
+      <requiredDecision href="#drdChainRisk" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdChainReview" hitPolicy="FIRST">
+      <input id="chain_review_input_risk" label="Risk level">
+        <inputExpression id="chain_review_input_risk_expression" typeRef="string">
+          <text>drdChainRisk.risk_level</text>
+        </inputExpression>
+      </input>
+      <output id="chain_review_output" label="Review result" name="review_result" typeRef="string" />
+      <rule id="chain_review_rule_low">
+        <inputEntry id="chain_review_rule_low_risk">
+          <text>"LOW"</text>
+        </inputEntry>
+        <outputEntry id="chain_review_rule_low_output">
+          <text>"AUTO"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="drdChainApproval" name="drdChainApproval">
+    <informationRequirement>
+      <requiredDecision href="#drdChainReview" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdChainApproval" hitPolicy="FIRST">
+      <input id="chain_approval_input_review" label="Review result">
+        <inputExpression id="chain_approval_input_review_expression" typeRef="string">
+          <text>drdChainReview.review_result</text>
+        </inputExpression>
+      </input>
+      <output id="chain_approval_output" label="Approval result" name="approval_result" typeRef="string" />
+      <rule id="chain_approval_rule_auto">
+        <inputEntry id="chain_approval_rule_auto_review">
+          <text>"AUTO"</text>
+        </inputEntry>
+        <outputEntry id="chain_approval_rule_auto_output">
+          <text>"APPROVED"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

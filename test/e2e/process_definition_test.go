@@ -262,41 +262,7 @@ func deployDefinition(t testing.TB, filename string) (*zenclient.CreateProcessDe
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Create multipart form data
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-
-	// Create the resource field as required by the OpenAPI spec
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-
-	_, err = part.Write(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
-	}
-
-	if resp.StatusCode() >= 400 {
-		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
-	}
-
-	definition := public.CreateProcessDefinition201JSONResponse{}
-	err = json.Unmarshal(resp.Body, &definition)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal create definition response: %w", err)
-	}
-	return resp, nil
+	return deployProcessDefinitionContent(t, filename, file), nil
 }
 
 func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId *string, err error) {
@@ -306,55 +272,25 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 	if err != nil {
 		return nil, err
 	}
+
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	loc := filepath.Join(wd, "pkg", "bpmn", "test-cases", filename)
+
 	file, err := os.ReadFile(loc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
+
 	stringFile := string(file)
 	oldDefinitionId, found := getStringInBetweenTwoString(stringFile, "bpmn:process id=\"", "\"")
 	if !found {
 		return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
 	}
+
 	replacedDefinitionId = new(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
-	file = []byte(fileString)
+	deployProcessDefinitionContent(t, filename, []byte(fileString))
 
-	// Create multipart form data
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-
-	// Create the resource field as required by the OpenAPI spec
-	part, err := writer.CreateFormFile("resource", filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-
-	_, err = part.Write(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file to multipart form: %w", err)
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy process definition: %w", err)
-	}
-
-	if resp.StatusCode() >= 400 {
-		return nil, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
-	}
-
-	definition := public.CreateProcessDefinition201JSONResponse{}
-	err = json.Unmarshal(resp.Body, &definition)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal create definition response: %w", err)
-	}
 	return replacedDefinitionId, nil
 }
 

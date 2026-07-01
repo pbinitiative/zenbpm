@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_rule_order_multi_output" name="Hit Policy Rule Order Multi Output" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_rule_order_multi_output" name="DMN Hit Policy Rule Order Multi Output">
+    <decisionTable id="hit_policy_rule_order_multi_output_table" hitPolicy="RULE ORDER">
+      <input id="input_rule_order_multi_output_score" label="Score">
+        <inputExpression id="inputExpression_rule_order_multi_output_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_rule_order_multi_output_discount" label="Discount" name="discount" typeRef="number" />
+      <output id="output_rule_order_multi_output_reason" label="Reason" name="reason" typeRef="string" />
+      <rule id="rule_rule_order_multi_output_score_at_least_1">
+        <inputEntry id="input_rule_order_multi_output_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_multi_output_discount_at_least_1">
+          <text>20</text>
+        </outputEntry>
+        <outputEntry id="output_rule_order_multi_output_reason_at_least_1">
+          <text>"first"</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_rule_order_multi_output_score_at_least_2">
+        <inputEntry id="input_rule_order_multi_output_score_at_least_2">
+          <text>&gt;= 2</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_multi_output_discount_at_least_2">
+          <text>5</text>
+        </outputEntry>
+        <outputEntry id="output_rule_order_multi_output_reason_at_least_2">
+          <text>"second"</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_rule_order_multi_output_score_at_least_3">
+        <inputEntry id="input_rule_order_multi_output_score_at_least_3">
+          <text>&gt;= 3</text>
+        </inputEntry>
+        <outputEntry id="output_rule_order_multi_output_discount_at_least_3">
+          <text>15</text>
+        </outputEntry>
+        <outputEntry id="output_rule_order_multi_output_reason_at_least_3">
+          <text>"third"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

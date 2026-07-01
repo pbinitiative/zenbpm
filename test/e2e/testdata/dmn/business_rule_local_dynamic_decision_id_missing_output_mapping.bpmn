@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Process_missing_output_mapping" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="test_dmn_missing_output_mapping" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_03icify</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_03icify" sourceRef="StartEvent_1" targetRef="business_rule" />
+    <bpmn:businessRuleTask id="business_rule">
+      <bpmn:extensionElements>
+        <zenbpm:calledDecision decisionId="replace_me" resultVariable="result" />
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=result.missing" target="missing" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_03icify</bpmn:incoming>
+      <bpmn:outgoing>Flow_14o8ve1</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>Flow_14o8ve1</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_14o8ve1" sourceRef="business_rule" targetRef="end_event" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="test_dmn_missing_output_mapping">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_1" bpmnElement="StartEvent_1">
+        <dc:Bounds x="173" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_12l6zur_di" bpmnElement="business_rule">
+        <dc:Bounds x="260" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1yqtyjo_di" bpmnElement="end_event">
+        <dc:Bounds x="412" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_03icify_di" bpmnElement="Flow_03icify">
+        <di:waypoint x="209" y="120" />
+        <di:waypoint x="260" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14o8ve1_di" bpmnElement="Flow_14o8ve1">
+        <di:waypoint x="360" y="120" />
+        <di:waypoint x="412" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

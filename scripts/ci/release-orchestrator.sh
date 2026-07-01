@@ -97,7 +97,7 @@ bump_backend_openapi_version() {
   fi
   git add openapi/api.yaml
   git commit -m "chore: bump OpenAPI version to $version"
-  git push "$(github_remote "$BACKEND_REPO")" "$RELEASE_BRANCH"
+  git push "$(github_remote "$BACKEND_REPO")" HEAD:"$RELEASE_BRANCH"
 }
 
 validate_version_format() {

@@ -15,7 +15,7 @@ configure_git() {
 }
 
 export_release_vars() {
-  require_env RELEASE_TAG
+  validate_version_format
   local branch
   branch="release/$(plain_version)"
   RELEASE_BRANCH=$branch
@@ -23,14 +23,14 @@ export_release_vars() {
     echo "RELEASE_BRANCH=$branch" >> "$GITHUB_ENV"
   fi
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    echo "release-tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+    echo "release-tag=$VERSION" >> "$GITHUB_OUTPUT"
     echo "release-branch=$branch" >> "$GITHUB_OUTPUT"
   fi
 }
 
 plain_version() {
   require_env VERSION
-  printf '%s' "$VERSION"
+  printf '%s' "${VERSION#v}"
 }
 
 github_remote() {
@@ -73,27 +73,22 @@ validate_openapi_version() {
 
 validate_version_format() {
   require_env VERSION
-  require_env RELEASE_TAG
-  if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    echo "Invalid release version '$VERSION'. Expected SemVer without v prefix, for example 2.0.0 or 2.0.0-rc.1" >&2
-    exit 1
-  fi
-  if [ "$RELEASE_TAG" != "v$VERSION" ]; then
-    echo "Invalid release tag '$RELEASE_TAG'. Expected v$VERSION" >&2
+  if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "Invalid release version '$VERSION'. Expected format vX.Y.Z, for example v2.0.0 or v2.0.0-rc.1" >&2
     exit 1
   fi
 }
 
 validate_tags() {
   require_env ORG
-  require_env RELEASE_TAG
+  require_env VERSION
   require_env BACKEND_REPO
   require_env FRONTEND_REPO
   require_env JAVA_CLIENT_REPO
   require_env DOCS_REPO
   for repo in "$BACKEND_REPO" "$FRONTEND_REPO" "$JAVA_CLIENT_REPO" "$DOCS_REPO"; do
-    if gh api -H "Accept: application/vnd.github+json" "/repos/$ORG/$repo/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-      echo "Tag $RELEASE_TAG already exists in $ORG/$repo" >&2
+    if gh api -H "Accept: application/vnd.github+json" "/repos/$ORG/$repo/git/ref/tags/$VERSION" >/dev/null 2>&1; then
+      echo "Tag $VERSION already exists in $ORG/$repo" >&2
       exit 1
     fi
   done
@@ -113,7 +108,7 @@ prepare_branch() {
 }
 
 commit_frontend_release_branch() {
-  require_env RELEASE_TAG
+  require_env VERSION
   require_env FRONTEND_REPO
   require_env RELEASE_BRANCH
   configure_git
@@ -121,7 +116,7 @@ commit_frontend_release_branch() {
     echo "No frontend OpenAPI/generated changes to commit."
   else
     git add openapi/api.yaml src/base/openapi
-    git commit -m "chore: prepare release $RELEASE_TAG"
+    git commit -m "chore: prepare release $VERSION"
   fi
   git push "$(github_remote "$FRONTEND_REPO")" "$RELEASE_BRANCH"
 }
@@ -129,12 +124,12 @@ commit_frontend_release_branch() {
 create_release_tag() {
   local repo=${1:?repo is required}
   require_env ORG
+  require_env VERSION
   require_env RELEASE_BRANCH
-  require_env RELEASE_TAG
   local sha
   sha=$(gh api "/repos/$ORG/$repo/git/ref/heads/${RELEASE_BRANCH}" --jq .object.sha)
   gh api "/repos/$ORG/$repo/git/refs" \
-    -f ref="refs/tags/$RELEASE_TAG" \
+    -f ref="refs/tags/$VERSION" \
     -f sha="$sha"
 }
 
@@ -143,12 +138,11 @@ dispatch_frontend_release() {
   require_env FRONTEND_REPO
   require_env RELEASE_BRANCH
   require_env VERSION
-  require_env RELEASE_TAG
   gh workflow run release.yaml \
     --repo "$ORG/$FRONTEND_REPO" \
     --ref "$RELEASE_BRANCH" \
     -f version="$VERSION" \
-    -f checkout_ref="$RELEASE_TAG"
+    -f checkout_ref="$VERSION"
 }
 
 wait_frontend_release() {
@@ -169,24 +163,22 @@ dispatch_java_client_release() {
   require_env ORG
   require_env JAVA_CLIENT_REPO
   require_env VERSION
-  require_env RELEASE_TAG
   gh workflow run release.yaml \
     --repo "$ORG/$JAVA_CLIENT_REPO" \
     --ref main \
     -f version="$VERSION" \
-    -f backend_tag="$RELEASE_TAG"
+    -f backend_tag="$VERSION"
 }
 
 dispatch_docs_release() {
   require_env ORG
   require_env DOCS_REPO
   require_env VERSION
-  require_env RELEASE_TAG
   gh workflow run version-docs.yaml \
     --repo "$ORG/$DOCS_REPO" \
     --ref main \
     -f version="$VERSION" \
-    -f backend_tag="$RELEASE_TAG"
+    -f backend_tag="$VERSION"
 }
 
 notify_discord() {
@@ -196,7 +188,7 @@ notify_discord() {
   fi
 
   local content payload
-  content="ZenBPM release ${RELEASE_TAG:-unknown} ${RELEASE_RESULT:-unknown}. Workflow: ${WORKFLOW_URL:-unknown}"
+  content="ZenBPM release ${VERSION:-unknown} ${RELEASE_RESULT:-unknown}. Workflow: ${WORKFLOW_URL:-unknown}"
   payload=$(printf '{"content":%s}' "$(printf '%s' "$content" | jq -R .)")
   curl -fsS -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
 }

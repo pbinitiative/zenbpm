@@ -73,10 +73,11 @@ jobs:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh bump-backend-openapi-version
 
-      - name: Create release pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/ci/release-orchestrator.sh ensure-release-pr
+      # TODO: Re-enable after GitHub App / GITHUB_TOKEN PR permissions are resolved.
+      # - name: Create release pull request
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #   run: scripts/ci/release-orchestrator.sh ensure-release-pr
 
       - name: Validate OpenAPI version
         run: scripts/ci/release-orchestrator.sh validate-openapi-version

@@ -164,7 +164,11 @@ func TestRqLiteStorage(t *testing.T) {
 		t.Run(name, testFunc(db, t))
 	}
 	testInstanceParent(t, db)
+	t.Run("FindProcessInstancesPage filters and sort", func(t *testing.T) {
+		testFindProcessInstancesPageFiltersAndSort(t, db)
+	})
 	testMessageCorrelation(t, db, ts)
+	t.Run("TestHasActiveSubProcessInstance", tester.TestHasActiveSubProcessInstance(db, t))
 }
 
 func TestRunUpMigrations(t *testing.T) {
@@ -867,6 +871,118 @@ func testInstanceParent(t *testing.T, db *DB) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, subProcesses)
 	assert.Equal(t, tok1.Key, subProcesses[0].ParentProcessExecutionToken.Int64)
+
+	tok2 := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: tok1.ElementInstanceKey + 1,
+		ElementId:          "some-other-id",
+		ProcessInstanceKey: inst1.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	require.NoError(t, db.SaveToken(t.Context(), tok2))
+
+	inst3 := runtime.CallActivityInstance{
+		ParentProcessExecutionToken:           tok2,
+		ParentProcessTargetElementInstanceKey: tok2.ElementInstanceKey,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &pd,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      inst2.ProcessInstance().CreatedAt.Add(time.Second),
+			State:          runtime.ActivityStateActive,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &inst3))
+
+	childProcessParams := sql.FindChildProcessInstancesPageParams{
+		SortByOrder:             ssql.NullString{String: "createdAt_asc", Valid: true},
+		ParentInstanceKey:       inst1.ProcessInstance().GetInstanceKey(),
+		FilterTypeCallActivity:  int64(runtime.ProcessTypeCallActivity),
+		FilterTypeMultiInstance: int64(runtime.ProcessTypeMultiInstance),
+		FilterTypeSubProcess:    int64(runtime.ProcessTypeSubProcess),
+		State:                   ssql.NullInt64{Valid: false},
+		Offset:                  0,
+		Size:                    20,
+	}
+	childProcesses, err := db.Queries.FindChildProcessInstancesPage(t.Context(), childProcessParams)
+	require.NoError(t, err)
+	require.Len(t, childProcesses, 2)
+	assert.Equal(t, inst2.ProcessInstance().GetInstanceKey(), childProcesses[0].Key)
+	assert.Equal(t, tok1.Key, childProcesses[0].ParentProcessExecutionToken.Int64)
+	assert.Equal(t, inst3.ProcessInstance().GetInstanceKey(), childProcesses[1].Key)
+	assert.Equal(t, tok2.Key, childProcesses[1].ParentProcessExecutionToken.Int64)
+	assert.Equal(t, int64(2), childProcesses[0].TotalCount)
+
+	childProcessParams.State = ssql.NullInt64{Int64: int64(runtime.ActivityStateCompleted), Valid: true}
+	childProcesses, err = db.Queries.FindChildProcessInstancesPage(t.Context(), childProcessParams)
+	require.NoError(t, err)
+	assert.Empty(t, childProcesses)
+}
+
+func testFindProcessInstancesPageFiltersAndSort(t *testing.T, db *DB) {
+	t.Helper()
+
+	definitionKey := db.GenerateId()
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: fmt.Sprintf("filtered-process-%d", definitionKey),
+		Version:       1,
+		Key:           definitionKey,
+		BpmnData:      `<bpmn:process id="filtered-process" isExecutable="true"></bpmn:process>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	createdAt := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	instances := []*runtime.DefaultProcessInstance{
+		{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            db.GenerateId(),
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      createdAt,
+				State:          runtime.ActivityStateTerminated,
+			},
+		},
+		{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            db.GenerateId(),
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      createdAt.Add(time.Second),
+				State:          runtime.ActivityStateCompleted,
+			},
+		},
+		{
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				Definition:     &definition,
+				Key:            db.GenerateId(),
+				VariableHolder: runtime.VariableHolder{},
+				CreatedAt:      createdAt.Add(2 * time.Second),
+				State:          runtime.ActivityStateTerminated,
+			},
+		},
+	}
+	for _, instance := range instances {
+		require.NoError(t, db.SaveProcessInstance(t.Context(), instance))
+	}
+
+	result, err := db.Queries.FindProcessInstancesPage(t.Context(), sql.FindProcessInstancesPageParams{
+		SortByOrder:          ssql.NullString{String: "createdAt_asc", Valid: true},
+		ProcessDefinitionKey: 0,
+		ParentInstanceKey:    0,
+		BpmnProcessID:        ssql.NullString{String: definition.BpmnProcessId, Valid: true},
+		CreatedFrom:          ssql.NullInt64{Int64: createdAt.UnixMilli(), Valid: true},
+		CreatedTo:            ssql.NullInt64{Valid: false},
+		State:                ssql.NullInt64{Int64: int64(runtime.ActivityStateTerminated), Valid: true},
+		Offset:               0,
+		Size:                 20,
+	})
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, instances[0].ProcessInstance().Key, result[0].Key)
+	assert.Equal(t, instances[2].ProcessInstance().Key, result[1].Key)
+	assert.Equal(t, int64(2), result[0].TotalCount)
+	assert.Equal(t, int64(2), result[1].TotalCount)
 }
 
 func TestGetLatestDecisionDefinitionById(t *testing.T) {

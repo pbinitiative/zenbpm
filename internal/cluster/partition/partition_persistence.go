@@ -1170,6 +1170,20 @@ func (rq *DB) FindProcessInstancesByParentExecutionTokenKey(ctx context.Context,
 	return res, nil
 }
 
+// HasActiveSubProcessInstance reports whether a ready or active subprocess instance exists.
+func (rq *DB) HasActiveSubProcessInstance(ctx context.Context, processInstanceKey int64) (bool, error) {
+	count, err := rq.Queries.CountActiveSubProcessInstances(ctx, sql.CountActiveSubProcessInstancesParams{
+		ProcessInstanceKey: processInstanceKey,
+		ProcessType:        int64(bpmnruntime.ProcessTypeSubProcess),
+		ActiveState:        int64(bpmnruntime.ActivityStateActive),
+		ReadyState:         int64(bpmnruntime.ActivityStateReady),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to count active sub-process instances for process instance %d: %w", processInstanceKey, err)
+	}
+	return count > 0, nil
+}
+
 func (rq *DB) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx context.Context, processDefinitionKey int64, startElementId string) ([]bpmnruntime.ProcessInstance, error) {
 	var res []bpmnruntime.ProcessInstance
 	dbInstances, err := rq.Queries.FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx, sql.FindActiveProcessInstancesByDefinitionKeyAndStartElementIdParams{

@@ -6,3 +6,12 @@ scrape_configs:
     metrics_path: /system/metrics
     static_configs:
       - targets: ['host.docker.internal:8080']
+
+  # Host CPU / memory / disk usage + disk I/O via node_exporter (see `make start-monitoring`).
+  # node_exporter listens on container port 9100, published on host port 9110
+  # (9100 is taken by Grafana). On Linux this reports the real host; on macOS
+  # Docker Desktop it reports the Docker VM, not the Mac (run node_exporter
+  # natively with `--web.listen-address=:9110` for true Mac-host numbers).
+  - job_name: node
+    static_configs:
+      - targets: ['host.docker.internal:9110']

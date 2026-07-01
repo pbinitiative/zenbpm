@@ -27,6 +27,37 @@ func (q *Queries) CountActiveProcessInstances(ctx context.Context) (int64, error
 	return count, err
 }
 
+const countActiveSubProcessInstances = `-- name: CountActiveSubProcessInstances :one
+SELECT
+    CAST(COUNT(*) AS INTEGER)
+FROM
+    process_instance AS child
+    INNER JOIN execution_token AS et ON child.parent_process_execution_token = et.key
+WHERE
+    et.process_instance_key = ?1
+    AND child.process_type = ?2
+    AND child.state IN (?3, ?4)
+`
+
+type CountActiveSubProcessInstancesParams struct {
+	ProcessInstanceKey int64 `json:"process_instance_key"`
+	ProcessType        int64 `json:"process_type"`
+	ActiveState        int64 `json:"active_state"`
+	ReadyState         int64 `json:"ready_state"`
+}
+
+func (q *Queries) CountActiveSubProcessInstances(ctx context.Context, arg CountActiveSubProcessInstancesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveSubProcessInstances,
+		arg.ProcessInstanceKey,
+		arg.ProcessType,
+		arg.ActiveState,
+		arg.ReadyState,
+	)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteProcessInstances = `-- name: DeleteProcessInstances :exec
 DELETE FROM process_instance
 WHERE key IN (/*SLICE:keys*/?)
@@ -132,6 +163,121 @@ func (q *Queries) FindActiveProcessInstancesByDefinitionKeyAndStartElementId(ctx
 	return items, nil
 }
 
+const findChildProcessInstancesPage = `-- name: FindChildProcessInstancesPage :many
+SELECT
+    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pd.bpmn_process_id,
+    COUNT(*) OVER () AS total_count
+FROM
+    execution_token AS parent_token
+    INNER JOIN process_instance AS pi ON pi.parent_process_execution_token = parent_token.key
+    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+WHERE
+    -- Keep sort_by_order as the first parameter for the positional ORDER BY workaround below.
+    CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
+    AND parent_token.process_instance_key = ?2
+    AND pi.process_type IN (
+        ?3,
+        ?4,
+        ?5
+    )
+    AND CASE WHEN ?6 IS NOT NULL THEN
+        pi.state = ?6
+    ELSE
+        1
+    END
+ORDER BY
+    -- sqlc does not replace named parameters in ORDER BY, so ?1 refers to sort_by_order above.
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc' THEN pi.created_at END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc' THEN pi.business_key END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN pi.business_key END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
+    pi.created_at DESC
+LIMIT ?8 OFFSET ?7
+`
+
+type FindChildProcessInstancesPageParams struct {
+	SortByOrder             interface{} `json:"sort_by_order"`
+	ParentInstanceKey       int64       `json:"parent_instance_key"`
+	FilterTypeCallActivity  int64       `json:"filter_type_call_activity"`
+	FilterTypeMultiInstance int64       `json:"filter_type_multi_instance"`
+	FilterTypeSubProcess    int64       `json:"filter_type_sub_process"`
+	State                   interface{} `json:"state"`
+	Offset                  int64       `json:"offset"`
+	Size                    int64       `json:"size"`
+}
+
+type FindChildProcessInstancesPageRow struct {
+	Key                                   int64          `json:"key"`
+	ProcessDefinitionKey                  int64          `json:"process_definition_key"`
+	BusinessKey                           sql.NullString `json:"business_key"`
+	CreatedAt                             int64          `json:"created_at"`
+	State                                 int64          `json:"state"`
+	Variables                             string         `json:"variables"`
+	ParentProcessExecutionToken           sql.NullInt64  `json:"parent_process_execution_token"`
+	ParentProcessTargetElementID          sql.NullString `json:"parent_process_target_element_id"`
+	ParentProcessTargetElementInstanceKey sql.NullInt64  `json:"parent_process_target_element_instance_key"`
+	ProcessType                           int64          `json:"process_type"`
+	HistoryTtlSec                         sql.NullInt64  `json:"history_ttl_sec"`
+	HistoryDeleteSec                      sql.NullInt64  `json:"history_delete_sec"`
+	StartElementID                        sql.NullString `json:"start_element_id"`
+	BpmnProcessID                         string         `json:"bpmn_process_id"`
+	TotalCount                            int64          `json:"total_count"`
+}
+
+func (q *Queries) FindChildProcessInstancesPage(ctx context.Context, arg FindChildProcessInstancesPageParams) ([]FindChildProcessInstancesPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, findChildProcessInstancesPage,
+		arg.SortByOrder,
+		arg.ParentInstanceKey,
+		arg.FilterTypeCallActivity,
+		arg.FilterTypeMultiInstance,
+		arg.FilterTypeSubProcess,
+		arg.State,
+		arg.Offset,
+		arg.Size,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindChildProcessInstancesPageRow{}
+	for rows.Next() {
+		var i FindChildProcessInstancesPageRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ProcessDefinitionKey,
+			&i.BusinessKey,
+			&i.CreatedAt,
+			&i.State,
+			&i.Variables,
+			&i.ParentProcessExecutionToken,
+			&i.ParentProcessTargetElementID,
+			&i.ParentProcessTargetElementInstanceKey,
+			&i.ProcessType,
+			&i.HistoryTtlSec,
+			&i.HistoryDeleteSec,
+			&i.StartElementID,
+			&i.BpmnProcessID,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findInactiveInstancesToDelete = `-- name: FindInactiveInstancesToDelete :many
 SELECT
     pi.key
@@ -183,121 +329,150 @@ func (q *Queries) FindInactiveInstancesToDelete(ctx context.Context, arg FindIna
 }
 
 const findProcessInstancesPage = `-- name: FindProcessInstancesPage :many
+WITH process_instance_candidates AS (
+    -- Use the definition/created_at index only when both parts of its prefix
+    -- are selective.
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pd.bpmn_process_id
+    FROM
+        process_instance AS pi
+        INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+    WHERE
+        (?12 <> 0 OR ?13 IS NOT NULL)
+        AND ?14 IS NOT NULL
+        AND pi.process_definition_key IN (
+            SELECT candidate.key
+            FROM process_definition AS candidate
+            WHERE
+                (?12 = 0 OR candidate.key = ?12)
+                AND (?13 IS NULL OR candidate.bpmn_process_id = ?13)
+        )
+        AND pi.created_at BETWEEN
+            CAST(?14 AS INTEGER)
+            AND COALESCE(CAST(?15 AS INTEGER), 9223372036854775807)
+
+    UNION ALL
+
+    -- Preserve the sequential scan for listings without an index-selective
+    -- definition and lower time bound. The branches are mutually exclusive.
+    SELECT pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pd.bpmn_process_id
+    FROM
+        process_instance AS pi NOT INDEXED
+        INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
+    WHERE
+        CASE WHEN
+            (?12 <> 0 OR ?13 IS NOT NULL)
+            AND ?14 IS NOT NULL
+        THEN 0 ELSE 1 END
+        AND CASE WHEN ?12 <> 0 THEN
+            pi.process_definition_key = ?12
+        ELSE
+            1
+        END
+        AND CASE WHEN ?13 IS NOT NULL THEN
+            pd.bpmn_process_id = ?13
+        ELSE
+            1
+        END
+        AND CASE WHEN ?14 IS NOT NULL THEN
+            pi.created_at >= ?14
+        ELSE
+            1
+        END
+        AND CASE WHEN ?15 IS NOT NULL THEN
+            pi.created_at <= ?15
+        ELSE
+            1
+        END
+)
 SELECT
-    pi."key", pi.process_definition_key, pi.business_key, pi.created_at, pi.state, pi.variables, pi.parent_process_execution_token, pi.parent_process_target_element_id, pi.parent_process_target_element_instance_key, pi.process_type, pi.history_ttl_sec, pi.history_delete_sec, pi.start_element_id, pd.bpmn_process_id,
+    process_instance_candidates."key", process_instance_candidates.process_definition_key, process_instance_candidates.business_key, process_instance_candidates.created_at, process_instance_candidates.state, process_instance_candidates.variables, process_instance_candidates.parent_process_execution_token, process_instance_candidates.parent_process_target_element_id, process_instance_candidates.parent_process_target_element_instance_key, process_instance_candidates.process_type, process_instance_candidates.history_ttl_sec, process_instance_candidates.history_delete_sec, process_instance_candidates.start_element_id, process_instance_candidates.bpmn_process_id,
     COUNT(*) OVER () AS total_count
 FROM
-    process_instance AS pi
-    INNER JOIN process_definition AS pd ON pi.process_definition_key = pd.key
-
+    process_instance_candidates
 WHERE
-    -- force sqlc to keep sort_by_order param by mentioning it in a where clause which is always true
+    -- Keep sort_by_order as the first parameter: ORDER BY refers to it as ?1.
     CASE WHEN ?1 IS NULL THEN 1 ELSE 1 END
-    AND
-    CASE WHEN ?2 <> 0 THEN
-        pi.process_definition_key = ?2
-    ELSE
-        1
-    END
-    AND CASE WHEN ?3 <> 0 THEN
-        pi.parent_process_execution_token IN (
+    AND CASE WHEN ?2 <> 0 THEN
+        process_instance_candidates.parent_process_execution_token IN (
             SELECT
                 execution_token.key
             FROM
                 execution_token
             WHERE
-                execution_token.process_instance_key = ?3)
+                execution_token.process_instance_key = ?2)
+    ELSE
+        1
+    END
+    AND
+    CASE WHEN ?3 IS NOT NULL THEN
+        process_instance_candidates.business_key = ?3
     ELSE
         1
     END
     AND
     CASE WHEN ?4 IS NOT NULL THEN
-        pi.business_key = ?4
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN ?5 IS NOT NULL THEN
-        pd.bpmn_process_id = ?5
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN ?6 IS NOT NULL THEN
         EXISTS (
             SELECT 1 FROM execution_token et
-            WHERE et.process_instance_key = pi.key
-              AND et.element_id = ?6
+            WHERE et.process_instance_key = process_instance_candidates.key
+              AND et.element_id = ?4
         )
     ELSE
         1
     END
     AND
-    CASE WHEN ?7 IS NOT NULL THEN
-       pi.created_at >= ?7
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN ?8 IS NOT NULL THEN
-       pi.created_at <= ?8
-    ELSE
-        1
-    END
-    AND
-    CASE WHEN ?9 IS NOT NULL THEN
-       pi.state = ?9
+    CASE WHEN ?5 IS NOT NULL THEN
+       process_instance_candidates.state = ?5
     ELSE
         1
     END
     AND
     -- workaround for sqlc
     (
-    CASE WHEN ?10 IS NULL AND ?11 IS NULL AND ?12 IS NULL AND ?13 IS NULL THEN
+    CASE WHEN ?6 IS NULL AND ?7 IS NULL AND ?8 IS NULL AND ?9 IS NULL THEN
        1
     ELSE
-         (?10 IS NOT NULL AND pi.process_type = ?10)
+         (?6 IS NOT NULL AND process_instance_candidates.process_type = ?6)
          OR
-         (?11 IS NOT NULL AND pi.process_type = ?11)
+         (?7 IS NOT NULL AND process_instance_candidates.process_type = ?7)
          OR
-         (?12 IS NOT NULL AND pi.process_type = ?12)
+         (?8 IS NOT NULL AND process_instance_candidates.process_type = ?8)
          OR
-         (?13 IS NOT NULL AND pi.process_type = ?13)
+         (?9 IS NOT NULL AND process_instance_candidates.process_type = ?9)
     END
     )
     -- end of workaround
 ORDER BY
-  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN pi.created_at END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN pi.created_at END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN pi."key" END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN pi."key" END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN pi.state END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN pi.state END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN pi.business_key END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN pi.business_key END DESC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN pd.bpmn_process_id END ASC,
-  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
-  pi.created_at DESC
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN process_instance_candidates.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN process_instance_candidates.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN process_instance_candidates."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN process_instance_candidates."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN process_instance_candidates.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN process_instance_candidates.state END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN process_instance_candidates.business_key END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN process_instance_candidates.business_key END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN process_instance_candidates.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN process_instance_candidates.bpmn_process_id END DESC,
+  process_instance_candidates.created_at DESC
 
-LIMIT ?15 OFFSET ?14
+LIMIT ?11 OFFSET ?10
 `
 
 type FindProcessInstancesPageParams struct {
-	SortByOrder             interface{} `json:"sort_by_order"`
-	ProcessDefinitionKey    interface{} `json:"process_definition_key"`
-	ParentInstanceKey       interface{} `json:"parent_instance_key"`
-	BusinessKey             interface{} `json:"business_key"`
-	BpmnProcessID           interface{} `json:"bpmn_process_id"`
-	ActivityID              interface{} `json:"activity_id"`
-	CreatedFrom             interface{} `json:"created_from"`
-	CreatedTo               interface{} `json:"created_to"`
-	State                   interface{} `json:"state"`
-	FilterTypeCallActivity  interface{} `json:"filter_type_call_activity"`
-	FilterTypeMultiInstance interface{} `json:"filter_type_multi_instance"`
-	FilterTypeDefault       interface{} `json:"filter_type_default"`
-	FilterTypeSubProcess    interface{} `json:"filter_type_sub_process"`
-	Offset                  int64       `json:"offset"`
-	Size                    int64       `json:"size"`
+	SortByOrder             interface{}   `json:"sort_by_order"`
+	ParentInstanceKey       interface{}   `json:"parent_instance_key"`
+	BusinessKey             interface{}   `json:"business_key"`
+	ActivityID              interface{}   `json:"activity_id"`
+	State                   interface{}   `json:"state"`
+	FilterTypeCallActivity  interface{}   `json:"filter_type_call_activity"`
+	FilterTypeMultiInstance interface{}   `json:"filter_type_multi_instance"`
+	FilterTypeDefault       interface{}   `json:"filter_type_default"`
+	FilterTypeSubProcess    interface{}   `json:"filter_type_sub_process"`
+	Offset                  int64         `json:"offset"`
+	Size                    int64         `json:"size"`
+	ProcessDefinitionKey    interface{}   `json:"process_definition_key"`
+	BpmnProcessID           interface{}   `json:"bpmn_process_id"`
+	CreatedFrom             interface{}   `json:"created_from"`
+	CreatedTo               sql.NullInt64 `json:"created_to"`
 }
 
 type FindProcessInstancesPageRow struct {
@@ -322,13 +497,9 @@ type FindProcessInstancesPageRow struct {
 func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessInstancesPageParams) ([]FindProcessInstancesPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, findProcessInstancesPage,
 		arg.SortByOrder,
-		arg.ProcessDefinitionKey,
 		arg.ParentInstanceKey,
 		arg.BusinessKey,
-		arg.BpmnProcessID,
 		arg.ActivityID,
-		arg.CreatedFrom,
-		arg.CreatedTo,
 		arg.State,
 		arg.FilterTypeCallActivity,
 		arg.FilterTypeMultiInstance,
@@ -336,6 +507,10 @@ func (q *Queries) FindProcessInstancesPage(ctx context.Context, arg FindProcessI
 		arg.FilterTypeSubProcess,
 		arg.Offset,
 		arg.Size,
+		arg.ProcessDefinitionKey,
+		arg.BpmnProcessID,
+		arg.CreatedFrom,
+		arg.CreatedTo,
 	)
 	if err != nil {
 		return nil, err

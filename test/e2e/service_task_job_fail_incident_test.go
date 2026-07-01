@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
+	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,6 +26,7 @@ func TestServiceTaskJobFailIncident(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, incidents, 1)
 		require.Equal(t, "service_task", incidents[0].ElementId)
+		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateActive)
 	})
 
 	t.Run("Failing job creates incident when error is uncaught and then resolved", func(t *testing.T) {

@@ -188,6 +188,18 @@ func TestBusinessKey(t *testing.T) {
 		}
 	})
 
+	t.Run("find process instances by definition key", func(t *testing.T) {
+		processInstances, err := app.restClient.GetProcessInstancesWithResponse(t.Context(), &zenclient.GetProcessInstancesParams{
+			ProcessDefinitionKey: &definition.Key,
+		})
+		assert.NoError(t, err)
+		assert.True(t, processInstances.JSON200.TotalCount > 0)
+		for _, pi := range processInstances.JSON200.Partitions[0].Items {
+			assert.Equal(t, definition.Key, pi.ProcessDefinitionKey)
+			assert.NotEmpty(t, pi.Key)
+		}
+	})
+
 	t.Run("complete service task", func(t *testing.T) {
 		jobs, err := getJobs(t, zenclient.GetJobsParams{
 			ProcessInstanceKey: &instance.Key,

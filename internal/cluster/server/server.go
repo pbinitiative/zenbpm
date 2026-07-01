@@ -1148,34 +1148,18 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 		}, err
 	}
 
-	var filterTypeDefault *int64
-	filterTypeMultiInstance := ptr.To(int64(runtime.ProcessTypeMultiInstance))
-	filterTypeCallActivity := ptr.To(int64(runtime.ProcessTypeCallActivity))
-	filterTypeSubprocess := ptr.To(int64(runtime.ProcessTypeSubProcess))
-
-	var businessKey *string
-	var bpmnProcessID *string
-	var createdFrom *int64
-	var createdTo *int64
-
-	instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
+	instances, err := queries.FindChildProcessInstancesPage(ctx, sql.FindChildProcessInstancesPageParams{
 		SortByOrder:             sql.ToNullString(req.SortByOrder),
-		ProcessDefinitionKey:    0,
 		ParentInstanceKey:       req.GetParentInstanceKey(),
-		BusinessKey:             sql.ToNullString(businessKey),
-		BpmnProcessID:           sql.ToNullString(bpmnProcessID),
-		CreatedFrom:             sql.ToNullInt64(createdFrom),
-		CreatedTo:               sql.ToNullInt64(createdTo),
 		State:                   sql.ToNullInt64(req.State),
-		FilterTypeCallActivity:  sql.ToNullInt64(filterTypeCallActivity),
-		FilterTypeMultiInstance: sql.ToNullInt64(filterTypeMultiInstance),
-		FilterTypeDefault:       sql.ToNullInt64(filterTypeDefault),
-		FilterTypeSubProcess:    sql.ToNullInt64(filterTypeSubprocess),
+		FilterTypeCallActivity:  int64(runtime.ProcessTypeCallActivity),
+		FilterTypeMultiInstance: int64(runtime.ProcessTypeMultiInstance),
+		FilterTypeSubProcess:    int64(runtime.ProcessTypeSubProcess),
 		Offset:                  int64(req.GetSize()) * int64(req.GetPage()-1),
 		Size:                    int64(req.GetSize()),
 	})
 	if err != nil {
-		err := fmt.Errorf("failed to find child process instances with key %d", req.ParentInstanceKey)
+		err = fmt.Errorf("failed to find child process instances with key %d: %w", req.GetParentInstanceKey(), err)
 		return &proto.GetChildProcessInstancesResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
@@ -1188,29 +1172,12 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 		totalCount = int32(instances[0].TotalCount)
 	}
 
-	parentTokenKeys := make([]int64, 0, len(instances))
-	for _, inst := range instances {
-		parentTokenKeys = append(parentTokenKeys, inst.ParentProcessExecutionToken.Int64)
-	}
-	parentTokens, err := queries.GetTokens(ctx, parentTokenKeys)
-	if err != nil {
-		return nil, err
-	}
-	parentTokensMap := make(map[int64]sql.ExecutionToken, len(parentTokens))
-	for i, _ := range parentTokens {
-		parentTokensMap[parentTokens[i].Key] = parentTokens[i]
-	}
-
+	parentInstanceKey := req.GetParentInstanceKey()
 	procInstances := make([]*proto.ProcessInstance, len(instances))
 	for i, _ := range instances {
 		var businessKey *string
 		if instances[i].BusinessKey.Valid {
 			businessKey = &instances[i].BusinessKey.String
-		}
-
-		var parentInstanceKey *int64
-		if instances[i].ParentProcessExecutionToken.Valid {
-			parentInstanceKey = ptr.To(parentTokensMap[instances[i].ParentProcessExecutionToken.Int64].ProcessInstanceKey)
 		}
 
 		procInstances[i] = &proto.ProcessInstance{
@@ -1220,7 +1187,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 			State:             ptr.To(instances[i].State),
 			CreatedAt:         &instances[i].CreatedAt,
 			DefinitionKey:     &instances[i].ProcessDefinitionKey,
-			ParentInstanceKey: parentInstanceKey,
+			ParentInstanceKey: &parentInstanceKey,
 			BusinessKey:       businessKey,
 			Type:              ptr.To(instances[i].ProcessType),
 		}

@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_Process_eb8c7b12" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:collaboration id="LikvidaceDodavatelskeFaktury_ProcessDefinition">
+    <bpmn:participant id="Participant_1tcns0a" name="4BPM Platform" processRef="LikvidaceDodavatelskeFaktury" />
+    <bpmn:participant id="Participant_061xepn" name="Dodavatel" />
+    <bpmn:messageFlow id="Flow_142foe9" sourceRef="SendTask_OznameniZamitnutiFaktury" targetRef="Participant_061xepn" />
+    <bpmn:messageFlow id="Flow_1hvnlj0" sourceRef="SendTask_OznameniSchvaleniFaktury" targetRef="Participant_061xepn" />
+  </bpmn:collaboration>
+  <bpmn:process id="LikvidaceDodavatelskeFaktury" name="Likvidace dodavatelské faktury" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_0isovf0">
+      <bpmn:lane id="Lane_1dwo18p" name="Schvalovatel dodavatelské faktury">
+        <bpmn:flowNodeRef>BusinessRuleTask_StanoveniSchvalovatelu</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_SchvaleniFaktury</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_0fj90gh" name="Fakturantka">
+        <bpmn:flowNodeRef>ServiceTask_VytezeniFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_ManualniKorekcePoVytezeni</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CallActivity_KontrolaFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>BusinessRuleTask_StanoveniDalsihoPostupu</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_CoDal</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>BusinessRuleTask_StanoveniObsahuOznameni</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SendTask_OznameniZamitnutiFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SendTask_OznameniSchvaleniFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_KonfiguraceUctovaniFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_ZauctovaniDodavatelskeFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_FormaUhrady</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_VytvoreniNavrhuPrikazuPlatby</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_ZapocetFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_DodavatelskaFakturaZlikvidovanaZapoctem</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_FakturaZamitnuta</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_ManualniNahraniFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>StartEvent_DodavatelskaFakturaProLikvidaci</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_ManualniOvereniFaktury</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_1rk8z7u</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_DodavatelskaFakturaZlikvidovanaAProplacena</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_16m8kpr</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:serviceTask id="ServiceTask_VytezeniFaktury" name="(1) Vytěžení dat z PDF faktury">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="JobTypeVytezeniFaktury" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_07p4il3</bpmn:incoming>
+      <bpmn:outgoing>Flow_1xaxwoq</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="UserTask_ManualniKorekcePoVytezeni" name="(2) Manuální korekce po vytěžení">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;manual-check-form&#34;" target="4BPM_FORM_KEY" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1xaxwoq</bpmn:incoming>
+      <bpmn:outgoing>Flow_0f8o3sl</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:callActivity id="CallActivity_KontrolaFaktury" name="(3) Kontrola faktury">
+      <bpmn:extensionElements>
+        <zenbpm:calledElement processId="KontrolaDodavatelskeFaktury" propagateAllChildVariables="true" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceOrderReference" target="invoiceOrderReference" />
+          <zenbpm:output source="=orderExists" target="orderExists" />
+          <zenbpm:output source="=supplierDataMatches" target="supplierDataMatches" />
+          <zenbpm:output source="=isReliableVatPayer" target="isReliableVatPayer" />
+          <zenbpm:output source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+          <zenbpm:output source="=hasAmountMatch" target="hasAmountMatch" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0f8o3sl</bpmn:incoming>
+      <bpmn:outgoing>Flow_031zwou</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniDalsihoPostupu" name="(4) Stanovení dalšího postupu">
+      <bpmn:extensionElements>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniDalsihoPostupu_DodavatelskaFaktura" resultVariable="whatNextResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=orderExists" target="orderExists" />
+          <zenbpm:input source="=supplierDataMatches" target="supplierDataMatches" />
+          <zenbpm:input source="=isReliableVatPayer" target="isReliableVatPayer" />
+          <zenbpm:input source="=isBankAccountRegistered" target="isBankAccountRegistered" />
+          <zenbpm:input source="=hasAmountMatch" target="hasAmountMatch" />
+          <zenbpm:output source="=whatNextResult" target="whatNextResult" />
+          <zenbpm:output source="=whatNextResult.invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_031zwou</bpmn:incoming>
+      <bpmn:outgoing>Flow_0reidu6</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:exclusiveGateway id="Gateway_CoDal" name="Co dál?" default="Flow_PokracovatVeZpracovani">
+      <bpmn:incoming>Flow_0reidu6</bpmn:incoming>
+      <bpmn:outgoing>Flow_ManualneOverit</bpmn:outgoing>
+      <bpmn:outgoing>Flow_PokracovatVeZpracovani</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Zamitnout</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniObsahuOznameni" name="(5) Stanovení obsahu oznámení">
+      <bpmn:extensionElements>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniObsahuOznameni_ZamitnutiDodavatelskeFaktury" resultVariable="determiningContentOfNoticeResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceRejectionReasonCode" target="whatNextResult.invoiceRejectionReasonCode" />
+          <zenbpm:output source="=determiningContentOfNoticeResult.title" target="title" />
+          <zenbpm:output source="=determiningContentOfNoticeResult.description" target="description" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Zamitnout</bpmn:incoming>
+      <bpmn:incoming>Flow_0zeten0</bpmn:incoming>
+      <bpmn:incoming>Flow_0ubn2qu</bpmn:incoming>
+      <bpmn:outgoing>Flow_0o45i01</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sendTask id="SendTask_OznameniZamitnutiFaktury" name="(6) Oznámení o zamítnutí faktury">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="OznameniZamitnutiFaktury" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0o45i01</bpmn:incoming>
+      <bpmn:outgoing>Flow_0zpwudc</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="SendTask_OznameniSchvaleniFaktury" name="(10) Oznámení o schválení faktury">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="OznameniSchvaleniFaktury" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0in5l2o</bpmn:incoming>
+      <bpmn:outgoing>Flow_0mb5wmf</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:userTask id="UserTask_KonfiguraceUctovaniFaktury" name="(11) Konfigurace účtování faktur">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;konfigurace-uctovani-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=payPrevodem" target="payPrevodem" />
+          <zenbpm:output source="=payZapoctem" target="payZapoctem" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0mb5wmf</bpmn:incoming>
+      <bpmn:outgoing>Flow_0szydg4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="ServiceTask_ZauctovaniDodavatelskeFaktury" name="(12) Zaúčtování dod. faktury">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="ZauctovaniDodavatelskeFaktury" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0szydg4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1nnmf96</bpmn:outgoing>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_1ahb34y">
+        <bpmn:targetRef>DataStoreReference_1bvvdoj</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:inclusiveGateway id="Gateway_FormaUhrady" name="Forma úhrady?">
+      <bpmn:incoming>Flow_1nnmf96</bpmn:incoming>
+      <bpmn:outgoing>Flow_Zapoctem</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Prevodem</bpmn:outgoing>
+    </bpmn:inclusiveGateway>
+    <bpmn:serviceTask id="ServiceTask_VytvoreniNavrhuPrikazuPlatby" name="(14) Vytvoření návrhu příkazu k platbě">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="VytvoreniNavrhuPrikazuPlatby" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Prevodem</bpmn:incoming>
+      <bpmn:outgoing>Flow_1jspv1p</bpmn:outgoing>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_0j6r07t">
+        <bpmn:targetRef>DataStoreReference_03auup0</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="UserTask_ZapocetFaktury" name="(13) Zápočet faktury s protější fakturou / dobropisem">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;zapocet-faktury-form&#34;" target="4BPM_FORM_KEY" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Zapoctem</bpmn:incoming>
+      <bpmn:outgoing>Flow_0xqjdwq</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_DodavatelskaFakturaZlikvidovanaZapoctem" name="Dodavatelská faktura zlikvidována zápočtem">
+      <bpmn:incoming>Flow_0xqjdwq</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:dataStoreReference id="DataStoreReference_1bvvdoj" name="iDoklad" />
+    <bpmn:endEvent id="EndEvent_FakturaZamitnuta" name="Faktura zamítnuta">
+      <bpmn:incoming>Flow_0zpwudc</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="UserTask_ManualniNahraniFaktury" name="(0) Manuální nahráni faktúry">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;invoice-upload-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=invoiceNumber" target="invoiceNumber" />
+          <zenbpm:output source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
+          <zenbpm:output source="=invoiceOrderReference" target="invoiceOrderReference" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1ezu2nf</bpmn:incoming>
+      <bpmn:outgoing>Flow_07p4il3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:startEvent id="StartEvent_DodavatelskaFakturaProLikvidaci" name="Dodavatelská faktura k likvidaci">
+      <bpmn:outgoing>Flow_1ezu2nf</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_07p4il3" sourceRef="UserTask_ManualniNahraniFaktury" targetRef="ServiceTask_VytezeniFaktury" />
+    <bpmn:sequenceFlow id="Flow_1xaxwoq" sourceRef="ServiceTask_VytezeniFaktury" targetRef="UserTask_ManualniKorekcePoVytezeni" />
+    <bpmn:sequenceFlow id="Flow_0f8o3sl" sourceRef="UserTask_ManualniKorekcePoVytezeni" targetRef="CallActivity_KontrolaFaktury" />
+    <bpmn:sequenceFlow id="Flow_031zwou" sourceRef="CallActivity_KontrolaFaktury" targetRef="BusinessRuleTask_StanoveniDalsihoPostupu" />
+    <bpmn:sequenceFlow id="Flow_0reidu6" sourceRef="BusinessRuleTask_StanoveniDalsihoPostupu" targetRef="Gateway_CoDal" />
+    <bpmn:sequenceFlow id="Flow_ManualneOverit" name="K manuálnímu ověření" sourceRef="Gateway_CoDal" targetRef="UserTask_ManualniOvereniFaktury">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=whatNextResult.whatNext = "Manualne"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_PokracovatVeZpracovani" name="Pokračovat dál ve zpracování" sourceRef="Gateway_CoDal" targetRef="BusinessRuleTask_StanoveniSchvalovatelu" />
+    <bpmn:sequenceFlow id="Flow_Zamitnout" name="Zamítnout" sourceRef="Gateway_CoDal" targetRef="BusinessRuleTask_StanoveniObsahuOznameni">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=whatNextResult.whatNext = "Zamitnuto"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_16po2p3" sourceRef="UserTask_ManualniOvereniFaktury" targetRef="Gateway_1rk8z7u" />
+    <bpmn:sequenceFlow id="Flow_1ila9f9" sourceRef="BusinessRuleTask_StanoveniSchvalovatelu" targetRef="UserTask_SchvaleniFaktury" />
+    <bpmn:sequenceFlow id="Flow_0o45i01" sourceRef="BusinessRuleTask_StanoveniObsahuOznameni" targetRef="SendTask_OznameniZamitnutiFaktury" />
+    <bpmn:sequenceFlow id="Flow_0zpwudc" sourceRef="SendTask_OznameniZamitnutiFaktury" targetRef="EndEvent_FakturaZamitnuta" />
+    <bpmn:sequenceFlow id="Flow_0mb5wmf" sourceRef="SendTask_OznameniSchvaleniFaktury" targetRef="UserTask_KonfiguraceUctovaniFaktury" />
+    <bpmn:sequenceFlow id="Flow_0szydg4" sourceRef="UserTask_KonfiguraceUctovaniFaktury" targetRef="ServiceTask_ZauctovaniDodavatelskeFaktury" />
+    <bpmn:sequenceFlow id="Flow_1nnmf96" sourceRef="ServiceTask_ZauctovaniDodavatelskeFaktury" targetRef="Gateway_FormaUhrady" />
+    <bpmn:sequenceFlow id="Flow_Zapoctem" name="Zápočtem" sourceRef="Gateway_FormaUhrady" targetRef="UserTask_ZapocetFaktury">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=payZapoctem = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Prevodem" name="Převodem" sourceRef="Gateway_FormaUhrady" targetRef="ServiceTask_VytvoreniNavrhuPrikazuPlatby">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=payPrevodem = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1jspv1p" sourceRef="ServiceTask_VytvoreniNavrhuPrikazuPlatby" targetRef="EndEvent_DodavatelskaFakturaZlikvidovanaAProplacena" />
+    <bpmn:sequenceFlow id="Flow_0xqjdwq" sourceRef="UserTask_ZapocetFaktury" targetRef="EndEvent_DodavatelskaFakturaZlikvidovanaZapoctem" />
+    <bpmn:sequenceFlow id="Flow_1ezu2nf" sourceRef="StartEvent_DodavatelskaFakturaProLikvidaci" targetRef="UserTask_ManualniNahraniFaktury" />
+    <bpmn:userTask id="UserTask_ManualniOvereniFaktury" name="(7) Manuální ověření dod. faktury">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;manual-overeni-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=poslatKeSchvaleni" target="poslatKeSchvaleni" />
+          <zenbpm:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ManualneOverit</bpmn:incoming>
+      <bpmn:outgoing>Flow_16po2p3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_0w5754q" name="Ne" sourceRef="Gateway_1rk8z7u" targetRef="BusinessRuleTask_StanoveniSchvalovatelu">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=poslatKeSchvaleni = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1rk8z7u" name="Faktura zamítnuta?" default="Flow_0zeten0">
+      <bpmn:incoming>Flow_16po2p3</bpmn:incoming>
+      <bpmn:outgoing>Flow_0w5754q</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0zeten0</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:businessRuleTask id="BusinessRuleTask_StanoveniSchvalovatelu" name="(8) Stanovení schvalovatelů">
+      <bpmn:extensionElements>
+        <zenbpm:calledDecision decisionId="Decision_StanoveniSchvalovatelu_DodavatelskeFaktury" resultVariable="designationOfApproversResult" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=invoiceTotalNetAmount" target="invoiceTotalNetAmount" />
+          <zenbpm:output source="=designationOfApproversResult" target="designationOfApproversResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_PokracovatVeZpracovani</bpmn:incoming>
+      <bpmn:incoming>Flow_0w5754q</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ila9f9</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:userTask id="UserTask_SchvaleniFaktury" name="(9) Schválení faktury">
+      <bpmn:extensionElements>
+        <zenbpm:userTask />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;invoice-approval-form&#34;" target="4BPM_FORM_KEY" />
+          <zenbpm:output source="=schvaleno" target="schvaleno" />
+          <zenbpm:output source="=invoiceRejectionReasonCode" target="invoiceRejectionReasonCode" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1ila9f9</bpmn:incoming>
+      <bpmn:outgoing>Flow_0kv908p</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_0zeten0" name="Ano" sourceRef="Gateway_1rk8z7u" targetRef="BusinessRuleTask_StanoveniObsahuOznameni" />
+    <bpmn:sequenceFlow id="Flow_0kv908p" sourceRef="UserTask_SchvaleniFaktury" targetRef="Gateway_16m8kpr" />
+    <bpmn:sequenceFlow id="Flow_0ubn2qu" name="Ano" sourceRef="Gateway_16m8kpr" targetRef="BusinessRuleTask_StanoveniObsahuOznameni" />
+    <bpmn:sequenceFlow id="Flow_0in5l2o" name="Ne" sourceRef="Gateway_16m8kpr" targetRef="SendTask_OznameniSchvaleniFaktury">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=schvaleno = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="EndEvent_DodavatelskaFakturaZlikvidovanaAProplacena" name="Dodavatelská faktura zlikvidována a proplacena">
+      <bpmn:incoming>Flow_1jspv1p</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:dataStoreReference id="DataStoreReference_03auup0" name="Evidence návrhů příkazů k platbě" />
+    <bpmn:exclusiveGateway id="Gateway_16m8kpr" name="Zamítnuto?" default="Flow_0ubn2qu">
+      <bpmn:incoming>Flow_0kv908p</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ubn2qu</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0in5l2o</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+  </bpmn:process>
+  <bpmn:message id="Message_2f1eoiv" name="Message Stanoveni obsahu oznameni">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_3ofhjk6" name="Vráceno k opravě">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_0oovh8n" name="Message Zamítnuto">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=invoiceNumber" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="LikvidaceDodavatelskeFaktury_ProcessDefinition">
+      <bpmndi:BPMNShape id="Participant_1tcns0a_di" bpmnElement="Participant_1tcns0a" isHorizontal="true">
+        <dc:Bounds x="160" y="170" width="1880" height="510" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_0fj90gh_di" bpmnElement="Lane_0fj90gh" isHorizontal="true">
+        <dc:Bounds x="190" y="170" width="1850" height="320" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_1dwo18p_di" bpmnElement="Lane_1dwo18p" isHorizontal="true">
+        <dc:Bounds x="190" y="490" width="1850" height="190" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1sbz4na_di" bpmnElement="ServiceTask_VytezeniFaktury">
+        <dc:Bounds x="420" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_10y9zz4_di" bpmnElement="UserTask_ManualniKorekcePoVytezeni">
+        <dc:Bounds x="540" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1jr9bwi_di" bpmnElement="CallActivity_KontrolaFaktury">
+        <dc:Bounds x="660" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0fdjq65_di" bpmnElement="BusinessRuleTask_StanoveniDalsihoPostupu">
+        <dc:Bounds x="780" y="320" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_1fnjjwg_di" bpmnElement="Gateway_CoDal" isMarkerVisible="true">
+        <dc:Bounds x="895" y="336" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="935" y="373" width="38" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0ct5zvv_di" bpmnElement="BusinessRuleTask_StanoveniObsahuOznameni">
+        <dc:Bounds x="1100" y="191" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0k3cx0f_di" bpmnElement="SendTask_OznameniZamitnutiFaktury">
+        <dc:Bounds x="1220" y="191" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0rczret_di" bpmnElement="SendTask_OznameniSchvaleniFaktury">
+        <dc:Bounds x="1350" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0lufqwv_di" bpmnElement="UserTask_KonfiguraceUctovaniFaktury">
+        <dc:Bounds x="1470" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0j0xuqs_di" bpmnElement="ServiceTask_ZauctovaniDodavatelskeFaktury">
+        <dc:Bounds x="1590" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_1bddub0_di" bpmnElement="Gateway_FormaUhrady">
+        <dc:Bounds x="1715" y="336" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1712" y="394" width="75" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0bjm4y7_di" bpmnElement="ServiceTask_VytvoreniNavrhuPrikazuPlatby">
+        <dc:Bounds x="1830" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_00hzbx4_di" bpmnElement="UserTask_ZapocetFaktury">
+        <dc:Bounds x="1830" y="191" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0rw4zq4_di" bpmnElement="EndEvent_DodavatelskaFakturaZlikvidovanaZapoctem">
+        <dc:Bounds x="1962" y="213" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1947" y="256" width="68" height="53" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataStoreReference_1bvvdoj_di" bpmnElement="DataStoreReference_1bvvdoj">
+        <dc:Bounds x="1615" y="236" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1622" y="216" width="37" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0jjx7rp_di" bpmnElement="EndEvent_FakturaZamitnuta">
+        <dc:Bounds x="1352" y="213" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1326" y="264" width="90" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1n3z1sb" bpmnElement="UserTask_ManualniNahraniFaktury">
+        <dc:Bounds x="300" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0vmfp4s_di" bpmnElement="StartEvent_DodavatelskaFakturaProLikvidaci">
+        <dc:Bounds x="232" y="343" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="209" y="386" width="84" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_19pl0km_di" bpmnElement="UserTask_ManualniOvereniFaktury">
+        <dc:Bounds x="1020" y="321" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_1rk8z7u_di" bpmnElement="Gateway_1rk8z7u" isMarkerVisible="true">
+        <dc:Bounds x="1045" y="425" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="982" y="440" width="55" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_07grlwv_di" bpmnElement="BusinessRuleTask_StanoveniSchvalovatelu">
+        <dc:Bounds x="1020" y="540" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_14i0i84_di" bpmnElement="UserTask_SchvaleniFaktury">
+        <dc:Bounds x="1200" y="540" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1x2ubuf_di" bpmnElement="EndEvent_DodavatelskaFakturaZlikvidovanaAProplacena">
+        <dc:Bounds x="1962" y="343" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1946" y="386" width="70" height="53" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataStoreReference_03auup0_di" bpmnElement="DataStoreReference_03auup0">
+        <dc:Bounds x="1855" y="555" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1840" y="622" width="82" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_16m8kpr_di" bpmnElement="Gateway_16m8kpr" isMarkerVisible="true">
+        <dc:Bounds x="1225" y="424" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1282" y="443" width="56" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_07p4il3_di" bpmnElement="Flow_07p4il3">
+        <di:waypoint x="400" y="361" />
+        <di:waypoint x="420" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1xaxwoq_di" bpmnElement="Flow_1xaxwoq">
+        <di:waypoint x="520" y="361" />
+        <di:waypoint x="540" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0f8o3sl_di" bpmnElement="Flow_0f8o3sl">
+        <di:waypoint x="640" y="361" />
+        <di:waypoint x="660" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_031zwou_di" bpmnElement="Flow_031zwou">
+        <di:waypoint x="760" y="361" />
+        <di:waypoint x="770" y="361" />
+        <di:waypoint x="770" y="360" />
+        <di:waypoint x="780" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0reidu6_di" bpmnElement="Flow_0reidu6">
+        <di:waypoint x="880" y="360" />
+        <di:waypoint x="888" y="360" />
+        <di:waypoint x="888" y="361" />
+        <di:waypoint x="895" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1woreeo_di" bpmnElement="Flow_ManualneOverit">
+        <di:waypoint x="945" y="361" />
+        <di:waypoint x="1020" y="361" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="940" y="327" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1cup7j6_di" bpmnElement="Flow_PokracovatVeZpracovani">
+        <di:waypoint x="920" y="386" />
+        <di:waypoint x="920" y="580" />
+        <di:waypoint x="1020" y="580" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="906" y="591" width="88" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0lb9asv_di" bpmnElement="Flow_Zamitnout">
+        <di:waypoint x="920" y="336" />
+        <di:waypoint x="920" y="231" />
+        <di:waypoint x="1100" y="231" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="951" y="213" width="50" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16po2p3_di" bpmnElement="Flow_16po2p3">
+        <di:waypoint x="1070" y="401" />
+        <di:waypoint x="1070" y="425" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="873" y="431" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ila9f9_di" bpmnElement="Flow_1ila9f9">
+        <di:waypoint x="1120" y="580" />
+        <di:waypoint x="1200" y="580" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0o45i01_di" bpmnElement="Flow_0o45i01">
+        <di:waypoint x="1200" y="231" />
+        <di:waypoint x="1220" y="231" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0zpwudc_di" bpmnElement="Flow_0zpwudc">
+        <di:waypoint x="1320" y="231" />
+        <di:waypoint x="1352" y="231" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0mb5wmf_di" bpmnElement="Flow_0mb5wmf">
+        <di:waypoint x="1450" y="361" />
+        <di:waypoint x="1470" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0szydg4_di" bpmnElement="Flow_0szydg4">
+        <di:waypoint x="1570" y="361" />
+        <di:waypoint x="1590" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1nnmf96_di" bpmnElement="Flow_1nnmf96">
+        <di:waypoint x="1690" y="361" />
+        <di:waypoint x="1715" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0y947zq_di" bpmnElement="Flow_Zapoctem">
+        <di:waypoint x="1740" y="336" />
+        <di:waypoint x="1740" y="231" />
+        <di:waypoint x="1830" y="231" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1762" y="213" width="49" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_03lklbc_di" bpmnElement="Flow_Prevodem">
+        <di:waypoint x="1765" y="361" />
+        <di:waypoint x="1830" y="361" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1772" y="344" width="51" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1jspv1p_di" bpmnElement="Flow_1jspv1p">
+        <di:waypoint x="1930" y="361" />
+        <di:waypoint x="1962" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0xqjdwq_di" bpmnElement="Flow_0xqjdwq">
+        <di:waypoint x="1930" y="231" />
+        <di:waypoint x="1962" y="231" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ezu2nf_di" bpmnElement="Flow_1ezu2nf">
+        <di:waypoint x="268" y="361" />
+        <di:waypoint x="300" y="361" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0w5754q_di" bpmnElement="Flow_0w5754q">
+        <di:waypoint x="1070" y="475" />
+        <di:waypoint x="1070" y="540" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1078" y="505" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0zeten0_di" bpmnElement="Flow_0zeten0">
+        <di:waypoint x="1095" y="450" />
+        <di:waypoint x="1140" y="449" />
+        <di:waypoint x="1140" y="271" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1108" y="432" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0kv908p_di" bpmnElement="Flow_0kv908p">
+        <di:waypoint x="1250" y="540" />
+        <di:waypoint x="1250" y="474" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ubn2qu_di" bpmnElement="Flow_0ubn2qu">
+        <di:waypoint x="1225" y="449" />
+        <di:waypoint x="1170" y="449" />
+        <di:waypoint x="1170" y="271" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1188" y="431" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0in5l2o_di" bpmnElement="Flow_0in5l2o">
+        <di:waypoint x="1250" y="424" />
+        <di:waypoint x="1250" y="361" />
+        <di:waypoint x="1350" y="361" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1258" y="389" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Participant_1uxyp8h_di" bpmnElement="Participant_061xepn" isHorizontal="true">
+        <dc:Bounds x="1200" y="90" width="300" height="60" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="DataOutputAssociation_1ahb34y_di" bpmnElement="DataOutputAssociation_1ahb34y">
+        <di:waypoint x="1639" y="321" />
+        <di:waypoint x="1639" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DataOutputAssociation_0j6r07t_di" bpmnElement="DataOutputAssociation_0j6r07t">
+        <di:waypoint x="1881" y="401" />
+        <di:waypoint x="1881" y="555" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_142foe9_di" bpmnElement="Flow_142foe9">
+        <di:waypoint x="1270" y="191" />
+        <di:waypoint x="1270" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1hvnlj0_di" bpmnElement="Flow_1hvnlj0">
+        <di:waypoint x="1430" y="321" />
+        <di:waypoint x="1430" y="150" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

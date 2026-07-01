@@ -60,6 +60,46 @@ func TestChildProcessesPagination(t *testing.T) {
 	})
 }
 
+func TestChildProcessesInvalidPagination(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero page", func(t *testing.T) {
+		page, size := int32(0), int32(10)
+		resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), 1, &zenclient.GetChildProcessInstancesParams{
+			Page: &page,
+			Size: &size,
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		require.Contains(t, resp.JSON400.Message, "page must be >= 1, got 0")
+	})
+
+	t.Run("negative size", func(t *testing.T) {
+		page, size := int32(1), int32(-5)
+		resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), 1, &zenclient.GetChildProcessInstancesParams{
+			Page: &page,
+			Size: &size,
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got -5")
+	})
+
+	t.Run("oversized size", func(t *testing.T) {
+		page, size := int32(1), int32(101)
+		resp, err := app.restClient.GetChildProcessInstancesWithResponse(t.Context(), 1, &zenclient.GetChildProcessInstancesParams{
+			Page: &page,
+			Size: &size,
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		require.Contains(t, resp.JSON400.Message, "size must be between 1 and 100, got 101")
+	})
+}
+
 func deployChildProcessDefinitions(t *testing.T) zenclient.ProcessDefinitionSimple {
 	t.Helper()
 

@@ -281,14 +281,18 @@ run2: ## Start 2nd node
 .PHONY: start-monitoring
 start-monitoring: ## Start monitoring stack
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2.6.0
-	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name prometheus -p 9101:9090 -v ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus  --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
 	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name=grafana -p 9100:3000 -v ./scripts/grafana_provisioning:/etc/grafana/provisioning grafana/grafana
+	@# Host CPU / memory / disk usage + disk I/O. On Linux this reports the real host;
+	@# on macOS Docker Desktop it reports the Docker VM (see scripts/prometheus.yml).
+	@docker run -d --rm --add-host=host.docker.internal:host-gateway --name node-exporter --pid=host -p 9110:9100 -v /:/host:ro,rslave quay.io/prometheus/node-exporter:v1.8.2 --path.rootfs=/host
 
 .PHONY: stop-monitoring
 stop-monitoring:
 	@docker stop grafana
 	@docker stop prometheus
 	@docker stop jaeger
+	@docker stop node-exporter
 
 .PHONY: test
 test: ## Run tests
@@ -301,6 +305,77 @@ test: ## Run tests
 .PHONY: bench
 bench: ## Run benchmarks
 	LOG_LEVEL=ERROR go test ./... -bench=.
+
+.PHONY: load-test
+LOAD_TEST_SCRIPT ?= instance_lifecycle.js
+TEST_ID ?= $(shell date +%Y%m%d-%H%M%S)
+load-test: ## Run k6 lifecycle load test
+	cd test/load/k6 && k6 run \
+		--tag testid=$(TEST_ID) \
+		--tag test_type=$(basename $(notdir $(LOAD_TEST_SCRIPT))) \
+		$(if $(BASE_URL),-e BASE_URL=$(BASE_URL)) \
+		$(if $(VUS),-e VUS=$(VUS)) \
+		$(if $(RATE),-e RATE=$(RATE)) \
+		$(if $(RAMP_VUS_STEPS),-e RAMP_VUS_STEPS=$(RAMP_VUS_STEPS)) \
+		$(if $(RAMP_VUS_STEP_SIZE),-e RAMP_VUS_STEP_SIZE=$(RAMP_VUS_STEP_SIZE)) \
+		$(if $(RAMP_VUS_START),-e RAMP_VUS_START=$(RAMP_VUS_START)) \
+		$(if $(RAMP_VUS_STEP_DURATION),-e RAMP_VUS_STEP_DURATION=$(RAMP_VUS_STEP_DURATION)) \
+		$(if $(RAMP_VUS_RAMP_DOWN_DURATION),-e RAMP_VUS_RAMP_DOWN_DURATION=$(RAMP_VUS_RAMP_DOWN_DURATION)) \
+		$(if $(PRE_ALLOCATED_VUS),-e PRE_ALLOCATED_VUS=$(PRE_ALLOCATED_VUS)) \
+		$(if $(MAX_VUS),-e MAX_VUS=$(MAX_VUS)) \
+		$(if $(DURATION),-e DURATION=$(DURATION)) \
+		$(if $(GRACEFUL_STOP),-e GRACEFUL_STOP=$(GRACEFUL_STOP)) \
+		$(if $(POLL_INTERVAL_MS),-e POLL_INTERVAL_MS=$(POLL_INTERVAL_MS)) \
+		$(if $(JOB_TIMEOUT_MS),-e JOB_TIMEOUT_MS=$(JOB_TIMEOUT_MS)) \
+		$(if $(COMPLETION_TIMEOUT_MS),-e COMPLETION_TIMEOUT_MS=$(COMPLETION_TIMEOUT_MS)) \
+		$(if $(PROCESS_INSTANCE_HISTORY_TTL),-e PROCESS_INSTANCE_HISTORY_TTL=$(PROCESS_INSTANCE_HISTORY_TTL)) \
+		$(if $(EXPECTED_LIFECYCLE_SECONDS),-e EXPECTED_LIFECYCLE_SECONDS=$(EXPECTED_LIFECYCLE_SECONDS)) \
+		$(if $(VU_HEADROOM),-e VU_HEADROOM=$(VU_HEADROOM)) \
+		$(if $(VALIDATE_LOAD_SHAPE),-e VALIDATE_LOAD_SHAPE=$(VALIDATE_LOAD_SHAPE)) \
+		$(if $(PARALLEL_JOB_COMPLETION),-e PARALLEL_JOB_COMPLETION=$(PARALLEL_JOB_COMPLETION)) \
+		$(if $(SETUP_TIMEOUT),-e SETUP_TIMEOUT=$(SETUP_TIMEOUT)) \
+		$(if $(TEARDOWN_TIMEOUT),-e TEARDOWN_TIMEOUT=$(TEARDOWN_TIMEOUT)) \
+		$(LOAD_TEST_SCRIPT)
+
+.PHONY: load-test-prom
+load-test-prom: ## Run the load test and stream metrics to Prometheus (needs start-monitoring + remote-write enabled)
+	cd test/load/k6 && K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9101/api/v1/write \
+		K6_PROMETHEUS_RW_TREND_STATS='p(95),p(99),avg,max' \
+		K6_PROMETHEUS_RW_STALE_MARKERS=true \
+		k6 run -o experimental-prometheus-rw \
+		--tag testid=$(TEST_ID) \
+		--tag test_type=$(basename $(notdir $(LOAD_TEST_SCRIPT))) \
+		$(if $(BASE_URL),-e BASE_URL=$(BASE_URL)) \
+		$(if $(VUS),-e VUS=$(VUS)) \
+		$(if $(RATE),-e RATE=$(RATE)) \
+		$(if $(RAMP_VUS_STEPS),-e RAMP_VUS_STEPS=$(RAMP_VUS_STEPS)) \
+		$(if $(RAMP_VUS_STEP_SIZE),-e RAMP_VUS_STEP_SIZE=$(RAMP_VUS_STEP_SIZE)) \
+		$(if $(RAMP_VUS_START),-e RAMP_VUS_START=$(RAMP_VUS_START)) \
+		$(if $(RAMP_VUS_STEP_DURATION),-e RAMP_VUS_STEP_DURATION=$(RAMP_VUS_STEP_DURATION)) \
+		$(if $(RAMP_VUS_RAMP_DOWN_DURATION),-e RAMP_VUS_RAMP_DOWN_DURATION=$(RAMP_VUS_RAMP_DOWN_DURATION)) \
+		$(if $(PRE_ALLOCATED_VUS),-e PRE_ALLOCATED_VUS=$(PRE_ALLOCATED_VUS)) \
+		$(if $(MAX_VUS),-e MAX_VUS=$(MAX_VUS)) \
+		$(if $(DURATION),-e DURATION=$(DURATION)) \
+		$(if $(GRACEFUL_STOP),-e GRACEFUL_STOP=$(GRACEFUL_STOP)) \
+		$(if $(POLL_INTERVAL_MS),-e POLL_INTERVAL_MS=$(POLL_INTERVAL_MS)) \
+		$(if $(JOB_TIMEOUT_MS),-e JOB_TIMEOUT_MS=$(JOB_TIMEOUT_MS)) \
+		$(if $(COMPLETION_TIMEOUT_MS),-e COMPLETION_TIMEOUT_MS=$(COMPLETION_TIMEOUT_MS)) \
+		$(if $(PROCESS_INSTANCE_HISTORY_TTL),-e PROCESS_INSTANCE_HISTORY_TTL=$(PROCESS_INSTANCE_HISTORY_TTL)) \
+		$(if $(EXPECTED_LIFECYCLE_SECONDS),-e EXPECTED_LIFECYCLE_SECONDS=$(EXPECTED_LIFECYCLE_SECONDS)) \
+		$(if $(VU_HEADROOM),-e VU_HEADROOM=$(VU_HEADROOM)) \
+		$(if $(VALIDATE_LOAD_SHAPE),-e VALIDATE_LOAD_SHAPE=$(VALIDATE_LOAD_SHAPE)) \
+		$(if $(PARALLEL_JOB_COMPLETION),-e PARALLEL_JOB_COMPLETION=$(PARALLEL_JOB_COMPLETION)) \
+		$(if $(SETUP_TIMEOUT),-e SETUP_TIMEOUT=$(SETUP_TIMEOUT)) \
+		$(if $(TEARDOWN_TIMEOUT),-e TEARDOWN_TIMEOUT=$(TEARDOWN_TIMEOUT)) \
+		$(LOAD_TEST_SCRIPT)
+
+.PHONY: load-test-invoice
+load-test-invoice: LOAD_TEST_SCRIPT=invoice_approval_longest_flow.js
+load-test-invoice: load-test ## Run worst-case invoice-approval lifecycle test
+
+.PHONY: load-test-invoice-prom
+load-test-invoice-prom: LOAD_TEST_SCRIPT=invoice_approval_longest_flow.js
+load-test-invoice-prom: load-test-prom ## Run invoice test and stream metrics to Prometheus
 
 .PHONY: test-e2e
 test-e2e:  ## Run end to end tests (tests will repeat 100 times)

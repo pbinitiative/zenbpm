@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   actions: read
+  pull-requests: write
   security-events: write
 
 concurrency:
@@ -74,7 +75,7 @@ jobs:
 
       - name: Create release pull request
         env:
-          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         run: scripts/ci/release-orchestrator.sh ensure-release-pr
 
       - name: Validate OpenAPI version

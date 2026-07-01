@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_error_event_subprocess_boundary_priority" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="error-event-subprocess-boundary-priority" name="Error Boundary Has Priority Over Event Subprocess" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="service-task-error-boundary-priority" />
+    <bpmn:serviceTask id="service-task-error-boundary-priority" name="Main task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="error-event-subprocess-boundary-priority-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="service-task-error-boundary-priority" targetRef="should-not-happen-end" />
+    <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_main_success</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="boundary-error-main-task" attachedToRef="service-task-error-boundary-priority">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;boundary&#34;" target="caughtBy" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_boundary_handled</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_boundary" errorRef="Error_fail_test" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_boundary_handled" sourceRef="boundary-error-main-task" targetRef="handled-end" />
+    <bpmn:endEvent id="handled-end" name="Handled end">
+      <bpmn:incoming>Flow_boundary_handled</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="error-event-subprocess" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;event-subprocess&#34;" target="caughtBy" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:startEvent id="error-start-event">
+        <bpmn:outgoing>Flow_error_sub</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_sub" errorRef="Error_fail_test" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_error_sub" sourceRef="error-start-event" targetRef="event-subprocess-end" />
+      <bpmn:endEvent id="event-subprocess-end" name="Event subprocess end">
+        <bpmn:incoming>Flow_error_sub</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="error-event-subprocess-boundary-priority">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service-task-error-boundary-priority_di" bpmnElement="service-task-error-boundary-priority">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="should-not-happen-end_di" bpmnElement="should-not-happen-end">
+        <dc:Bounds x="432" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="handled-end_di" bpmnElement="handled-end">
+        <dc:Bounds x="432" y="242" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-event-subprocess_di" bpmnElement="error-event-subprocess" isExpanded="true">
+        <dc:Bounds x="160" y="340" width="360" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-start-event_di" bpmnElement="error-start-event">
+        <dc:Bounds x="200" y="402" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="event-subprocess-end_di" bpmnElement="event-subprocess-end">
+        <dc:Bounds x="412" y="402" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="boundary-error-main-task_di" bpmnElement="boundary-error-main-task">
+        <dc:Bounds x="302" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="198" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_success_di" bpmnElement="Flow_main_success">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="432" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_boundary_handled_di" bpmnElement="Flow_boundary_handled">
+        <di:waypoint x="320" y="178" />
+        <di:waypoint x="320" y="260" />
+        <di:waypoint x="432" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_sub_di" bpmnElement="Flow_error_sub">
+        <di:waypoint x="236" y="420" />
+        <di:waypoint x="412" y="420" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

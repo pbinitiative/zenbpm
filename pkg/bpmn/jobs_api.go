@@ -73,19 +73,9 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 	}()
 
 	//refresh
-	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
+	job, err = engine.refreshAndValidateJob(ctx, jobKey)
 	if err != nil {
-		return newEngineErrorf("failed to find job with key: %d", jobKey)
-	}
-	switch job.State {
-	case runtime.ActivityStateCompleted:
-		return newEngineErrorf("job already completed: %d", job.Key)
-	case runtime.ActivityStateTerminated:
-		return newEngineErrorf("job already terminated: %d", job.Key)
-	case runtime.ActivityStateFailed:
-		return newEngineErrorf("job already failed: %d", job.Key)
-	default:
-		// do nothing
+		return err
 	}
 
 	failJobSpan.SetAttributes(
@@ -104,16 +94,25 @@ func (engine *Engine) JobFailByKey(ctx context.Context, jobKey int64, message st
 	}()
 
 	if errorCode != nil {
-		boundaryMatch, err := engine.findMatchingBoundaryErrorEvent(ctx, &batch, instance, job.Token, errorCode)
+		target, err := engine.findErrorCatchTarget(ctx, &batch, instance, job.Token, errorCode)
 		if err != nil {
 			return err
 		}
 
-		if boundaryMatch != nil {
-			if handled, err := engine.processBoundaryErrorEvent(ctx, &batch, job, instance, boundaryMatch, variables); err != nil {
-				return err
-			} else if handled {
-				return nil
+		if target != nil {
+			switch {
+			case target.boundary != nil:
+				if handled, err := engine.processBoundaryErrorEvent(ctx, &batch, job, instance, target.boundary, variables); err != nil {
+					return err
+				} else if handled {
+					return nil
+				}
+			case target.eventSubprocess != nil:
+				if handled, err := engine.processErrorEventSubprocessForJob(ctx, &batch, job, target.eventSubprocess, variables); err != nil {
+					return err
+				} else if handled {
+					return nil
+				}
 			}
 		}
 	}
@@ -267,19 +266,9 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}()
 
 	//refresh token
-	job, err = engine.persistence.FindJobByJobKey(ctx, jobKey)
+	job, err = engine.refreshAndValidateJob(ctx, jobKey)
 	if err != nil {
-		return newEngineErrorf("failed to find job with key: %d", jobKey)
-	}
-	switch job.State {
-	case runtime.ActivityStateCompleted:
-		return newEngineErrorf("job already completed: %d", job.Key)
-	case runtime.ActivityStateTerminated:
-		return newEngineErrorf("job already terminated: %d", job.Key)
-	case runtime.ActivityStateFailed:
-		return newEngineErrorf("job already failed: %d", job.Key)
-	default:
-		// do nothing
+		return err
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
@@ -313,7 +302,9 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 
 	job.State = runtime.ActivityStateCompleted
 	job.OutputVariables = variables
-	batch.SaveJob(ctx, job)
+	if err := batch.SaveJob(ctx, job); err != nil {
+		return fmt.Errorf("failed to save completed job %d: %w", job.Key, err)
+	}
 
 	messageEndEventHandled := false
 	activity, err := engine.getExecutionTokenActivity(ctx, instance, job.Token)
@@ -330,7 +321,9 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 	}
 
 	for _, token := range tokens {
-		batch.SaveToken(ctx, token)
+		if err := batch.SaveToken(ctx, token); err != nil {
+			return fmt.Errorf("failed to save token %d: %w", token.Key, err)
+		}
 	}
 	err = batch.SaveProcessInstance(ctx, instance)
 	if err != nil {
@@ -366,4 +359,22 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		}
 		return err
 	}
+}
+
+// refreshAndValidateJob fetches the latest job state and returns an error if
+// the job is already in a terminal state (completed, terminated, or failed).
+func (engine *Engine) refreshAndValidateJob(ctx context.Context, jobKey int64) (runtime.Job, error) {
+	job, err := engine.persistence.FindJobByJobKey(ctx, jobKey)
+	if err != nil {
+		return runtime.Job{}, newEngineErrorf("failed to find job with key: %d", jobKey)
+	}
+	switch job.State {
+	case runtime.ActivityStateCompleted:
+		return runtime.Job{}, newEngineErrorf("job already completed: %d", job.Key)
+	case runtime.ActivityStateTerminated:
+		return runtime.Job{}, newEngineErrorf("job already terminated: %d", job.Key)
+	case runtime.ActivityStateFailed:
+		return runtime.Job{}, newEngineErrorf("job already failed: %d", job.Key)
+	}
+	return job, nil
 }

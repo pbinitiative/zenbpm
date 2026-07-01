@@ -16,39 +16,6 @@ type boundaryErrorMatch struct {
 	event *bpmn20.TBoundaryEvent
 }
 
-func (engine *Engine) findMatchingBoundaryErrorEvent(
-	ctx context.Context,
-	batch *EngineBatch,
-	instance runtime.ProcessInstance,
-	token runtime.ExecutionToken,
-	errorCode *string,
-) (*boundaryErrorMatch, error) {
-	currentErrorEventContext := &errorEventContext{
-		instance:      instance,
-		token:         token,
-		attachedToRef: token.ElementId,
-	}
-
-	for currentErrorEventContext != nil {
-		event := engine.findMatchingBoundaryErrorEventInCurrentProcessInstance(currentErrorEventContext.instance, currentErrorEventContext.attachedToRef, errorCode)
-		if event != nil {
-			return &boundaryErrorMatch{
-				scope: currentErrorEventContext,
-				event: event,
-			}, nil
-		}
-
-		parentScope, err := engine.loadParentErrorEventContext(ctx, batch, currentErrorEventContext.instance, false)
-		if err != nil {
-			return nil, err
-		}
-
-		currentErrorEventContext = parentScope
-	}
-
-	return nil, nil
-}
-
 func (engine *Engine) findMatchingBoundaryErrorEventInCurrentProcessInstance(instance runtime.ProcessInstance, attachedToRef string, errorCode *string) *bpmn20.TBoundaryEvent {
 	if !ownsBoundaryEventScope(instance) {
 		return nil

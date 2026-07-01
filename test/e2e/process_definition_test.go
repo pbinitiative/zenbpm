@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,9 +101,8 @@ func TestRestApiProcessDefinition(t *testing.T) {
 
 	t.Run("test search filter", func(t *testing.T) {
 		t.Run("search by name substring matches single result", func(t *testing.T) {
-			search := "v2"
 			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-				Search: &search,
+				Search: new("v2"),
 			})
 			assert.NoError(t, err)
 			assert.Equal(t, 1, response.JSON200.TotalCount)
@@ -113,9 +111,8 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		})
 
 		t.Run("search is case-insensitive for name match", func(t *testing.T) {
-			search := "V2"
 			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-				Search: &search,
+				Search: new("V2"),
 			})
 			assert.NoError(t, err)
 			assert.Equal(t, 1, response.JSON200.TotalCount)
@@ -166,9 +163,8 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		})
 
 		t.Run("search returns no results for unmatched term", func(t *testing.T) {
-			search := "nomatch"
 			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-				Search: &search,
+				Search: new("nomatch"),
 			})
 			assert.NoError(t, err)
 			assert.Equal(t, 0, response.JSON200.TotalCount)
@@ -176,9 +172,8 @@ func TestRestApiProcessDefinition(t *testing.T) {
 		})
 
 		t.Run("search with empty string returns all definitions", func(t *testing.T) {
-			search := ""
 			response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-				Search: &search,
+				Search: new(""),
 			})
 			assert.NoError(t, err)
 			assert.Greater(t, response.JSON200.TotalCount, 0)
@@ -322,7 +317,7 @@ func deployUniqueDefinition(t testing.TB, filename string) (replacedDefinitionId
 	if !found {
 		return nil, fmt.Errorf("didn't find bpmn process id for filename %v", filename)
 	}
-	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
+	replacedDefinitionId = new(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 
@@ -385,7 +380,7 @@ func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionI
 
 	require.True(t, found, "didn't find BPMN process id for filename %v", filepath)
 
-	replacedDefinitionId = ptr.To(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
+	replacedDefinitionId = new(fmt.Sprintf("%v-%v", oldDefinitionId, time.Now().UnixNano()))
 	fileString := strings.ReplaceAll(stringFile, "bpmn:process id=\""+oldDefinitionId+"\"", "bpmn:process id=\""+*replacedDefinitionId+"\"")
 	file = []byte(fileString)
 
@@ -419,7 +414,7 @@ func deployProcessDefinition(t testing.TB, filepath string) (replacedDefinitionI
 func listProcessDefinitions(t testing.TB) ([]zenclient.ProcessDefinitionSimple, error) {
 
 	resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
-		Size: ptr.To(int32(100)),
+		Size: new(int32(100)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list process definitions: %w", err)
@@ -526,14 +521,12 @@ func assertLatestProcessDefinitionVersion(t testing.TB, processID string, expect
 func getProcessDefinitionVersions(t testing.TB, processID string, onlyLatest bool) []zenclient.ProcessDefinitionSimple {
 	t.Helper()
 
-	sortBy := zenclient.GetProcessDefinitionsParamsSortByVersion
-	sortOrder := zenclient.GetProcessDefinitionsParamsSortOrderAsc
 	response, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(), &zenclient.GetProcessDefinitionsParams{
 		BpmnProcessId: &processID,
 		OnlyLatest:    &onlyLatest,
-		SortBy:        &sortBy,
-		SortOrder:     &sortOrder,
-		Size:          ptr.To(int32(10)),
+		SortBy:        new(zenclient.GetProcessDefinitionsParamsSortByVersion),
+		SortOrder:     new(zenclient.GetProcessDefinitionsParamsSortOrderAsc),
+		Size:          new(int32(10)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode())
@@ -597,8 +590,8 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 	t.Run("GetProcessDefinitions - 400 for page=0", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionsParams{
-				Page: ptr.To(int32(0)),
-				Size: ptr.To(int32(10)),
+				Page: new(int32(0)),
+				Size: new(int32(10)),
 			})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -609,8 +602,8 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 	t.Run("GetProcessDefinitions - 400 for size=0", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionsParams{
-				Page: ptr.To(int32(1)),
-				Size: ptr.To(int32(0)),
+				Page: new(int32(1)),
+				Size: new(int32(0)),
 			})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -621,8 +614,8 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 	t.Run("GetProcessDefinitions - 400 for size>100", func(t *testing.T) {
 		resp, err := app.restClient.GetProcessDefinitionsWithResponse(t.Context(),
 			&zenclient.GetProcessDefinitionsParams{
-				Page: ptr.To(int32(1)),
-				Size: ptr.To(int32(101)),
+				Page: new(int32(1)),
+				Size: new(int32(101)),
 			})
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -654,6 +647,42 @@ func TestRestApiProcessDefinitionErrors(t *testing.T) {
 		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
 		assert.Contains(t, resp.JSON400.Message, "unsupported element type")
 		assert.Contains(t, resp.JSON400.Message, "scriptTask")
+	})
+
+	t.Run("CreateProcessDefinition - 400 for sub process with multiple message start events", func(t *testing.T) {
+		resp, err := deployDefinitionRaw(t, "invalid-message-subprocess-multiple-start-events.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "start events")
+	})
+
+	t.Run("CreateProcessDefinition - 400 for sub process with multiple timer start events", func(t *testing.T) {
+		resp, err := deployDefinitionRaw(t, "invalid-timer-subprocess-multiple-start-events.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "start events")
+	})
+
+	t.Run("CreateProcessDefinition - 400 for sub process with multiple error start events", func(t *testing.T) {
+		resp, err := deployDefinitionRaw(t, "invalid-error-subprocess-multiple-start-events.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "start events")
+	})
+
+	t.Run("CreateProcessDefinition - 400 for non-interrupting error start event in event sub process", func(t *testing.T) {
+		resp, err := deployDefinitionRaw(t, "invalid-error-event-subprocess-error-start-non-interrupting-xml.bpmn")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+		require.NotNil(t, resp.JSON400)
+		assert.Equal(t, "BAD_REQUEST", resp.JSON400.Code)
+		assert.Contains(t, resp.JSON400.Message, "non-interrupting error start event")
 	})
 }
 

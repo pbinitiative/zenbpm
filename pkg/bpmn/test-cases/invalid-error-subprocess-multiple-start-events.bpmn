@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_invalid_error_subprocess_multiple_start" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="Process_invalidErrorSubProcessMultipleStart" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="service-task-1" />
+    <bpmn:serviceTask id="service-task-1" name="Main task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="invalid-error-subprocess-main-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_main_end" sourceRef="service-task-1" targetRef="end-main" />
+    <bpmn:endEvent id="end-main">
+      <bpmn:incoming>Flow_main_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="event-subprocess" triggeredByEvent="true">
+      <bpmn:startEvent id="error-start-event-1">
+        <bpmn:outgoing>Flow_sub_1</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_1" errorRef="Error_1" />
+      </bpmn:startEvent>
+      <bpmn:startEvent id="error-start-event-2">
+        <bpmn:outgoing>Flow_sub_2</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_2" errorRef="Error_2" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_sub_1" sourceRef="error-start-event-1" targetRef="sub-end-1" />
+      <bpmn:sequenceFlow id="Flow_sub_2" sourceRef="error-start-event-2" targetRef="sub-end-2" />
+      <bpmn:endEvent id="sub-end-1">
+        <bpmn:incoming>Flow_sub_1</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="sub-end-2">
+        <bpmn:incoming>Flow_sub_2</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:error id="Error_1" name="Error_1" errorCode="1" />
+  <bpmn:error id="Error_2" name="Error_2" errorCode="2" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_invalidErrorSubProcessMultipleStart">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service-task-1_di" bpmnElement="service-task-1">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end-main_di" bpmnElement="end-main">
+        <dc:Bounds x="432" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="event-subprocess_di" bpmnElement="event-subprocess" isExpanded="true">
+        <dc:Bounds x="160" y="240" width="420" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-start-event-1_di" bpmnElement="error-start-event-1">
+        <dc:Bounds x="200" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-start-event-2_di" bpmnElement="error-start-event-2">
+        <dc:Bounds x="200" y="412" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub-end-1_di" bpmnElement="sub-end-1">
+        <dc:Bounds x="432" y="302" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sub-end-2_di" bpmnElement="sub-end-2">
+        <dc:Bounds x="432" y="412" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="198" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_end_di" bpmnElement="Flow_main_end">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="432" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_1_di" bpmnElement="Flow_sub_1">
+        <di:waypoint x="236" y="320" />
+        <di:waypoint x="432" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_2_di" bpmnElement="Flow_sub_2">
+        <di:waypoint x="236" y="430" />
+        <di:waypoint x="432" y="430" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

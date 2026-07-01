@@ -54,9 +54,6 @@ jobs:
             ${{ env.JAVA_CLIENT_REPO }}
             ${{ env.DOCS_REPO }}
 
-      - name: Validate OpenAPI version
-        run: scripts/ci/release-orchestrator.sh validate-openapi-version
-
       - name: Validate release version format
         run: scripts/ci/release-orchestrator.sh validate-version-format
 
@@ -69,6 +66,14 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
         run: scripts/ci/release-orchestrator.sh prepare-backend-branch
+
+      - name: Bump OpenAPI version on release branch
+        env:
+          GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
+        run: scripts/ci/release-orchestrator.sh bump-backend-openapi-version
+
+      - name: Validate OpenAPI version
+        run: scripts/ci/release-orchestrator.sh validate-openapi-version
 
   prepare-and-test:
     runs-on: ubuntu-latest

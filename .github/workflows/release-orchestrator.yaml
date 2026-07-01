@@ -46,8 +46,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.BACKEND_REPO }}
@@ -87,8 +87,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.BACKEND_REPO }}
@@ -200,8 +200,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.BACKEND_REPO }}
@@ -232,8 +232,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.FRONTEND_REPO }}
@@ -262,8 +262,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.JAVA_CLIENT_REPO }}
@@ -287,8 +287,8 @@ jobs:
         id: release-app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID_ZENBPM_RELEASE }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_ZENBPM_RELEASE }}
           owner: ${{ env.ORG }}
           repositories: |
             ${{ env.DOCS_REPO }}

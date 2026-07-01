@@ -113,9 +113,9 @@ ensure_release_pr() {
     --base main \
     --state open \
     --json number \
-    --jq '.[0].number')
+    --jq '.[0].number // empty')
 
-  if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
+  if [ -n "$existing_pr" ]; then
     echo "Release PR already exists: #$existing_pr"
     return 0
   fi

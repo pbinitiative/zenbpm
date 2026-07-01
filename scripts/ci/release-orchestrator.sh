@@ -71,6 +71,35 @@ validate_openapi_version() {
   fi
 }
 
+bump_backend_openapi_version() {
+  require_env VERSION
+  require_env BACKEND_REPO
+  require_env RELEASE_BRANCH
+  local version
+  version=$(plain_version)
+
+  awk -v new_version="$version" '
+    /^info:[[:space:]]*$/ { in_info = 1; print; next }
+    in_info && /^[^[:space:]]/ { in_info = 0 }
+    in_info && /^[[:space:]]+version:[[:space:]]*/ {
+      sub(/version:[[:space:]]*.*/, "version: " new_version)
+      updated = 1
+    }
+    { print }
+    END { if (!updated) exit 1 }
+  ' openapi/api.yaml > openapi/api.yaml.tmp
+  mv openapi/api.yaml.tmp openapi/api.yaml
+
+  configure_git
+  if git diff --quiet -- openapi/api.yaml; then
+    echo "OpenAPI version is already $version."
+    return 0
+  fi
+  git add openapi/api.yaml
+  git commit -m "chore: bump OpenAPI version to $version"
+  git push "$(github_remote "$BACKEND_REPO")" HEAD:"$RELEASE_BRANCH"
+}
+
 validate_version_format() {
   require_env VERSION
   if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -196,6 +225,7 @@ notify_discord() {
 case "${1:-}" in
   export-release-vars) export_release_vars ;;
   validate-openapi-version) validate_openapi_version ;;
+  bump-backend-openapi-version) bump_backend_openapi_version ;;
   validate-version-format) validate_version_format ;;
   validate-tags) validate_tags ;;
   prepare-backend-branch) require_env BACKEND_REPO; prepare_branch "$BACKEND_REPO" ;;

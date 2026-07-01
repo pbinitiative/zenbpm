@@ -100,6 +100,34 @@ bump_backend_openapi_version() {
   git push "$(github_remote "$BACKEND_REPO")" HEAD:"$RELEASE_BRANCH"
 }
 
+ensure_release_pr() {
+  require_env ORG
+  require_env BACKEND_REPO
+  require_env RELEASE_BRANCH
+  require_env VERSION
+  local existing_pr
+
+  existing_pr=$(gh pr list \
+    --repo "$ORG/$BACKEND_REPO" \
+    --head "$RELEASE_BRANCH" \
+    --base main \
+    --state open \
+    --json number \
+    --jq '.[0].number')
+
+  if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
+    echo "Release PR already exists: #$existing_pr"
+    return 0
+  fi
+
+  gh pr create \
+    --repo "$ORG/$BACKEND_REPO" \
+    --head "$RELEASE_BRANCH" \
+    --base main \
+    --title "chore: release $VERSION" \
+    --body "Merge $RELEASE_BRANCH back into main after the release is complete."
+}
+
 validate_version_format() {
   require_env VERSION
   if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -226,6 +254,7 @@ case "${1:-}" in
   export-release-vars) export_release_vars ;;
   validate-openapi-version) validate_openapi_version ;;
   bump-backend-openapi-version) bump_backend_openapi_version ;;
+  ensure-release-pr) ensure_release_pr ;;
   validate-version-format) validate_version_format ;;
   validate-tags) validate_tags ;;
   prepare-backend-branch) require_env BACKEND_REPO; prepare_branch "$BACKEND_REPO" ;;

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version without v prefix, for example 2.0.0.
+        description: Release version with v prefix, for example v2.0.0.
         required: true
         type: string
 
@@ -24,7 +24,6 @@ env:
   JAVA_CLIENT_REPO: zenbpm-java-client
   DOCS_REPO: zenbpm-docusaurus
   VERSION: ${{ inputs.version }}
-  RELEASE_TAG: v${{ inputs.version }}
 
 jobs:
   validate:
@@ -316,7 +315,6 @@ jobs:
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
-          RELEASE_TAG: ${{ env.RELEASE_TAG }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_RESULT: ${{ contains(needs.*.result, 'failure') && 'failed' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'succeeded' }}
         run: scripts/ci/release-orchestrator.sh notify-discord

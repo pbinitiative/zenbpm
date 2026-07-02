@@ -34,10 +34,15 @@ FROM
     LEFT JOIN process_instance AS parent_pi ON et.process_instance_key = parent_pi.key
 WHERE
     pi.state IN (4, 6, 9)
-    AND (pi.parent_process_execution_token IS NULL
+    -- et.key IS NULL covers both "no parent" (the LEFT JOIN never matches a NULL
+    -- parent_process_execution_token) and "parent's token was already cleaned up"
+    -- (the parent's token is only ever removed by this same cleanup, once the parent
+    -- itself was deleted). Either way there is nothing left to wait for.
+    AND (et.key IS NULL
         OR parent_pi.state IN (4, 6, 9))
     AND (pi.history_delete_sec IS NULL
         OR pi.history_delete_sec < @currUnix)
+ORDER BY pi.created_at DESC, pi.key DESC /* Descendants are created after their parents. */
 LIMIT @limit;
 
 -- name: FindActiveInstances :many

@@ -29,6 +29,7 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func prepareTestSetupWithTestMigration(t *testing.T) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
@@ -211,6 +212,7 @@ func TestDataCleanup(t *testing.T) {
 
 	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-data-cleanup"), conf, clientMgr, tStore.ClusterState)
 	assert.NoError(t, err)
+	db.historyDeleteThreshold = 10
 
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 
@@ -281,6 +283,19 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveIncident(ctx, incident)
 		assert.NoError(t, err)
 
+		errorSubscription := runtime.ErrorSubscription{
+			Key:                  r + 110,
+			ElementInstanceKey:   r + 111,
+			ElementId:            "error-catch-465",
+			ProcessDefinitionKey: pd.Key,
+			ProcessInstanceKey:   inst1.ProcessInstance().Key,
+			State:                runtime.ErrorStateCreated,
+			CreatedAt:            time.Now(),
+			Token:                token,
+		}
+		err = db.SaveErrorSubscription(ctx, errorSubscription)
+		assert.NoError(t, err)
+
 		r2 := db.GenerateId()
 		*idArr = append(*idArr, r2)
 		inst2 := runtime.SubProcessInstance{
@@ -348,23 +363,26 @@ func TestDataCleanup(t *testing.T) {
 	for i := range db.historyDeleteThreshold {
 		ctx := t.Context()
 		if i < db.historyDeleteThreshold/2 {
-			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(1*time.Hour))
+			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(time.Hour))
 			createTestData(ctx, &idsToKeep)
 		} else {
 			createTestData(ctx, &idsToBeDeleted)
 		}
 	}
 
-	nowSeconds := ssql.NullInt64{
-		Int64: time.Now().Unix(),
-		Valid: true,
+	findInactiveIDs := func(at time.Time) ([]int64, error) {
+		return db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+			CurrUnix: ssql.NullInt64{
+				Int64: at.Unix(),
+				Valid: true,
+			},
+			Limit: 100000,
+		})
 	}
-	inactiveIds, err := db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
+
+	inactiveIDs, err := findInactiveIDs(time.Now())
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(inactiveIds))
+	assert.Equal(t, 0, len(inactiveIDs))
 	activeBeforeCleanup, err := db.Queries.FindActiveInstances(t.Context())
 	assert.NoError(t, err)
 
@@ -384,37 +402,38 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveProcessInstance(t.Context(), pi)
 		assert.NoError(t, err)
 	}
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, inactiveIds, idsToBeDeleted)
+	require.Eventually(t, func() bool {
+		inactiveIDs, err = findInactiveIDs(time.Now())
+		return err == nil && int64SlicesMatch(inactiveIDs, idsToBeDeleted)
+	}, 10*time.Second, 100*time.Millisecond)
+	assert.ElementsMatch(t, idsToBeDeleted, inactiveIDs)
 
-	cleanupTriggered, err = db.dataCleanup(time.Now())
-	assert.NoError(t, err)
-	assert.True(t, cleanupTriggered)
+	// Verify that cleanup also processes a partially filled batch.
+	db.historyDeleteThreshold = len(idsToBeDeleted) + 1
+	require.Eventually(t, func() bool {
+		cleanupTriggered, err = db.dataCleanup(time.Now())
+		return err == nil && cleanupTriggered
+	}, 10*time.Second, 100*time.Millisecond)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
+	inactiveIDs, err = findInactiveIDs(time.Now())
 	assert.NoError(t, err)
-	assert.Empty(t, inactiveIds)
+	assert.Empty(t, inactiveIDs)
 	count := queryCount(t, db, "select count(*) from process_instance")
-	assert.Equal(t, int64(db.historyDeleteThreshold), count)
+	assert.Equal(t, int64(len(idsToKeep)), count)
 	count = queryCount(t, db, "select count(*) from message_subscription")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 	count = queryCount(t, db, "select count(*) from timer")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 	count = queryCount(t, db, "select count(*) from job")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 	count = queryCount(t, db, "select count(*) from execution_token")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 	count = queryCount(t, db, "select count(*) from flow_element_instance")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 	count = queryCount(t, db, "select count(*) from incident")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
+	count = queryCount(t, db, "select count(*) from error_subscription")
+	assert.Equal(t, int64(len(idsToKeep)/2), count)
 
 	//should delete only one instance
 	db.historyDeleteThreshold = 1
@@ -422,26 +441,124 @@ func TestDataCleanup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, cleanupTriggered)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
+	inactiveIDs, err = findInactiveIDs(time.Now())
 	assert.NoError(t, err)
-	assert.Empty(t, inactiveIds)
+	assert.Empty(t, inactiveIDs)
 	count = queryCount(t, db, "select count(*) from process_instance")
-	assert.Equal(t, int64(999), count)
-	count = queryCount(t, db, "select count(*) from message_subscription")
-	assert.Equal(t, int64(499), count)
-	count = queryCount(t, db, "select count(*) from timer")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from job")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from execution_token")
-	assert.Equal(t, int64(499), count)
-	count = queryCount(t, db, "select count(*) from flow_element_instance")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from incident")
-	assert.Equal(t, int64(499), count)
+	assert.Equal(t, int64(len(idsToKeep)-1), count)
+
+	remainingHistoryRows := queryCount(t, db, "select count(*) from message_subscription") +
+		queryCount(t, db, "select count(*) from timer") +
+		queryCount(t, db, "select count(*) from job") +
+		queryCount(t, db, "select count(*) from execution_token") +
+		queryCount(t, db, "select count(*) from flow_element_instance") +
+		queryCount(t, db, "select count(*) from incident") +
+		queryCount(t, db, "select count(*) from error_subscription")
+	assert.Equal(t, int64(len(idsToKeep)/2*7-3), remainingHistoryRows)
+}
+
+func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-child-history-ttl"), conf, clientMgr, tStore.ClusterState)
+	require.NoError(t, err)
+
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "child-history-ttl-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="child-history-ttl-process" name="child history ttl" isExecutable="true"></bpmn:process></xml>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	parent := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	parentContext := appcontext.WithHistoryTTL(t.Context(), types.TTL(time.Hour))
+	require.NoError(t, db.SaveProcessInstance(parentContext, &parent))
+
+	parentToken := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: db.GenerateId(),
+		ElementId:          "sub-process",
+		ProcessInstanceKey: parent.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	require.NoError(t, db.SaveToken(t.Context(), parentToken))
+
+	child := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           parentToken,
+		ParentProcessTargetElementInstanceKey: parentToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          parentToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(t.Context(), &child))
+
+	childRow, err := db.Queries.GetProcessInstance(t.Context(), child.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, childRow.HistoryTtlSec.Valid)
+	require.Equal(t, int64(time.Hour.Seconds()), childRow.HistoryTtlSec.Int64)
+
+	// The parent and the child may be saved within the same batch. The parent is
+	// not committed when the child is being saved, so the child has to fall back
+	// to the history TTL from the context that is creating both of them.
+	batchParent := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	batchToken := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: db.GenerateId(),
+		ElementId:          "sub-process",
+		ProcessInstanceKey: batchParent.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	batchChild := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           batchToken,
+		ParentProcessTargetElementInstanceKey: batchToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          batchToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	batchContext := appcontext.WithHistoryTTL(t.Context(), types.TTL(2*time.Hour))
+	batch := db.NewBatch()
+	require.NoError(t, batch.SaveProcessInstance(batchContext, &batchParent))
+	require.NoError(t, batch.SaveToken(batchContext, batchToken))
+	require.NoError(t, batch.SaveProcessInstance(batchContext, &batchChild))
+	require.NoError(t, batch.Flush(batchContext))
+
+	batchChildRow, err := db.Queries.GetProcessInstance(t.Context(), batchChild.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, batchChildRow.HistoryTtlSec.Valid)
+	require.Equal(t, int64((2 * time.Hour).Seconds()), batchChildRow.HistoryTtlSec.Int64)
 }
 
 func queryCount(t *testing.T, db *DB, query string) int64 {
@@ -450,6 +567,23 @@ func queryCount(t *testing.T, db *DB, query string) int64 {
 	err := row.Scan(&count)
 	assert.NoError(t, err)
 	return count
+}
+
+func int64SlicesMatch(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	counts := make(map[int64]int, len(left))
+	for _, value := range left {
+		counts[value]++
+	}
+	for _, value := range right {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {

@@ -15,6 +15,11 @@ cluster:
     joinAddresses:
       - localhost:8090
   nodeId: test-node-1
+  persistence:
+    # Keep finished instances around: tests assert on completed/cancelled
+    # instances and delete them explicitly. Without a TTL the background
+    # cleanup purges finished instances on its next tick, racing the tests.
+    instanceHistoryTTL: 24h
   script:
     feel:
       maxVmPoolSize: 10

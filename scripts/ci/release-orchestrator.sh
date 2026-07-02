@@ -206,14 +206,7 @@ wait_frontend_release() {
   require_env ORG
   require_env FRONTEND_REPO
   require_env RELEASE_BRANCH
-  local run_id
-  sleep 10
-  run_id=$(gh run list --repo "$ORG/$FRONTEND_REPO" --workflow release.yaml --branch "$RELEASE_BRANCH" --json databaseId --jq '.[0].databaseId')
-  if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
-    echo "Could not find dispatched frontend release workflow run" >&2
-    exit 1
-  fi
-  gh run watch "$run_id" --repo "$ORG/$FRONTEND_REPO" --exit-status
+  wait_workflow_run "$FRONTEND_REPO" release.yaml "$RELEASE_BRANCH"
 }
 
 dispatch_java_client_release() {
@@ -223,8 +216,12 @@ dispatch_java_client_release() {
   gh workflow run release.yaml \
     --repo "$ORG/$JAVA_CLIENT_REPO" \
     --ref main \
-    -f version="$VERSION" \
-    -f backend_tag="$VERSION"
+    -f version="$VERSION"
+}
+
+wait_java_client_release() {
+  require_env JAVA_CLIENT_REPO
+  wait_workflow_run "$JAVA_CLIENT_REPO" release.yaml main
 }
 
 dispatch_docs_release() {
@@ -236,6 +233,34 @@ dispatch_docs_release() {
     --ref main \
     -f version="$VERSION" \
     -f backend_tag="$VERSION"
+}
+
+wait_docs_release() {
+  require_env DOCS_REPO
+  wait_workflow_run "$DOCS_REPO" version-docs.yaml main
+}
+
+wait_workflow_run() {
+  require_env ORG
+  local repo=${1:?repo is required}
+  local workflow=${2:?workflow is required}
+  local branch=${3:?branch is required}
+  local event=${4:-workflow_dispatch}
+  local run_id
+
+  sleep 10
+  run_id=$(gh run list \
+    --repo "$ORG/$repo" \
+    --workflow "$workflow" \
+    --branch "$branch" \
+    --event "$event" \
+    --json databaseId \
+    --jq '.[0].databaseId // empty')
+  if [ -z "$run_id" ]; then
+    echo "Could not find dispatched $workflow workflow run in $ORG/$repo on $branch" >&2
+    exit 1
+  fi
+  gh run watch "$run_id" --repo "$ORG/$repo" --exit-status
 }
 
 notify_discord() {
@@ -265,7 +290,9 @@ case "${1:-}" in
   dispatch-frontend-release) dispatch_frontend_release ;;
   wait-frontend-release) wait_frontend_release ;;
   dispatch-java-client-release) dispatch_java_client_release ;;
+  wait-java-client-release) wait_java_client_release ;;
   dispatch-docs-release) dispatch_docs_release ;;
+  wait-docs-release) wait_docs_release ;;
   notify-discord) notify_discord ;;
   *)
     echo "Usage: $0 <command>" >&2

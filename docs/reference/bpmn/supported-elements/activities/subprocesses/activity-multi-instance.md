@@ -30,6 +30,9 @@ Multi-instance behavior can be applied to activities.
   The activity may define a completion condition that allows the multi-instance execution to finish before all instances
   complete.
 
+- **Limitation:**  
+  Supports both sequential and parallel execution. Completion condition (early termination) is not yet supported.
+
 ## Starting a Multi Instance
 
 A Multi-Instance configuration acts as a wrapper around the activity and controls how it is repeated and completed. Configuration has the following parameters:

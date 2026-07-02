@@ -9,6 +9,7 @@ A Parallel (AND) gateway splits the flow into all outgoing paths simultaneously 
 
 - **Diverging:** activates all outgoing paths unconditionally — no conditions needed.
 - **Converging:** waits for tokens on all incoming paths before releasing the token forward.
+- **Limitation:** works for a single overlapping parallel flow; nested/recursive parallel flows have undefined behaviour.
 
 ## Graphical notation
 

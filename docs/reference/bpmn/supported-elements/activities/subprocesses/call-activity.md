@@ -22,6 +22,9 @@ A Call Activity is a BPMN flow element that invokes a global process or a global
 - Error handling and compensation:
 	Not supported currently.
 
+- **Limitation:**
+	Only direct process ID references are supported, only the `latest` version tag is supported, and error handling and compensation are not supported.
+
 ## Starting a Call Activity
 
 **Binding:** Specifies how the process definition is resolved.

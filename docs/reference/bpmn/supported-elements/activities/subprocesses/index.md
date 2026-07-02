@@ -27,7 +27,7 @@ Subprocesses are element containers that group a set of activities, events, and 
     <tr>
       <td><a href="./call-activity">Call activity</a></td>
       <td><a href="./call-activity"><img className="bpmn-supported" src="/img/bpmn/activities/call-activity.svg" alt="Call Activity" height="70" /></a></td>
-      <td>Invokes a global process or a global task. It allows processes to reuse externally defined process logic.</td>
+      <td>Invokes a global process or a global task. It allows processes to reuse externally defined process logic. <strong>Limitation:</strong> only direct process ID references, only the "latest" version tag, no error handling or compensation.</td>
     </tr>
     <tr>
       <td><a href="./sub-process">Sub process</a></td>
@@ -37,7 +37,7 @@ Subprocesses are element containers that group a set of activities, events, and 
     <tr>
       <td><a href="./activity-multi-instance">Multi-instance activity</a></td>
       <td><a href="./activity-multi-instance"><img className="bpmn-supported" src="/img/bpmn/activities/activity-multi-instance.svg" alt="Multi-Instance Activity" height="70" /></a></td>
-      <td>Allows an activity to be executed multiple times for a collection of items, either sequentially or in parallel.</td>
+      <td>Allows an activity to be executed multiple times for a collection of items, either sequentially or in parallel. <strong>Limitation:</strong> completion condition (early termination) is not yet supported.</td>
     </tr>
   </tbody>
 </table>

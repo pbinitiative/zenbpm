@@ -36,12 +36,12 @@ A Gateway controls how the process flow diverges and converges. It is used to mo
     <tr>
       <td><a href="./parallel-gateway">Parallel</a></td>
       <td><a href="./parallel-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/parallel-gateway.svg" alt="Parallel Gateway" height="70" /></a></td>
-      <td>Splits the flow into all outgoing paths simultaneously and, when used as a merge, waits for all incoming branches to complete before continuing.</td>
+      <td>Splits the flow into all outgoing paths simultaneously and, when used as a merge, waits for all incoming branches to complete before continuing. <strong>Limitation:</strong> works for a single overlapping parallel flow; nested/recursive parallel flows have undefined behaviour.</td>
     </tr>
     <tr>
       <td><a href="./event-based-gateway">Event-Based</a></td>
       <td><a href="./event-based-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/event-based-gateway.svg" alt="Event-Based Gateway" height="70" /></a></td>
-      <td>Routes the flow based on which event occurs first, instead of evaluating data conditions.</td>
+      <td>Routes the flow based on which event occurs first, instead of evaluating data conditions. <strong>Limitation:</strong> currently only for Message and Timer events.</td>
     </tr>
   </tbody>
 </table>

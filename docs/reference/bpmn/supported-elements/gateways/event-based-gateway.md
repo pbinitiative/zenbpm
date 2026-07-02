@@ -10,6 +10,7 @@ An Event-Based gateway routes the flow based on which event occurs first. Instea
 - **Diverging only** — each outgoing path leads to a catching event (Message, Timer, etc.).
 - The first event to occur determines the route; all other waiting branches are cancelled.
 - Commonly used to model "wait for reply or timeout" patterns.
+- **Limitation:** currently only for Message and Timer events.
 
 ## Graphical notation
 

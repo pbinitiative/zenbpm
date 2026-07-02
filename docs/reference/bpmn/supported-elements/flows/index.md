@@ -26,18 +26,30 @@ A Flow connects BPMN elements and defines the order in which they are executed. 
   <tbody>
     <tr>
       <td><a href="./sequence-flow">Sequence flow</a></td>
-      <td><a href="./sequence-flow"><img className="bpmn-supported" src="/img/bpmn/flows/sequence-flow.png" alt="Sequence Flow" height="50" /></a></td>
+      <td><a href="./sequence-flow"><img className="bpmn-supported" src="/img/bpmn/flows/sequence-flow.svg" alt="Sequence Flow" height="50" /></a></td>
       <td>The basic connector between BPMN elements. Defines the order in which activities and events are executed.</td>
     </tr>
     <tr>
       <td><a href="./default-flow">Default flow</a></td>
-      <td><a href="./default-flow"><img className="bpmn-supported" src="/img/bpmn/flows/default-flow.png" alt="Default Flow" height="50" /></a></td>
+      <td><a href="./default-flow"><img className="bpmn-supported" src="/img/bpmn/flows/default-flow.svg" alt="Default Flow" height="50" /></a></td>
       <td>A fallback sequence flow on an Exclusive or Inclusive gateway. Taken when no other outgoing condition evaluates to true.</td>
     </tr>
     <tr>
       <td><a href="./conditional-flow">Conditional flow</a></td>
-      <td><a href="./conditional-flow"><img className="bpmn-supported" src="/img/bpmn/flows/conditional-flow.png" alt="Conditional Flow" height="50" /></a></td>
+      <td><a href="./conditional-flow"><img className="bpmn-supported" src="/img/bpmn/flows/conditional-flow.svg" alt="Conditional Flow" height="50" /></a></td>
       <td>A sequence flow with an attached condition expression, evaluated by an Exclusive or Inclusive gateway to determine whether the flow is taken.</td>
+    </tr>
+    <tr>
+      <td>Message flow</td>
+      <td><img src="/img/bpmn/flows/message-flow.svg" alt="Message Flow" height="50" /></td>
+      <td>Shows the flow of messages between two separate participants (pools) in a Collaboration diagram. Modelled explicitly via Message Events or Send/Receive tasks rather than as part of the process's Sequence Flow.</td>
+    </tr>
+    <tr>
+      <td>Data association</td>
+      <td><img src="/img/bpmn/flows/data-association.svg" alt="Data Association" height="50" /></td>
+      <td>Connects a Data Object or Data Store to an activity, showing that data is read or written by that activity. Drawn as a dotted line with an open arrowhead.</td>
     </tr>
   </tbody>
 </table>
+
+Unsupported flows: Message flow, Data association

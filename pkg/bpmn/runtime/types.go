@@ -122,6 +122,13 @@ type ProcessInstanceData struct {
 	CreatedAt      time.Time
 	State          ActivityState
 	StartElementId *string
+	// HistoryTTLSec is the history retention TTL in seconds carried in memory so
+	// that child instances can inherit it from their parent without a synchronous
+	// DB read at save time. nil means "no TTL". For root instances it is derived
+	// from the request context at creation; for child instances it is copied from
+	// the parent runtime object; for instances loaded from the DB it is read back
+	// from the persisted value.
+	HistoryTTLSec *int64
 }
 
 func (pi *ProcessInstanceData) GetProcessInfo() *ProcessDefinition {

@@ -96,6 +96,10 @@ const (
 )
 
 func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster) (*ZenPartitionNode, error) {
+	return startZenPartitionNode(ctx, mux, persistenceConfig, client, partition, callbacks, zenState, defaultDBOptions())
+}
+
+func startZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig config.Persistence, client *client.ClientManager, partition uint32, callbacks PartitionChangesCallbacks, zenState func() state.Cluster, dbOpts dbOptions) (*ZenPartitionNode, error) {
 	cfg := persistenceConfig.RqLite
 	zpn := ZenPartitionNode{
 		config:               cfg,
@@ -122,13 +126,14 @@ func StartZenPartitionNode(ctx context.Context, mux *tcp.Mux, persistenceConfig 
 	}
 	zpn.store = str
 
-	zpn.DB, err = NewDB(
+	zpn.DB, err = newDB(
 		zpn.store,
 		zpn.PartitionId,
 		hclog.Default().Named(fmt.Sprintf("zen-partition-sql-%d", partition)),
 		persistenceConfig,
 		client,
 		zenState,
+		dbOpts,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rqLiteDB for partition %d: %w", partition, err)
@@ -256,6 +261,9 @@ func (zpn *ZenPartitionNode) Stats() (map[string]interface{}, error) {
 func (zpn *ZenPartitionNode) Stop() error {
 	if zpn.Engine != nil {
 		zpn.Engine.Stop()
+	}
+	if zpn.DB != nil {
+		zpn.DB.Close()
 	}
 	if zpn.FeelRuntime != nil {
 		zpn.FeelRuntime.Stop()

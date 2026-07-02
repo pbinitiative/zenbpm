@@ -21,6 +21,7 @@ type Querier interface {
 	DeleteProcessDefinitionsTimers(ctx context.Context, processdefinitionkeys []int64) error
 	DeleteProcessInstances(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesDecisionInstances(ctx context.Context, keys []sql.NullInt64) error
+	DeleteProcessInstancesErrorSubscriptions(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesIncidents(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesJobs(ctx context.Context, keys []int64) error
 	DeleteProcessInstancesMessageSubscriptions(ctx context.Context, keys []sql.NullInt64) error

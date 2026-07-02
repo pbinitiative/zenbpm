@@ -211,6 +211,9 @@ func (engine *Engine) buildEventSubprocessInstance(
 			ParentProcessExecutionToken:           tokens[0],
 			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey,
 			ParentProcessTargetElementId:          subProcessDef.Id,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		},
 	)
 	if err != nil {

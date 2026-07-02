@@ -374,6 +374,20 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	return executionTokens, nil
 }
 
+// resolveHistoryTTL ensures the instance carries a history TTL in memory.
+// Child instances have already been seeded with their parent's TTL at the
+// creation site, so they are left untouched (a nil parent TTL must not be
+// overridden by the resuming request's context). Root instances take the TTL
+// from the request context that started them.
+func resolveHistoryTTL(ctx context.Context, instance runtime.ProcessInstance) {
+	if instance.GetParentProcessInstanceKey() != nil || instance.ProcessInstance().HistoryTTLSec != nil {
+		return
+	}
+	if ttl, ok := appcontext.HistoryTTLFromContext(ctx); ok {
+		instance.ProcessInstance().HistoryTTLSec = new(int64(ttl.Seconds()))
+	}
+}
+
 // createInstance creates a process instance for a given process definition and returns it.
 // Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
@@ -388,6 +402,7 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().VariableHolder = variableHolder
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
+	resolveHistoryTTL(ctx, instance)
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -470,6 +485,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().VariableHolder = variableHolder
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
+	resolveHistoryTTL(ctx, instance)
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {

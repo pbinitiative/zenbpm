@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -56,7 +57,28 @@ type DB struct {
 	drdCache               *expirable.LRU[int64, dmnruntime.DmnResourceDefinition]
 	client                 *client.ClientManager
 	zenState               func() state.Cluster
-	historyDeleteThreshold int
+	historyDeleteBatchSize int
+	cleanupCancel          context.CancelFunc
+	cleanupDone            chan struct{}
+	cleanupStopOnce        sync.Once
+}
+
+const (
+	defaultHistoryDeleteBatchSize = 1000
+	dataCleanupDefaultInterval    = 30 * time.Second
+	dataCleanupExpeditedInterval  = 5 * time.Second
+)
+
+type dbOptions struct {
+	historyDeleteBatchSize int
+	startDataCleanup       bool
+}
+
+func defaultDBOptions() dbOptions {
+	return dbOptions{
+		historyDeleteBatchSize: defaultHistoryDeleteBatchSize,
+		startDataCleanup:       true,
+	}
 }
 
 // GenerateId implements storage.Storage.
@@ -83,6 +105,10 @@ func (d *DB) getLogger() hclog.Logger {
 }
 
 func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence, client *client.ClientManager, zenState func() state.Cluster) (*DB, error) {
+	return newDB(store, partition, logger, cfg, client, zenState, defaultDBOptions())
+}
+
+func newDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config.Persistence, client *client.ClientManager, zenState func() state.Cluster, opts dbOptions) (*DB, error) {
 	node, err := snowflake.NewNode(int64(partition))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create snowflake node for partition %d: %w", partition, err)
@@ -90,6 +116,9 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 	migrationDir := cfg.Migration.Dir
 	if migrationDir == "" {
 		migrationDir = sql.DefaultMigrationsDir
+	}
+	if opts.historyDeleteBatchSize <= 0 {
+		opts.historyDeleteBatchSize = defaultHistoryDeleteBatchSize
 	}
 	db := &DB{
 		Store:                  store,
@@ -102,67 +131,113 @@ func NewDB(store *store.Store, partition uint32, logger hclog.Logger, cfg config
 		drdCache:               expirable.NewLRU[int64, dmnruntime.DmnResourceDefinition](cfg.DecDefCacheSize, nil, time.Duration(cfg.DecDefCacheTTL)),
 		client:                 client,
 		zenState:               zenState,
-		historyDeleteThreshold: 1000,
+		historyDeleteBatchSize: opts.historyDeleteBatchSize,
 	}
 	queries := sql.New(db)
 	db.Queries = queries
 
-	safego.Go("partition-data-cleanup", db.logger, func() {
-		db.scheduleDataCleanup()
-	})
+	if opts.startDataCleanup {
+		cleanupCtx, cancel := context.WithCancel(context.Background())
+		db.cleanupCancel = cancel
+		db.cleanupDone = make(chan struct{})
+		safego.Go("partition-data-cleanup", db.logger, func() {
+			defer close(db.cleanupDone)
+			db.scheduleDataCleanup(cleanupCtx)
+		})
+	}
 	return db, nil
 }
 
-func (rq *DB) scheduleDataCleanup() {
-	t := time.NewTicker(30 * time.Second)
-	for range t.C {
-		t.Stop()
-		cleaningTriggered, err := rq.dataCleanup(time.Now())
+func (rq *DB) Close() {
+	rq.cleanupStopOnce.Do(func() {
+		if rq.cleanupCancel != nil {
+			rq.cleanupCancel()
+		}
+		if rq.cleanupDone != nil {
+			<-rq.cleanupDone
+		}
+	})
+}
+
+func (rq *DB) scheduleDataCleanup(ctx context.Context) {
+	t := time.NewTicker(dataCleanupDefaultInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			t.Stop()
+		}
+
+		cleaningTriggered, err := rq.dataCleanup(ctx, time.Now())
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			rq.logger.Error(fmt.Sprintf("Error while performing data cleanup: %s", err))
-			t.Reset(30 * time.Second)
+			t.Reset(dataCleanupDefaultInterval)
 			continue
 		}
 		if cleaningTriggered {
-			//speed up cleaning if there is a lot to clean
-			t.Reset(5 * time.Second)
+			// Speed up cleaning if there is a lot to clean.
+			t.Reset(dataCleanupExpeditedInterval)
 		} else {
-			t.Reset(30 * time.Second)
+			t.Reset(dataCleanupDefaultInterval)
 		}
 	}
 }
 
 // dataCleanup returns true if cleanup was triggered
-// cleanup is being done in batches of size historyDeleteThreshold
-func (rq *DB) dataCleanup(currTime time.Time) (bool, error) {
-	ctx := context.Background()
-	processes, _ := rq.Queries.FindInactiveInstancesToDelete(ctx, sql.FindInactiveInstancesToDeleteParams{
+// cleanup is being done in batches of size historyDeleteBatchSize
+func (rq *DB) dataCleanup(ctx context.Context, currTime time.Time) (bool, error) {
+	return rq.dataCleanupWithLimit(ctx, currTime, rq.historyDeleteBatchSize)
+}
+
+func (rq *DB) dataCleanupWithLimit(ctx context.Context, currTime time.Time, historyDeleteBatchSize int) (bool, error) {
+	if historyDeleteBatchSize <= 0 {
+		return false, fmt.Errorf("history delete batch size must be greater than zero")
+	}
+	inactiveInstancesToDelete, err := rq.Queries.FindInactiveInstancesToDelete(ctx, sql.FindInactiveInstancesToDeleteParams{
 		CurrUnix: ssql.NullInt64{
 			Int64: currTime.Unix(),
 			Valid: true,
 		},
-		Limit: int64(rq.historyDeleteThreshold),
+		Limit: int64(historyDeleteBatchSize),
 	})
-	var err error
-	if len(processes) == rq.historyDeleteThreshold {
-		processesNullInt64 := make([]ssql.NullInt64, len(processes))
-		for i := range processes {
+	if err != nil {
+		return false, fmt.Errorf("failed to find inactive process instances to delete: %w", err)
+	}
+	if len(inactiveInstancesToDelete) > 0 {
+		processesNullInt64 := make([]ssql.NullInt64, len(inactiveInstancesToDelete))
+		for i := range inactiveInstancesToDelete {
 			processesNullInt64[i] = ssql.NullInt64{
-				Int64: processes[i],
+				Int64: inactiveInstancesToDelete[i],
 				Valid: true,
 			}
 		}
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
-		return true, nil
+		// Queue the deletes into a single batch so they execute in one atomic
+		// transaction instead of paying a consensus round-trip per statement.
+		storageBatch := rq.NewBatch()
+		batch, ok := storageBatch.(*DBBatch)
+		if !ok {
+			return true, fmt.Errorf("expected *DBBatch from NewBatch, got %T", storageBatch)
+		}
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesIncidents(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesErrorSubscriptions(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstances(ctx, inactiveInstancesToDelete))
+		if err != nil {
+			return true, fmt.Errorf("failed to queue history cleanup deletes: %w", err)
+		}
+		return true, batch.Flush(ctx)
 	}
-	return false, err
+	return false, nil
 }
 
 func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
@@ -1006,6 +1081,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
+				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeMultiInstance:
@@ -1026,6 +1102,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
+				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeSubProcess:
@@ -1046,6 +1123,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
+				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 			},
 		}, nil
 	case bpmnruntime.ProcessTypeCallActivity:
@@ -1064,6 +1142,7 @@ func (rq *DB) inflateProcessInstance(ctx context.Context, db *sql.Queries, dbIns
 				CreatedAt:      time.UnixMilli(dbInstance.CreatedAt),
 				State:          bpmnruntime.ActivityState(dbInstance.State),
 				StartElementId: sql.FromNullString(dbInstance.StartElementID),
+				HistoryTTLSec:  sql.FromNullInt64(dbInstance.HistoryTtlSec),
 			},
 		}, nil
 	default:
@@ -1197,16 +1276,32 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateReady {
-		historyTTL, found := appcontext.HistoryTTLFromContext(ctx)
-		if !found {
-			return nil
+		var historyTTLSec ssql.NullInt64
+		// The history TTL is carried on the in-memory runtime object: root
+		// instances take it from the request context at creation, and child
+		// instances inherit their parent's TTL when they are created (see
+		// resolveHistoryTTL and the child instance construction sites). This
+		// avoids a synchronous read of the parent here, which on a follower
+		// lagging on replication (ConsistencyLevel_NONE) could miss the parent
+		// and assign the resuming request's TTL instead of the parent's.
+		if ttl := processInstance.ProcessInstance().HistoryTTLSec; ttl != nil {
+			historyTTLSec = ssql.NullInt64{Valid: true, Int64: *ttl}
+		} else if !parentProcessExecutionToken.Valid {
+			// Fallback for root instances that reached this point without a TTL
+			// resolved on the runtime object (e.g. created through a path that
+			// bypasses resolveHistoryTTL): honour the request context.
+			if historyTTL, found := appcontext.HistoryTTLFromContext(ctx); found {
+				historyTTLSec = ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())}
+			}
 		}
-		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
-			HistoryTTLSec: ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())},
-			Key:           processInstance.ProcessInstance().Key,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.ProcessInstance().Key, err)
+		if historyTTLSec.Valid {
+			err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
+				HistoryTTLSec: historyTTLSec,
+				Key:           processInstance.ProcessInstance().Key,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.ProcessInstance().Key, err)
+			}
 		}
 	}
 	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted ||

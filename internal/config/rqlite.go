@@ -108,7 +108,7 @@ type RqLite struct {
 	RaftSnapThreshold uint64 `yaml:"raftSnapThreshold" json:"raftSnapThreshold" env:"RQLITE_RAFT_SNAP_THRESHOLD"`
 
 	// RaftSnapThreshold is the size of a SQLite WAL file which will trigger a snapshot.
-	RaftSnapThresholdWALSize uint64 `yaml:"raftSnapThresholdWALSize" json:"raftSnapThresholdWALSize" env:"RQLITE_"`
+	RaftSnapThresholdWALSize uint64 `yaml:"raftSnapThresholdWALSize" json:"raftSnapThresholdWALSize" env:"RQLITE_RAFT_SNAP_THRESHOLD_WAL_SIZE"`
 
 	// RaftSnapInterval sets the threshold check interval.
 	RaftSnapInterval time.Duration `yaml:"raftSnapInterval" json:"raftSnapInterval" env:"RQLITE_RAFT_SNAP_INTERVAL"`

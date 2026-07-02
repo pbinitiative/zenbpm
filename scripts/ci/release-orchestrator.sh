@@ -246,20 +246,33 @@ wait_workflow_run() {
   local workflow=${2:?workflow is required}
   local branch=${3:?branch is required}
   local event=${4:-workflow_dispatch}
+  local max_attempts=6
+  local attempt=1
   local run_id
 
-  sleep 10
-  run_id=$(gh run list \
-    --repo "$ORG/$repo" \
-    --workflow "$workflow" \
-    --branch "$branch" \
-    --event "$event" \
-    --json databaseId \
-    --jq '.[0].databaseId // empty')
-  if [ -z "$run_id" ]; then
-    echo "Could not find dispatched $workflow workflow run in $ORG/$repo on $branch" >&2
-    exit 1
-  fi
+  while true; do
+    sleep 10
+    if run_id=$(gh run list \
+      --repo "$ORG/$repo" \
+      --workflow "$workflow" \
+      --branch "$branch" \
+      --event "$event" \
+      --json databaseId \
+      --jq '.[0].databaseId // empty' 2>/dev/null); then
+      if [ -n "$run_id" ]; then
+        break
+      fi
+    fi
+
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "Could not find dispatched $workflow workflow run in $ORG/$repo on $branch after $((max_attempts * 10)) seconds" >&2
+      exit 1
+    fi
+
+    echo "Workflow run not found yet, retrying ($attempt/$max_attempts)..." >&2
+    attempt=$((attempt + 1))
+  done
+
   gh run watch "$run_id" --repo "$ORG/$repo" --exit-status
 }
 

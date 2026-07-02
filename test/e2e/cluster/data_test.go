@@ -141,11 +141,8 @@ func TestMessageCorrelationAcrossNodes(t *testing.T) {
 	// Deploy a process with a message catch event
 	DeployDefinitionOnNode(t, nodeA, "simple-intermediate-message-catch-event.bpmn")
 
-	resp, err := nodeA.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, nodeA)
 
 	instanceKey := CreateInstanceOnNode(t, nodeA, defKey, nil)
 	require.NotZero(t, instanceKey)
@@ -199,10 +196,8 @@ func TestIncidentVisibilityAcrossNodes(t *testing.T) {
 	// Deploy a process that will create an incident
 	DeployDefinitionOnNode(t, nodeA, "simple_task.bpmn")
 
-	resp, err := nodeA.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	GetFirstDefinitionKey(t, nodeA)
 
 	// Query incidents from node B (even if none exist yet, the routing should work)
 	incResp, err := nodeB.RestClient.GetProcessInstancesWithResponse(context.Background(), &zenclient.GetProcessInstancesParams{})

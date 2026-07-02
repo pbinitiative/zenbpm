@@ -136,33 +136,42 @@ func (rq *DB) scheduleDataCleanup() {
 // cleanup is being done in batches of size historyDeleteThreshold
 func (rq *DB) dataCleanup(currTime time.Time) (bool, error) {
 	ctx := context.Background()
-	processes, _ := rq.Queries.FindInactiveInstancesToDelete(ctx, sql.FindInactiveInstancesToDeleteParams{
+	inactiveInstancesToDelete, err := rq.Queries.FindInactiveInstancesToDelete(ctx, sql.FindInactiveInstancesToDeleteParams{
 		CurrUnix: ssql.NullInt64{
 			Int64: currTime.Unix(),
 			Valid: true,
 		},
 		Limit: int64(rq.historyDeleteThreshold),
 	})
-	var err error
-	if len(processes) == rq.historyDeleteThreshold {
-		processesNullInt64 := make([]ssql.NullInt64, len(processes))
-		for i := range processes {
+	if err != nil {
+		return false, fmt.Errorf("failed to find inactive process instances to delete: %w", err)
+	}
+	if len(inactiveInstancesToDelete) > 0 {
+		processesNullInt64 := make([]ssql.NullInt64, len(inactiveInstancesToDelete))
+		for i := range inactiveInstancesToDelete {
 			processesNullInt64[i] = ssql.NullInt64{
-				Int64: processes[i],
+				Int64: inactiveInstancesToDelete[i],
 				Valid: true,
 			}
 		}
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteFlowElementInstance(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTokens(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesJobs(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstancesIncidents(ctx, processes))
-		err = errors.Join(err, rq.Queries.DeleteProcessInstances(ctx, processes))
-		return true, nil
+		// Queue the deletes into a single batch so they execute in one atomic
+		// transaction instead of paying a consensus round-trip per statement.
+		batch := rq.NewBatch().(*DBBatch)
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesDecisionInstances(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteFlowElementInstance(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesTokens(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesJobs(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesTimers(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesMessageSubscriptions(ctx, processesNullInt64))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesIncidents(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstancesErrorSubscriptions(ctx, inactiveInstancesToDelete))
+		err = errors.Join(err, batch.queries.DeleteProcessInstances(ctx, inactiveInstancesToDelete))
+		if err != nil {
+			return true, fmt.Errorf("failed to queue history cleanup deletes: %w", err)
+		}
+		return true, batch.Flush(ctx)
 	}
-	return false, err
+	return false, nil
 }
 
 func (rq *DB) ExecuteStatements(ctx context.Context, statements []*proto.Statement) ([]*proto.ExecuteQueryResponse, error) {
@@ -1131,6 +1140,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 	var parentProcessExecutionToken ssql.NullInt64
 	var parentProcessTargetElementID ssql.NullString
 	var parentProcessTargetElementInstanceKey ssql.NullInt64
+	var parentProcessInstanceKey int64
 	switch typedInstance := processInstance.(type) {
 	case *bpmnruntime.DefaultProcessInstance:
 		parentProcessExecutionToken = ssql.NullInt64{
@@ -1142,6 +1152,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Int64: typedInstance.ParentProcessExecutionToken.Key,
 			Valid: true,
 		}
+		parentProcessInstanceKey = typedInstance.ParentProcessExecutionToken.ProcessInstanceKey
 		parentProcessTargetElementID = ssql.NullString{
 			String: typedInstance.ParentProcessTargetElementId,
 			Valid:  true,
@@ -1155,6 +1166,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Int64: typedInstance.ParentProcessExecutionToken.Key,
 			Valid: true,
 		}
+		parentProcessInstanceKey = typedInstance.ParentProcessExecutionToken.ProcessInstanceKey
 		parentProcessTargetElementID = ssql.NullString{
 			String: typedInstance.ParentProcessTargetElementId,
 			Valid:  true,
@@ -1168,6 +1180,7 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 			Int64: typedInstance.ParentProcessExecutionToken.Key,
 			Valid: true,
 		}
+		parentProcessInstanceKey = typedInstance.ParentProcessExecutionToken.ProcessInstanceKey
 		parentProcessTargetElementID = ssql.NullString{
 			String: "",
 			Valid:  false,
@@ -1197,16 +1210,37 @@ func SaveProcessInstanceWith(ctx context.Context, db Querier, processInstance bp
 		return fmt.Errorf("failed to save process instance %d: %w", processInstance.ProcessInstance().Key, err)
 	}
 	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateReady {
-		historyTTL, found := appcontext.HistoryTTLFromContext(ctx)
-		if !found {
-			return nil
+		var historyTTLSec ssql.NullInt64
+		if parentProcessExecutionToken.Valid {
+			// Child instances inherit their parent's TTL instead of reading it from
+			// the context, since the context that created the child may not carry
+			// the history TTL that was set when the parent (root) instance started.
+			parent, err := db.getReadDB().Queries.GetProcessInstance(ctx, parentProcessInstanceKey)
+			switch {
+			case err == nil:
+				historyTTLSec = parent.HistoryTtlSec
+			case errors.Is(err, sql.ErrNoRows):
+				// The parent is not committed yet, which means it is being saved in
+				// the same batch as the child. The child is then being created by the
+				// same request that created the parent, so the context carries the
+				// same history TTL the parent gets.
+				if historyTTL, found := appcontext.HistoryTTLFromContext(ctx); found {
+					historyTTLSec = ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())}
+				}
+			default:
+				return fmt.Errorf("failed to read parent process instance %d for history TTL inheritance: %w", parentProcessInstanceKey, err)
+			}
+		} else if historyTTL, found := appcontext.HistoryTTLFromContext(ctx); found {
+			historyTTLSec = ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())}
 		}
-		err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
-			HistoryTTLSec: ssql.NullInt64{Valid: true, Int64: int64(historyTTL.Seconds())},
-			Key:           processInstance.ProcessInstance().Key,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.ProcessInstance().Key, err)
+		if historyTTLSec.Valid {
+			err = db.getQueries().SetProcessInstanceTTL(ctx, sql.SetProcessInstanceTTLParams{
+				HistoryTTLSec: historyTTLSec,
+				Key:           processInstance.ProcessInstance().Key,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set process instance TTL %d: %w", processInstance.ProcessInstance().Key, err)
+			}
 		}
 	}
 	if processInstance.ProcessInstance().State == bpmnruntime.ActivityStateCompleted ||

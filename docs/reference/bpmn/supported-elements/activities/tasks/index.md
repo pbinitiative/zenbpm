@@ -15,6 +15,8 @@ Tasks are the basic elements of BPMN processes — atomic units of work composed
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -56,3 +58,7 @@ Tasks are the basic elements of BPMN processes — atomic units of work composed
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+Manual task
+:::

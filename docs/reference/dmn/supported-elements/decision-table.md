@@ -38,7 +38,7 @@ A rectangle with a table icon, labelled with the decision name.
 
 ## Current Implementation
 
-*To confirm with the team.*
+Support varies by hit policy — see the [Hit policy](#hit-policy) table below.
 
 ## Input
 
@@ -60,10 +60,6 @@ An Input column defines one condition evaluated against incoming data. Each inpu
 </input>
 ```
 
-### Current Implementation
-
-*To confirm with the team.*
-
 ## Output
 
 An Output column defines the value returned when a rule matches. A decision table can have one or more output columns.
@@ -79,10 +75,6 @@ An Output column defines the value returned when a rule matches. A decision tabl
 ```xml
 <output id="output_1" label="Discount" typeRef="integer" />
 ```
-
-### Current Implementation
-
-*To confirm with the team.*
 
 ## Rule
 
@@ -102,10 +94,6 @@ A Rule is a single row in the decision table. It specifies an input entry (condi
   <outputEntry><text>20</text></outputEntry>
 </rule>
 ```
-
-### Current Implementation
-
-*To confirm with the team.*
 
 ## Hit policy
 

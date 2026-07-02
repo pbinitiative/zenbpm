@@ -15,7 +15,7 @@ A Text Annotation (sometimes called a Data Store Annotation) is a BPMN artifact 
 
 An open bracket shape connected to the annotated element by a dashed line.
 
-<img src="/img/bpmn/others/data-store-annotation.png" alt="Text Annotation" height="90" />
+<img src="/img/bpmn/others/data-store-annotation.svg" alt="Text Annotation" height="90" />
 
 ## XML Definition
 

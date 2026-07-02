@@ -33,9 +33,10 @@ A Business Rule Task is a BPMN flow element that provides a mechanism for invoki
 	Apply business rules for pricing, risk assessment, or other computational decisions.
 
 ## Graphical notation
-<img src="/img/bpmn/activities/business-rule-task.svg" alt="Business rule task usage example" width="110" height="90" />
 
 A rounded rectangle with the business rule marker (grid icon) in the top-left corner.
+
+<img src="/img/bpmn/activities/business-rule-task.svg" alt="Business rule task usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

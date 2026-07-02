@@ -15,6 +15,8 @@ A Flow connects BPMN elements and defines the order in which they are executed. 
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -52,4 +54,6 @@ A Flow connects BPMN elements and defines the order in which they are executed. 
   </tbody>
 </table>
 
-Unsupported flows: Message flow, Data association
+:::note[Not yet supported]
+Message flow, Data association
+:::

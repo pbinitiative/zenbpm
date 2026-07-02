@@ -15,6 +15,8 @@ A Start Event defines the beginning of a process instance. It has no incoming se
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -41,3 +43,7 @@ A Start Event defines the beginning of a process instance. It has no incoming se
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+Conditional, Signal
+:::

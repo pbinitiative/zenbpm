@@ -6,7 +6,11 @@ sidebar_position: 0
 
 DMN elements supported by the ZenBPM engine.
 
+A Decision Requirements Diagram is built from four node types: **Decision**, **Business Knowledge Model**, **Input Data**, and **Knowledge Source**. **Decision table**, **Literal expression**, and **Empty decision** are not separate DRD nodes — they are the three logic variants a **Decision** node can hold (DMN also defines other variants, such as Context and Relation, which are not covered here). They're listed as their own rows below because each has distinct graphical notation and XML.
+
 ## Types
+
+Green icons are supported and link to their documentation.
 
 <table className="bpmn-types-table">
   <thead>
@@ -49,3 +53,7 @@ DMN elements supported by the ZenBPM engine.
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+Decision Service
+:::

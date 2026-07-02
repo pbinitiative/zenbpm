@@ -29,7 +29,3 @@ A rectangle with clipped corners, labelled with the BKM name.
   </encapsulatedLogic>
 </businessKnowledgeModel>
 ```
-
-## Current Implementation
-
-*To confirm with the team.*

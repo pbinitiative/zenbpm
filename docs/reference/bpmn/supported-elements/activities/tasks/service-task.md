@@ -45,9 +45,10 @@ A Service Task is a BPMN flow element that represents work performed automatical
 		Integrates with third-party systems, microservices, or legacy systems through adapters or connectors.
 
 ## Graphical notation
-<img src="/img/bpmn/activities/service-task.svg" alt="Service task usage example" width="110" height="90" />
 
 A rectangle with a gear icon in the top-left corner.
+
+<img src="/img/bpmn/activities/service-task.svg" alt="Service task usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

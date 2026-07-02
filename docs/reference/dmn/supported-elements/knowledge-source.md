@@ -22,7 +22,3 @@ A document-like shape (truncated rectangle) labelled with the source name.
 ```xml
 <knowledgeSource id="taxRegulation" name="Tax regulation 2024" />
 ```
-
-## Current Implementation
-
-*To confirm with the team.*

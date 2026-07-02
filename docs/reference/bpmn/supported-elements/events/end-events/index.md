@@ -15,6 +15,8 @@ An End Event marks the completion of a process path. It has no outgoing sequence
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -41,8 +43,12 @@ An End Event marks the completion of a process path. It has no outgoing sequence
     </tr>
     <tr>
       <td><a href="./terminate-end-event">Terminate</a></td>
-      <td></td>
+      <td><a href="./terminate-end-event"><img className="bpmn-supported" src="/img/bpmn/events/terminate-end-event.svg" alt="Terminate End Event" height="70" /></a></td>
       <td>Immediately cancels the entire process instance including all parallel tokens</td>
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+Escalation, Signal, Compensation, Cancel
+:::

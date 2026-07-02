@@ -15,6 +15,8 @@ An Intermediate Event occurs between the start and end of a process. Intermediat
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -57,3 +59,8 @@ An Intermediate Event occurs between the start and end of a process. Intermediat
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+- Catch triggers: Conditional, Signal
+- Throw triggers: None, Escalation, Signal, Compensation
+:::

@@ -72,9 +72,10 @@ These mappings control the variable scope at the start and end of the Call Activ
 	Configure multiple instances to process collections or perform parallel operations.
 
 ## Graphical notation
-<img src="/img/bpmn/activities/call-activity.svg" alt="Call activity usage example" width="110" height="90" />
 
 A rectangle with a thick border and a subprocess marker (small rectangle with a plus sign) in the bottom-center.
+
+<img src="/img/bpmn/activities/call-activity.svg" alt="Call activity usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

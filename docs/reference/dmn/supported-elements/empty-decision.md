@@ -22,7 +22,3 @@ A plain rectangle with no icon, labelled with the decision name.
 ```xml
 <decision id="pendingDecision" name="Pending decision" />
 ```
-
-## Current Implementation
-
-*To confirm with the team.*

@@ -14,6 +14,8 @@ A Gateway controls how the process flow diverges and converges. It is used to mo
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>
@@ -45,3 +47,7 @@ A Gateway controls how the process flow diverges and converges. It is used to mo
     </tr>
   </tbody>
 </table>
+
+:::note[Not yet supported]
+Complex gateway
+:::

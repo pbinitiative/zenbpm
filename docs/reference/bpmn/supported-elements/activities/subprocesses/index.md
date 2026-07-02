@@ -15,6 +15,8 @@ Subprocesses are element containers that group a set of activities, events, and 
 
 ## Types
 
+Green icons are supported and link to their documentation.
+
 <table className="bpmn-types-table">
   <thead>
     <tr>

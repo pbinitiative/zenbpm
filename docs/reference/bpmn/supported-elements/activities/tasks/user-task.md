@@ -39,9 +39,10 @@ A User Task is a BPMN flow element that represents work performed by a human. It
 		user asks can have priority levels (low, medium, high, critical) to help users prioritize their work queue.
 
 ## Graphical notation
-<img src="/img/bpmn/activities/user-task.svg" alt="User task usage example" width="110" height="90" />
 
 A rectangle with a person icon in the top-left corner.
+
+<img src="/img/bpmn/activities/user-task.svg" alt="User task usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

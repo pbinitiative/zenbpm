@@ -22,7 +22,3 @@ An oval shape labelled with the input data name.
 ```xml
 <inputData id="customerType" name="Customer type" />
 ```
-
-## Current Implementation
-
-*To confirm with the team.*

@@ -26,7 +26,3 @@ A rectangle with a curly-braces icon, labelled with the decision name.
   </literalExpression>
 </decision>
 ```
-
-## Current Implementation
-
-*To confirm with the team.*

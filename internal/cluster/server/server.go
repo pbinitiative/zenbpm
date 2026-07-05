@@ -197,14 +197,6 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) ListActiveMessageSubscriptions(ctx context.Context, req *proto.ListActiveMessageSubscriptionsRequest) (*proto.ListActiveMessageSubscriptionsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ListActiveMessageSubscriptions is not implemented")
-}
-
-func (s *Server) RebuildMessageSubscriptionPointers(ctx context.Context, req *proto.RebuildMessageSubscriptionPointersRequest) (*proto.RebuildMessageSubscriptionPointersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "RebuildMessageSubscriptionPointers is not implemented")
-}
-
 func (s *Server) ListDefinitions(ctx context.Context, req *proto.ListDefinitionsRequest) (*proto.ListDefinitionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "ListDefinitions is not implemented")
 }

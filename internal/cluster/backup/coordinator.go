@@ -218,7 +218,51 @@ func pollRestoring(ctx context.Context, clusterState func() state.Cluster, want 
 	}
 }
 
-// reconcile is completed in Tasks 12-13; at this stage it is a no-op shell.
+// reconcile rebuilds derived state (pointer tables, definition sync) after all
+// partition images have been loaded. It is idempotent — safe to retry if a
+// prior attempt failed mid-way.
 func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) error {
+	if err := syncDefinitions(ctx, deps, report); err != nil { // Task 13; stub returns nil until then
+		return err
+	}
+	cs := deps.ClusterState()
+
+	var all []*proto.MessageSubscriptionRow
+	for id := range cs.Partitions {
+		leader, err := deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return fmt.Errorf("pointer scan: failed to get leader for partition %d: %w", id, err)
+		}
+		resp, err := leader.ListActiveMessageSubscriptions(ctx, &proto.ListActiveMessageSubscriptionsRequest{PartitionId: ptr.To(id)})
+		if err != nil {
+			return fmt.Errorf("pointer scan on partition %d failed: %w", id, err)
+		}
+		all = append(all, resp.GetRows()...)
+	}
+
+	plan := PlanPointerRebuild(all, cs.GetPartitionIdForMessageSubscriptionPointer)
+	report.PointerConflicts = plan.Conflicts
+
+	// every partition gets a rebuild call — even with zero rows — to wipe stale pointers
+	for id := range cs.Partitions {
+		rows := plan.ByPartition[id]
+		leader, err := deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return fmt.Errorf("pointer rebuild: failed to get leader for partition %d: %w", id, err)
+		}
+		_, err = leader.RebuildMessageSubscriptionPointers(ctx, &proto.RebuildMessageSubscriptionPointersRequest{
+			PartitionId: ptr.To(id),
+			Pointers:    rows,
+		})
+		if err != nil {
+			return fmt.Errorf("pointer rebuild on partition %d failed: %w", id, err)
+		}
+		report.PointersRebuilt += len(rows)
+	}
+	return nil
+}
+
+// syncDefinitions is completed in Task 13.
+func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreReport) error {
 	return nil
 }

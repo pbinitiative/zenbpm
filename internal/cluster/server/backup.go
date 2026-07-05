@@ -97,6 +97,37 @@ func (s *Server) PartitionBackup(req *proto.PartitionBackupRequest, stream grpc.
 	return nil
 }
 
+// ListActiveMessageSubscriptions returns every ACTIVE message subscription row
+// on a locally-hosted partition. Called by the restore coordinator to rebuild
+// pointer tables after a cluster restore.
+func (s *Server) ListActiveMessageSubscriptions(ctx context.Context, req *proto.ListActiveMessageSubscriptionsRequest) (*proto.ListActiveMessageSubscriptionsResponse, error) {
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil {
+		return nil, status.Errorf(codes.NotFound, "partition %d is not hosted on this node", req.GetPartitionId())
+	}
+	rows, err := partitionNode.DB.ListActiveMessageSubscriptions(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err)
+	}
+	return &proto.ListActiveMessageSubscriptionsResponse{Rows: rows}, nil
+}
+
+// RebuildMessageSubscriptionPointers wipes and re-inserts the pointer table for
+// a locally-hosted partition. Only permitted while the cluster is in restoring state.
+func (s *Server) RebuildMessageSubscriptionPointers(ctx context.Context, req *proto.RebuildMessageSubscriptionPointersRequest) (*proto.RebuildMessageSubscriptionPointersResponse, error) {
+	if !s.store.ClusterState().Restoring {
+		return nil, status.Errorf(codes.FailedPrecondition, "cluster is not in restoring state")
+	}
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil {
+		return nil, status.Errorf(codes.NotFound, "partition %d is not hosted on this node", req.GetPartitionId())
+	}
+	if err := partitionNode.DB.RebuildMessageSubscriptionPointers(ctx, req.GetPointers()); err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err)
+	}
+	return &proto.RebuildMessageSubscriptionPointersResponse{}, nil
+}
+
 // PartitionDataStats returns row counts for a locally-hosted partition.
 func (s *Server) PartitionDataStats(ctx context.Context, req *proto.PartitionDataStatsRequest) (*proto.PartitionDataStatsResponse, error) {
 	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())

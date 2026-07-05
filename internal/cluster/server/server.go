@@ -200,10 +200,6 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) PartitionRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.PartitionRestoreResponse]) error {
-	return status.Errorf(codes.Unimplemented, "PartitionRestore is not implemented")
-}
-
 func (s *Server) PartitionDataStats(ctx context.Context, req *proto.PartitionDataStatsRequest) (*proto.PartitionDataStatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "PartitionDataStats is not implemented")
 }

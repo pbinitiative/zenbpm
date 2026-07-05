@@ -170,21 +170,27 @@ func (w *Worker) connect() error {
 
 func (w *Worker) performWork() {
 	for {
-		jobToComplete, err := w.stream.Recv()
+		w.sendMu.Lock()
+		stream := w.stream
+		w.sendMu.Unlock()
+		if stream == nil {
+			return
+		}
+		jobToComplete, err := stream.Recv()
 		if err != nil {
 			if w.handleRecvError(err) {
 				continue
 			}
 			return
 		}
-		w.processMessage(jobToComplete)
+		w.processMessage(stream, jobToComplete)
 	}
 }
 
 // processMessage handles a single, error-free message received from the stream:
 // it logs server-reported job errors, skips empty responses, and dispatches
 // real jobs to a handler goroutine.
-func (w *Worker) processMessage(jobToComplete *proto.JobStreamResponse) {
+func (w *Worker) processMessage(stream grpc.BidiStreamingClient[proto.JobStreamRequest, proto.JobStreamResponse], jobToComplete *proto.JobStreamResponse) {
 	if jobToComplete.Error != nil {
 		w.logger.Error(fmt.Sprintf("Failed to receive job from stream: %s", jobToComplete.Error.GetMessage()))
 		return
@@ -193,7 +199,7 @@ func (w *Worker) processMessage(jobToComplete *proto.JobStreamResponse) {
 		w.logger.Error("received job stream response with no job and no error; skipping")
 		return
 	}
-	go w.handleJob(w.stream.Context(), jobToComplete.Job, w.send)
+	go w.handleJob(stream.Context(), jobToComplete.Job, w.send)
 }
 
 // handleRecvError reacts to an error returned by stream.Recv. It returns true
@@ -234,13 +240,13 @@ func (w *Worker) reconnect() bool {
 			return false
 		}
 		w.logInfo(fmt.Sprintf("zenclient: reconnecting job stream (attempt %d)", attempt))
-		if err := w.connect(); err == nil {
+		err := w.connect()
+		if err == nil {
 			w.lastBackoff = backoff
 			w.logInfo(fmt.Sprintf("zenclient: job stream reconnected after %d attempt(s)", attempt))
 			return true
-		} else {
-			w.logger.Error(fmt.Sprintf("zenclient: failed to reconnect job stream (attempt %d): %s", attempt, err))
 		}
+		w.logger.Error(fmt.Sprintf("zenclient: failed to reconnect job stream (attempt %d): %s", attempt, err))
 		select {
 		case <-w.ctx.Done():
 			return false

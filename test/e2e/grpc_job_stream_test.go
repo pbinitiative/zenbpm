@@ -301,7 +301,7 @@ func TestGrpcJobStreamReconnectsAfterConnectionLoss(t *testing.T) {
 	zenClient := zenclient.NewGrpc(conn)
 
 	var processed atomic.Int64
-	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		processed.Add(1)
 		return map[string]any{"testVar": 456}, nil
 	}, randomID)
@@ -352,11 +352,9 @@ func deployDefinitionWithJobType(t testing.TB, filename string, processId string
 
 	for k, v := range jobTypeMap {
 		template := `taskDefinition type="%s"`
-		oldBytes := &bytes.Buffer{}
-		oldBytes.WriteString(fmt.Sprintf(template, k))
-		newBytes := &bytes.Buffer{}
-		newBytes.WriteString(fmt.Sprintf(template, v))
-		file = bytes.ReplaceAll(file, oldBytes.Bytes(), newBytes.Bytes())
+		oldBytes := fmt.Appendf([]byte{}, template, k)
+		newBytes := fmt.Appendf([]byte{}, template, v)
+		file = bytes.ReplaceAll(file, oldBytes, newBytes)
 	}
 
 	var requestBody bytes.Buffer
@@ -402,7 +400,7 @@ func registerDualTypeWorker(t testing.TB, randomID, completeType string) (*zencl
 
 	var taskCount atomic.Int64
 	var completeCount atomic.Int64
-	worker, err := zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+	worker, err := zenClient.RegisterWorker(t.Context(), randomID, func(_ context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		switch job.GetType() {
 		case completeType:
 			completeCount.Add(1)

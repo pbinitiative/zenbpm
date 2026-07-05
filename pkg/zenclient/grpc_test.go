@@ -149,7 +149,7 @@ func TestRegisterWorker_ReconnectsAfterStreamError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handled, _ := registerHandledWorker(t, client, logger, ctx)
+	handled, _ := registerHandledWorker(ctx, t, client, logger)
 
 	// Break the first stream: the worker must reconnect instead of exiting.
 	stream1.pushError(fmt.Errorf("transport is closing"))
@@ -184,7 +184,7 @@ func TestRegisterWorker_CancelsPreviousStreamContextAfterReconnect(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handled, _ := registerHandledWorker(t, client, logger, ctx)
+	handled, _ := registerHandledWorker(ctx, t, client, logger)
 
 	stream1.pushError(fmt.Errorf("transport is closing"))
 	stream2.pushJob(&proto.WaitingJob{Key: new(int64(404))})
@@ -217,7 +217,7 @@ func TestRegisterWorker_RetriesWhenReconnectKeepsFailing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handled, _ := registerHandledWorker(t, client, logger, ctx)
+	handled, _ := registerHandledWorker(ctx, t, client, logger)
 
 	stream1.pushError(fmt.Errorf("transport is closing"))
 	stream2.pushJob(&proto.WaitingJob{Key: new(int64(202))})
@@ -248,7 +248,7 @@ func TestRegisterWorker_ReplaysAddedSubscriptionAfterReconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handled, worker := registerHandledWorker(t, client, logger, ctx)
+	handled, worker := registerHandledWorker(ctx, t, client, logger)
 	require.NoError(t, worker.AddJobSubscription("dynamic-type"))
 
 	stream1.pushError(fmt.Errorf("transport is closing"))
@@ -280,7 +280,7 @@ func TestRegisterWorker_DoesNotReplayRemovedSubscriptionAfterReconnect(t *testin
 	defer cancel()
 
 	grpcClient := (&Grpc{Client: client}).WithLogger(logger)
-	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError) {
+	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
 		return nil, nil
 	}, "test-type", "removed-type")
 	require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestRegisterWorker_StopsOnContextCancellation(t *testing.T) {
 	grpcClient := (&Grpc{Client: client}).WithLogger(logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError) {
+	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
 		return nil, nil
 	}, "test-type")
 	require.NoError(t, err)
@@ -489,11 +489,11 @@ func (s *fakeBidiStream) RecvMsg(_ any) error          { return nil }
 // that forwards every received job key to the returned channel, and returns the channel
 // together with the registered Worker. Both require assertions are made inline so callers
 // can skip error-checking boilerplate.
-func registerHandledWorker(t *testing.T, client *fakeZenBpmClient, logger *captureLogger, ctx context.Context) (chan int64, *Worker) {
+func registerHandledWorker(ctx context.Context, t *testing.T, client *fakeZenBpmClient, logger *captureLogger) (chan int64, *Worker) {
 	t.Helper()
 	handled := make(chan int64, 1)
 	grpcClient := (&Grpc{Client: client}).WithLogger(logger)
-	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError) {
+	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(_ context.Context, job *proto.WaitingJob) (map[string]any, *WorkerError) {
 		handled <- job.GetKey()
 		return nil, nil
 	}, "test-type")

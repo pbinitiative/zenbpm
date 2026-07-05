@@ -24,6 +24,7 @@ func (l *DefLogger) Error(msg string) {
 	l.logger.Error(msg)
 }
 
+// Info logs an informational message at info level.
 func (l *DefLogger) Info(msg string) {
 	l.logger.Info(msg)
 }

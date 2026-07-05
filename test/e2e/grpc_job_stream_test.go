@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
+	"mime/multipart"
+	"net"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,7 +50,7 @@ func TestGrpcJobStream(t *testing.T) {
 
 	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
-	defer conn.Close()
+	defer func() { assert.NoError(t, conn.Close()) }()
 
 	zenClient := zenclient.NewGrpc(conn)
 
@@ -113,10 +117,9 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, instance.Key)
 
-	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	failConn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
-	defer conn.Close()
-	zenClient := zenclient.NewGrpc(conn)
+	zenClient := zenclient.NewGrpc(failConn)
 
 	fmt.Println("registering worker")
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
@@ -138,19 +141,19 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 		if len(jobs) != 1 {
 			return false
-		} else {
-			return jobs[0].State == public.JobStateFailed
 		}
+
+		return jobs[0].State == public.JobStateFailed
 	}, 30*time.Second, 100*time.Millisecond, "job should have failed")
 
 	// now setup for resolve
-	conn.Close()
+	require.NoError(t, failConn.Close())
 
-	conn, err = grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	resolveConn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	assert.NoError(t, err)
 
-	defer conn.Close()
-	zenClient = zenclient.NewGrpc(conn)
+	defer func() { assert.NoError(t, resolveConn.Close()) }()
+	zenClient = zenclient.NewGrpc(resolveConn)
 
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
 		assert.Equal(t, randomID, job.GetType())
@@ -200,6 +203,134 @@ func TestGrpcJobStreamFailjob(t *testing.T) {
 
 }
 
+func TestGrpcJobStreamAddJobSubscription(t *testing.T) {
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	completeType := fmt.Sprintf("%s-complete", randomID)
+	definition, err := deployDefinitionWithJobType(t, "long-task-chain.bpmn", randomID, map[string]string{
+		"TestType":         randomID,
+		"TestCompleteType": completeType,
+	})
+	require.NoError(t, err)
+
+	instances := 5
+	startedInstances := make([]int64, 0, instances)
+	for range instances {
+		instance, err := createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{
+			"testVar": 123,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, instance.Key)
+		startedInstances = append(startedInstances, instance.Key)
+	}
+
+	worker, taskCount, completeCount := registerDualTypeWorker(t, randomID, completeType)
+
+	// Dynamically subscribe the same worker to the complete job type. This exercises
+	// AddJobSubscription so a single worker can drive the whole task chain to completion.
+	require.NoError(t, worker.AddJobSubscription(completeType))
+
+	require.Eventually(t, func() bool {
+		for _, instanceKey := range startedInstances {
+			inst, err := getProcessInstance(t, instanceKey)
+			if err != nil || inst.State != zenclient.ProcessInstanceStateCompleted {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 100*time.Millisecond, "all instances should complete once the worker is subscribed to both job types")
+
+	assert.Positive(t, taskCount.Load(), "the worker should have processed at least one task job")
+	assert.Positive(t, completeCount.Load(), "the worker should have processed the complete job after AddJobSubscription")
+}
+
+func TestGrpcJobStreamRemoveJobSubscription(t *testing.T) {
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	completeType := fmt.Sprintf("%s-complete", randomID)
+	definition, err := deployDefinitionWithJobType(t, "long-task-chain.bpmn", randomID, map[string]string{
+		"TestType":         randomID,
+		"TestCompleteType": completeType,
+	})
+	require.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{
+		"testVar": 123,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, instance.Key)
+
+	worker, taskCount, completeCount := registerDualTypeWorker(t, randomID, completeType)
+
+	// Subscribe to the complete job type and immediately unsubscribe again. The task
+	// jobs run long before the final complete job is created, so once the removal is
+	// processed the complete job can never be delivered and the instance cannot finish.
+	require.NoError(t, worker.AddJobSubscription(completeType))
+	require.NoError(t, worker.RemoveJobSubscription(completeType))
+
+	require.Eventually(t, func() bool {
+		return taskCount.Load() >= 10
+	}, 30*time.Second, 100*time.Millisecond, "all task-type jobs should be processed")
+
+	assert.Never(t, func() bool {
+		inst, err := getProcessInstance(t, instance.Key)
+		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
+	}, 3*time.Second, 200*time.Millisecond, "instance must not complete while unsubscribed from the complete job type")
+	assert.Zero(t, completeCount.Load(), "no complete job should be delivered after RemoveJobSubscription")
+
+	require.NoError(t, worker.AddJobSubscription(completeType))
+	require.Eventually(t, func() bool {
+		inst, err := getProcessInstance(t, instance.Key)
+		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
+	}, 30*time.Second, 100*time.Millisecond, "instance should complete after re-subscribing to the complete job type")
+	assert.Positive(t, completeCount.Load(), "the complete job should be processed after re-subscribing")
+}
+
+func TestGrpcJobStreamReconnectsAfterConnectionLoss(t *testing.T) {
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, map[string]string{
+		"TestType": randomID,
+	})
+	require.NoError(t, err)
+
+	// Put a TCP proxy between the worker and the gRPC server so the test can
+	// sever the connection and force the job stream to break mid-flight.
+	proxy := startTCPProxy(t, app.grpcAddr)
+
+	conn, err := grpc.NewClient(proxy.address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	zenClient := zenclient.NewGrpc(conn)
+
+	var processed atomic.Int64
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+		processed.Add(1)
+		return map[string]any{"testVar": 456}, nil
+	}, randomID)
+	require.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{"testVar": 123})
+	require.NoError(t, err)
+	require.NotEmpty(t, instance.Key)
+	require.Eventually(t, func() bool {
+		inst, err := getProcessInstance(t, instance.Key)
+		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
+	}, 30*time.Second, 100*time.Millisecond, "instance should complete before the connection loss")
+
+	// Sever every active connection: the job stream breaks with a transport
+	// error and the worker must reconnect on its own through the same address.
+	proxy.dropActiveConnections()
+
+	processedBefore := processed.Load()
+	instance2, err := createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{"testVar": 123})
+	require.NoError(t, err)
+	require.NotEmpty(t, instance2.Key)
+
+	require.Eventually(t, func() bool {
+		inst, err := getProcessInstance(t, instance2.Key)
+		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
+	}, 30*time.Second, 100*time.Millisecond, "instance should complete after the worker reconnects")
+	assert.Greater(t, processed.Load(), processedBefore, "the worker should have processed jobs after reconnecting")
+}
+
 func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition201JSONResponse, error) {
 	t.Helper()
 
@@ -222,24 +353,156 @@ func deployDefinitionWithJobType(t testing.TB, filename string, processId string
 	for k, v := range jobTypeMap {
 		template := `taskDefinition type="%s"`
 		oldBytes := &bytes.Buffer{}
-		fmt.Fprintf(oldBytes, template, k)
+		oldBytes.WriteString(fmt.Sprintf(template, k))
 		newBytes := &bytes.Buffer{}
-		fmt.Fprintf(newBytes, template, v)
+		newBytes.WriteString(fmt.Sprintf(template, v))
 		file = bytes.ReplaceAll(file, oldBytes.Bytes(), newBytes.Bytes())
 	}
 
-	// fmt.Println("deployed process", string(file))
-	resp, err := app.NewRequest(t).
-		WithPath("/v1/process-definitions").
-		WithMethod("POST").
-		WithMultipartBody(file, filename).
-		DoOk()
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	part, err := writer.CreateFormFile("resource", filename)
 	if err != nil {
-		return result, fmt.Errorf("failed to deploy process definition: %s %w", string(resp), err)
+		return result, fmt.Errorf("failed to create form file: %w", err)
 	}
-	err = json.Unmarshal(resp, &result)
+	_, err = part.Write(file)
+	if err != nil {
+		return result, fmt.Errorf("failed to write file to multipart form: %w", err)
+	}
+	err = writer.Close()
+	if err != nil {
+		return result, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+	resp, err := app.restClient.CreateProcessDefinitionWithBodyWithResponse(t.Context(), writer.FormDataContentType(), &requestBody)
+	if err != nil {
+		return result, fmt.Errorf("failed to deploy process definition: %w", err)
+	}
+	if resp.StatusCode() >= 400 {
+		return result, fmt.Errorf("failed to deploy process definition: %s", string(resp.Body))
+	}
+	err = json.Unmarshal(resp.Body, &result)
 	if err != nil {
 		return result, fmt.Errorf("failed to unmarshal create definition response: %w", err)
 	}
 	return result, nil
+}
+
+// registerDualTypeWorker opens a gRPC connection to the test server, registers a worker
+// subscribed to randomID job type whose handler increments taskCount for jobs of type
+// randomID and completeCount for jobs of type completeType. The connection is closed
+// automatically when the test ends via t.Cleanup.
+func registerDualTypeWorker(t testing.TB, randomID, completeType string) (*zenclient.Worker, *atomic.Int64, *atomic.Int64) {
+	t.Helper()
+
+	conn, err := grpc.NewClient(app.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+
+	zenClient := zenclient.NewGrpc(conn)
+
+	var taskCount atomic.Int64
+	var completeCount atomic.Int64
+	worker, err := zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, job *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+		switch job.GetType() {
+		case completeType:
+			completeCount.Add(1)
+		case randomID:
+			taskCount.Add(1)
+		default:
+			t.Errorf("unexpected job type: %s", job.GetType())
+		}
+		return map[string]any{
+			"testVar": 456,
+		}, nil
+	}, randomID)
+	require.NoError(t, err)
+	require.NotNil(t, worker)
+	return worker, &taskCount, &completeCount
+}
+
+// tcpProxy is a minimal TCP forwarder used to simulate network failures
+// between a gRPC client and the test server. It keeps listening after
+// dropActiveConnections, so clients can transparently reconnect through the
+// same address.
+type tcpProxy struct {
+	listener net.Listener
+	target   string
+	mu       sync.Mutex
+	conns    map[net.Conn]struct{}
+}
+
+// startTCPProxy starts a TCP proxy forwarding to target and registers cleanup
+// via t.Cleanup.
+func startTCPProxy(t testing.TB, target string) *tcpProxy {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	p := &tcpProxy{
+		listener: listener,
+		target:   target,
+		conns:    make(map[net.Conn]struct{}),
+	}
+	go p.acceptLoop()
+	t.Cleanup(func() {
+		_ = p.listener.Close()
+		p.dropActiveConnections()
+	})
+	return p
+}
+
+func (p *tcpProxy) address() string {
+	return p.listener.Addr().String()
+}
+
+func (p *tcpProxy) acceptLoop() {
+	for {
+		clientConn, err := p.listener.Accept()
+		if err != nil {
+			// Listener closed: the accept loop has a deterministic exit path.
+			return
+		}
+		serverConn, err := net.Dial("tcp", p.target)
+		if err != nil {
+			_ = clientConn.Close()
+			continue
+		}
+		p.track(clientConn)
+		p.track(serverConn)
+		go p.pipe(clientConn, serverConn)
+		go p.pipe(serverConn, clientConn)
+	}
+}
+
+// pipe copies bytes from src to dst and tears both connections down when
+// either direction fails, so the copy goroutines always terminate.
+func (p *tcpProxy) pipe(dst, src net.Conn) {
+	_, _ = io.Copy(dst, src)
+	p.untrack(dst)
+	p.untrack(src)
+}
+
+func (p *tcpProxy) track(conn net.Conn) {
+	p.mu.Lock()
+	p.conns[conn] = struct{}{}
+	p.mu.Unlock()
+}
+
+func (p *tcpProxy) untrack(conn net.Conn) {
+	p.mu.Lock()
+	delete(p.conns, conn)
+	p.mu.Unlock()
+	_ = conn.Close()
+}
+
+// dropActiveConnections severs every currently proxied connection while the
+// proxy keeps accepting new ones, simulating a transient network failure.
+func (p *tcpProxy) dropActiveConnections() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for conn := range p.conns {
+		_ = conn.Close()
+		delete(p.conns, conn)
+	}
 }

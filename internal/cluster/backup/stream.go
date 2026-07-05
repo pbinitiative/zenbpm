@@ -9,7 +9,6 @@ import (
 	"io"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -59,8 +58,8 @@ func StreamPartitionBackup(ctx context.Context, src BackupSource, schemaVersion 
 		return fmt.Errorf("partition backup failed: %w", err)
 	}
 	return send(&proto.BackupChunk{
-		Eof:           ptr.To(true),
-		Sha256:        ptr.To(hex.EncodeToString(w.hash.Sum(nil))),
-		SchemaVersion: ptr.To(schemaVersion),
+		Eof:           new(true),
+		Sha256:        new(hex.EncodeToString(w.hash.Sum(nil))),
+		SchemaVersion: new(schemaVersion),
 	})
 }

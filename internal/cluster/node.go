@@ -11,6 +11,7 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -129,7 +130,7 @@ func StartZenNode(mainCtx context.Context, conf config.Config) (*ZenNode, error)
 	node.controller.AddClusterStateChangeHook(node.JobManager.OnClusterStateChange)
 
 	clusterSrvLn := network.NewZenBpmClusterListener(mux)
-	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager)
+	clusterSrv := server.New(clusterSrvLn, node.store, node.controller, node.JobManager, node.client)
 	if err = clusterSrv.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open cluster GRPC server: %w", err)
 	}

@@ -676,7 +676,7 @@ func setupControllerTestCluster(t *testing.T) (*ControllerTestStore, *client.Cli
 		leader: true,
 	}
 	srvLn := network.NewZenBpmClusterListener(mux)
-	srv := server.New(srvLn, tStore, nil, nil)
+	srv := server.New(srvLn, tStore, nil, nil, nil)
 	require.NoError(t, srv.Open())
 
 	clientMgr := client.NewClientManager(tStore)

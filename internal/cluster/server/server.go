@@ -77,13 +77,14 @@ type ControllerService interface {
 }
 
 // New returns a new instance of the zen cluster server
-func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager) *Server {
+func New(ln net.Listener, store StoreService, controller ControllerService, jobManager *jobmanager.JobManager, clientMgr *client.ClientManager) *Server {
 	return &Server{
 		ln:         ln,
 		addr:       ln.Addr(),
 		store:      store,
 		controller: controller,
 		jobManager: jobManager,
+		client:     clientMgr,
 	}
 }
 
@@ -183,10 +184,6 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	default:
 		return nil, fmt.Errorf("unexpected command type: %v", req.GetType())
 	}
-}
-
-func (s *Server) ClusterBackup(req *proto.ClusterBackupRequest, stream grpc.ServerStreamingServer[proto.BackupChunk]) error {
-	return status.Errorf(codes.Unimplemented, "ClusterBackup is not implemented")
 }
 
 func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.ClusterRestoreResponse]) error {

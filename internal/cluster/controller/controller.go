@@ -229,6 +229,25 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		c.logger.Debug("Skipping member operation checks due to expired context")
 		return
 	}
+	if c.store.ClusterState().Restoring {
+		c.partitionsMu.RLock()
+		local := make(map[uint32]*partition.ZenPartitionNode, len(c.partitions))
+		for id, pn := range c.partitions {
+			local[id] = pn
+		}
+		c.partitionsMu.RUnlock()
+		for id, pn := range local {
+			c.partitionsMu.Lock()
+			engine := pn.Engine
+			pn.Engine = nil
+			c.partitionsMu.Unlock()
+			if engine != nil {
+				engine.Stop()
+				c.logger.Info("Stopped engine while cluster restore is in progress", "partitionId", id)
+			}
+		}
+		return
+	}
 	cs := c.store.ClusterState()
 	currentNode, err := cs.GetNode(c.store.ID())
 	if err != nil {

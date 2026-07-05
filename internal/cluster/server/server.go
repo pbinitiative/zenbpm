@@ -185,12 +185,12 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	}
 }
 
-func (s *Server) ClusterBackup(ctx context.Context, req *proto.ClusterBackupRequest) (*proto.ClusterBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ClusterBackup is not implemented")
+func (s *Server) ClusterBackup(req *proto.ClusterBackupRequest, stream grpc.ServerStreamingServer[proto.BackupChunk]) error {
+	return status.Errorf(codes.Unimplemented, "ClusterBackup is not implemented")
 }
 
-func (s *Server) ClusterRestore(ctx context.Context, req *proto.ClusterRestoreRequest) (*proto.ClusterRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ClusterRestore is not implemented")
+func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.ClusterRestoreResponse]) error {
+	return status.Errorf(codes.Unimplemented, "ClusterRestore is not implemented")
 }
 
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
@@ -203,11 +203,32 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) PartitionBackup(ctx context.Context, req *proto.PartitionBackupRequest) (*proto.PartitionBackupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionBackup is not implemented")
+func (s *Server) PartitionBackup(req *proto.PartitionBackupRequest, stream grpc.ServerStreamingServer[proto.BackupChunk]) error {
+	return status.Errorf(codes.Unimplemented, "PartitionBackup is not implemented")
 }
-func (s *Server) PartitionRestore(ctx context.Context, req *proto.PartitionRestoreRequest) (*proto.PartitionRestoreResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionRestore is not implemented")
+
+func (s *Server) PartitionRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.PartitionRestoreResponse]) error {
+	return status.Errorf(codes.Unimplemented, "PartitionRestore is not implemented")
+}
+
+func (s *Server) PartitionDataStats(ctx context.Context, req *proto.PartitionDataStatsRequest) (*proto.PartitionDataStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "PartitionDataStats is not implemented")
+}
+
+func (s *Server) ListActiveMessageSubscriptions(ctx context.Context, req *proto.ListActiveMessageSubscriptionsRequest) (*proto.ListActiveMessageSubscriptionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "ListActiveMessageSubscriptions is not implemented")
+}
+
+func (s *Server) RebuildMessageSubscriptionPointers(ctx context.Context, req *proto.RebuildMessageSubscriptionPointersRequest) (*proto.RebuildMessageSubscriptionPointersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "RebuildMessageSubscriptionPointers is not implemented")
+}
+
+func (s *Server) ListDefinitions(ctx context.Context, req *proto.ListDefinitionsRequest) (*proto.ListDefinitionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "ListDefinitions is not implemented")
+}
+
+func (s *Server) GetDefinitionResource(ctx context.Context, req *proto.GetDefinitionResourceRequest) (*proto.GetDefinitionResourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "GetDefinitionResource is not implemented")
 }
 func (s *Server) PartitionNodeLeaderChange(ctx context.Context, req *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
 	if ctx.Err() != nil {

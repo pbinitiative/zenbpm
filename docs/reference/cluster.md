@@ -106,6 +106,10 @@ If the connection drops before the archive is complete, the client receives a tr
 curl -s http://<any-node>:<port>/system/status | jq '.nodes | to_entries[] | select(.value.role == "RoleLeader") | .value.addr'
 ```
 
+:::note
+The `addr` field returned above is the node's internal cluster (raft) address, not its HTTP API endpoint. You must map the leader node to its HTTP base URL from your deployment configuration (e.g., the pod/service address) before issuing the restore request.
+:::
+
 #### Restore on an empty cluster
 
 When the cluster has no deployed definitions and no running instances, a restore is accepted without any extra flags:

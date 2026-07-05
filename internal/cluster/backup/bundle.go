@@ -235,6 +235,7 @@ func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
 		n, err := io.Copy(io.MultiWriter(f, h), tr)
 		f.Close()
 		if err != nil {
+			os.Remove(f.Name())
 			b.Close()
 			return nil, fmt.Errorf("failed to spool %s: %w", hdr.Name, err)
 		}

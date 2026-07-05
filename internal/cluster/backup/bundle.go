@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -182,6 +183,137 @@ func writeSpoolEntry(tw *tar.Writer, name, path string, size int64) error {
 	defer f.Close()
 	if _, err := io.Copy(tw, f); err != nil {
 		return fmt.Errorf("failed to copy %s into bundle: %w", name, err)
+	}
+	return nil
+}
+
+// Bundle holds a validated, spooled restore bundle ready for use.
+// The Manifest field is populated after OpenBundle succeeds.
+// Call Close when done to remove the spool files.
+type Bundle struct {
+	Manifest Manifest
+	files    map[uint32]string // partition id -> spooled gz file path
+}
+
+// OpenBundle spools a bundle stream to disk and fully validates it BEFORE any
+// destructive restore step: manifest present, every partition file present
+// with matching sha256 and size, and gunzipped content that looks like SQLite.
+func OpenBundle(r io.Reader, spoolDir string) (*Bundle, error) {
+	b := &Bundle{files: map[uint32]string{}}
+	tr := tar.NewReader(r)
+	shas := map[uint32]string{}
+	sizes := map[uint32]int64{}
+	manifestSeen := false
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			b.Close()
+			return nil, fmt.Errorf("failed to read bundle (truncated or corrupt tar): %w", err)
+		}
+		var id uint32
+		if hdr.Name == ManifestFileName {
+			if err := json.NewDecoder(tr).Decode(&b.Manifest); err != nil {
+				b.Close()
+				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			manifestSeen = true
+			continue
+		}
+		if _, err := fmt.Sscanf(hdr.Name, "partition-%d.db.gz", &id); err != nil {
+			b.Close()
+			return nil, fmt.Errorf("unexpected bundle entry %q", hdr.Name)
+		}
+		f, err := os.CreateTemp(spoolDir, fmt.Sprintf("zenbpm-restore-p%d-*", id))
+		if err != nil {
+			b.Close()
+			return nil, fmt.Errorf("failed to create restore spool: %w", err)
+		}
+		h := sha256.New()
+		n, err := io.Copy(io.MultiWriter(f, h), tr)
+		f.Close()
+		if err != nil {
+			b.Close()
+			return nil, fmt.Errorf("failed to spool %s: %w", hdr.Name, err)
+		}
+		b.files[id] = f.Name()
+		shas[id] = hex.EncodeToString(h.Sum(nil))
+		sizes[id] = n
+	}
+	if !manifestSeen {
+		b.Close()
+		return nil, fmt.Errorf("bundle has no %s (incomplete backup?)", ManifestFileName)
+	}
+	for id, meta := range b.Manifest.Partitions {
+		if _, ok := b.files[id]; !ok {
+			b.Close()
+			return nil, fmt.Errorf("bundle is missing file for partition %d", id)
+		}
+		if shas[id] != meta.SHA256 {
+			b.Close()
+			return nil, fmt.Errorf("checksum mismatch for partition %d: manifest %s, bundle %s", id, meta.SHA256, shas[id])
+		}
+		if sizes[id] != meta.SizeBytes {
+			b.Close()
+			return nil, fmt.Errorf("size mismatch for partition %d", id)
+		}
+		if err := verifySQLiteGzip(b.files[id]); err != nil {
+			b.Close()
+			return nil, fmt.Errorf("partition %d: %w", id, err)
+		}
+	}
+	for id := range b.files {
+		if _, ok := b.Manifest.Partitions[id]; !ok {
+			b.Close()
+			return nil, fmt.Errorf("bundle contains partition %d not listed in manifest", id)
+		}
+	}
+	return b, nil
+}
+
+// verifySQLiteGzip opens the gzip file at path, checks the SQLite magic header,
+// and drains the stream so gzip verifies its CRC over the whole content.
+func verifySQLiteGzip(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("not gzip data: %w", err)
+	}
+	defer zr.Close()
+	head := make([]byte, 16)
+	if _, err := io.ReadFull(zr, head); err != nil {
+		return fmt.Errorf("failed to read database header: %w", err)
+	}
+	if string(head) != "SQLite format 3\x00" {
+		return fmt.Errorf("content is not a valid SQLite database")
+	}
+	// drain to let gzip verify its CRC over the whole stream
+	if _, err := io.Copy(io.Discard, zr); err != nil {
+		return fmt.Errorf("gzip stream corrupt: %w", err)
+	}
+	return nil
+}
+
+// PartitionFile returns a ReadCloser over the stored (still-gzipped) bytes for
+// the given partition id. The caller must close the returned ReadCloser.
+func (b *Bundle) PartitionFile(id uint32) (io.ReadCloser, error) {
+	path, ok := b.files[id]
+	if !ok {
+		return nil, fmt.Errorf("no file for partition %d", id)
+	}
+	return os.Open(path)
+}
+
+// Close removes all spooled partition files.
+func (b *Bundle) Close() error {
+	for _, p := range b.files {
+		os.Remove(p)
 	}
 	return nil
 }

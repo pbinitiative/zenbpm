@@ -3,6 +3,7 @@ package backup
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -82,4 +83,69 @@ func TestWriteBundleFetchErrorAborts(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1, 2}, failing)
 	assert.ErrorContains(t, err, "leader unreachable")
+}
+
+func gzipBytes(t *testing.T, raw []byte) []byte {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	_, err := zw.Write(raw)
+	assert.NoError(t, err)
+	assert.NoError(t, zw.Close())
+	return b.Bytes()
+}
+
+func sqliteish(t *testing.T, tail string) []byte {
+	return append([]byte("SQLite format 3\x00"), []byte(tail)...)
+}
+
+func TestOpenBundleRoundTrip(t *testing.T) {
+	payloads := map[uint32][]byte{
+		1: gzipBytes(t, sqliteish(t, "one")),
+		2: gzipBytes(t, sqliteish(t, "two")),
+	}
+	var buf bytes.Buffer
+	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1, 2}, testFetch(payloads))
+	assert.NoError(t, err)
+
+	b, err := OpenBundle(&buf, t.TempDir())
+	assert.NoError(t, err)
+	defer b.Close()
+	assert.Equal(t, uint32(2), b.Manifest.PartitionCount)
+
+	rc, err := b.PartitionFile(2)
+	assert.NoError(t, err)
+	got, _ := io.ReadAll(rc)
+	rc.Close()
+	assert.Equal(t, payloads[2], got)
+}
+
+func TestOpenBundleTruncated(t *testing.T) {
+	payloads := map[uint32][]byte{1: gzipBytes(t, sqliteish(t, "one"))}
+	var buf bytes.Buffer
+	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1}, testFetch(payloads))
+	assert.NoError(t, err)
+	trunc := buf.Bytes()[:buf.Len()-600] // cut into/before the manifest entry
+	_, err = OpenBundle(bytes.NewReader(trunc), t.TempDir())
+	assert.Error(t, err)
+}
+
+func TestOpenBundleCorruptedPartitionFile(t *testing.T) {
+	payloads := map[uint32][]byte{1: gzipBytes(t, sqliteish(t, "one"))}
+	var buf bytes.Buffer
+	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1}, testFetch(payloads))
+	assert.NoError(t, err)
+	raw := buf.Bytes()
+	// flip a byte inside the partition file body (first entry data starts at 512)
+	raw[520] ^= 0xFF
+	_, err = OpenBundle(bytes.NewReader(raw), t.TempDir())
+	assert.ErrorContains(t, err, "checksum")
+}
+
+func TestOpenBundleNotSQLite(t *testing.T) {
+	payloads := map[uint32][]byte{1: gzipBytes(t, []byte("definitely not a database"))}
+	var buf bytes.Buffer
+	_, err := WriteBundle(context.Background(), &buf, t.TempDir(), []uint32{1}, testFetch(payloads))
+	assert.NoError(t, err)
+	_, err = OpenBundle(bytes.NewReader(buf.Bytes()), t.TempDir())
+	assert.ErrorContains(t, err, "not a valid SQLite")
 }

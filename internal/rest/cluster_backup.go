@@ -16,7 +16,7 @@ func (s *Server) handleClusterBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-tar")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="zenbpm-backup-%d.tar"`, time.Now().Unix()))
 	if _, err := s.node.ClusterBackup(r.Context(), w); err != nil {
-		log.Error("cluster backup failed: %s", err)
+		log.Error("cluster backup failed: %v", err)
 	}
 }
 

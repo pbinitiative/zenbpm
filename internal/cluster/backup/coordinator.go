@@ -77,6 +77,10 @@ func RunClusterRestore(ctx context.Context, deps RestoreDeps, r io.Reader, force
 	report := &RestoreReport{StartedAtMillis: time.Now().UnixMilli()}
 	cs := deps.ClusterState()
 
+	if cs.Restoring {
+		return nil, fmt.Errorf("a cluster restore is already in progress; wait for it to finish (or retry it) before starting another")
+	}
+
 	bundle, err := OpenBundle(r, deps.SpoolDir)
 	if err != nil {
 		return nil, fmt.Errorf("invalid backup bundle: %w", err)

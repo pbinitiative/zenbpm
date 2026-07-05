@@ -38,6 +38,8 @@ type spoolResult struct {
 // coordinator-side digest against the source-declared one, then writes a plain
 // tar: partition files in ascending id order, manifest.json last.
 //
+// partitionIDs must be pre-sorted ascending.
+//
 // Spool files are deleted after their tar entry is written (on the happy path)
 // or on any error path via the deferred cleanup sweep.
 func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs []uint32, fetch FetchFunc) (*Manifest, error) {
@@ -45,16 +47,6 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 	defer cancel()
 
 	// Fan-out: start all fetches concurrently.
-	type entry struct {
-		result spoolResult
-		once   sync.Once // guard: result is written exactly once
-	}
-	entries := make(map[uint32]*entry, len(partitionIDs))
-	for _, id := range partitionIDs {
-		e := &entry{}
-		entries[id] = e
-	}
-
 	var wg sync.WaitGroup
 	// results channel collects spool outcomes.
 	type idResult struct {
@@ -80,6 +72,9 @@ func WriteBundle(ctx context.Context, w io.Writer, spoolDir string, partitionIDs
 	results := make(map[uint32]spoolResult, len(partitionIDs))
 	for item := range ch {
 		results[item.id] = item.r
+		if item.r.err != nil {
+			cancel() // abort remaining in-flight fetches; bundle is already doomed
+		}
 	}
 
 	// Deferred cleanup: remove any spool files not yet removed by the happy path.

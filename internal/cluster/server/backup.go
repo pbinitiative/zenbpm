@@ -122,6 +122,16 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 		return status.Errorf(codes.InvalidArgument, "first restore chunk must carry meta")
 	}
 
+	spoolDir, err := os.MkdirTemp("", "zenbpm-restore-*")
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create spool dir: %s", err)
+	}
+	defer os.RemoveAll(spoolDir)
+	binSchema, err := backup.BinarySchemaVersion(sql.DefaultMigrationsDir)
+	if err != nil {
+		return status.Errorf(codes.Internal, "%s", err)
+	}
+
 	pr, pw := io.Pipe()
 	go func() {
 		for {
@@ -136,6 +146,7 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 			}
 			if d := chunk.GetData(); len(d) > 0 {
 				if _, err := pw.Write(d); err != nil {
+					pw.CloseWithError(err)
 					return
 				}
 			}
@@ -145,16 +156,6 @@ func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreC
 			}
 		}
 	}()
-
-	spoolDir, err := os.MkdirTemp("", "zenbpm-restore-*")
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create spool dir: %s", err)
-	}
-	defer os.RemoveAll(spoolDir)
-	binSchema, err := backup.BinarySchemaVersion(sql.DefaultMigrationsDir)
-	if err != nil {
-		return status.Errorf(codes.Internal, "%s", err)
-	}
 	deps := backup.RestoreDeps{
 		Clients:      s.client,
 		ClusterState: s.store.ClusterState,

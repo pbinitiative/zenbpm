@@ -95,10 +95,16 @@ relies on, verified against the code:
 1. Coordinator verifies every partition has a leader; otherwise fail fast.
 2. Fan out concurrently to all partition leaders: each runs
    `store.Backup(BINARY, vacuum=true, leader=true)` into the gRPC chunk stream.
-3. Coordinator multiplexes streams into a plain tar written directly to the HTTP
-   response — nothing buffered on coordinator disk or held fully in memory. The
-   archive itself is not gzipped: each partition file already is (rqlite streams
-   gzip when `compress=true`), so outer compression would be wasted work.
+3. Each partition's gzipped chunk stream is spooled to a coordinator temp file
+   while being fed through a sha256 hasher (tar headers need the entry size up
+   front, so pure pass-through streaming into a tar is not possible). As each
+   spool completes, its tar header + bytes are written to the HTTP response and
+   the spool file is deleted. Snapshots still *start* concurrently, so
+   point-in-time skew between partitions stays seconds even when transfers take
+   minutes. Worst-case coordinator temp disk is the bundle size — the same
+   requirement restore already imposes. The archive itself is not gzipped: each
+   partition file already is (rqlite streams gzip when `compress=true`), so
+   outer compression would be wasted work.
 4. Bundle layout:
 
    ```

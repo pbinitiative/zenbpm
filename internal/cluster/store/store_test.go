@@ -535,6 +535,57 @@ func (m *mockSnapshotSink) Cancel() error {
 	return nil
 }
 
+// TestWriteMaintenanceChange verifies that WriteMaintenanceChange replicates
+// the Restoring flag through the Raft log and that the FSM applies it to
+// ClusterState. It round-trips true→false to confirm the flag is writable
+// in both directions.
+func TestWriteMaintenanceChange(t *testing.T) {
+	c := config.Cluster{
+		Raft: config.ClusterRaft{
+			Dir: t.TempDir(),
+		},
+		NodeId: random.String(),
+	}
+
+	s, ln := newMustTestStore(t, c)
+	defer s.Close(true)
+	defer ln.Close()
+	if err := s.Open(); err != nil {
+		t.Fatalf("failed to open store: %s", err)
+	}
+	if err := s.Bootstrap(&state.Node{
+		Id:         s.raftID,
+		Addr:       s.Addr(),
+		Partitions: map[uint32]state.NodePartition{},
+	}); err != nil {
+		t.Fatalf("failed to bootstrap single-node store: %s", err)
+	}
+	if _, err := s.WaitForLeader(10 * time.Second); err != nil {
+		t.Fatalf("failed to wait for leader: %s", err)
+	}
+
+	// Initial state: Restoring must be false.
+	if s.ClusterState().Restoring {
+		t.Fatal("expected Restoring to be false initially")
+	}
+
+	// Set Restoring = true.
+	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: ptr.To(true)}); err != nil {
+		t.Fatalf("WriteMaintenanceChange(true) returned error: %s", err)
+	}
+	testPoll(t, func() bool {
+		return s.ClusterState().Restoring
+	}, 50*time.Millisecond, 5*time.Second)
+
+	// Set Restoring = false.
+	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: ptr.To(false)}); err != nil {
+		t.Fatalf("WriteMaintenanceChange(false) returned error: %s", err)
+	}
+	testPoll(t, func() bool {
+		return !s.ClusterState().Restoring
+	}, 50*time.Millisecond, 5*time.Second)
+}
+
 func newMustTestStore(t *testing.T, c config.Cluster) (*Store, net.Listener) {
 	addr := ""
 	if c.Addr != "" {

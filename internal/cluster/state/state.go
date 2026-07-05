@@ -21,6 +21,9 @@ type Cluster struct {
 	Partitions map[uint32]Partition `json:"partitions"`
 	// Nodes stores information about current cluster members
 	Nodes map[string]Node `json:"nodes"`
+	// Restoring is true while a cluster restore is in progress. Engines are
+	// stopped and client-facing operations are rejected until it clears.
+	Restoring bool `json:"restoring"`
 }
 
 func (c Cluster) GetNode(nodeId string) (Node, error) {

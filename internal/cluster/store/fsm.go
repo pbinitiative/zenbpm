@@ -55,6 +55,8 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	case proto.Command_TYPE_NODE_PARTITION_CHANGE:
 		partitionChangeCommand := command.GetNodePartitionChange()
 		res = f.applyPartitionChange(partitionChangeCommand)
+	case proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE:
+		res = f.applyMaintenanceChange(command.GetClusterMaintenanceChange())
 	default:
 		panic(fmt.Sprintf("unrecognized command type: %s", command.Type))
 	}
@@ -110,6 +112,15 @@ func (f *FSM) applyPartitionChange(partitionChangeCommand *proto.NodePartitionCh
 	f.store.stateMu.Lock()
 	defer f.store.stateMu.Unlock()
 	f.store.state = changedState
+	return nil
+}
+
+func (f *FSM) applyMaintenanceChange(cmd *proto.ClusterMaintenanceChange) interface{} {
+	f.store.stateMu.Lock()
+	defer f.store.stateMu.Unlock()
+	newState := *f.store.state.DeepCopy()
+	newState.Restoring = cmd.GetRestoring()
+	f.store.state = newState
 	return nil
 }
 

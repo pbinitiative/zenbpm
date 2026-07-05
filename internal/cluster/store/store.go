@@ -190,6 +190,26 @@ func (s *Store) WriteNodeChange(change *proto.NodeChange) error {
 	return nil
 }
 
+// WriteMaintenanceChange replicates a cluster maintenance flag change
+// (e.g. restore-in-progress) through the raft log.
+func (s *Store) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
+	command := &proto.Command{
+		Type: proto.Command_TYPE_CLUSTER_MAINTENANCE_CHANGE.Enum(),
+		Request: &proto.Command_ClusterMaintenanceChange{
+			ClusterMaintenanceChange: change,
+		},
+	}
+	b, err := pb.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ClusterMaintenanceChange message before applying to log: %w", err)
+	}
+	f := s.raft.Apply(b, s.cfg.RaftTimeout)
+	if f.Error() != nil && f.Response() != nil {
+		return fmt.Errorf("failed to apply ClusterMaintenanceChange message to raft log: %w", f.Error())
+	}
+	return nil
+}
+
 func (s *Store) WritePartitionChange(change *proto.NodePartitionChange) error {
 	command := &proto.Command{
 		Type: proto.Command_TYPE_NODE_PARTITION_CHANGE.Enum(),

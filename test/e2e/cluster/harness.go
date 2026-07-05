@@ -143,6 +143,11 @@ func NewTestCluster(t *testing.T, nodeCount int, opts ...ClusterOption) *TestClu
 						BootstrapExpect:       o.bootstrapExpect,
 						BootstrapExpectTimeout: 30 * time.Second,
 					},
+					// Struct-literal config bypasses cleanenv's env-default tags, so the
+					// FEEL/JS VM pools would default to 0/0 and NewRunnerPool blocks forever
+					// on the first FEEL evaluation (e.g. a message correlation key). Set sane
+					// pool sizes explicitly so FEEL-using processes work in e2e.
+					Script: defaultScriptConfig(),
 				},
 				HttpServer: config.HttpServer{
 					Addr: "127.0.0.1:0", // will be overridden by listener
@@ -290,6 +295,9 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 				BootstrapExpect:       0, // join existing cluster, don't bootstrap
 				BootstrapExpectTimeout: 30 * time.Second,
 			},
+			// See NewTestCluster: struct-literal config skips env-defaults, so set
+			// FEEL/JS VM pool sizes explicitly or FEEL evaluation blocks forever.
+			Script: defaultScriptConfig(),
 		},
 		HttpServer: config.HttpServer{Addr: "127.0.0.1:0"},
 		GrpcServer: config.GrpcServer{Addr: "127.0.0.1:0"},

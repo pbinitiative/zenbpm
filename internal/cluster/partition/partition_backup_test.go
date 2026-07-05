@@ -4,6 +4,7 @@ import (
 	ssql "database/sql"
 	"testing"
 
+	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	"github.com/pbinitiative/zenbpm/internal/sql"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,80 @@ func TestDataStats(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), definitions)
 	assert.Equal(t, int64(0), instances)
+}
+
+func TestListDefinitionRefs(t *testing.T) {
+	partition, _, _, _, _ := prepareTestSetup(t, false)
+	defer partition.Stop()
+
+	ctx := t.Context()
+	db := partition.DB
+
+	// empty initially
+	refs, err := db.ListDefinitionRefs(ctx)
+	assert.NoError(t, err)
+	assert.Empty(t, refs)
+
+	// seed one process definition
+	err = db.Queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
+		Key: 42, Version: 1, BpmnProcessID: "proc-1", BpmnData: "<process/>", BpmnChecksum: []byte{1}, BpmnProcessName: "proc-1",
+	})
+	assert.NoError(t, err)
+
+	// seed one dmn resource definition
+	err = db.Queries.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
+		Key: 99, Version: 1, DmnResourceDefinitionID: "dmn-1", DmnData: "<dmn/>", DmnChecksum: []byte{2}, DmnDefinitionName: "dmn-1",
+	})
+	assert.NoError(t, err)
+
+	refs, err = db.ListDefinitionRefs(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, refs, 2)
+
+	keys := map[int64]proto.DefinitionType{}
+	for _, r := range refs {
+		keys[r.GetKey()] = r.GetType()
+	}
+	assert.Equal(t, proto.DefinitionType_DEFINITION_TYPE_PROCESS, keys[42])
+	assert.Equal(t, proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE, keys[99])
+}
+
+func TestGetDefinitionResource(t *testing.T) {
+	partition, _, _, _, _ := prepareTestSetup(t, false)
+	defer partition.Stop()
+
+	ctx := t.Context()
+	db := partition.DB
+
+	// seed process definition
+	err := db.Queries.SaveProcessDefinition(ctx, sql.SaveProcessDefinitionParams{
+		Key: 10, Version: 1, BpmnProcessID: "my-process", BpmnData: "<bpmn-xml/>", BpmnChecksum: []byte{1}, BpmnProcessName: "My Process",
+	})
+	assert.NoError(t, err)
+
+	data, resourceName, err := db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("<bpmn-xml/>"), data)
+	assert.Equal(t, "my-process.bpmn", resourceName)
+
+	// seed dmn resource definition
+	err = db.Queries.SaveDmnResourceDefinition(ctx, sql.SaveDmnResourceDefinitionParams{
+		Key: 20, Version: 1, DmnResourceDefinitionID: "my-dmn", DmnData: "<dmn-xml/>", DmnChecksum: []byte{2}, DmnDefinitionName: "My DMN",
+	})
+	assert.NoError(t, err)
+
+	data, resourceName, err = db.GetDefinitionResource(ctx, 20, proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("<dmn-xml/>"), data)
+	assert.Equal(t, "", resourceName)
+
+	// not found returns error
+	_, _, err = db.GetDefinitionResource(ctx, 9999, proto.DefinitionType_DEFINITION_TYPE_PROCESS)
+	assert.Error(t, err)
+
+	// unknown type returns error
+	_, _, err = db.GetDefinitionResource(ctx, 10, proto.DefinitionType_DEFINITION_TYPE_UNKNOWN)
+	assert.Error(t, err)
 }
 
 func TestListActiveMessageSubscriptionsAndRebuildPointers(t *testing.T) {

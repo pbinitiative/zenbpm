@@ -197,13 +197,6 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) ListDefinitions(ctx context.Context, req *proto.ListDefinitionsRequest) (*proto.ListDefinitionsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "ListDefinitions is not implemented")
-}
-
-func (s *Server) GetDefinitionResource(ctx context.Context, req *proto.GetDefinitionResourceRequest) (*proto.GetDefinitionResourceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "GetDefinitionResource is not implemented")
-}
 func (s *Server) PartitionNodeLeaderChange(ctx context.Context, req *proto.PartitionNodeLeaderChangeRequest) (*proto.PartitionNodeLeaderChangeResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

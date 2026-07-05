@@ -10,6 +10,55 @@ import (
 	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
+// ListDefinitionRefs lists all process and DMN definition keys on this partition.
+func (rq *DB) ListDefinitionRefs(ctx context.Context) ([]*zenproto.DefinitionRef, error) {
+	var out []*zenproto.DefinitionRef
+	collect := func(query string, typ zenproto.DefinitionType) error {
+		rows, err := rq.QueryContext(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var key int64
+			if err := rows.Scan(&key); err != nil {
+				return err
+			}
+			out = append(out, &zenproto.DefinitionRef{Key: ptr.To(key), Type: typ.Enum()})
+		}
+		return rows.Err()
+	}
+	if err := collect("SELECT key FROM process_definition", zenproto.DefinitionType_DEFINITION_TYPE_PROCESS); err != nil {
+		return nil, fmt.Errorf("failed to list process definitions: %w", err)
+	}
+	if err := collect("SELECT key FROM dmn_resource_definition", zenproto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE); err != nil {
+		return nil, fmt.Errorf("failed to list dmn resource definitions: %w", err)
+	}
+	return out, nil
+}
+
+// GetDefinitionResource returns the raw resource for re-deploying a definition
+// to a partition that misses it.
+func (rq *DB) GetDefinitionResource(ctx context.Context, key int64, defType zenproto.DefinitionType) ([]byte, string, error) {
+	switch defType {
+	case zenproto.DefinitionType_DEFINITION_TYPE_PROCESS:
+		row := rq.QueryRowContext(ctx, "SELECT bpmn_data, bpmn_process_id FROM process_definition WHERE key = ?", key)
+		var data, processID string
+		if err := row.Scan(&data, &processID); err != nil {
+			return nil, "", fmt.Errorf("failed to load process definition %d: %w", key, err)
+		}
+		return []byte(data), processID + ".bpmn", nil
+	case zenproto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
+		row := rq.QueryRowContext(ctx, "SELECT dmn_data FROM dmn_resource_definition WHERE key = ?", key)
+		var data string
+		if err := row.Scan(&data); err != nil {
+			return nil, "", fmt.Errorf("failed to load dmn resource definition %d: %w", key, err)
+		}
+		return []byte(data), "", nil
+	}
+	return nil, "", fmt.Errorf("unknown definition type %v", defType)
+}
+
 // SchemaVersion returns the filename of the newest migration applied to this
 // partition's local store. Used to stamp backups and validate restores.
 func (rq *DB) SchemaVersion(ctx context.Context) (string, error) {

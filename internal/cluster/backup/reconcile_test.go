@@ -18,6 +18,22 @@ func row(key int64, name, ck string, createdAt int64) *proto.MessageSubscription
 	}
 }
 
+func TestMissingDefinitions(t *testing.T) {
+	ref := func(key int64) *proto.DefinitionRef {
+		return &proto.DefinitionRef{Key: ptr.To(key), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()}
+	}
+	perPartition := map[uint32][]*proto.DefinitionRef{
+		1: {ref(100), ref(200)},
+		2: {ref(100)},
+		3: {},
+	}
+	missing := MissingDefinitions(perPartition)
+	assert.Len(t, missing[2], 1)
+	assert.Equal(t, int64(200), missing[2][0].GetKey())
+	assert.Len(t, missing[3], 2)
+	assert.NotContains(t, missing, uint32(1))
+}
+
 func TestPlanPointerRebuild(t *testing.T) {
 	// deterministic fake hash: route by first byte of correlationKey (or name)
 	home := func(name, ck string) uint32 {

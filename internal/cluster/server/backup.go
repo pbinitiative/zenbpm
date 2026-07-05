@@ -128,6 +128,34 @@ func (s *Server) RebuildMessageSubscriptionPointers(ctx context.Context, req *pr
 	return &proto.RebuildMessageSubscriptionPointersResponse{}, nil
 }
 
+// ListDefinitions returns the definition refs (process + DMN) for a locally-hosted partition.
+// Called by the restore coordinator to compute definition sync requirements.
+func (s *Server) ListDefinitions(ctx context.Context, req *proto.ListDefinitionsRequest) (*proto.ListDefinitionsResponse, error) {
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil {
+		return nil, status.Errorf(codes.NotFound, "partition %d is not hosted on this node", req.GetPartitionId())
+	}
+	refs, err := partitionNode.DB.ListDefinitionRefs(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err)
+	}
+	return &proto.ListDefinitionsResponse{Definitions: refs}, nil
+}
+
+// GetDefinitionResource returns the raw resource bytes for a single definition on a locally-hosted partition.
+// Called by the restore coordinator to re-deploy definitions that are missing on other partitions.
+func (s *Server) GetDefinitionResource(ctx context.Context, req *proto.GetDefinitionResourceRequest) (*proto.GetDefinitionResourceResponse, error) {
+	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())
+	if partitionNode == nil {
+		return nil, status.Errorf(codes.NotFound, "partition %d is not hosted on this node", req.GetPartitionId())
+	}
+	data, resourceName, err := partitionNode.DB.GetDefinitionResource(ctx, req.GetKey(), req.GetType())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err)
+	}
+	return &proto.GetDefinitionResourceResponse{Data: data, ResourceName: &resourceName}, nil
+}
+
 // PartitionDataStats returns row counts for a locally-hosted partition.
 func (s *Server) PartitionDataStats(ctx context.Context, req *proto.PartitionDataStatsRequest) (*proto.PartitionDataStatsResponse, error) {
 	partitionNode := s.controller.GetPartition(ctx, req.GetPartitionId())

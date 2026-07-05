@@ -262,7 +262,95 @@ func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) err
 	return nil
 }
 
-// syncDefinitions is completed in Task 13.
+// syncDefinitions lists definitions on every partition, computes which partitions
+// are missing definitions (due to a deploy landing mid-backup), and re-deploys
+// them via the idempotent deploy RPCs. It must run BEFORE pointer rebuild so
+// that subscriptions created by sync deploys are included in the pointer scan.
 func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreReport) error {
+	cs := deps.ClusterState()
+	perPartition := map[uint32][]*proto.DefinitionRef{}
+	for id := range cs.Partitions {
+		leader, err := deps.Clients.PartitionLeader(id)
+		if err != nil {
+			return fmt.Errorf("definition scan: failed to get leader for partition %d: %w", id, err)
+		}
+		resp, err := leader.ListDefinitions(ctx, &proto.ListDefinitionsRequest{PartitionId: ptr.To(id)})
+		if err != nil {
+			return fmt.Errorf("definition scan on partition %d failed: %w", id, err)
+		}
+		perPartition[id] = resp.GetDefinitions()
+	}
+
+	missing := MissingDefinitions(perPartition)
+	synced := map[int64]*DefinitionSyncEntry{}
+	for part, refs := range missing {
+		for _, ref := range refs {
+			data, resourceName, err := fetchDefinition(ctx, deps, perPartition, ref)
+			if err != nil {
+				return err
+			}
+			target, err := deps.Clients.PartitionLeader(part)
+			if err != nil {
+				return fmt.Errorf("failed to get leader for target partition %d: %w", part, err)
+			}
+			switch ref.GetType() {
+			case proto.DefinitionType_DEFINITION_TYPE_PROCESS:
+				resp, err := target.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
+					Key:                                    ptr.To(ref.GetKey()),
+					Data:                                   data,
+					ResourceName:                           ptr.To(resourceName),
+					RegisterProcessDefinitionSubscriptions: ptr.To(true),
+				})
+				if err != nil || resp.GetError() != nil {
+					return fmt.Errorf("failed to sync process definition %d to partition %d: %v %v", ref.GetKey(), part, err, resp.GetError())
+				}
+			case proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
+				resp, err := target.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
+					Key:  ptr.To(ref.GetKey()),
+					Data: data,
+				})
+				if err != nil || resp.GetError() != nil {
+					return fmt.Errorf("failed to sync dmn definition %d to partition %d: %v %v", ref.GetKey(), part, err, resp.GetError())
+				}
+			}
+			entry, ok := synced[ref.GetKey()]
+			if !ok {
+				typ := "process"
+				if ref.GetType() == proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE {
+					typ = "dmn"
+				}
+				entry = &DefinitionSyncEntry{Key: ref.GetKey(), Type: typ}
+				synced[ref.GetKey()] = entry
+			}
+			entry.ToPartitions = append(entry.ToPartitions, part)
+		}
+	}
+	for _, e := range synced {
+		report.DefinitionsSynced = append(report.DefinitionsSynced, *e)
+	}
+	sort.Slice(report.DefinitionsSynced, func(i, j int) bool {
+		return report.DefinitionsSynced[i].Key < report.DefinitionsSynced[j].Key
+	})
 	return nil
+}
+
+func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uint32][]*proto.DefinitionRef, ref *proto.DefinitionRef) ([]byte, string, error) {
+	for part, refs := range perPartition {
+		for _, r := range refs {
+			if r.GetKey() == ref.GetKey() && r.GetType() == ref.GetType() {
+				leader, err := deps.Clients.PartitionLeader(part)
+				if err != nil {
+					return nil, "", err
+				}
+				resp, err := leader.GetDefinitionResource(ctx, &proto.GetDefinitionResourceRequest{
+					PartitionId: ptr.To(part), Key: ptr.To(ref.GetKey()), Type: ref.GetType().Enum(),
+				})
+				if err != nil {
+					return nil, "", fmt.Errorf("failed to fetch definition %d from partition %d: %w", ref.GetKey(), part, err)
+				}
+				return resp.GetData(), resp.GetResourceName(), nil
+			}
+		}
+	}
+	return nil, "", fmt.Errorf("definition %d not found on any partition", ref.GetKey())
 }

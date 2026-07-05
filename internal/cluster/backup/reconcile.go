@@ -6,6 +6,41 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
 )
 
+// MissingDefinitions computes, per partition, the definitions present
+// somewhere in the cluster but absent locally (mid-backup deploy skew).
+func MissingDefinitions(perPartition map[uint32][]*proto.DefinitionRef) map[uint32][]*proto.DefinitionRef {
+	type refKey struct {
+		key int64
+		typ proto.DefinitionType
+	}
+	union := map[refKey]*proto.DefinitionRef{}
+	for _, refs := range perPartition {
+		for _, r := range refs {
+			union[refKey{r.GetKey(), r.GetType()}] = r
+		}
+	}
+	// deterministic union ordering
+	ordered := make([]*proto.DefinitionRef, 0, len(union))
+	for _, r := range union {
+		ordered = append(ordered, r)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].GetKey() < ordered[j].GetKey() })
+
+	missing := map[uint32][]*proto.DefinitionRef{}
+	for part, refs := range perPartition {
+		have := map[refKey]bool{}
+		for _, r := range refs {
+			have[refKey{r.GetKey(), r.GetType()}] = true
+		}
+		for _, r := range ordered {
+			if !have[refKey{r.GetKey(), r.GetType()}] {
+				missing[part] = append(missing[part], r)
+			}
+		}
+	}
+	return missing
+}
+
 // PointerPlan holds the recomputed message_subscription_pointer placement after
 // a cluster restore. ByPartition maps each home partition to the winning
 // subscription rows that should be written there. Conflicts lists any

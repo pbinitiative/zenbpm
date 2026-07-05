@@ -1,11 +1,13 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/internal/log"
+	"github.com/pbinitiative/zenbpm/internal/rest/public"
 )
 
 // handleClusterBackup streams the backup bundle. Errors after the first byte
@@ -16,4 +18,15 @@ func (s *Server) handleClusterBackup(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.node.ClusterBackup(r.Context(), w); err != nil {
 		log.Error("cluster backup failed: %s", err)
 	}
+}
+
+func (s *Server) handleClusterRestore(w http.ResponseWriter, r *http.Request) {
+	force := r.URL.Query().Get("force") == "true"
+	report, err := s.node.ClusterRestore(r.Context(), r.Body, force)
+	if err != nil {
+		writeError(w, r, http.StatusConflict, public.Error{Message: err.Error(), Code: "RESTORE_FAILED"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
 }

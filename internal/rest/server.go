@@ -117,6 +117,7 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 			},
 		}))
 		r.Get("/cluster/backup", s.handleClusterBackup)
+		r.Post("/cluster/restore", s.handleClusterRestore)
 		r.Mount("/", h)
 	})
 	// register system endpoints

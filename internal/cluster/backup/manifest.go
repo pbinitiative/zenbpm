@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+
+	zensql "github.com/pbinitiative/zenbpm/internal/sql"
 )
 
 const (
@@ -14,8 +16,8 @@ const (
 )
 
 type PartitionMeta struct {
-	SnapshotAtMillis int64  `json:"snapshotAtMillis"`
-	SizeBytes        int64  `json:"sizeBytes"`
+	SnapshotAtMillis int64 `json:"snapshotAtMillis"`
+	SizeBytes        int64 `json:"sizeBytes"`
 	// SHA256 is the hex digest of the stored (gzipped) partition file bytes,
 	// computed on the partition leader while streaming.
 	SHA256        string `json:"sha256"`
@@ -65,4 +67,20 @@ func ZenBPMVersion() string {
 		return bi.Main.Version
 	}
 	return "unknown"
+}
+
+// BinarySchemaVersion returns the newest migration filename shipped with this
+// binary, used to reject bundles created by a newer schema.
+func BinarySchemaVersion(migrationDir string) (string, error) {
+	migs, err := zensql.GetUpMigrations(migrationDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read migrations: %w", err)
+	}
+	var latest string
+	for _, m := range migs {
+		if m.Filename > latest {
+			latest = m.Filename
+		}
+	}
+	return latest, nil
 }

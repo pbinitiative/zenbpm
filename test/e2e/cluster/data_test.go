@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -228,7 +227,7 @@ func TestConcurrentWritesToDifferentNodes(t *testing.T) {
 			go func(node *TestNode) {
 				defer wg.Done()
 				body := zenclient.CreateProcessInstanceJSONRequestBody{
-					ProcessDefinitionKey: ptr.To(defKey),
+					ProcessDefinitionKey: new(defKey),
 				}
 				_, err := node.RestClient.CreateProcessInstanceWithResponse(context.Background(), body)
 				if err != nil {

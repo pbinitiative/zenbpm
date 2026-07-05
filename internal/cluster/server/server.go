@@ -67,6 +67,7 @@ type StoreService interface {
 	WriteNodeChange(change *protoc.NodeChange) error
 	ClusterState() state.Cluster
 	WritePartitionChange(change *protoc.NodePartitionChange) error
+	WriteMaintenanceChange(change *protoc.ClusterMaintenanceChange) error
 }
 
 type ControllerService interface {
@@ -186,10 +187,6 @@ func (s *Server) NodeCommand(ctx context.Context, req *protoc.Command) (*proto.N
 	}
 }
 
-func (s *Server) ClusterRestore(stream grpc.ClientStreamingServer[proto.RestoreChunk, proto.ClusterRestoreResponse]) error {
-	return status.Errorf(codes.Unimplemented, "ClusterRestore is not implemented")
-}
-
 func (s *Server) ConfigurationUpdate(ctx context.Context, req *proto.ConfigurationUpdateRequest) (*proto.ConfigurationUpdateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "ConfigurationUpdate is not implemented")
 }
@@ -200,10 +197,6 @@ func (s *Server) AssignPartition(ctx context.Context, req *proto.AssignPartition
 func (s *Server) UnassignPartition(ctx context.Context, req *proto.UnassignPartitionRequest) (*proto.UnassignPartitionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "UnassignPartition is not implemented")
 }
-func (s *Server) PartitionDataStats(ctx context.Context, req *proto.PartitionDataStatsRequest) (*proto.PartitionDataStatsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "PartitionDataStats is not implemented")
-}
-
 func (s *Server) ListActiveMessageSubscriptions(ctx context.Context, req *proto.ListActiveMessageSubscriptionsRequest) (*proto.ListActiveMessageSubscriptionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "ListActiveMessageSubscriptions is not implemented")
 }

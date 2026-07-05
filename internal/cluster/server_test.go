@@ -323,3 +323,7 @@ func (s *StoreSvc) WritePartitionChange(change *proto.NodePartitionChange) error
 func (s *StoreSvc) ClusterState() state.Cluster {
 	return state.Cluster{}
 }
+
+func (s *StoreSvc) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
+	return nil
+}

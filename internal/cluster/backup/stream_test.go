@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rqcmd "github.com/rqlite/rqlite/v10/command/proto"
 	"github.com/stretchr/testify/assert"
 )
@@ -100,7 +99,7 @@ func chunkFeed(meta *proto.RestoreMeta, data []byte, chunk int) func() (*proto.R
 		}
 		if !eofSent {
 			eofSent = true
-			return &proto.RestoreChunk{Eof: ptr.To(true)}, nil
+			return &proto.RestoreChunk{Eof: new(true)}, nil
 		}
 		return nil, io.EOF
 	}
@@ -113,7 +112,7 @@ func TestReceivePartitionRestore(t *testing.T) {
 	zw.Write(raw)
 	zw.Close()
 	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: ptr.To(uint32(1)), Sha256: ptr.To(hex.EncodeToString(sum[:])), SizeBytes: ptr.To(int64(gz.Len()))}
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
 
 	dst := &fakeLoadTarget{}
 	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
@@ -127,7 +126,7 @@ func TestReceivePartitionRestoreBadDigest(t *testing.T) {
 	zw := gzip.NewWriter(&gz)
 	zw.Write(raw)
 	zw.Close()
-	meta := &proto.RestoreMeta{PartitionId: ptr.To(uint32(1)), Sha256: ptr.To("deadbeef"), SizeBytes: ptr.To(int64(gz.Len()))}
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new("deadbeef"), SizeBytes: new(int64(gz.Len()))}
 	dst := &fakeLoadTarget{}
 	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
 	assert.ErrorContains(t, err, "digest mismatch")
@@ -140,7 +139,7 @@ func TestReceivePartitionRestoreNotSQLite(t *testing.T) {
 	zw.Write([]byte("not a database at all"))
 	zw.Close()
 	sum := sha256.Sum256(gz.Bytes())
-	meta := &proto.RestoreMeta{PartitionId: ptr.To(uint32(1)), Sha256: ptr.To(hex.EncodeToString(sum[:])), SizeBytes: ptr.To(int64(gz.Len()))}
+	meta := &proto.RestoreMeta{PartitionId: new(uint32(1)), Sha256: new(hex.EncodeToString(sum[:])), SizeBytes: new(int64(gz.Len()))}
 	dst := &fakeLoadTarget{}
 	err := ReceivePartitionRestore(context.Background(), t.TempDir(), meta, chunkFeed(meta, gz.Bytes(), 1024), dst)
 	assert.ErrorContains(t, err, "not a valid SQLite")

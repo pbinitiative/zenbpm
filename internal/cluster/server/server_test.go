@@ -271,6 +271,9 @@ func (s *testStore) WritePartitionChange(change *protoc.NodePartitionChange) err
 func (s *testStore) ClusterState() state.Cluster {
 	return s.clusterState
 }
+func (s *testStore) WriteMaintenanceChange(change *protoc.ClusterMaintenanceChange) error {
+	return nil
+}
 
 func TestTimerStateToActivityState(t *testing.T) {
 	tests := []struct {

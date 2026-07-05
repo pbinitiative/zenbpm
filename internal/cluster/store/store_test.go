@@ -361,15 +361,15 @@ func TestResumeNodeRestoresPartitionFollowerRole(t *testing.T) {
 
 	// Register a follower on partition 1, mirroring the pre-partition state.
 	if err := s.WriteNodeChange(&proto.NodeChange{
-		NodeId: ptr.To(peerId),
+		NodeId: new(peerId),
 		State:  proto.NodeState_NODE_STATE_STARTED.Enum(),
 		Role:   proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}); err != nil {
 		t.Fatalf("failed to register peer: %s", err)
 	}
 	if err := s.WritePartitionChange(&proto.NodePartitionChange{
-		NodeId:      ptr.To(peerId),
-		PartitionId: ptr.To(uint32(1)),
+		NodeId:      new(peerId),
+		PartitionId: new(uint32(1)),
 		State:       proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZED.Enum(),
 		Role:        proto.Role_ROLE_TYPE_FOLLOWER.Enum(),
 	}); err != nil {
@@ -570,7 +570,7 @@ func TestWriteMaintenanceChange(t *testing.T) {
 	}
 
 	// Set Restoring = true.
-	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: ptr.To(true)}); err != nil {
+	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: new(true)}); err != nil {
 		t.Fatalf("WriteMaintenanceChange(true) returned error: %s", err)
 	}
 	testPoll(t, func() bool {
@@ -578,7 +578,7 @@ func TestWriteMaintenanceChange(t *testing.T) {
 	}, 50*time.Millisecond, 5*time.Second)
 
 	// Set Restoring = false.
-	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: ptr.To(false)}); err != nil {
+	if err := s.WriteMaintenanceChange(&proto.ClusterMaintenanceChange{Restoring: new(false)}); err != nil {
 		t.Fatalf("WriteMaintenanceChange(false) returned error: %s", err)
 	}
 	testPoll(t, func() bool {

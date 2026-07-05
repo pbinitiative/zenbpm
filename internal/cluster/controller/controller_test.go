@@ -709,6 +709,10 @@ func (c *ControllerTestStore) setClusterState(clusterState state.Cluster) {
 	c.clusterState = clusterState
 }
 
+func (c *ControllerTestStore) WriteMaintenanceChange(change *proto.ClusterMaintenanceChange) error {
+	return nil
+}
+
 func testPoll(t *testing.T, f func() bool, checkPeriod time.Duration, timeout time.Duration, msgAndArgs ...any) {
 	t.Helper()
 	tck := time.NewTicker(checkPeriod)

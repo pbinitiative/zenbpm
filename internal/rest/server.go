@@ -116,12 +116,16 @@ func NewServer(node *cluster.ZenNode, conf config.Config, buildInfo buildinfo.In
 				})
 			},
 		}))
-		r.Get("/cluster/backup", s.handleClusterBackup)
-		r.Post("/cluster/restore", s.handleClusterRestore)
 		r.Mount("/", h)
 	})
 	// register system endpoints
+	// Convention: /v1/** is the business API documented in openapi/api.yaml;
+	// /system is the operational plane — unversioned probes directly under
+	// /system (stable for k8s probes and Prometheus), versioned operational
+	// APIs with payload contracts under /system/v1/....
 	r.Route("/system", func(r chi.Router) {
+		r.Get("/v1/cluster/backup", s.handleClusterBackup)
+		r.Post("/v1/cluster/restore", s.handleClusterRestore)
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 		// verbose diagnostic endpoint. Deliberately keeps the legacy contract
 		// (raw cluster state, always 200) for existing consumers; readiness

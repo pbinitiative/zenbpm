@@ -29,10 +29,10 @@ func defaultScriptConfig() config.Script {
 	}
 }
 
-// takeBackup performs GET /v1/cluster/backup and returns the raw tar bundle.
+// takeBackup performs GET /system/v1/cluster/backup and returns the raw tar bundle.
 func takeBackup(t *testing.T, n *TestNode) []byte {
 	t.Helper()
-	resp, err := http.Get("http://" + n.RestAddr + "/v1/cluster/backup")
+	resp, err := http.Get("http://" + n.RestAddr + "/system/v1/cluster/backup")
 	require.NoError(t, err, "backup request failed")
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, "backup should return 200")
@@ -42,11 +42,11 @@ func takeBackup(t *testing.T, n *TestNode) []byte {
 	return bundle
 }
 
-// postRestore uploads a bundle to POST /v1/cluster/restore, optionally forcing.
+// postRestore uploads a bundle to POST /system/v1/cluster/restore, optionally forcing.
 // It returns the status code and the response body.
 func postRestore(t *testing.T, n *TestNode, bundle []byte, force bool) (int, []byte) {
 	t.Helper()
-	url := "http://" + n.RestAddr + "/v1/cluster/restore"
+	url := "http://" + n.RestAddr + "/system/v1/cluster/restore"
 	if force {
 		url += "?force=true"
 	}

@@ -73,9 +73,13 @@ relies on, verified against the code:
 
 ## Operator API
 
-- `GET /v1/cluster/backup` → streams `zenbpm-backup-<timestamp>.tar`.
+- `GET /system/v1/cluster/backup` → streams `zenbpm-backup-<timestamp>.tar`.
   Callable on any node; that node coordinates.
-- `POST /v1/cluster/restore[?force=true]` ← streams the same bundle back.
+- `POST /system/v1/cluster/restore[?force=true]` ← streams the same bundle back.
+- (Amended 2026-07-06: endpoints moved from `/v1/cluster/...` to
+  `/system/v1/cluster/...` — the `/v1` prefix is reserved for the business API
+  documented in `openapi/api.yaml`; the operational plane lives under
+  `/system`, with versioning as a sub-path for contract-carrying APIs.)
 - Both endpoints live in `internal/rest` and delegate to the cluster node
   (`ZenNode`) — thin HTTP shims only.
 - gRPC equivalents on `ZenService` for gRPC-native operators:

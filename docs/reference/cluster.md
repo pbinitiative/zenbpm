@@ -78,6 +78,10 @@ You can query each partition database through the `zenctl` or public REST/GRPC A
 
 ZenBPM provides a whole-cluster backup and restore API. A backup captures a point-in-time snapshot of every partition database and streams it as a single tar archive directly to the HTTP client — no external storage is required.
 
+### Endpoint namespace convention
+
+Backup and restore live under `/system/v1/...`, not the business API prefix. The convention: `/v1/**` is the business API and is fully documented in `openapi/api.yaml`; `/system` is the operational plane. Directly under `/system` sit the unversioned probes (`/system/status`, `/system/metrics`) that Kubernetes probes and Prometheus scrapers rely on staying stable; operational APIs that carry payload contracts (like the backup bundle format and the restore report) are versioned under `/system/v1/...` so they can evolve without breaking probes or clients.
+
 ### What is backed up
 
 - All partition SQLite databases (one gzipped snapshot per partition, taken concurrently from partition leaders).
@@ -87,10 +91,10 @@ ZenBPM provides a whole-cluster backup and restore API. A backup captures a poin
 
 ### Taking a backup
 
-`GET /v1/cluster/backup` may be called on **any** cluster node. The responding node coordinates the backup by pulling snapshots from each partition leader and streaming them directly to the HTTP response.
+`GET /system/v1/cluster/backup` may be called on **any** cluster node. The responding node coordinates the backup by pulling snapshots from each partition leader and streaming them directly to the HTTP response.
 
 ```bash
-curl -o zenbpm-backup.tar http://<any-node>:<port>/v1/cluster/backup
+curl -o zenbpm-backup.tar http://<any-node>:<port>/system/v1/cluster/backup
 ```
 
 The backup is non-blocking — the cluster continues to serve traffic during the download. Partition snapshots start concurrently, so there is a small (seconds) skew between them; this skew is repaired automatically by the reconciliation step during a restore.
@@ -99,7 +103,7 @@ If the connection drops before the archive is complete, the client receives a tr
 
 ### Performing a restore
 
-`POST /v1/cluster/restore` **must be sent to the cluster raft leader** (v1 limitation — the maintenance gate is written through raft and only the leader can commit that change). Use `/system/status` to identify the current leader:
+`POST /system/v1/cluster/restore` **must be sent to the cluster raft leader** (v1 limitation — the maintenance gate is written through raft and only the leader can commit that change). Use `/system/status` to identify the current leader:
 
 ```bash
 # Find the leader: look for the node whose "role" is "RoleLeader"
@@ -117,7 +121,7 @@ When the cluster has no deployed definitions and no running instances, a restore
 ```bash
 curl -X POST \
   --data-binary @zenbpm-backup.tar \
-  http://<leader-node>:<port>/v1/cluster/restore
+  http://<leader-node>:<port>/system/v1/cluster/restore
 ```
 
 #### Restore on a live cluster (force)
@@ -127,7 +131,7 @@ To restore over an existing cluster that already holds definitions or instances,
 ```bash
 curl -X POST \
   --data-binary @zenbpm-backup.tar \
-  "http://<leader-node>:<port>/v1/cluster/restore?force=true"
+  "http://<leader-node>:<port>/system/v1/cluster/restore?force=true"
 ```
 
 If the cluster is non-empty and `force=true` is omitted, the request is refused with `409 Conflict` and error code `RESTORE_FAILED`.
@@ -198,11 +202,11 @@ ZenBPM does not include a built-in scheduler. Use cron and curl:
 
 ```bash
 # /etc/cron.d/zenbpm-backup
-0 2 * * * root curl -sf -o /backups/zenbpm-$(date +\%Y\%m\%d).tar http://<any-node>:<port>/v1/cluster/backup
+0 2 * * * root curl -sf -o /backups/zenbpm-$(date +\%Y\%m\%d).tar http://<any-node>:<port>/system/v1/cluster/backup
 ```
 
 ### Per-partition auto-backup (S3 / MinIO)
 
 ZenBPM inherits rqlite's per-partition auto-backup capability (`AutoBackupFile` configuration). Each partition can push its snapshot independently to an S3-compatible store on a configurable interval. These per-partition snapshots have interval-sized skew between them.
 
-To restore from per-partition S3 snapshots, download all partition files, assemble them with a valid `manifest.json` into a tar archive that matches the bundle layout, and submit the archive via `POST /v1/cluster/restore`. The same reconciliation (pointer rebuild, definition sync) runs as for any other restore, repairing the inter-partition skew.
+To restore from per-partition S3 snapshots, download all partition files, assemble them with a valid `manifest.json` into a tar archive that matches the bundle layout, and submit the archive via `POST /system/v1/cluster/restore`. The same reconciliation (pointer rebuild, definition sync) runs as for any other restore, repairing the inter-partition skew.

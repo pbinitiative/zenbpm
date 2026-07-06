@@ -82,6 +82,8 @@ ZenBPM provides a whole-cluster backup and restore API. A backup captures a poin
 
 Backup and restore live under `/system/v1/...`, not the business API prefix. The convention: `/v1/**` is the business API and is fully documented in `openapi/api.yaml`; `/system` is the operational plane. Directly under `/system` sit the unversioned probes (`/system/status`, `/system/metrics`) that Kubernetes probes and Prometheus scrapers rely on staying stable; operational APIs that carry payload contracts (like the backup bundle format and the restore report) are versioned under `/system/v1/...` so they can evolve without breaking probes or clients.
 
+The operational endpoints are described in [`openapi/system.yaml`](../../openapi/system.yaml) (documentation spec — the handlers are hand-registered in `internal/rest/server.go`, no server code is generated from it).
+
 ### What is backed up
 
 - All partition SQLite databases (one gzipped snapshot per partition, taken concurrently from partition leaders).

@@ -234,6 +234,13 @@ func (w *Worker) reconnect() bool {
 	backoff := reconnectInitialBackoff
 	if w.lastBackoff > 0 && time.Since(w.connectedAt) < backoffResetThreshold {
 		backoff = w.lastBackoff
+		if !w.waitBackoff(backoff) {
+			return false
+		}
+		if backoff *= 2; backoff > reconnectMaxBackoff {
+			backoff = reconnectMaxBackoff
+		}
+		w.lastBackoff = backoff
 	}
 	for attempt := 1; ; attempt++ {
 		if w.ctx.Err() != nil {
@@ -247,15 +254,23 @@ func (w *Worker) reconnect() bool {
 			return true
 		}
 		w.logger.Error(fmt.Sprintf("zenclient: failed to reconnect job stream (attempt %d): %s", attempt, err))
-		select {
-		case <-w.ctx.Done():
+		if !w.waitBackoff(backoff) {
 			return false
-		case <-time.After(backoff):
 		}
 		if backoff *= 2; backoff > reconnectMaxBackoff {
 			backoff = reconnectMaxBackoff
 		}
 		w.lastBackoff = backoff
+	}
+}
+
+// waitBackoff sleeps for d or until the worker context is cancelled. It returns false when the worker should stop.
+func (w *Worker) waitBackoff(d time.Duration) bool {
+	select {
+	case <-w.ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
 	}
 }
 
@@ -288,6 +303,10 @@ func (w *Worker) handleJob(ctx context.Context, job *proto.WaitingJob, send func
 	}()
 
 	vars, workerErr := w.f(ctx, job)
+	if ctx.Err() != nil {
+		w.logInfo(fmt.Sprintf("zenclient: job %d finished after its stream was closed; discarding result, job will be redelivered", job.GetKey()))
+		return
+	}
 	if workerErr != nil {
 		w.failWorkerJob(job, workerErr, send)
 		return
@@ -358,10 +377,10 @@ func (w *Worker) send(req *proto.JobStreamRequest) error {
 func (w *Worker) AddJobSubscription(jobType string) error {
 	w.subMu.Lock()
 	defer w.subMu.Unlock()
-	if err := w.sendSubscription(jobType, proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE); err != nil {
-		return fmt.Errorf("failed to add worker subscription: %w", err)
-	}
 	w.jobTypes[jobType] = struct{}{}
+	if err := w.sendSubscription(jobType, proto.StreamSubscriptionRequest_TYPE_SUBSCRIBE); err != nil {
+		return fmt.Errorf("failed to add worker subscription (it will be replayed on the next reconnect): %w", err)
+	}
 	return nil
 }
 

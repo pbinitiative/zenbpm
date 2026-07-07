@@ -291,14 +291,7 @@ func TestGrpcJobStreamReconnectsAfterConnectionLoss(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Put a TCP proxy between the worker and the gRPC server so the test can
-	// sever the connection and force the job stream to break mid-flight.
-	proxy := startTCPProxy(t, app.grpcAddr)
-
-	conn, err := grpc.NewClient(proxy.address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
-	zenClient := zenclient.NewGrpc(conn)
+	proxy, zenClient := startProxiedGrpcClient(t)
 
 	var processed atomic.Int64
 	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(_ context.Context, _ *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
@@ -315,8 +308,6 @@ func TestGrpcJobStreamReconnectsAfterConnectionLoss(t *testing.T) {
 		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
 	}, 30*time.Second, 100*time.Millisecond, "instance should complete before the connection loss")
 
-	// Sever every active connection: the job stream breaks with a transport
-	// error and the worker must reconnect on its own through the same address.
 	proxy.dropActiveConnections()
 
 	processedBefore := processed.Load()
@@ -329,6 +320,58 @@ func TestGrpcJobStreamReconnectsAfterConnectionLoss(t *testing.T) {
 		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
 	}, 30*time.Second, 100*time.Millisecond, "instance should complete after the worker reconnects")
 	assert.Greater(t, processed.Load(), processedBefore, "the worker should have processed jobs after reconnecting")
+}
+
+func TestGrpcJobStreamInFlightJobIsRedeliveredNotFailedAfterConnectionLoss(t *testing.T) {
+	randomID := fmt.Sprintf("test-process-%d", rand.Int63())
+	definition, err := deployDefinitionWithJobType(t, "simple_task.bpmn", randomID, map[string]string{
+		"TestType": randomID,
+	})
+	require.NoError(t, err)
+
+	proxy, zenClient := startProxiedGrpcClient(t)
+
+	// The first delivery blocks until its stream context dies (simulating a handler caught mid-flight by a connection loss)
+	// and then reports a cancellation error. The client must discard that result instead of failing the job; the redelivered attempt completes normally.
+	firstDeliveryStarted := make(chan struct{})
+	var firstDelivery atomic.Bool
+	var deliveries atomic.Int64
+	_, err = zenClient.RegisterWorker(t.Context(), randomID, func(ctx context.Context, _ *proto.WaitingJob) (map[string]any, *zenclient.WorkerError) {
+		deliveries.Add(1)
+		if firstDelivery.CompareAndSwap(false, true) {
+			close(firstDeliveryStarted)
+			<-ctx.Done()
+			return nil, &zenclient.WorkerError{
+				Err:       ctx.Err(),
+				ErrorCode: "CANCELLED",
+			}
+		}
+		return map[string]any{"testVar": 456}, nil
+	}, randomID)
+	require.NoError(t, err)
+
+	instance, err := createProcessInstance(t, &definition.ProcessDefinitionKey, map[string]any{"testVar": 123})
+	require.NoError(t, err)
+	require.NotEmpty(t, instance.Key)
+
+	select {
+	case <-firstDeliveryStarted:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the job was not delivered to the worker")
+	}
+
+	proxy.dropActiveConnections()
+
+	require.Eventually(t, func() bool {
+		inst, err := getProcessInstance(t, instance.Key)
+		return err == nil && inst.State == zenclient.ProcessInstanceStateCompleted
+	}, 30*time.Second, 100*time.Millisecond, "instance should complete via the redelivered job after the connection loss")
+
+	assert.GreaterOrEqual(t, deliveries.Load(), int64(2), "the job should have been redelivered after the connection loss")
+
+	incidents, err := getProcessInstanceIncidents(t, instance.Key)
+	require.NoError(t, err)
+	assert.Empty(t, incidents, "a connection loss mid-handler must not turn into a job failure/incident")
 }
 
 func deployDefinitionWithJobType(t testing.TB, filename string, processId string, jobTypeMap map[string]string) (public.CreateProcessDefinition201JSONResponse, error) {
@@ -383,6 +426,19 @@ func deployDefinitionWithJobType(t testing.TB, filename string, processId string
 		return result, fmt.Errorf("failed to unmarshal create definition response: %w", err)
 	}
 	return result, nil
+}
+
+// startProxiedGrpcClient starts a TCP proxy in front of app.grpcAddr, dials a gRPC
+// client through it, and registers cleanup for both. It returns the proxy (so the
+// caller can call dropActiveConnections) and a ready-to-use zenclient.
+func startProxiedGrpcClient(t testing.TB) (*tcpProxy, *zenclient.Grpc) {
+	t.Helper()
+
+	proxy := startTCPProxy(t, app.grpcAddr)
+	conn, err := grpc.NewClient(proxy.address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	return proxy, zenclient.NewGrpc(conn)
 }
 
 // registerDualTypeWorker opens a gRPC connection to the test server, registers a worker

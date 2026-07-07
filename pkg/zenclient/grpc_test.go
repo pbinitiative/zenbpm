@@ -324,6 +324,120 @@ func TestRegisterWorker_StopsOnContextCancellation(t *testing.T) {
 	}, 300*time.Millisecond, 10*time.Millisecond, "worker must not reconnect after context cancellation")
 }
 
+func TestRegisterWorker_ThrottlesReconnectWhenStreamDiesRightAfterConnect(t *testing.T) {
+	logger := &captureLogger{}
+	stream1 := newFakeBidiStream()
+	stream2 := newFakeBidiStream()
+	stream3 := newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{
+		{stream: stream1},
+		{stream: stream2},
+		{stream: stream3},
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	registerHandledWorker(ctx, t, client, logger)
+
+	// First break: no prior backoff, reconnect to stream2 is immediate.
+	stream1.pushError(fmt.Errorf("transport is closing"))
+	require.Eventually(t, func() bool {
+		return client.callCount() == 2
+	}, 5*time.Second, 10*time.Millisecond, "worker did not reconnect after first stream break")
+
+	// Second break happens right after connecting: even though connect()
+	// succeeds locally, the worker must wait out the carried-over backoff
+	// (reconnectInitialBackoff) before opening stream3 instead of spinning.
+	stream2.pushError(fmt.Errorf("stream rejected by server"))
+	assert.Never(t, func() bool {
+		return client.callCount() > 2
+	}, reconnectInitialBackoff/2, 5*time.Millisecond, "reconnect after a quickly-dying stream must be throttled by backoff")
+
+	require.Eventually(t, func() bool {
+		return client.callCount() == 3
+	}, 5*time.Second, 10*time.Millisecond, "worker did not reconnect after backoff elapsed")
+}
+
+func TestHandleJob_DiscardsResultWhenStreamContextCancelledDuringHandler(t *testing.T) {
+	logger := &captureLogger{}
+	stream1 := newFakeBidiStream()
+	stream2 := newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{
+		{stream: stream1},
+		{stream: stream2},
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handlerStarted := make(chan struct{})
+	handlerDone := make(chan struct{})
+	grpcClient := (&Grpc{Client: client}).WithLogger(logger)
+	worker, err := grpcClient.RegisterWorker(ctx, "test-client", func(jobCtx context.Context, _ *proto.WaitingJob) (map[string]any, *WorkerError) {
+		close(handlerStarted)
+		// Block until the stream this job arrived on is torn down.
+		<-jobCtx.Done()
+		defer close(handlerDone)
+		return nil, &WorkerError{Err: jobCtx.Err(), ErrorCode: "CANCELLED"}
+	}, "test-type")
+	require.NoError(t, err)
+	require.NotNil(t, worker)
+
+	// Deliver a job on stream1 and, while the handler is in flight, break the
+	// stream so the worker reconnects and cancels stream1's context.
+	stream1.pushJob(&proto.WaitingJob{Key: new(int64(55))})
+	select {
+	case <-handlerStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler was not invoked")
+	}
+	stream1.pushError(fmt.Errorf("transport is closing"))
+
+	select {
+	case <-handlerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler was not unblocked by the stream context cancellation")
+	}
+
+	// The result must be discarded: neither a Fail nor a Complete may be sent
+	// on the replacement stream for a job leased on the dead stream.
+	require.Eventually(t, func() bool {
+		return logContains(logger, "discarding result")
+	}, 5*time.Second, 10*time.Millisecond, "expected the discarded result to be logged")
+	for _, req := range stream2.sentRequests() {
+		assert.Nil(t, req.GetFail(), "no fail must be reported for a job whose stream died mid-handler")
+		assert.Nil(t, req.GetComplete(), "no complete must be reported for a job whose stream died mid-handler")
+	}
+}
+
+func TestAddJobSubscription_FailedSendIsReplayedAfterReconnect(t *testing.T) {
+	logger := &captureLogger{}
+	stream1 := newFakeBidiStream()
+	stream2 := newFakeBidiStream()
+	client := &fakeZenBpmClient{results: []jobStreamResult{
+		{stream: stream1},
+		{stream: stream2},
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, worker := registerHandledWorker(ctx, t, client, logger)
+
+	// The stream is mid-break: the subscribe send fails on the wire, but the
+	// intent must still be recorded so the reconnect replays it.
+	stream1.setSendErr(fmt.Errorf("transport is closing"))
+	require.Error(t, worker.AddJobSubscription("dynamic-type"))
+
+	stream1.pushError(fmt.Errorf("transport is closing"))
+
+	require.Eventually(t, func() bool {
+		subs := subscriptionJobTypes(stream2)
+		return slices.Contains(subs, "test-type") && slices.Contains(subs, "dynamic-type")
+	}, 5*time.Second, 10*time.Millisecond, "subscription whose send failed must be replayed on reconnect")
+}
+
 // --- test helpers ---
 
 type captureLogger struct {
@@ -436,10 +550,11 @@ func (c *fakeZenBpmClient) callCount() int {
 // fakeBidiStream implements grpc.BidiStreamingClient for tests. Recv blocks on a
 // channel so the test drives exactly when jobs/errors are delivered.
 type fakeBidiStream struct {
-	ctx    context.Context
-	recvCh chan recvResult
-	mu     sync.Mutex
-	sent   []*proto.JobStreamRequest
+	ctx     context.Context
+	recvCh  chan recvResult
+	mu      sync.Mutex
+	sent    []*proto.JobStreamRequest
+	sendErr error
 }
 
 type recvResult struct {
@@ -462,9 +577,29 @@ func (s *fakeBidiStream) pushError(err error) {
 	s.recvCh <- recvResult{err: err}
 }
 
+// setSendErr makes every subsequent Send on the stream fail with err,
+// simulating a broken wire.
+func (s *fakeBidiStream) setSendErr(err error) {
+	s.mu.Lock()
+	s.sendErr = err
+	s.mu.Unlock()
+}
+
+// sentRequests returns a snapshot of every request sent on the stream so far.
+func (s *fakeBidiStream) sentRequests() []*proto.JobStreamRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]*proto.JobStreamRequest, len(s.sent))
+	copy(out, s.sent)
+	return out
+}
+
 func (s *fakeBidiStream) Send(req *proto.JobStreamRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.sendErr != nil {
+		return s.sendErr
+	}
 	s.sent = append(s.sent, req)
 	return nil
 }

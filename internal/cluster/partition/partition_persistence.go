@@ -2429,7 +2429,7 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 		ElementId:          flowElementInstance.ElementID,
 		CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
 		CompletedAt:        nullInt64ToTimePtr(flowElementInstance.CompletedAt),
-		ExecutionTokenKey:  flowElementInstance.Key,
+		ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
 		InputVariables:     inputVariables,
 		OutputVariables:    outputVariables,
 	}, nil
@@ -2492,7 +2492,7 @@ func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element b
 			ExecutionTokenKey:  element.ExecutionTokenKey,
 			InputVariables:     string(inputVariablesString),
 			OutputVariables:    string(outputVariablesString),
-			CompletedAt:        ssql.NullInt64{},
+			CompletedAt:        timePtrToNullInt64(element.CompletedAt),
 		},
 	)
 }

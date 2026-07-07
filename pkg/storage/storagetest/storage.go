@@ -50,7 +50,9 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
 		st.TestFlowElementInstanceCompletedAt,
+		st.TestFlowElementInstanceSaveWithCompletedAt,
 		st.TestFlowElementInstanceUpdateOutputInsertPath,
+		st.TestFlowElementInstanceExecutionTokenKeyPreserved,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
 	}
@@ -733,6 +735,30 @@ func (st *StorageTester) TestFlowElementInstanceCompletedAt(s storage.Storage, t
 	}
 }
 
+func (st *StorageTester) TestFlowElementInstanceSaveWithCompletedAt(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		completedAt := time.Now().Truncate(time.Millisecond)
+		historyItem := bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-completed-at-on-save",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{"out": "v"},
+			CompletedAt:        &completedAt,
+		}
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), historyItem))
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.NoError(t, err)
+		assert.NotNil(t, read.CompletedAt, "CompletedAt should be preserved when saved via SaveFlowElementInstance")
+		assert.True(t, read.CompletedAt.Equal(completedAt), "CompletedAt mismatch: got %v want %v", *read.CompletedAt, completedAt)
+	}
+}
+
 func (st *StorageTester) TestFlowElementInstanceUpdateOutputInsertPath(s storage.Storage, t *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		r := s.GenerateId()
@@ -758,6 +784,36 @@ func (st *StorageTester) TestFlowElementInstanceUpdateOutputInsertPath(s storage
 		assert.Equal(t, map[string]any{"out": "put"}, read.OutputVariables,
 			"OutputVariables should be populated")
 		assert.NotNil(t, read.CompletedAt, "CompletedAt should be set")
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceExecutionTokenKeyPreserved(s storage.Storage, t *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		// Use distinct ids for the flow element instance key and the execution
+		// token key. The previous test cases all used the same value for both,
+		// which hid a bug where GetFlowElementInstanceByKey echoed the element
+		// instance key back as the execution-token key.
+		feiKey := s.GenerateId()
+		tokenKey := s.GenerateId()
+
+		historyItem := bpmnruntime.FlowElementInstance{
+			Key:                feiKey,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-token-key",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  tokenKey,
+			InputVariables:     map[string]any{},
+			OutputVariables:    map[string]any{},
+		}
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), historyItem))
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), feiKey)
+		assert.NoError(t, err)
+		assert.Equal(t, feiKey, read.Key, "Key should be preserved")
+		assert.Equal(t, tokenKey, read.ExecutionTokenKey,
+			"ExecutionTokenKey should be preserved (not echoed from Key)")
+		assert.NotEqual(t, feiKey, tokenKey,
+			"sanity: distinct ids must be used to detect the bug")
 	}
 }
 

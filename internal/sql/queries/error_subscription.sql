@@ -6,6 +6,10 @@ ON CONFLICT
     DO UPDATE SET
         state = excluded.state;
 
+-- name: DeleteProcessInstancesErrorSubscriptions :exec
+DELETE FROM error_subscription
+WHERE process_instance_key IN (sqlc.slice('keys'));
+
 -- name: FindTokenErrorSubscriptions :many
 SELECT
     *

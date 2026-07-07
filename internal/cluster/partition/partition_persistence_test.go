@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"slices"
+
 	ssql "database/sql"
 
 	"github.com/pbinitiative/zenbpm/internal/appcontext"
@@ -29,10 +31,32 @@ import (
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/storagetest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func prepareTestSetupWithTestMigration(t *testing.T) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
 	return prepareTestSetup(t, true)
+}
+
+func testDBOptions() dbOptions {
+	opts := defaultDBOptions()
+	opts.startDataCleanup = false
+	return opts
+}
+
+func newTestDB(t *testing.T, partition *ZenPartitionNode, conf config.Persistence, clientMgr *client.ClientManager, tStore *testStore, loggerName string) *DB {
+	t.Helper()
+	db, err := newDB(
+		partition.DB.Store,
+		partition.PartitionId,
+		hclog.Default().Named(loggerName),
+		conf,
+		clientMgr,
+		tStore.ClusterState,
+		testDBOptions(),
+	)
+	require.NoError(t, err)
+	return db
 }
 
 func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitionNode, config.Persistence, *client.ClientManager, *testStore, *servertest.TestServer) {
@@ -90,7 +114,7 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 	}
 	clientMgr := client.NewClientManager(tStore)
 
-	partition, err := StartZenPartitionNode(ctx, mux, conf, clientMgr, 1, PartitionChangesCallbacks{}, func() state.Cluster {
+	partition, err := startZenPartitionNode(ctx, mux, conf, clientMgr, 1, PartitionChangesCallbacks{}, func() state.Cluster {
 		return state.Cluster{
 			Config: state.ClusterConfig{},
 			Partitions: map[uint32]state.Partition{
@@ -108,7 +132,7 @@ func prepareTestSetup(t *testing.T, runMigrationWithRollback bool) (*ZenPartitio
 					Partitions: map[uint32]state.NodePartition{},
 				}},
 		}
-	})
+	}, testDBOptions())
 	if err != nil {
 		t.Fatalf("failed to create partition node: %s", err)
 	}
@@ -130,8 +154,7 @@ func TestRqLiteStorage(t *testing.T) {
 	partition, conf, clientMgr, tStore, ts := prepareTestSetup(t, false)
 	defer partition.Stop()
 
-	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-rq-lite-db"), conf, clientMgr, tStore.ClusterState)
-	assert.NoError(t, err)
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-rq-lite-db")
 
 	tester := storagetest.StorageTester{}
 	tester.PrepareTestData(db, t)
@@ -148,8 +171,7 @@ func TestRunUpMigrations(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer partition.Stop()
 
-	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-migration-lite-db"), conf, clientMgr, tStore.ClusterState)
-	assert.NoError(t, err)
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
 	appliedMigrations, err := db.Queries.GetMigrations(t.Context())
 	assert.NoError(t, err)
@@ -175,8 +197,7 @@ func TestRunRollbackMigration(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetupWithTestMigration(t)
 	defer partition.Stop()
 
-	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-migration-lite-db"), conf, clientMgr, tStore.ClusterState)
-	assert.NoError(t, err)
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-migration-lite-db")
 
 	appliedMigrations, err := db.Queries.GetMigrations(t.Context())
 	assert.NoError(t, err)
@@ -209,8 +230,8 @@ func TestDataCleanup(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer partition.Stop()
 
-	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-data-cleanup"), conf, clientMgr, tStore.ClusterState)
-	assert.NoError(t, err)
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-data-cleanup")
+	const cleanupBatchSize = 10
 
 	data := `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="Simple_Task_Process%d" name="aName" isExecutable="true"></bpmn:process></xml>`
 
@@ -222,10 +243,16 @@ func TestDataCleanup(t *testing.T) {
 		BpmnData:      fmt.Sprintf(data, r),
 		BpmnChecksum:  [16]byte{1},
 	}
-	err = db.SaveProcessDefinition(t.Context(), pd)
+	err := db.SaveProcessDefinition(t.Context(), pd)
 	assert.NoError(t, err)
 
 	createTestData := func(ctx context.Context, idArr *[]int64) {
+		var historyTTLSec *int64
+		if historyTTL, found := appcontext.HistoryTTLFromContext(ctx); found {
+			ttl := int64(historyTTL.Seconds())
+			historyTTLSec = &ttl
+		}
+
 		r := db.GenerateId()
 		*idArr = append(*idArr, r)
 		inst1 := runtime.DefaultProcessInstance{
@@ -235,6 +262,7 @@ func TestDataCleanup(t *testing.T) {
 				VariableHolder: runtime.VariableHolder{},
 				CreatedAt:      time.Now(),
 				State:          runtime.ActivityStateReady,
+				HistoryTTLSec:  historyTTLSec,
 			},
 		}
 		err = db.SaveProcessInstance(ctx, &inst1)
@@ -281,6 +309,19 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveIncident(ctx, incident)
 		assert.NoError(t, err)
 
+		errorSubscription := runtime.ErrorSubscription{
+			Key:                  r + 110,
+			ElementInstanceKey:   r + 111,
+			ElementId:            "error-catch-465",
+			ProcessDefinitionKey: pd.Key,
+			ProcessInstanceKey:   inst1.ProcessInstance().Key,
+			State:                runtime.ErrorStateCreated,
+			CreatedAt:            time.Now(),
+			Token:                token,
+		}
+		err = db.SaveErrorSubscription(ctx, errorSubscription)
+		assert.NoError(t, err)
+
 		r2 := db.GenerateId()
 		*idArr = append(*idArr, r2)
 		inst2 := runtime.SubProcessInstance{
@@ -293,6 +334,7 @@ func TestDataCleanup(t *testing.T) {
 				VariableHolder: runtime.VariableHolder{},
 				CreatedAt:      time.Now(),
 				State:          runtime.ActivityStateReady,
+				HistoryTTLSec:  historyTTLSec,
 			},
 		}
 		err = db.SaveProcessInstance(ctx, &inst2)
@@ -345,30 +387,37 @@ func TestDataCleanup(t *testing.T) {
 
 	idsToBeDeleted := []int64{}
 	idsToKeep := []int64{}
-	for i := range db.historyDeleteThreshold {
+	idsWithoutTTL := []int64{}
+	for i := range cleanupBatchSize {
 		ctx := t.Context()
-		if i < db.historyDeleteThreshold/2 {
-			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(1*time.Hour))
+		if i < cleanupBatchSize/2 {
+			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(time.Hour))
 			createTestData(ctx, &idsToKeep)
 		} else {
+			ctx = appcontext.WithHistoryTTL(ctx, types.TTL(time.Second))
 			createTestData(ctx, &idsToBeDeleted)
 		}
 	}
+	// Instances created without a history TTL must be retained forever.
+	createTestData(t.Context(), &idsWithoutTTL)
 
-	nowSeconds := ssql.NullInt64{
-		Int64: time.Now().Unix(),
-		Valid: true,
+	findInactiveIDs := func(at time.Time) ([]int64, error) {
+		return db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
+			CurrUnix: ssql.NullInt64{
+				Int64: at.Unix(),
+				Valid: true,
+			},
+			Limit: 100000,
+		})
 	}
-	inactiveIds, err := db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
+
+	inactiveIDs, err := findInactiveIDs(time.Now())
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(inactiveIds))
+	assert.Equal(t, 0, len(inactiveIDs))
 	activeBeforeCleanup, err := db.Queries.FindActiveInstances(t.Context())
 	assert.NoError(t, err)
 
-	cleanupTriggered, err := db.dataCleanup(time.Now())
+	cleanupTriggered, err := db.dataCleanupWithLimit(t.Context(), time.Now(), cleanupBatchSize)
 	assert.NoError(t, err)
 	assert.False(t, cleanupTriggered)
 
@@ -376,7 +425,7 @@ func TestDataCleanup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, activeBeforeCleanup, activeAfterCleanup)
 
-	idsToComplete := append(idsToBeDeleted, idsToKeep...)
+	idsToComplete := slices.Concat(idsToBeDeleted, idsToKeep, idsWithoutTTL)
 	for _, id := range idsToComplete {
 		pi, err := db.FindProcessInstanceByKey(t.Context(), id)
 		assert.NoError(t, err)
@@ -384,64 +433,163 @@ func TestDataCleanup(t *testing.T) {
 		err = db.SaveProcessInstance(t.Context(), pi)
 		assert.NoError(t, err)
 	}
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, inactiveIds, idsToBeDeleted)
+	require.Eventually(t, func() bool {
+		inactiveIDs, err = findInactiveIDs(time.Now())
+		return err == nil && int64SlicesMatch(inactiveIDs, idsToBeDeleted)
+	}, 10*time.Second, 100*time.Millisecond)
+	assert.ElementsMatch(t, idsToBeDeleted, inactiveIDs)
 
-	cleanupTriggered, err = db.dataCleanup(time.Now())
-	assert.NoError(t, err)
-	assert.True(t, cleanupTriggered)
+	// Verify that cleanup also processes a partially filled batch.
+	require.Eventually(t, func() bool {
+		cleanupTriggered, err = db.dataCleanupWithLimit(t.Context(), time.Now(), len(idsToBeDeleted)+1)
+		return err == nil && cleanupTriggered
+	}, 10*time.Second, 100*time.Millisecond)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
-	assert.NoError(t, err)
-	assert.Empty(t, inactiveIds)
+	inactiveIDs, err = findInactiveIDs(time.Now())
+	require.NoError(t, err)
+	require.Empty(t, inactiveIDs)
+	// Each createTestData call creates two instances and one row per history table.
+	remainingCalls := int64((len(idsToKeep) + len(idsWithoutTTL)) / 2)
 	count := queryCount(t, db, "select count(*) from process_instance")
-	assert.Equal(t, int64(db.historyDeleteThreshold), count)
+	require.Equal(t, int64(len(idsToKeep)+len(idsWithoutTTL)), count)
 	count = queryCount(t, db, "select count(*) from message_subscription")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from timer")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from job")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from execution_token")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from flow_element_instance")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
 	count = queryCount(t, db, "select count(*) from incident")
-	assert.Equal(t, int64(db.historyDeleteThreshold/2), count)
+	require.Equal(t, remainingCalls, count)
+	count = queryCount(t, db, "select count(*) from error_subscription")
+	require.Equal(t, remainingCalls, count)
 
-	//should delete only one instance
-	db.historyDeleteThreshold = 1
-	cleanupTriggered, err = db.dataCleanup(time.Now().Add(2 * time.Hour))
+	// Should delete only one instance.
+	cleanupTriggered, err = db.dataCleanupWithLimit(t.Context(), time.Now().Add(2*time.Hour), 1)
 	assert.NoError(t, err)
 	assert.True(t, cleanupTriggered)
 
-	inactiveIds, err = db.Queries.FindInactiveInstancesToDelete(t.Context(), sql.FindInactiveInstancesToDeleteParams{
-		CurrUnix: nowSeconds,
-		Limit:    100000,
-	})
-	assert.NoError(t, err)
-	assert.Empty(t, inactiveIds)
+	inactiveIDs, err = findInactiveIDs(time.Now())
+	require.NoError(t, err)
+	require.Empty(t, inactiveIDs)
 	count = queryCount(t, db, "select count(*) from process_instance")
-	assert.Equal(t, int64(999), count)
-	count = queryCount(t, db, "select count(*) from message_subscription")
-	assert.Equal(t, int64(499), count)
-	count = queryCount(t, db, "select count(*) from timer")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from job")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from execution_token")
-	assert.Equal(t, int64(499), count)
-	count = queryCount(t, db, "select count(*) from flow_element_instance")
-	assert.Equal(t, int64(500), count)
-	count = queryCount(t, db, "select count(*) from incident")
-	assert.Equal(t, int64(499), count)
+	require.Equal(t, int64(len(idsToKeep)+len(idsWithoutTTL)-1), count)
+
+	sumHistoryRows := func() int64 {
+		return queryCount(t, db, "select count(*) from message_subscription") +
+			queryCount(t, db, "select count(*) from timer") +
+			queryCount(t, db, "select count(*) from job") +
+			queryCount(t, db, "select count(*) from execution_token") +
+			queryCount(t, db, "select count(*) from flow_element_instance") +
+			queryCount(t, db, "select count(*) from incident") +
+			queryCount(t, db, "select count(*) from error_subscription")
+	}
+	// The deleted instance is the newest deletable one: the child of the last
+	// idsToKeep call, which owns 3 history rows (timer, job, flow element).
+	require.Equal(t, remainingCalls*7-3, sumHistoryRows())
+
+	// Instances without a TTL must never be cleaned up, no matter how far in
+	// the future the cleanup runs.
+	cleanupTriggered, err = db.dataCleanupWithLimit(t.Context(), time.Now().Add(2*time.Hour), defaultHistoryDeleteBatchSize)
+	require.NoError(t, err)
+	require.True(t, cleanupTriggered)
+
+	inactiveIDs, err = findInactiveIDs(time.Now().Add(1000 * time.Hour))
+	require.NoError(t, err)
+	require.Empty(t, inactiveIDs)
+	count = queryCount(t, db, "select count(*) from process_instance")
+	require.Equal(t, int64(len(idsWithoutTTL)), count)
+	require.Equal(t, int64(len(idsWithoutTTL)/2*7), sumHistoryRows())
+}
+
+func TestChildProcessInstanceInheritsParentHistoryTTL(t *testing.T) {
+	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
+	defer func() {
+		if err := partition.Stop(); err != nil {
+			t.Logf("failed to stop partition: %s", err)
+		}
+	}()
+
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-child-history-ttl")
+
+	definition := runtime.ProcessDefinition{
+		BpmnProcessId: "child-history-ttl-process",
+		Version:       1,
+		Key:           db.GenerateId(),
+		BpmnData:      `<?xml version="1.0" encoding="UTF-8"?><bpmn:process id="child-history-ttl-process" name="child history ttl" isExecutable="true"></bpmn:process></xml>`,
+		BpmnChecksum:  [16]byte{1},
+	}
+	require.NoError(t, db.SaveProcessDefinition(t.Context(), definition))
+
+	parent := runtime.DefaultProcessInstance{
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	parentContext := appcontext.WithHistoryTTL(t.Context(), types.TTL(time.Hour))
+	require.NoError(t, db.SaveProcessInstance(parentContext, &parent))
+
+	parentRow, err := db.Queries.GetProcessInstance(t.Context(), parent.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, parentRow.HistoryTtlSec.Valid)
+	require.Equal(t, int64(time.Hour.Seconds()), parentRow.HistoryTtlSec.Int64)
+
+	parentToken := runtime.ExecutionToken{
+		Key:                db.GenerateId(),
+		ElementInstanceKey: db.GenerateId(),
+		ElementId:          "sub-process",
+		ProcessInstanceKey: parent.ProcessInstance().Key,
+		State:              runtime.TokenStateWaiting,
+	}
+	require.NoError(t, db.SaveToken(t.Context(), parentToken))
+
+	child := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           parentToken,
+		ParentProcessTargetElementInstanceKey: parentToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          parentToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+			HistoryTTLSec:  new(int64(time.Hour.Seconds())),
+		},
+	}
+	childContext := appcontext.WithHistoryTTL(t.Context(), types.TTL(2*time.Hour))
+	require.NoError(t, db.SaveProcessInstance(childContext, &child))
+
+	childRow, err := db.Queries.GetProcessInstance(t.Context(), child.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.True(t, childRow.HistoryTtlSec.Valid)
+	require.Equal(t, int64(time.Hour.Seconds()), childRow.HistoryTtlSec.Int64)
+
+	// A child instance whose parent had no TTL carries no TTL on its runtime object
+	// either, and must not pick one up from the resuming request's context.
+	childWithoutTTL := runtime.SubProcessInstance{
+		ParentProcessExecutionToken:           parentToken,
+		ParentProcessTargetElementInstanceKey: parentToken.ElementInstanceKey,
+		ParentProcessTargetElementId:          parentToken.ElementId,
+		ProcessInstanceData: runtime.ProcessInstanceData{
+			Definition:     &definition,
+			Key:            db.GenerateId(),
+			VariableHolder: runtime.VariableHolder{},
+			CreatedAt:      time.Now(),
+			State:          runtime.ActivityStateReady,
+		},
+	}
+	require.NoError(t, db.SaveProcessInstance(childContext, &childWithoutTTL))
+
+	childWithoutTTLRow, err := db.Queries.GetProcessInstance(t.Context(), childWithoutTTL.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.False(t, childWithoutTTLRow.HistoryTtlSec.Valid)
 }
 
 func queryCount(t *testing.T, db *DB, query string) int64 {
@@ -450,6 +598,23 @@ func queryCount(t *testing.T, db *DB, query string) int64 {
 	err := row.Scan(&count)
 	assert.NoError(t, err)
 	return count
+}
+
+func int64SlicesMatch(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	counts := make(map[int64]int, len(left))
+	for _, value := range left {
+		counts[value]++
+	}
+	for _, value := range right {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func testMessageCorrelation(t *testing.T, db *DB, ts *servertest.TestServer) {
@@ -708,8 +873,7 @@ func TestGetLatestDecisionDefinitionById(t *testing.T) {
 	partition, conf, clientMgr, tStore, _ := prepareTestSetup(t, false)
 	defer partition.Stop()
 
-	db, err := NewDB(partition.DB.Store, partition.PartitionId, hclog.Default().Named("test-decision-def"), conf, clientMgr, tStore.ClusterState)
-	assert.NoError(t, err)
+	db := newTestDB(t, partition, conf, clientMgr, tStore, "test-decision-def")
 
 	// Helper to create and save a DMN resource definition
 	saveDmnResource := func(t *testing.T, key int64) dmnruntime.DmnResourceDefinition {

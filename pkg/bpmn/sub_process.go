@@ -53,6 +53,9 @@ func (engine *Engine) createCallActivity(
 		&runtime.CallActivityInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		})
 	if err != nil {
 		return runtime.ActivityStateFailed, err
@@ -111,6 +114,9 @@ func (engine *Engine) createSubProcess(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.Id,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		},
 	)
 	if err != nil {

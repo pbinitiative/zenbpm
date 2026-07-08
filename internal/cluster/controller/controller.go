@@ -258,6 +258,9 @@ func (c *Controller) performMemberOperations(ctx context.Context) {
 		partitionOp := c.partitionOperationMutex(partitionId)
 		partitionOp.Lock()
 		c.logger.Debug(fmt.Sprintf("Handling partition %d state %s", partitionId, partition.State))
+		// Unlocks are deferred inside closures: handlers run from safego
+		// goroutines that recover panics, so a plain Unlock after the call
+		// would be skipped on panic and leave the mutex locked forever.
 		switch partition.State {
 		case state.NodePartitionStateError:
 			c.handlePartitionStateError(partitionId)
@@ -315,6 +318,18 @@ func (c *Controller) handlePartitionStateJoining(ctx context.Context, partitionI
 	if err := c.reportPartitionState(partitionID, proto.NodePartitionState_NODE_PARTITION_STATE_INITIALIZING, proto.Role_ROLE_TYPE_UNKNOWN); err != nil {
 		c.logger.Warn(fmt.Sprintf("Failed to change partition %d node state to INITIALIZING: %s", partitionID, err))
 		c.schedulePartitionRetry(partitionID, "partition-initializing-state-retry")
+		return
+	}
+	// The partition node may already be running while local state still reads
+	// JOINING: the INITIALIZING write is applied on the cluster leader first and
+	// only later replicated into this node's FSM (the write above re-sends it in
+	// case it was lost). Never start a second instance — the duplicate mux
+	// listener registration panics mid-handler, which used to leak a locked
+	// partitionsMu and deadlock all partition handling on this node.
+	c.partitionsMu.RLock()
+	_, alreadyRunning := c.partitions[partitionID]
+	c.partitionsMu.RUnlock()
+	if alreadyRunning {
 		return
 	}
 	partitionConf := c.persistenceConfig

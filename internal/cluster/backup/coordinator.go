@@ -237,7 +237,7 @@ func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) err
 		if err != nil {
 			return fmt.Errorf("pointer scan: failed to get leader for partition %d: %w", id, err)
 		}
-		resp, err := leader.ListActiveMessageSubscriptions(ctx, &proto.ListActiveMessageSubscriptionsRequest{PartitionId: ptr.To(id)})
+		resp, err := leader.ListActiveMessageSubscriptions(ctx, &proto.ListActiveMessageSubscriptionsRequest{PartitionId: new(id)})
 		if err != nil {
 			return fmt.Errorf("pointer scan on partition %d failed: %w", id, err)
 		}
@@ -255,7 +255,7 @@ func reconcile(ctx context.Context, deps RestoreDeps, report *RestoreReport) err
 			return fmt.Errorf("pointer rebuild: failed to get leader for partition %d: %w", id, err)
 		}
 		_, err = leader.RebuildMessageSubscriptionPointers(ctx, &proto.RebuildMessageSubscriptionPointersRequest{
-			PartitionId: ptr.To(id),
+			PartitionId: new(id),
 			Pointers:    rows,
 		})
 		if err != nil {
@@ -278,7 +278,7 @@ func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreRepor
 		if err != nil {
 			return fmt.Errorf("definition scan: failed to get leader for partition %d: %w", id, err)
 		}
-		resp, err := leader.ListDefinitions(ctx, &proto.ListDefinitionsRequest{PartitionId: ptr.To(id)})
+		resp, err := leader.ListDefinitions(ctx, &proto.ListDefinitionsRequest{PartitionId: new(id)})
 		if err != nil {
 			return fmt.Errorf("definition scan on partition %d failed: %w", id, err)
 		}
@@ -300,17 +300,17 @@ func syncDefinitions(ctx context.Context, deps RestoreDeps, report *RestoreRepor
 			switch ref.GetType() {
 			case proto.DefinitionType_DEFINITION_TYPE_PROCESS:
 				resp, err := target.DeployProcessDefinition(ctx, &proto.DeployProcessDefinitionRequest{
-					Key:                                    ptr.To(ref.GetKey()),
+					Key:                                    new(ref.GetKey()),
 					Data:                                   data,
-					ResourceName:                           ptr.To(resourceName),
-					RegisterProcessDefinitionSubscriptions: ptr.To(true),
+					ResourceName:                           new(resourceName),
+					RegisterProcessDefinitionSubscriptions: new(true),
 				})
 				if err != nil || resp.GetError() != nil {
 					return fmt.Errorf("failed to sync process definition %d to partition %d: %v %v", ref.GetKey(), part, err, resp.GetError())
 				}
 			case proto.DefinitionType_DEFINITION_TYPE_DMN_RESOURCE:
 				resp, err := target.DeployDmnResourceDefinition(ctx, &proto.DeployDmnResourceDefinitionRequest{
-					Key:  ptr.To(ref.GetKey()),
+					Key:  new(ref.GetKey()),
 					Data: data,
 				})
 				if err != nil || resp.GetError() != nil {
@@ -347,7 +347,7 @@ func fetchDefinition(ctx context.Context, deps RestoreDeps, perPartition map[uin
 					return nil, "", err
 				}
 				resp, err := leader.GetDefinitionResource(ctx, &proto.GetDefinitionResourceRequest{
-					PartitionId: ptr.To(part), Key: ptr.To(ref.GetKey()), Type: ref.GetType().Enum(),
+					PartitionId: new(part), Key: new(ref.GetKey()), Type: ref.GetType().Enum(),
 				})
 				if err != nil {
 					return nil, "", fmt.Errorf("failed to fetch definition %d from partition %d: %w", ref.GetKey(), part, err)

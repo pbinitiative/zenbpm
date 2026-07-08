@@ -4,23 +4,22 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/internal/cluster/proto"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
 func row(key int64, name, ck string, createdAt int64) *proto.MessageSubscriptionRow {
 	return &proto.MessageSubscriptionRow{
-		Key:            ptr.To(key),
-		Name:           ptr.To(name),
-		CorrelationKey: ptr.To(ck),
-		CreatedAt:      ptr.To(createdAt),
-		State:          ptr.To(int64(2)),
+		Key:            new(key),
+		Name:           new(name),
+		CorrelationKey: new(ck),
+		CreatedAt:      new(createdAt),
+		State:          new(int64(2)),
 	}
 }
 
 func TestMissingDefinitions(t *testing.T) {
 	ref := func(key int64) *proto.DefinitionRef {
-		return &proto.DefinitionRef{Key: ptr.To(key), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()}
+		return &proto.DefinitionRef{Key: new(key), Type: proto.DefinitionType_DEFINITION_TYPE_PROCESS.Enum()}
 	}
 	perPartition := map[uint32][]*proto.DefinitionRef{
 		1: {ref(100), ref(200)},

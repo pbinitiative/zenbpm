@@ -492,6 +492,7 @@ func (zpn *ZenPartitionNode) stop() error {
 		zpn.cdcService.Stop()
 		zpn.cdcService = nil
 	}
+
 	zpn.logger.Info("rqlite server stopped")
 	return stopErr
 }

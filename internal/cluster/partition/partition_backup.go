@@ -6,7 +6,6 @@ import (
 
 	zenproto "github.com/pbinitiative/zenbpm/internal/cluster/proto"
 	bpmnruntime "github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	rqproto "github.com/rqlite/rqlite/v10/command/proto"
 )
 
@@ -24,7 +23,7 @@ func (rq *DB) ListDefinitionRefs(ctx context.Context) ([]*zenproto.DefinitionRef
 			if err := rows.Scan(&key); err != nil {
 				return err
 			}
-			out = append(out, &zenproto.DefinitionRef{Key: ptr.To(key), Type: typ.Enum()})
+			out = append(out, &zenproto.DefinitionRef{Key: new(key), Type: typ.Enum()})
 		}
 		return rows.Err()
 	}
@@ -103,7 +102,7 @@ func (rq *DB) ListActiveMessageSubscriptions(ctx context.Context) ([]*zenproto.M
 		if err := rows.Scan(&key, &name, &ck, &createdAt, &state); err != nil {
 			return nil, err
 		}
-		r.Key, r.Name, r.CorrelationKey, r.CreatedAt, r.State = ptr.To(key), ptr.To(name), ptr.To(ck), ptr.To(createdAt), ptr.To(state)
+		r.Key, r.Name, r.CorrelationKey, r.CreatedAt, r.State = new(key), new(name), new(ck), new(createdAt), new(state)
 		out = append(out, r)
 	}
 	return out, rows.Err()

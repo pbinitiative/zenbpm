@@ -24,13 +24,14 @@ Make `DesiredPartitions` changeable at runtime through Raft consensus instead of
 | D5 | Replication scope in Phase 2 | Full replication: every partition gets **all** started nodes as members (RF = cluster size); RF<N placement stays Phase 4 |
 | D6 | Pointer staleness on scale-up | Keep `hash % N` addressing; rebuild pointers after formation using existing `RebuildMessageSubscriptionPointers` machinery, tracked by a replicated `RoutingPartitions` marker. No broadcast lookup. |
 | D7 | App-config scope exception | `DesiredPartitions` field added to `internal/config/config.go` (user-approved exception to cluster-scope boundary) |
+| D8 | Operator-facing API | REST admin endpoint in `openapi/system.yaml` following the backup/restore precedent; cluster gRPC `ConfigurationUpdate` remains the internal transport (user-approved scope exception for `internal/rest/` + `openapi/system.yaml`) |
 
 ## Non-goals (explicit boundaries)
 
 - **Scale-down** — rejected by validation; no data-migration path exists (plan Risk #4).
 - **Replicating to nodes that join after a partition was created** — Phase 4 node lifecycle (add-node-to-partition RPCs are stubs today).
 - **RF < cluster-size placement / balancing** — Phase 4.1.
-- **HTTP/OpenAPI surface for ConfigurationUpdate** — gRPC only in Phase 2; e2e drives gRPC directly.
+- **Public workload gRPC (:9090) exposure** — scale-up is a cluster admin operation; the REST admin API (`system.yaml`) is the operator surface (D8), not the workload API.
 - **Voter-only awareness** — Phase 7.
 
 ## Design
@@ -140,6 +141,14 @@ if cs.Config.DesiredPartitions > current:
 
 Reconciliation then converges via §4; pointer rebuild via §6.
 
+### 5b. REST admin endpoint (D8)
+
+Operator-facing surface, following the backup/restore precedent (`system.yaml` → REST handler → `ZenNode`):
+
+- `openapi/system.yaml`: `PUT /cluster/config`, operationId `updateClusterConfiguration`, request body `{ "desiredPartitions": <uint32> }`, 200 response echoes the applied cluster config.
+- `internal/rest/` handler (new `cluster_config.go`, modeled on `cluster_backup.go`): parse/decode → `s.node.UpdateClusterConfiguration(ctx, n)` → map errors: `InvalidArgument` → 400, `FailedPrecondition` (scale-down) → 409, no leader/unavailable → 503.
+- `internal/cluster/node.go`: `UpdateClusterConfiguration(ctx, n)` obtains `client.ClusterLeader()` and calls the `ConfigurationUpdate` gRPC — **all validation stays in the server RPC implementation** (single source of truth); the REST layer only translates transport and status codes. Works identically whether the receiving node is leader or follower.
+
 ### 6. Pointer consistency across scale-up (D6)
 
 **Background (verified against code):** message-subscription pointers are a rebuildable routing index. Save (`partition_persistence.go:1766`) and lookup (`node.go:779`) both route by `GetPartitionIdForMessageSubscriptionPointer` = `hash % len(Partitions) + 1`, so addressing is exact at any stable N. Authoritative subscriptions never move — their zenflake keys encode their home partition (`node.go:829`). The only inconsistency is pointers written under a previous N being mis-addressed after N changes; misses degrade gracefully (definition-level fallback / NotFound, `node.go:790-802`). No data loss is possible.
@@ -191,12 +200,13 @@ if len(cs.Partitions) == cs.Config.DesiredPartitions
 | fsm | `TestApplyConfigurationChange` (desired only, routing only, both, zero-field no-op) |
 | controller | `TestConfigSeedOnlyWhenUnset`, `TestPartitionScaleUpOnePerPass`, `TestScaleUpAssignsAllStartedNodes`, `TestScaleUpDeferredWhenNodeDown` (R2), `TestReconcileTickerDrivesConvergence`, `TestReconcileSingleFlight` (R3), `TestPointerRebuildTriggeredAfterScaleUp`, `TestPointerRebuildWaitsForFormation`, `TestFreshFormationSkipsRebuildGate` (R4), `TestPointerRebuildPendingSurvivesLeaderChange` |
 | server | `TestConfigurationUpdateForwardsToLeader`, `TestConfigUpdateValidatesAgainstDesired` (R1), `TestConfigurationUpdateRejectsDecrease`, `TestConfigurationUpdateRejectsOutOfRange`, `TestConfigurationUpdateIdempotentSameValue` |
+| rest | `TestUpdateClusterConfigurationEndpoint` (status-code mapping: 200/400/409/503) |
 | state | `TestLeastStressedPartitionSinglePartition` |
 
 **E2E** (`test/e2e/cluster/`):
 
 - Wire the currently-dead `WithPartitions` harness option into per-node `config.Cluster.DesiredPartitions`.
-- Un-skip: `TestPartitionCreation`, `TestPartitionAssignment`, `TestMultiplePartitionsPerNode`, `TestMaxPartitions` (slow tier), `TestIncreasePartitionCount` (implement its TODO via gRPC `ConfigurationUpdate`), multi-partition-gated tests in `data_test.go`, `stream_resilience_test.go`, `backup_restore_test.go`.
+- Un-skip: `TestPartitionCreation`, `TestPartitionAssignment`, `TestMultiplePartitionsPerNode`, `TestMaxPartitions` (slow tier), `TestIncreasePartitionCount` (implement its TODO via the REST admin endpoint, §5b), multi-partition-gated tests in `data_test.go`, `stream_resilience_test.go`, `backup_restore_test.go`.
 - New: `TestMessageCorrelationAfterScaleUp` (deploy + subscribe at N=1, scale to 3, publish after rebuild → correlates).
 - Verify `TestMessageCorrelationAcrossNodes` (listed under 3.3) passes; if so, un-skip and mark 3.3 resolved.
 
@@ -223,6 +233,9 @@ if len(cs.Partitions) == cs.Config.DesiredPartitions
 | `internal/cluster/store/store.go` | remove hardcode; config plumb; `WriteConfigurationChange` |
 | `internal/cluster/controller/controller.go` | seeding, membership rewrite, ticker, single-flight, rebuild trigger |
 | `internal/cluster/server/server.go` | `ConfigurationUpdate` implementation |
+| `internal/cluster/node.go` | `UpdateClusterConfiguration` method (REST → leader RPC) |
+| `openapi/system.yaml` | `PUT /cluster/config` admin operation (scope exception D8) |
+| `internal/rest/cluster_config.go` | REST handler + status-code mapping (scope exception D8) |
 | `test/e2e/cluster/*` | harness wiring, un-skips, new tests |
 | `docs/cluster-implementation-plan.md` | sync per §9 |
 

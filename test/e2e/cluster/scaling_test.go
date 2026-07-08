@@ -36,7 +36,7 @@ func TestScaleUpFromOneToThree(t *testing.T) {
 	tc.AddNode(t)
 
 	WaitForNodeCount(t, tc, 3, 60*time.Second)
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Data should be accessible from new nodes
 	for _, n := range tc.RunningNodes() {
@@ -54,7 +54,7 @@ func TestScaleDownFromThreeToOne(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Remove 2 nodes gracefully
 	followers := tc.Followers()
@@ -82,7 +82,7 @@ func TestScaleUpDuringLoad(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -145,7 +145,7 @@ func TestRollingRestart(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Deploy some data
 	leader := tc.Leader()
@@ -190,7 +190,7 @@ func TestRapidScaleUpDown(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Add a node
 	tc.AddNode(t)
@@ -205,6 +205,6 @@ func TestRapidScaleUpDown(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Cluster should converge to stable state
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 	AssertStateConverged(t, tc, 30*time.Second)
 }

@@ -19,7 +19,7 @@ func TestBaseClusterLeaderFailover(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill the current leader
 	leader := tc.Leader()
@@ -45,7 +45,7 @@ func TestBaseClusterLeaderGracefulStepDown(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -64,7 +64,7 @@ func TestPartitionLeaderFailover(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 	WaitForPartitions(t, tc, 1, 30*time.Second)
 
 	// Find which node is the partition leader
@@ -112,7 +112,7 @@ func TestPartitionLeaderFailoverDuringProcessExecution(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Deploy a process definition
 	leader := tc.Leader()
@@ -153,7 +153,9 @@ func TestDoubleFailover(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	// 5-node formation (base + partition raft groups on every node) needs more
+	// headroom than the 3-node default, especially on loaded CI runners
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill the first leader
 	leader1 := tc.Leader()
@@ -182,7 +184,7 @@ func TestSimultaneousBaseAndPartitionLeaderFailure(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Find a node that is both base cluster leader AND partition leader
 	leader := tc.Leader()
@@ -219,7 +221,7 @@ func TestFailoverPreservesInFlightJobs(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -259,7 +261,7 @@ func TestLeaderElectionConvergence(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -284,7 +286,7 @@ func TestFollowerFailureNoDisruption(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)

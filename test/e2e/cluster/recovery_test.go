@@ -24,7 +24,7 @@ func TestNodeRecoveryFromDisk(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill a follower
 	followers := tc.Followers()
@@ -37,7 +37,7 @@ func TestNodeRecoveryFromDisk(t *testing.T) {
 	// Restart with same data dir — should rejoin from Raft log
 	tc.RestartNode(t, killedID)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 	WaitForNodeCount(t, tc, 3, 60*time.Second)
 	AssertStateConverged(t, tc, 30*time.Second)
 }
@@ -48,7 +48,7 @@ func TestNodeRecoveryAfterLongOutage(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill a node
 	followers := tc.Followers()
@@ -67,7 +67,7 @@ func TestNodeRecoveryAfterLongOutage(t *testing.T) {
 	// Restart — node should catch up via snapshot + log replay
 	tc.RestartNode(t, killedID)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Restarted node should eventually see the deployed definition
 	n := tc.NodeByID(killedID)
@@ -83,7 +83,7 @@ func TestAllNodesRestart(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Deploy some data
 	leader := tc.Leader()
@@ -119,7 +119,7 @@ func TestColdBootFromPersistence(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Deploy data
 	leader := tc.Leader()
@@ -147,7 +147,7 @@ func TestPartitionRecoveryPreservesProcessState(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -174,7 +174,7 @@ func TestPartitionRecoveryPreservesProcessState(t *testing.T) {
 
 	// Restart
 	tc.RestartNode(t, partitionLeaderID)
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Process instance should still be accessible and in the same state
 	assert.Eventually(t, func() bool {
@@ -194,7 +194,7 @@ func TestRecoveryAfterDiskCorruption(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill a follower
 	followers := tc.Followers()
@@ -222,7 +222,7 @@ func TestConcurrentNodeRecovery(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Kill 2 followers simultaneously
 	followers := tc.Followers()

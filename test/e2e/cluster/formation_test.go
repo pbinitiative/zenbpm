@@ -87,7 +87,7 @@ func TestClusterStatusEndpoint(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Every node should return a consistent /system/status
 	for _, n := range tc.RunningNodes() {

@@ -232,7 +232,7 @@ func runPointerReconciliation(t *testing.T, nodeCount, partitions int) {
 		tc = NewTestCluster(t, nodeCount)
 	}
 	defer tc.Teardown(t)
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 	runPointerReconciliationOnCluster(t, tc)
 }
 

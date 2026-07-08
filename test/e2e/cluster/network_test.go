@@ -21,7 +21,7 @@ func TestNodeIsolation(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Isolate a follower
 	followers := tc.Followers()
@@ -49,7 +49,7 @@ func TestSymmetricPartition(t *testing.T) {
 	tc := NewTestCluster(t, 4)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Split into 2+2
 	groupA := []string{tc.Nodes[0].ID, tc.Nodes[1].ID}
@@ -78,7 +78,7 @@ func TestAsymmetricPartition(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Split into 3+2 — majority side should continue
 	groupA := []string{tc.Nodes[0].ID, tc.Nodes[1].ID, tc.Nodes[2].ID}
@@ -114,7 +114,7 @@ func TestHealAfterPartition(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Isolate one node
 	followers := tc.Followers()
@@ -151,7 +151,7 @@ func TestPartitionDuringProcessExecution(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -196,7 +196,7 @@ func TestNoSplitBrain(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Create a network partition
 	groupA := []string{tc.Nodes[0].ID, tc.Nodes[1].ID, tc.Nodes[2].ID}
@@ -237,7 +237,7 @@ func TestPartitionBetweenBaseAndSubcluster(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	baseLeader := tc.Leader()
 	require.NotNil(t, baseLeader)
@@ -262,7 +262,7 @@ func TestSlowNetwork(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)

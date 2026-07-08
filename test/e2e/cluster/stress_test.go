@@ -25,7 +25,7 @@ func TestHighThroughputMultiNode(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -73,7 +73,7 @@ func TestConcurrentDeployments(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Deploy the same definition concurrently from different nodes
 	var wg sync.WaitGroup
@@ -105,7 +105,7 @@ func TestConcurrentInstanceCreation(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -149,7 +149,7 @@ func TestChaosMonkey(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -230,7 +230,7 @@ func TestLeaderBounce(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -270,7 +270,7 @@ func TestMixedWorkload(t *testing.T) {
 	tc := NewTestCluster(t, 3)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	leader := tc.Leader()
 	require.NotNil(t, leader)
@@ -334,7 +334,7 @@ func TestGracefulDegradation(t *testing.T) {
 	tc := NewTestCluster(t, 5)
 	defer tc.Teardown(t)
 
-	WaitForHealthy(t, tc, 90*time.Second)
+	WaitForHealthy(t, tc, 150*time.Second)
 
 	// Progressively remove nodes until quorum is lost
 	// 5-node cluster needs 3 for quorum

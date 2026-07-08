@@ -153,11 +153,8 @@ func TestPartitionRecoveryPreservesProcessState(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Create an instance (will be active at a task)
 	instanceKey := CreateInstanceOnNode(t, leader, defKey, nil)

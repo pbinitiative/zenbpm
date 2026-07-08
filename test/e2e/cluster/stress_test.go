@@ -31,11 +31,8 @@ func TestHighThroughputMultiNode(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Create 100 instances across all nodes
 	var wg sync.WaitGroup
@@ -111,11 +108,8 @@ func TestConcurrentInstanceCreation(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	var wg sync.WaitGroup
 	var successCount atomic.Int64
@@ -155,11 +149,8 @@ func TestChaosMonkey(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Background: continuously create instances
 	stopCh := make(chan struct{})
@@ -281,11 +272,8 @@ func TestMixedWorkload(t *testing.T) {
 	// Deploy DMN
 	DeployDMNDefinitionOnNode(t, leader, "can-autoliquidate-rule.dmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Run mixed workload concurrently
 	var wg sync.WaitGroup

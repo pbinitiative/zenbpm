@@ -275,13 +275,13 @@ func (tc *TestCluster) AddNode(t *testing.T) *TestNode {
 		t.Fatalf("failed to create proxy for node %s: %s", nodeID, err)
 	}
 
-	// Join addresses: all existing nodes' proxy addresses
+	// Join addresses: all existing nodes' proxy addresses. A joining node
+	// (BootstrapExpect: 0) must NOT include its own address — rqlite rejects
+	// that with "node cannot join with itself unless bootstrapping".
 	var joinAddrs []string
 	for _, n := range tc.Nodes {
 		joinAddrs = append(joinAddrs, n.ProxyAddr)
 	}
-	// Also include own proxy
-	joinAddrs = append(joinAddrs, proxy.Addr())
 
 	conf := config.Config{
 		Cluster: config.Cluster{

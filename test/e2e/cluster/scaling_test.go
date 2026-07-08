@@ -88,11 +88,8 @@ func TestScaleUpDuringLoad(t *testing.T) {
 	require.NotNil(t, leader)
 	DeployDefinitionOnNode(t, leader, "simple_task.bpmn")
 
-	resp, err := leader.RestClient.GetProcessDefinitionsWithResponse(context.Background(), nil)
-	require.NoError(t, err)
-	require.NotNil(t, resp.JSON200)
-	require.NotEmpty(t, resp.JSON200.Items)
-	defKey := resp.JSON200.Items[0].Key
+	// Deploys are eventually consistent for follower reads — poll until visible.
+	defKey := GetFirstDefinitionKey(t, leader)
 
 	// Start continuous writes in background
 	var wg sync.WaitGroup

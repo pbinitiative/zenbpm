@@ -1,12 +1,12 @@
 # Clustering Implementation Plan
 
-> Last updated: 2026-04-17
+> Last updated: 2026-07-08
 
 ## Progress Summary
 
 | Phase | Name | Status | Progress |
 |-------|------|--------|----------|
-| 1 | Partition Leader Propagation | In Progress — code done, E2E partial | 2/2 code, 3/9 E2E |
+| 1 | Partition Leader Propagation | Mostly done — all 2026-04 blockers fixed, core DoD met; formation churn (1.3) still gates suite-level stability | 2/2 code, E2E in CI (non-blocking) |
 | 2 | Configurable Partitions | Not Started | 0/5 |
 | 3 | Data Consistency & Routing | In Progress | 2/4 |
 | 4 | Partition Rebalancing & Node Lifecycle | Not Started | 0/4 |
@@ -66,9 +66,9 @@ Note: Phase 2 and Phase 3 can be done in parallel after Phase 1. Phase 4 and Pha
 - [x] 3 nodes form a cluster; 1 partition is created with all 3 nodes in its Raft group (proper quorum, `BootstrapExpect=3`) — `TestThreeNodeWithPartition` passes
 - [x] Partition leader failover works without crash: kill the partition leader, a new leader is elected, engine starts on the new leader — `TestPartitionLeaderFailover` passes 5/5
 - [x] Engine stops on the old leader (or crashed node recovers without duplicate engine) — `stopEngineIfRunning` in `handlePartitionStateInitialized`
-- [ ] Write on any node, read from any node (data replicates through partition Raft) — **BLOCKED:** partition RqLite Raft replication not catching up followers (see Known Issues)
+- [x] Write on any node, read from any node (data replicates through partition Raft) — `TestReadAfterWrite` passes; unblocked by the `BootstrapExpect` wiring, lifecycle-ctx, schema-gate, and deploy-retry fixes (see Phase 1 Blocker History below)
 - [x] No `panic("unimplemented")` reachable in this configuration
-- [ ] E2E: `TestThreeNodeWithPartition` ✅, `TestPartitionLeaderFailover` ✅, `TestReadAfterWrite` ❌ (partition replication blocker)
+- [x] E2E: `TestThreeNodeWithPartition` ✅, `TestPartitionLeaderFailover` ✅, `TestReadAfterWrite` ✅ — each passes in isolation and in most suite runs; suite-level stability is gated by the formation churn item under "Remaining Work to Close Phase 1"
 
 ### 1.1 — Implement `partitionLeaderChange` callback + RPC — **DONE**
 
@@ -101,23 +101,27 @@ Note: Phase 2 and Phase 3 can be done in parallel after Phase 1. Phase 4 and Pha
 - **Bug: nil observer channel in `partition.go`** — `observerChan` was declared as a local variable, shadowing the uninitialized struct field `zpn.observerChan` that the observer goroutine was reading from. This meant no partition Raft events (including leader changes) ever reached our callbacks. Without this fix, Phase 1 would appear implemented but nothing would actually work.
 - **4 controller callbacks + 4 server RPCs** replaced `panic("unimplemented")` with minimal logging stubs: `partitionAddNewNode`, `partitionShutdownNode`, `partitionRemoveNode`, `partitionResumeNode`, and server RPCs `AddPartitionNode`, `RemovePartitionNode`, `ResumePartitionNode`, `ShutdownPartitionNode`.
 
-### Known Issues Blocking Phase 1 Completion
+### Phase 1 Blocker History (all resolved)
 
-**Partition RqLite Raft replication not catching up followers** — partition members on followers see `failed to get previous log: previous-index=12 last-index=0 error="log not found"`, meaning a 3-node partition group forms but followers have empty logs while the leader has data. Affects 6/9 Phase 1 E2E tests (all cross-node read-after-write paths):
-- `TestReadAfterWrite`
-- `TestCreateInstanceRoutesToPartitionLeader`
-- `TestJobCompletionAcrossNodes`
-- `TestDMNEvaluationAcrossNodes`
-- `TestConcurrentWritesToDifferentNodes`
-- `TestPartitionLeaderFailoverDuringProcessExecution`
-- `TestFailoverPreservesInFlightJobs`
+Every blocker that previously gated Phase 1 is fixed and verified in code (2026-07-08 audit):
 
-This looks like a partition-formation/bootstrap concern rather than leader propagation — likely belongs in a follow-up task (e.g. Phase 1.3 or a partition-formation hardening slot).
+1. **Partition RqLite Raft replication not catching up followers** (`failed to get previous log: ... log not found`) — root cause was a hardcoded `BootstrapExpect: 1` in `internal/cluster/partition/config.go`: every node bootstrapped its own 1-node partition Raft cluster, so nothing replicated. Fixed in `b3150af2`: `GetRqLiteDefaultConfig` takes `bootstrapExpect`, wired from `Config.Raft.BootstrapExpect` (`controller.go:81`).
+2. **Controller context cancelled by rapid FSM applies** — followers got stuck in `handlePartitionStateInitializing` because each FSM `Apply` cancelled the previous apply-scoped ctx. Fixed in `4e5305d5`: `ClusterStateChangeNotification` ignores the apply ctx and runs handlers on the controller lifecycle ctx (`controller.go:96-100`).
+3. **Migration/engine-start race** (two layers: `no such table: process_definition`, then `no engine available`/`store not open`) — fixed in `1fd7ff73` (schema gate: `waitForSchema`/`DB.SchemaReady` before a node advertises INITIALIZED) and `2068fe49` (bounded `retryDeploy` on transient windows, re-resolving the partition leader each attempt).
+4. **Deploy-then-immediate-read test anti-pattern** — accepted eventual consistency, not an engine bug; the affected tests poll via `GetFirstDefinitionKey` (`7b9f1811`).
+5. **E2E harness FEEL pool hang** — harness config struct literals omitted the `Script` section, producing a zero-capacity FEEL VM pool that deadlocked on first evaluation. Fixed in `df1cc315` (harness sets script pool config).
 
-**Unblocks E2E (currently passing with Phase 1 work):**
-- `TestThreeNodeWithPartition` ✅
-- `TestPartitionLeaderFailover` ✅
-- `TestSimultaneousBaseAndPartitionLeaderFailure` ✅
+All cross-node read-after-write E2E tests pass (`TestReadAfterWrite`, `TestCreateInstanceRoutesToPartitionLeader`, `TestJobCompletionAcrossNodes`, `TestDMNEvaluationAcrossNodes`, `TestConcurrentWritesToDifferentNodes`, `TestPartitionLeaderFailoverDuringProcessExecution`, `TestFailoverPreservesInFlightJobs`), alongside the formation/failover tests (`TestThreeNodeWithPartition`, `TestPartitionLeaderFailover`, `TestSimultaneousBaseAndPartitionLeaderFailure`).
+
+### Remaining Work to Close Phase 1
+
+- [x] **CI visibility (the root cause of this doc going stale):** `test/e2e/cluster/` is gated behind `//go:build cluster_e2e`, which nothing in the Makefile or CI referenced — the suite ran only by hand and silently rotted twice. FIXED 2026-07-08: `make test-e2e-cluster` (fast tier, `-short`) runs in the `go-test` CI workflow; `make test-e2e-cluster-slow` runs the full suite manually. Tests requiring unfinished phases carry a `t.Skip` with a phase reference (6 multi-partition tests skip until Phase 2). The CI step is `continue-on-error` for now — flip it to blocking once the formation churn item below is fixed; until then treat its log as a required review artifact.
+- [x] **Leaked background goroutines after `partition.Stop()`:** the observer goroutine (5s metrics ticker) and the data-cleanup scheduler were never stopped — every stopped partition left them hammering the closed store (`store not open` log floods; a 2026-07-08 full-suite run accumulated ~27 failed queries/s by test 20, degrading later cluster formations). FIXED 2026-07-08: `Stop()` closes the observer channel and `DB.Stop()` terminates the cleanup scheduler; `TestDataCleanup` deflaked the same way.
+- [x] Fast-tier deploy-then-immediate-read sites swept onto `GetFirstDefinitionKey` polling (2026-07-08: 3 sites in `stream_resilience_test.go`; `data_test.go` sites were done earlier). Remaining sites are slow-tier only (`stress_test.go`, `scaling_test.go`, `recovery_test.go`) — sweep them with Phase 6 slow-tier hardening.
+- [x] `TestPartitionStateTransitions` string-enum rot fixed (2026-07-08) — it was the comparison site missed by the 2026-06-30 `helpers.go` fix. The durable cure (generating status types from `openapi/system.yaml` so drift breaks at compile time) remains a follow-up.
+- [ ] **Formation churn under sequential runs — the one real Phase 1 stability gap (hard evidence 2026-07-08):** in stuck formation windows, partition 1 gets reassigned ~10× between nodes with repeated "leader is now unknown (election in progress)" — an assignment/election loop. Raising `WaitForHealthy` 90s→150s cured genuinely slow cold formations (5-node `TestDoubleFailover`) but NOT the stuck cases: livelocked formations rode the full 150s without converging. Across three 2026-07-08 fast-tier runs, 2-4 random tests failed this way per run while every affected test also passed in other runs and in isolation. Root cause lives in the controller assignment loop / partition raft election interplay — this is the concrete work item behind the Phase 1.3 note below, and the criterion for flipping the CI step to blocking.
+- [ ] Engine-side residue (owned by engine team, `pkg/bpmn` is outside cluster scope): `timer_manager.go` keeps polling the partition store briefly after engine stop (`store not open` noise, bounded ~150 log lines/run after the cluster-side leak fix). Related to the known timer duplicate-fire item.
+- [ ] Architectural note (candidate Phase 1.3 hardening, not a blocker): cluster state can advertise partition leadership before local engine/store serviceability holds — the same decoupling that drives the formation churn above. The deploy retry covers the write path; other leader-routed paths could hit the same transient window.
 
 ---
 

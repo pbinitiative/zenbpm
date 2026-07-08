@@ -398,6 +398,22 @@ test-e2e:  ## Run end to end tests (tests will repeat 100 times)
 	export POLL_TIMER_DELAY_SECONDS=1; \
 	go test -count=1 -v ./test/e2e/...
 
+.PHONY: test-e2e-cluster
+test-e2e-cluster: ## Run cluster end to end tests, fast tier (cluster_e2e build tag, -short)
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
+	go test -count=1 -v -short -timeout 20m -tags=cluster_e2e ./test/e2e/cluster/...
+
+.PHONY: test-e2e-cluster-slow
+test-e2e-cluster-slow: ## Run cluster end to end tests including slow tier (cluster_e2e build tag)
+	export PROFILE=TEST; \
+	export CONFIG_FILE=$(CURDIR)/conf/zenbpm/conf-test.yaml; \
+	export LOG_LEVEL=INFO; \
+	export POLL_TIMER_DELAY_SECONDS=1; \
+	go test -count=1 -v -timeout 30m -tags=cluster_e2e ./test/e2e/cluster/...
+
 .PHONY: test-acceptance
 test-acceptance: ## Run acceptance end to end tests
 	export PROFILE=TEST; \

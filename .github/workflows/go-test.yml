@@ -48,5 +48,12 @@ jobs:
         run: make test
       - name: run e2e tests
         run: make test-e2e
+      # Non-blocking until the partition formation/election churn is fixed
+      # (see docs/cluster-implementation-plan.md, Phase 1 "Remaining Work"):
+      # individual formations intermittently livelock, failing random tests.
+      # Keeps the suite compiling and visible on every PR so it cannot rot again.
+      - name: run cluster e2e tests
+        run: make test-e2e-cluster
+        continue-on-error: true
       - name: run acceptance tests
         run: make test-acceptance

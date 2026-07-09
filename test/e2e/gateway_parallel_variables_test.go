@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -30,12 +31,16 @@ func TestParallelGatewayVariables(t *testing.T) {
 
 		waitForParallelGatewayVariableBranches(t, processInstance.Key)
 
-		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayServiceBranchAElementID, mergeMaps(createVariables, map[string]any{
+		branchAJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayServiceBranchAElementID)
+		branchBJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayUserBranchBElementID)
+		require.Equal(t, mergeMaps(createVariables, map[string]any{
 			parallelGatewayBranchASeedSeenVariable: "created-before-split",
-		}))
-		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayUserBranchBElementID, mergeMaps(createVariables, map[string]any{
+		}), branchAJob.InputVariables)
+		require.Equal(t, mergeMaps(createVariables, map[string]any{
 			parallelGatewayBranchBSeedSeenVariable: "created-before-split",
-		}))
+		}), branchBJob.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayServiceBranchAElementID, createVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayUserBranchBElementID, createVariables)
 	})
 
 	t.Run("Variables written in each branch are available after join", func(t *testing.T) {
@@ -45,12 +50,12 @@ func TestParallelGatewayVariables(t *testing.T) {
 		waitForParallelGatewayVariableBranches(t, processInstance.Key)
 		completeParallelGatewayVariableBranch(t, processInstance.Key, parallelGatewayServiceBranchAElementID, "value-a", "from-a")
 		completeParallelGatewayVariableBranch(t, processInstance.Key, parallelGatewayUserBranchBElementID, "value-b", "from-b")
-		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID)
+		afterJoinJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID)
 
 		expectedProcessVariables := expectedParallelGatewayProcessVariables("join-seed", "value-a", "value-b", "from-b")
 		assertProcessInstanceVariables(t, processInstance.Key, expectedProcessVariables)
-		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID,
-			expectedParallelGatewayAfterJoinInputVariables("join-seed", "value-a", "value-b", "from-b"))
+		require.Equal(t, expectedParallelGatewayAfterJoinInputVariables("join-seed", "value-a", "value-b", "from-b"), afterJoinJob.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID, expectedProcessVariables)
 	})
 
 	t.Run("Completion order does not change final variables", func(t *testing.T) {
@@ -121,9 +126,10 @@ func TestParallelGatewayVariables(t *testing.T) {
 		assertFlowElementOutputVariables(t, processInstance.Key, parallelGatewayUserBranchBElementID,
 			expectedParallelGatewayUserBranchOutput("mapping-seed", "mapped-user-value", "shared-from-user"))
 
-		waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID)
+		afterJoinJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID)
+		require.Equal(t, expectedParallelGatewayAfterJoinInputVariables("mapping-seed", "mapped-service-value", "mapped-user-value", "shared-from-user"), afterJoinJob.InputVariables)
 		assertFlowElementInputVariables(t, processInstance.Key, parallelGatewayAfterJoinTaskElementID,
-			expectedParallelGatewayAfterJoinInputVariables("mapping-seed", "mapped-service-value", "mapped-user-value", "shared-from-user"))
+			expectedParallelGatewayProcessVariables("mapping-seed", "mapped-service-value", "mapped-user-value", "shared-from-user"))
 	})
 }
 

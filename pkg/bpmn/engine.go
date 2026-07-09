@@ -1049,6 +1049,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	currentToken runtime.ExecutionToken,
 	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
+	flowElementInput := localBusinessRuleVarHolder.ExecutionScopeSnapshot()
 	if err := localBusinessRuleVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
@@ -1062,7 +1063,7 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     localBusinessRuleVarHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)
@@ -1233,6 +1234,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 	currentToken runtime.ExecutionToken,
 	variableHolder runtime.VariableHolder,
 ) (runtime.ExecutionToken, error) {
+	flowElementInput := variableHolder.ExecutionScopeSnapshot()
 	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to evaluate receive task input variables for %s: %w", element.GetId(), err)
@@ -1245,7 +1247,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     variableHolder.LocalVariables(),
+		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
 	if err != nil {

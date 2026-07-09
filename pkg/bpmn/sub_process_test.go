@@ -3,7 +3,9 @@ package bpmn
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -319,7 +321,6 @@ func TestMultiInstanceServiceTaskStartsAndCompletesLocalJob(t *testing.T) {
 	assertProcessCompletionWithSubProcess(t, instance)
 }
 func TestMultiInstanceServiceTaskStartsAndCompletesOnWorkerJob(t *testing.T) {
-	//TODO: Some test in another file is leaving jobs in database
 	engineStorage.Jobs = make(map[int64]runtime.Job)
 	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/multi_instance_service_task.bpmn")
 	assert.NoError(t, err)
@@ -334,6 +335,95 @@ func TestMultiInstanceServiceTaskStartsAndCompletesOnWorkerJob(t *testing.T) {
 	assert.NoError(t, err)
 	assertOutputCollectionMatches(t, instance, []string{"test1newVal", "test2newVal", "test3newVal"})
 	assertProcessCompletionWithSubProcess(t, instance)
+}
+
+func TestMultiInstanceOutputCollectionKeepsMappedOutputWhenInputMappingTargetsSameName(t *testing.T) {
+	engineStorage.Jobs = make(map[int64]runtime.Job)
+	bpmnData, err := os.ReadFile("./test-cases/multi_instance_service_task.bpmn")
+	require.NoError(t, err)
+
+	modifiedBPMN := strings.Replace(string(bpmnData),
+		`<bpmn:process id="MultiInstance_Service_Task_Process"`,
+		fmt.Sprintf(`<bpmn:process id="MultiInstance_Service_Task_Process_%d"`, rand.Int63()),
+		1,
+	)
+	modifiedBPMN = strings.Replace(modifiedBPMN,
+		`<zenbpm:input source="=item" target="testElementInput" />`,
+		`<zenbpm:input source="=item" target="testElementInput" />
+          <zenbpm:input source="=item" target="testElementOutput" />`,
+		1,
+	)
+
+	process, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(modifiedBPMN), rand.Int63())
+	require.NoError(t, err)
+
+	variableContext := map[string]interface{}{"testInputCollection": []string{"test1", "test2", "test3"}}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, variableContext)
+	require.NoError(t, err)
+
+	completeWorkerJobs(t, []string{"test1", "test2", "test3"}, "testJobOutput")
+	waitForProcessCompletion(t, instance.ProcessInstance().Key, 500*time.Millisecond, 100*time.Millisecond)
+
+	instance, err = bpmnEngine.FindProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assertOutputCollectionMatches(t, instance, []string{"test1newVal", "test2newVal", "test3newVal"})
+	assertProcessCompletionWithSubProcess(t, instance)
+}
+
+func TestMultiInstanceOutputCollectionUsesParentVariableInInputMapping(t *testing.T) {
+	engineStorage.Jobs = make(map[int64]runtime.Job)
+	bpmnData, err := os.ReadFile("./test-cases/multi_instance_service_task.bpmn")
+	require.NoError(t, err)
+
+	modifiedBPMN := strings.Replace(string(bpmnData),
+		`<bpmn:process id="MultiInstance_Service_Task_Process"`,
+		fmt.Sprintf(`<bpmn:process id="MultiInstance_Service_Task_Process_%d"`, rand.Int63()),
+		1,
+	)
+	modifiedBPMN = strings.Replace(modifiedBPMN,
+		`<zenbpm:input source="=item" target="testElementInput" />`,
+		`<zenbpm:input source="=item" target="testElementInput" />
+          <zenbpm:input source="=parentValue" target="mappedParentValue" />`,
+		1,
+	)
+	modifiedBPMN = strings.Replace(modifiedBPMN,
+		`outputElement="=testElementOutput"`,
+		`outputElement="=mappedParentValue"`,
+		1,
+	)
+
+	process, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(modifiedBPMN), rand.Int63())
+	require.NoError(t, err)
+
+	inputCollection := []string{"test1", "test2", "test3"}
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{
+		"testInputCollection": inputCollection,
+		"parentValue":         "from-parent-scope",
+	})
+	require.NoError(t, err)
+
+	completeWorkerJobs(t, inputCollection, "testJobOutput")
+	waitForProcessCompletion(t, instance.ProcessInstance().Key, 500*time.Millisecond, 100*time.Millisecond)
+
+	instance, err = bpmnEngine.FindProcessInstance(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	assertOutputCollectionMatches(t, instance, []string{"from-parent-scope", "from-parent-scope", "from-parent-scope"})
+	assertProcessCompletionWithSubProcess(t, instance)
+}
+
+func TestReceiveTaskMessageUsesInputMappedCorrelationKey(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/receive_task/receive-task-boundary-message-same-name-interrupting.bpmn")
+	require.NoError(t, err)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
+	require.NoError(t, err)
+
+	correlationKey := "receive-correlation-key"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "shared receive boundary message", &correlationKey, map[string]any{"approved": true})
+	require.NoError(t, err)
+
+	assert.Equal(t, true, instance.ProcessInstance().VariableHolder.GetLocalVariable("approved"))
+	assert.Nil(t, instance.ProcessInstance().VariableHolder.GetLocalVariable("boundaryFired"))
 }
 
 func TestReceiveTaskBoundaryMessageWithSameNameUsesCorrelationKey(t *testing.T) {
@@ -891,7 +981,8 @@ func assertMultiInstanceReceiveTaskInputVariables(t *testing.T, multiInstancePro
 		if flowElementInstance.ElementId != "Activity_0rae016" {
 			continue
 		}
-		value, ok := flowElementInstance.InputVariables["testElementInput"].(string)
+		require.NotContains(t, flowElementInstance.InputVariables, "testElementInput")
+		value, ok := flowElementInstance.InputVariables["item"].(string)
 		if ok {
 			actual = append(actual, value)
 		}

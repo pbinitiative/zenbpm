@@ -49,7 +49,7 @@ func (q *Queries) DeleteFlowElementInstance(ctx context.Context, keys []int64) e
 
 const findFlowElementInstances = `-- name: FindFlowElementInstances :many
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at,
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at, element_type,
     COUNT(*) OVER() AS total_count
 FROM flow_element_instance
 WHERE
@@ -78,6 +78,7 @@ type FindFlowElementInstancesRow struct {
 	InputVariables     string        `json:"input_variables"`
 	OutputVariables    string        `json:"output_variables"`
 	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	ElementType        string        `json:"element_type"`
 	TotalCount         int64         `json:"total_count"`
 }
 
@@ -104,6 +105,7 @@ func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElem
 			&i.InputVariables,
 			&i.OutputVariables,
 			&i.CompletedAt,
+			&i.ElementType,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -121,7 +123,7 @@ func (q *Queries) FindFlowElementInstances(ctx context.Context, arg FindFlowElem
 
 const getFlowElementInstanceByKey = `-- name: GetFlowElementInstanceByKey :one
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at, element_type
 FROM
     flow_element_instance
 WHERE
@@ -140,13 +142,14 @@ func (q *Queries) GetFlowElementInstanceByKey(ctx context.Context, key int64) (F
 		&i.InputVariables,
 		&i.OutputVariables,
 		&i.CompletedAt,
+		&i.ElementType,
 	)
 	return i, err
 }
 
 const getFlowElementInstanceByTokenKey = `-- name: GetFlowElementInstanceByTokenKey :one
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at, element_type
 FROM
     flow_element_instance
 WHERE
@@ -166,13 +169,14 @@ func (q *Queries) GetFlowElementInstanceByTokenKey(ctx context.Context, executio
 		&i.InputVariables,
 		&i.OutputVariables,
 		&i.CompletedAt,
+		&i.ElementType,
 	)
 	return i, err
 }
 
 const getFlowElementInstances = `-- name: GetFlowElementInstances :many
 SELECT
-    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at,
+    "key", element_id, process_instance_key, execution_token_key, created_at, input_variables, output_variables, completed_at, element_type,
     COUNT(*) OVER() AS total_count
 FROM
     flow_element_instance
@@ -202,6 +206,7 @@ type GetFlowElementInstancesRow struct {
 	InputVariables     string        `json:"input_variables"`
 	OutputVariables    string        `json:"output_variables"`
 	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	ElementType        string        `json:"element_type"`
 	TotalCount         int64         `json:"total_count"`
 }
 
@@ -228,6 +233,7 @@ func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElemen
 			&i.InputVariables,
 			&i.OutputVariables,
 			&i.CompletedAt,
+			&i.ElementType,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err
@@ -244,8 +250,8 @@ func (q *Queries) GetFlowElementInstances(ctx context.Context, arg GetFlowElemen
 }
 
 const saveFlowElementInstance = `-- name: SaveFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
-    VALUES (?, ? ,? ,?, ?, ?, ?, ?8)
+INSERT INTO flow_element_instance(key, element_id, element_type, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?9)
 ON CONFLICT
     DO UPDATE SET
        input_variables = excluded.input_variables
@@ -254,6 +260,7 @@ ON CONFLICT
 type SaveFlowElementInstanceParams struct {
 	Key                int64         `json:"key"`
 	ElementID          string        `json:"element_id"`
+	ElementType        string        `json:"element_type"`
 	ProcessInstanceKey int64         `json:"process_instance_key"`
 	CreatedAt          int64         `json:"created_at"`
 	ExecutionTokenKey  int64         `json:"execution_token_key"`
@@ -266,6 +273,7 @@ func (q *Queries) SaveFlowElementInstance(ctx context.Context, arg SaveFlowEleme
 	_, err := q.db.ExecContext(ctx, saveFlowElementInstance,
 		arg.Key,
 		arg.ElementID,
+		arg.ElementType,
 		arg.ProcessInstanceKey,
 		arg.CreatedAt,
 		arg.ExecutionTokenKey,
@@ -277,8 +285,8 @@ func (q *Queries) SaveFlowElementInstance(ctx context.Context, arg SaveFlowEleme
 }
 
 const updateOutputFlowElementInstance = `-- name: UpdateOutputFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
-    VALUES (?, ? ,? ,?, ?, ?, ?, ?8)
+INSERT INTO flow_element_instance(key, element_id, element_type, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?9)
 ON CONFLICT
     DO UPDATE SET
        output_variables = excluded.output_variables,
@@ -288,6 +296,7 @@ ON CONFLICT
 type UpdateOutputFlowElementInstanceParams struct {
 	Key                int64         `json:"key"`
 	ElementID          string        `json:"element_id"`
+	ElementType        string        `json:"element_type"`
 	ProcessInstanceKey int64         `json:"process_instance_key"`
 	CreatedAt          int64         `json:"created_at"`
 	ExecutionTokenKey  int64         `json:"execution_token_key"`
@@ -300,6 +309,7 @@ func (q *Queries) UpdateOutputFlowElementInstance(ctx context.Context, arg Updat
 	_, err := q.db.ExecContext(ctx, updateOutputFlowElementInstance,
 		arg.Key,
 		arg.ElementID,
+		arg.ElementType,
 		arg.ProcessInstanceKey,
 		arg.CreatedAt,
 		arg.ExecutionTokenKey,

@@ -1,13 +1,13 @@
 -- name: SaveFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
-    VALUES (?, ? ,? ,?, ?, ?, ?, sqlc.narg('completed_at'))
+INSERT INTO flow_element_instance(key, element_id, element_type, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, sqlc.narg('completed_at'))
 ON CONFLICT
     DO UPDATE SET
        input_variables = excluded.input_variables;
 
 -- name: UpdateOutputFlowElementInstance :exec
-INSERT INTO flow_element_instance(key, element_id, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
-    VALUES (?, ? ,? ,?, ?, ?, ?, sqlc.narg('completed_at'))
+INSERT INTO flow_element_instance(key, element_id, element_type, process_instance_key, created_at, execution_token_key, input_variables, output_variables, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, sqlc.narg('completed_at'))
 ON CONFLICT
     DO UPDATE SET
        output_variables = excluded.output_variables,

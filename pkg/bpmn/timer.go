@@ -260,6 +260,7 @@ func (engine *Engine) handleBoundaryTimer(ctx context.Context, batch *EngineBatc
 			Key:                engine.generateKey(),
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          listener.GetId(),
+			ElementType:        string(listener.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  token.Key,
 			InputVariables:     nil,

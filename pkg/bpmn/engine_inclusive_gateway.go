@@ -54,6 +54,7 @@ func (engine *Engine) handleInclusiveGateway(ctx context.Context, batch *EngineB
 				Key:                sequenceFlowInstanceKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
+				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  newToken.Key,
 			},

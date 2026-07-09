@@ -2387,6 +2387,7 @@ func (rq *DB) GetFlowElementInstancesByProcessInstanceKey(ctx context.Context, p
 			Key:                flowElementInstance.Key,
 			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 			ElementId:          flowElementInstance.ElementID,
+			ElementType:        flowElementInstance.ElementType,
 			CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
 			CompletedAt:        nullInt64ToTimePtr(flowElementInstance.CompletedAt),
 			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
@@ -2427,6 +2428,7 @@ func (rq *DB) GetFlowElementInstanceByKey(ctx context.Context, key int64) (bpmnr
 		Key:                flowElementInstance.Key,
 		ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 		ElementId:          flowElementInstance.ElementID,
+		ElementType:        flowElementInstance.ElementType,
 		CreatedAt:          time.UnixMilli(flowElementInstance.CreatedAt),
 		CompletedAt:        nullInt64ToTimePtr(flowElementInstance.CompletedAt),
 		ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
@@ -2463,6 +2465,7 @@ func UpdateOutputFlowElementInstanceWith(ctx context.Context, db *sql.Queries, f
 		sql.UpdateOutputFlowElementInstanceParams{
 			Key:                flowElementInstance.Key,
 			ElementID:          flowElementInstance.ElementId,
+			ElementType:        flowElementInstance.ElementType,
 			ProcessInstanceKey: flowElementInstance.ProcessInstanceKey,
 			CreatedAt:          flowElementInstance.CreatedAt.UnixMilli(),
 			ExecutionTokenKey:  flowElementInstance.ExecutionTokenKey,
@@ -2487,6 +2490,7 @@ func SaveFlowElementInstanceWith(ctx context.Context, db *sql.Queries, element b
 		sql.SaveFlowElementInstanceParams{
 			Key:                element.Key,
 			ElementID:          element.ElementId,
+			ElementType:        element.ElementType,
 			ProcessInstanceKey: element.ProcessInstanceKey,
 			CreatedAt:          element.CreatedAt.UnixMilli(),
 			ExecutionTokenKey:  element.ExecutionTokenKey,

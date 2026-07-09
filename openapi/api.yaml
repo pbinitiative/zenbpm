@@ -1682,14 +1682,17 @@ paths:
                 items:
                   - key: 4503599627370525
                     elementId: "StartEvent_1"
+                    elementType: "START_EVENT"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:26Z"
                   - key: 4503599627370526
                     elementId: "Flow_1"
+                    elementType: "SEQUENCE_FLOW"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:26Z"
                   - key: 4503599627370527
                     elementId: "Task_CheckApplication"
+                    elementType: "SERVICE_TASK"
                     processInstanceKey: 4503599627370501
                     createdAt: "2025-08-22T14:30:27Z"
                 page: 1
@@ -3497,6 +3500,7 @@ components:
         - processInstanceKey
         - createdAt
         - elementId
+        - elementType
         - inputVariables
       properties:
         key:
@@ -3512,6 +3516,8 @@ components:
           type: string
           format: date-time
         elementId:
+          type: string
+        elementType:
           type: string
         inputVariables:
           type: object

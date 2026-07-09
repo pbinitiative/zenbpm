@@ -59,6 +59,7 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 				Key:                sequenceFlowInstanceKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
+				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  newToken.Key,
 			},

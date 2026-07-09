@@ -114,6 +114,7 @@ func (engine *Engine) processTimerTriggerOnToken(ctx context.Context, timer runt
 			Key:                timer.Token.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          nodeT.GetId(),
+			ElementType:        string(nodeT.GetType()),
 			ExecutionTokenKey:  timer.Token.Key,
 			CompletedAt:        new(time.Now()),
 		})

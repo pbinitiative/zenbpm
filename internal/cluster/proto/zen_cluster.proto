@@ -295,6 +295,7 @@ message FlowElement {
   int64 completed_at = 5;
   bytes input_variables = 6;
   bytes output_variables = 7;
+  string element_type = 8;
 }
 
 message Incident {

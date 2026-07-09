@@ -512,6 +512,7 @@ type FlowElementInstance struct {
 	Key                int64
 	ProcessInstanceKey int64
 	ElementId          string
+	ElementType        string
 	CreatedAt          time.Time
 	CompletedAt        *time.Time
 	ExecutionTokenKey  int64

@@ -68,6 +68,7 @@ type FlowElementInstance struct {
 	InputVariables     string        `json:"input_variables"`
 	OutputVariables    string        `json:"output_variables"`
 	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	ElementType        string        `json:"element_type"`
 }
 
 type Incident struct {

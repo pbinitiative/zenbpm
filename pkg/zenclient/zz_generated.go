@@ -432,6 +432,7 @@ type FlowElementHistory struct {
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	ElementId   string     `json:"elementId"`
+	ElementType string     `json:"elementType"`
 
 	// InputVariables Variables provided to the flow element at creation time (from BPMN input mappings)
 	InputVariables map[string]interface{} `json:"inputVariables"`

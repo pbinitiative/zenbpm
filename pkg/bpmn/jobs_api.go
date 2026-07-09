@@ -287,6 +287,7 @@ func (engine *Engine) JobCompleteByKey(ctx context.Context, jobKey int64, variab
 		Key:                job.Token.ElementInstanceKey,
 		ProcessInstanceKey: job.ProcessInstanceKey,
 		ElementId:          job.Token.ElementId,
+		ElementType:        string(task.GetType()),
 		ExecutionTokenKey:  job.Token.Key,
 		OutputVariables:    outputVariables,
 		CompletedAt:        new(time.Now()),

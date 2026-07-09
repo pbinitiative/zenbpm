@@ -33,6 +33,7 @@ func (engine *Engine) createCallActivity(
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
 			InputVariables:     callActivityVarHolder.LocalVariables(),
@@ -91,6 +92,7 @@ func (engine *Engine) createSubProcess(
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
 			InputVariables:     subProcessVariableHolder.LocalVariables(),
@@ -265,6 +267,7 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	}
 	if err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
+		ElementType:     string(parentElement.GetType()),
 		OutputVariables: output,
 		CompletedAt:     new(time.Now()),
 	}); err != nil {
@@ -366,6 +369,7 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 	batch.SaveProcessInstance(ctx, parentInstance)
 	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
+		ElementType:     string(parentElement.GetType()),
 		OutputVariables: output,
 		CompletedAt:     new(time.Now()),
 	}); err != nil {

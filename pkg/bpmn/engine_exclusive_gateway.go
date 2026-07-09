@@ -28,6 +28,7 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, batch *EngineB
 				Key:                engine.generateKey(),
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          activatedFlows[0].GetId(),
+				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  currentToken.Key,
 			},

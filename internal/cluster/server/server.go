@@ -912,6 +912,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 		result[i] = &proto.FlowElement{
 			Key:                &flowElement.Key,
 			ElementId:          &flowElement.ElementID,
+			ElementType:        &flowElement.ElementType,
 			ProcessInstanceKey: &flowElement.ProcessInstanceKey,
 			CreatedAt:          &flowElement.CreatedAt,
 			CompletedAt:        completedAt,

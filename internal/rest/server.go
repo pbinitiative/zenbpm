@@ -1533,11 +1533,13 @@ func (s *Server) GetHistory(ctx context.Context, request public.GetHistoryReques
 			}
 		}
 
+		elementType := flowNode.GetElementType()
 		resp[i] = public.FlowElementHistory{
 			Key:                key,
 			CreatedAt:          createdAt,
 			CompletedAt:        completedAt,
 			ElementId:          flowNode.GetElementId(),
+			ElementType:        elementType,
 			ProcessInstanceKey: processInstanceKey,
 			InputVariables:     inputVars,
 			OutputVariables:    outputVars,

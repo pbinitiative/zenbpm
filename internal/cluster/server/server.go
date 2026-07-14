@@ -306,12 +306,12 @@ func (s *Server) CreateInstance(ctx context.Context, req *proto.CreateInstanceRe
 			Key:               &instance.ProcessInstance().Key,
 			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:         variables,
-			State:             ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			State:             new(int64(instance.ProcessInstance().State)),
+			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: nil,
 			BusinessKey:       instance.ProcessInstance().BusinessKey,
-			Type:              ptr.To(int64(instance.Type())),
+			Type:              new(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -351,11 +351,11 @@ func (s *Server) StartProcessInstanceOnElements(ctx context.Context, req *proto.
 			Key:               &instance.ProcessInstance().Key,
 			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:         variables,
-			State:             ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			State:             new(int64(instance.ProcessInstance().State)),
+			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: nil,
-			Type:              ptr.To(int64(instance.Type())),
+			Type:              new(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -397,8 +397,8 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			ElementInstanceKey: &token.ElementInstanceKey,
 			ElementId:          &token.ElementId,
 			ProcessInstanceKey: &token.ProcessInstanceKey,
-			CreatedAt:          ptr.To(token.CreatedAt.UnixMilli()),
-			State:              ptr.To(int64(token.State)),
+			CreatedAt:          new(token.CreatedAt.UnixMilli()),
+			State:              new(int64(token.State)),
 		})
 	}
 
@@ -407,11 +407,11 @@ func (s *Server) ModifyProcessInstance(ctx context.Context, req *proto.ModifyPro
 			Key:               &instance.ProcessInstance().Key,
 			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:         variables,
-			State:             ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			State:             new(int64(instance.ProcessInstance().State)),
+			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
-			Type:              ptr.To(int64(instance.Type())),
+			Type:              new(int64(instance.Type())),
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -445,12 +445,12 @@ func (s *Server) DeleteProcessInstanceVariable(ctx context.Context, req *proto.D
 			Key:               &instance.ProcessInstance().Key,
 			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:         variables,
-			State:             ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			State:             new(int64(instance.ProcessInstance().State)),
+			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
 			BusinessKey:       nil,
-			Type:              ptr.To(int64(instance.Type())),
+			Type:              new(int64(instance.Type())),
 		},
 	}, nil
 }
@@ -538,7 +538,7 @@ func (s *Server) EvaluateDecision(ctx context.Context, req *proto.EvaluateDecisi
 
 			resultMatchedRule := proto.EvaluatedRule{
 				RuleId:           &matchedRule.RuleId,
-				RuleIndex:        ptr.To(int32(matchedRule.RuleIndex)),
+				RuleIndex:        new(int32(matchedRule.RuleIndex)), // #nosec G115 -- alwais small integer
 				EvaluatedOutputs: evaluatedOutputs,
 			}
 
@@ -701,12 +701,12 @@ func (s *Server) GetProcessInstance(ctx context.Context, req *proto.GetProcessIn
 			Key:               &instance.ProcessInstance().Key,
 			ProcessId:         &instance.ProcessInstance().Definition.BpmnProcessId,
 			Variables:         vars,
-			State:             ptr.To(int64(instance.ProcessInstance().State)),
-			CreatedAt:         ptr.To(instance.ProcessInstance().CreatedAt.UnixMilli()),
+			State:             new(int64(instance.ProcessInstance().State)),
+			CreatedAt:         new(instance.ProcessInstance().CreatedAt.UnixMilli()),
 			DefinitionKey:     &instance.ProcessInstance().Definition.Key,
 			ParentInstanceKey: instance.GetParentProcessInstanceKey(),
 			BusinessKey:       instance.ProcessInstance().BusinessKey,
-			Type:              ptr.To(int64(instance.Type())),
+			Type:              new(int64(instance.Type())),
 		},
 		ExecutionTokens: respTokens,
 	}, nil
@@ -799,7 +799,7 @@ func (s *Server) GetDecisionInstances(ctx context.Context, req *proto.GetDecisio
 		resp = append(resp, &proto.PartitionedDecisionInstances{
 			PartitionId:       &partitionId,
 			DecisionInstances: decisionInstances,
-			TotalCount:        ptr.To(totalCount),
+			TotalCount:        new(totalCount),
 		})
 	}
 	return &proto.GetDecisionInstancesResponse{
@@ -843,7 +843,7 @@ func (s *Server) GetProcessInstanceJobs(ctx context.Context, req *proto.GetProce
 			ElementId:          &job.ElementID,
 			ProcessInstanceKey: &job.ProcessInstanceKey,
 			Type:               &job.Type,
-			State:              ptr.To(job.State),
+			State:              new(job.State),
 			CreatedAt:          &job.CreatedAt,
 			InputVariables:     []byte(job.InputVariables),
 			OutputVariables:    outputVarsBytes,
@@ -923,7 +923,7 @@ func (s *Server) GetFlowElementHistory(ctx context.Context, req *proto.GetFlowEl
 
 	return &proto.GetFlowElementHistoryResponse{
 		Flow:       result,
-		TotalCount: ptr.To(totalCount),
+		TotalCount: new(totalCount),
 	}, nil
 }
 
@@ -967,13 +967,13 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 				outputVarsBytes = []byte(job.OutputVariables.String)
 			}
 			partitionJobs[i] = &proto.Job{
-				Key:                ptr.To(job.Key),
-				ProcessInstanceKey: ptr.To(job.ProcessInstanceKey),
-				ElementId:          ptr.To(job.ElementID),
-				ElementInstanceKey: ptr.To(job.ElementInstanceKey),
-				Type:               ptr.To(job.Type),
-				CreatedAt:          ptr.To(job.CreatedAt),
-				State:              ptr.To(job.State),
+				Key:                new(job.Key),
+				ProcessInstanceKey: new(job.ProcessInstanceKey),
+				ElementId:          new(job.ElementID),
+				ElementInstanceKey: new(job.ElementInstanceKey),
+				Type:               new(job.Type),
+				CreatedAt:          new(job.CreatedAt),
+				State:              new(job.State),
 				Assignee:           a,
 				InputVariables:     []byte(job.InputVariables),
 				OutputVariables:    outputVarsBytes,
@@ -983,7 +983,7 @@ func (s *Server) GetJobs(ctx context.Context, req *proto.GetJobsRequest) (*proto
 		resp = append(resp, &proto.PartitionedJobs{
 			PartitionId: &partitionId,
 			Jobs:        partitionJobs,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  new(totalCount),
 		})
 	}
 	return &proto.GetJobsResponse{
@@ -1052,13 +1052,13 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 		var filterTypeSubProcess *int64
 
 		if req.ShowChildProcesses != nil && req.GetShowChildProcesses() == true {
-			filterTypeCallActivity = ptr.To(int64(runtime.ProcessTypeCallActivity))
-			filterTypeMultiInstance = ptr.To(int64(runtime.ProcessTypeMultiInstance))
-			filterTypeDefault = ptr.To(int64(runtime.ProcessTypeDefault))
-			filterTypeSubProcess = ptr.To(int64(runtime.ProcessTypeSubProcess))
+			filterTypeCallActivity = new(int64(runtime.ProcessTypeCallActivity))
+			filterTypeMultiInstance = new(int64(runtime.ProcessTypeMultiInstance))
+			filterTypeDefault = new(int64(runtime.ProcessTypeDefault))
+			filterTypeSubProcess = new(int64(runtime.ProcessTypeSubProcess))
 		} else {
-			filterTypeDefault = ptr.To(int64(runtime.ProcessTypeDefault))
-			filterTypeCallActivity = ptr.To(int64(runtime.ProcessTypeCallActivity))
+			filterTypeDefault = new(int64(runtime.ProcessTypeDefault))
+			filterTypeCallActivity = new(int64(runtime.ProcessTypeCallActivity))
 		}
 
 		instances, err := queries.FindProcessInstancesPage(ctx, sql.FindProcessInstancesPageParams{
@@ -1109,25 +1109,25 @@ func (s *Server) GetProcessInstances(ctx context.Context, req *proto.GetProcessI
 
 			var parentInstanceKey *int64
 			if instances[i].ParentProcessExecutionToken.Valid {
-				parentInstanceKey = ptr.To(parentTokensMap[instances[i].ParentProcessExecutionToken.Int64].ProcessInstanceKey)
+				parentInstanceKey = new(parentTokensMap[instances[i].ParentProcessExecutionToken.Int64].ProcessInstanceKey)
 			}
 
 			procInstances[i] = &proto.ProcessInstance{
 				Key:               &instances[i].Key,
 				ProcessId:         &instances[i].BpmnProcessID,
 				Variables:         []byte(instances[i].Variables),
-				State:             ptr.To(instances[i].State),
+				State:             new(instances[i].State),
 				CreatedAt:         &instances[i].CreatedAt,
 				DefinitionKey:     &instances[i].ProcessDefinitionKey,
 				ParentInstanceKey: parentInstanceKey,
 				BusinessKey:       businessKey,
-				Type:              ptr.To(instances[i].ProcessType),
+				Type:              new(instances[i].ProcessType),
 			}
 		}
 		resp = append(resp, &proto.PartitionedProcessInstances{
 			PartitionId: &partitionId,
 			Instances:   procInstances,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  new(totalCount),
 		})
 	}
 	return &proto.GetProcessInstancesResponse{
@@ -1143,7 +1143,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 		return &proto.GetChildProcessInstancesResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1163,7 +1163,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 		return &proto.GetChildProcessInstancesResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1184,18 +1184,18 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, req *proto.GetChi
 			Key:               &instances[i].Key,
 			ProcessId:         &instances[i].BpmnProcessID,
 			Variables:         []byte(instances[i].Variables),
-			State:             ptr.To(instances[i].State),
+			State:             new(instances[i].State),
 			CreatedAt:         &instances[i].CreatedAt,
 			DefinitionKey:     &instances[i].ProcessDefinitionKey,
 			ParentInstanceKey: &parentInstanceKey,
 			BusinessKey:       businessKey,
-			Type:              ptr.To(instances[i].ProcessType),
+			Type:              new(instances[i].ProcessType),
 		}
 	}
 
 	return &proto.GetChildProcessInstancesResponse{
 		Instances:  procInstances,
-		TotalCount: ptr.To(totalCount),
+		TotalCount: new(totalCount),
 	}, nil
 }
 
@@ -1269,7 +1269,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 		return &proto.SetMessageSubscriptionPointerResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1288,7 +1288,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 			return &proto.SetMessageSubscriptionPointerResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
-					Message: ptr.To(err.Error()),
+					Message: new(err.Error()),
 				},
 			}, err
 		}
@@ -1297,7 +1297,7 @@ func (s *Server) SetMessageSubscriptionPointer(ctx context.Context, req *proto.S
 		return &proto.SetMessageSubscriptionPointerResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1312,7 +1312,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1327,7 +1327,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 			return &proto.FindActiveMessageResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
-					Message: ptr.To(notFoundErr.Error()),
+					Message: new(notFoundErr.Error()),
 				},
 			}, status.Error(codes.NotFound, notFoundErr.Error())
 		}
@@ -1335,7 +1335,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1347,7 +1347,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 		return &proto.FindActiveMessageResponse{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(mismatchErr.Error()),
+				Message: new(mismatchErr.Error()),
 			},
 		}, status.Error(codes.FailedPrecondition, mismatchErr.Error())
 	}
@@ -1361,7 +1361,7 @@ func (s *Server) FindActiveMessage(ctx context.Context, req *proto.FindActiveMes
 			return &proto.FindActiveMessageResponse{
 				Error: &proto.ErrorResult{
 					Code:    nil,
-					Message: ptr.To(mismatchErr.Error()),
+					Message: new(mismatchErr.Error()),
 				},
 			}, status.Error(codes.FailedPrecondition, mismatchErr.Error())
 		}
@@ -1465,6 +1465,11 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 				v := sub.CorrelationKey.String
 				coKey = &v
 			}
+			var elementInstanceKey *int64
+			if sub.ElementInstanceKey.Valid {
+				v := sub.ElementInstanceKey.Int64
+				elementInstanceKey = new(v)
+			}
 			items[i] = &proto.ProtoMessageSubscription{
 				Key:                  &sub.Key,
 				ElementId:            &sub.ElementID,
@@ -1472,14 +1477,15 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 				ProcessInstanceKey:   piKey,
 				MessageName:          &sub.Name,
 				CorrelationKey:       coKey,
-				State:                ptr.To(sub.State),
+				State:                new(sub.State),
 				CreatedAt:            &sub.CreatedAt,
+				ElementInstanceKey:   elementInstanceKey,
 			}
 		}
 		resp = append(resp, &proto.PartitionedMessageSubscriptions{
 			PartitionId: &partitionId,
 			Items:       items,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  new(totalCount),
 		})
 	}
 	return &proto.GetProcessInstanceMessageSubscriptionsResponse{Partitions: resp}, nil
@@ -1525,19 +1531,25 @@ func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, req *
 			v := t.ProcessInstanceKey.Int64
 			piKey = &v
 		}
+		var elementInstanceKey *int64
+		if t.ElementInstanceKey.Valid {
+			v := t.ElementInstanceKey.Int64
+			elementInstanceKey = new(v)
+		}
 		items[i] = &proto.ProtoTimerSubscription{
 			Key:                  &t.Key,
 			ElementId:            &t.ElementID,
 			ProcessDefinitionKey: &t.ProcessDefinitionKey,
 			ProcessInstanceKey:   piKey,
-			State:                ptr.To(activityState),
+			State:                new(activityState),
 			CreatedAt:            &t.CreatedAt,
 			DueAt:                dueAt,
+			ElementInstanceKey:   elementInstanceKey,
 		}
 	}
 	return &proto.GetProcessInstanceTimerSubscriptionsResponse{
 		Items:      items,
-		TotalCount: ptr.To(totalCount),
+		TotalCount: new(totalCount),
 	}, nil
 }
 
@@ -1583,13 +1595,13 @@ func (s *Server) GetProcessInstanceErrorSubscriptions(ctx context.Context, req *
 			ProcessDefinitionKey: &sub.ProcessDefinitionKey,
 			ProcessInstanceKey:   &sub.ProcessInstanceKey,
 			ErrorCode:            errorCode,
-			State:                ptr.To(activityState),
+			State:                new(activityState),
 			CreatedAt:            &sub.CreatedAt,
 		}
 	}
 	return &proto.GetProcessInstanceErrorSubscriptionsResponse{
 		Items:      items,
-		TotalCount: ptr.To(totalCount),
+		TotalCount: new(totalCount),
 	}, nil
 }
 
@@ -1655,9 +1667,9 @@ func (s *Server) GetProcessDefinitionElementStatistics(ctx context.Context, req 
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
 		for i, row := range rows {
 			statistics[i] = &proto.ElementStatisticEntry{
-				ElementId:     ptr.To(row.ElementID),
-				ActiveCount:   ptr.To(int32(row.ActiveCount)),
-				IncidentCount: ptr.To(int32(row.IncidentCount)),
+				ElementId:     new(row.ElementID),
+				ActiveCount:   new(int32(row.ActiveCount)),   // #nosec G115 -- alwais small integer
+				IncidentCount: new(int32(row.IncidentCount)), // #nosec G115 -- alwais small integer
 			}
 		}
 
@@ -1691,11 +1703,11 @@ func (s *Server) GetProcessInstanceElementStatistics(ctx context.Context, req *p
 		statistics := make([]*proto.ElementStatisticEntry, len(rows))
 		for i, row := range rows {
 			statistics[i] = &proto.ElementStatisticEntry{
-				ElementId:       ptr.To(row.ElementID),
-				ActiveCount:     ptr.To(int32(row.ActiveCount)),
-				IncidentCount:   ptr.To(int32(row.IncidentCount)),
-				CompletedCount:  ptr.To(int32(row.CompletedCount)),
-				TerminatedCount: ptr.To(int32(row.TerminatedCount)),
+				ElementId:       new(row.ElementID),
+				ActiveCount:     new(int32(row.ActiveCount)),     // #nosec G115 -- alwais small integer
+				IncidentCount:   new(int32(row.IncidentCount)),   // #nosec G115 -- alwais small integer
+				CompletedCount:  new(int32(row.CompletedCount)),  // #nosec G115 -- alwais small integer
+				TerminatedCount: new(int32(row.TerminatedCount)), // #nosec G115 -- alwais small integer
 			}
 		}
 
@@ -1772,16 +1784,16 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 			}
 
 			partitionStats[i] = &proto.ProcessDefinitionStatistics{
-				Key:             ptr.To(stat.Key),
-				Version:         ptr.To(int32(stat.Version)),
-				BpmnProcessId:   ptr.To(stat.BpmnProcessID),
-				BpmnProcessName: ptr.To(stat.BpmnProcessName),
+				Key:             new(stat.Key),
+				Version:         new(int32(stat.Version)), // #nosec G115 -- alwais small integer
+				BpmnProcessId:   new(stat.BpmnProcessID),
+				BpmnProcessName: new(stat.BpmnProcessName),
 				InstanceCounts: &proto.InstanceCounts{
-					Total:      ptr.To(stat.TotalInstances),
-					Active:     ptr.To(int64(stat.ActiveCount)),
-					Completed:  ptr.To(int64(stat.CompletedCount)),
-					Terminated: ptr.To(int64(stat.TerminatedCount)),
-					Failed:     ptr.To(int64(stat.FailedCount)),
+					Total:      new(stat.TotalInstances),
+					Active:     new(int64(stat.ActiveCount)),
+					Completed:  new(int64(stat.CompletedCount)),
+					Terminated: new(int64(stat.TerminatedCount)),
+					Failed:     new(int64(stat.FailedCount)),
 				},
 			}
 		}
@@ -1789,7 +1801,7 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, req *proto.
 		resp = append(resp, &proto.PartitionedProcessDefinitionStatistics{
 			PartitionId: &partitionId,
 			Statistics:  partitionStats,
-			TotalCount:  ptr.To(totalCount),
+			TotalCount:  new(totalCount),
 		})
 	}
 	return &proto.GetProcessDefinitionStatisticsResponse{
@@ -1803,7 +1815,7 @@ func (s *Server) StartPprofServer(ctx context.Context, r *proto.PprofServerReque
 		return &proto.PprofServerStartResult{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}
@@ -1832,7 +1844,7 @@ func (s *Server) StopPprofServer(context.Context, *proto.PprofServerRequest) (*p
 		return &proto.PprofServerStopResult{
 			Error: &proto.ErrorResult{
 				Code:    nil,
-				Message: ptr.To(err.Error()),
+				Message: new(err.Error()),
 			},
 		}, err
 	}

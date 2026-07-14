@@ -41,6 +41,19 @@ func TestGetProcessInstanceMessageSubscriptions(t *testing.T) {
 	assert.Equal(t, "msg", item.MessageName)
 	assert.Equal(t, zenclient.EventSubscriptionStateActive, item.State)
 	assert.Equal(t, instance.Key, item.ProcessInstanceKey)
+	require.NotNil(t, item.ElementInstanceKey)
+
+	history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance.Key, &zenclient.GetHistoryParams{})
+	require.NoError(t, err)
+	require.NotNil(t, history.JSON200)
+	require.NotNil(t, history.JSON200.Items)
+	for _, flowElement := range *history.JSON200.Items {
+		if flowElement.ElementId == item.ElementId {
+			assert.Equal(t, flowElement.Key, *item.ElementInstanceKey)
+			return
+		}
+	}
+	t.Fatalf("flow element history for message subscription %q not found", item.ElementId)
 }
 
 func TestMessageSubscriptionsPagination(t *testing.T) {
@@ -176,6 +189,8 @@ func TestGetProcessInstanceTimerSubscriptions(t *testing.T) {
 	item := resp.JSON200.Items[0]
 	assert.Equal(t, zenclient.EventSubscriptionStateActive, item.State)
 	assert.Equal(t, instance.Key, item.ProcessInstanceKey)
+	require.NotNil(t, item.ElementInstanceKey)
+	assert.NotZero(t, *item.ElementInstanceKey)
 	assert.False(t, item.DueDate.IsZero())
 }
 
@@ -266,6 +281,7 @@ func TestGetProcessInstanceErrorSubscriptions(t *testing.T) {
 	item := resp.JSON200.Items[0]
 	assert.Equal(t, zenclient.EventSubscriptionStateActive, item.State)
 	assert.Equal(t, instance.Key, item.ProcessInstanceKey)
+	assert.NotZero(t, item.ElementInstanceKey)
 }
 
 func TestErrorSubscriptionsInvalidState(t *testing.T) {

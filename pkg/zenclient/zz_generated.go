@@ -508,9 +508,10 @@ type InstanceCounts struct {
 // Job defines model for Job.
 type Job struct {
 	// Assignee Assignee (user assigned to this job)
-	Assignee  *string   `json:"assignee,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	ElementId string    `json:"elementId"`
+	Assignee           *string   `json:"assignee,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ElementId          string    `json:"elementId"`
+	ElementInstanceKey int64     `json:"elementInstanceKey"`
 
 	// InputVariables Variables provided to the job at creation/activation time (from BPMN input mappings)
 	InputVariables map[string]interface{} `json:"inputVariables"`
@@ -573,6 +574,7 @@ type MessageSubscription struct {
 	CorrelationKey       *string                `json:"correlationKey"`
 	CreatedAt            time.Time              `json:"createdAt"`
 	ElementId            string                 `json:"elementId"`
+	ElementInstanceKey   *int64                 `json:"elementInstanceKey"`
 	Key                  int64                  `json:"key"`
 	MessageName          string                 `json:"messageName"`
 	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
@@ -784,6 +786,7 @@ type TimerSubscription struct {
 	CreatedAt            time.Time              `json:"createdAt"`
 	DueDate              *time.Time             `json:"dueDate,omitempty"`
 	ElementId            string                 `json:"elementId"`
+	ElementInstanceKey   *int64                 `json:"elementInstanceKey"`
 	Key                  int64                  `json:"key"`
 	ProcessDefinitionKey int64                  `json:"processDefinitionKey"`
 	ProcessInstanceKey   int64                  `json:"processInstanceKey"`

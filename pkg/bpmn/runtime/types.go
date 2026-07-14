@@ -234,6 +234,7 @@ type MessageSubscription interface {
 
 type MessageSubscriptionData struct {
 	Key                  int64
+	ElementInstanceKey   *int64
 	ElementId            string
 	Name                 string
 	State                ActivityState
@@ -298,7 +299,9 @@ func EqualTo(m MessageSubscription, m2 MessageSubscription) bool {
 	}
 	md := m.MessageSubscription()
 	md2 := m2.MessageSubscription()
-	if md.ElementId != md2.ElementId ||
+	if (md.ElementInstanceKey == nil) != (md2.ElementInstanceKey == nil) ||
+		(md.ElementInstanceKey != nil && *md.ElementInstanceKey != *md2.ElementInstanceKey) ||
+		md.ElementId != md2.ElementId ||
 		md.Key != md2.Key ||
 		md.ProcessDefinitionKey != md2.ProcessDefinitionKey ||
 		md.Name != md2.Name ||

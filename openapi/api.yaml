@@ -1586,7 +1586,8 @@ paths:
                   - key: 4503599627370510
                     elementId: "Task_CheckApplication"
                     type: "user-task"
-                    processInstanceKey: 4503599627370501
+                    processInstanceKey: 4503599627370500
+                    elementInstanceKey: 4503599627370900
                     state: "active"
                     createdAt: "2025-08-22T14:30:26Z"
                     inputVariables:
@@ -1596,6 +1597,7 @@ paths:
                     elementId: "Task_CreditCheck"
                     type: "service-task"
                     processInstanceKey: 4503599627370501
+                    elementInstanceKey: 4503599627370901
                     state: "completed"
                     createdAt: "2025-08-22T14:32:15Z"
                     inputVariables:
@@ -3248,6 +3250,10 @@ components:
         key:
           type: integer
           format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
+          nullable: true
         elementId:
           type: string
         processDefinitionKey:
@@ -3279,6 +3285,10 @@ components:
         key:
           type: integer
           format: int64
+        elementInstanceKey:
+          type: integer
+          format: int64
+          nullable: true
         elementId:
           type: string
         processDefinitionKey:
@@ -3407,6 +3417,7 @@ components:
         - elementId
         - type
         - processInstanceKey
+        - elementInstanceKey
         - state
         - createdAt
         - inputVariables
@@ -3419,6 +3430,9 @@ components:
         type:
           type: string
         processInstanceKey:
+          type: integer
+          format: int64
+        elementInstanceKey:
           type: integer
           format: int64
         state:

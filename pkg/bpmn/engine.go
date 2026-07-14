@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
-	"github.com/pbinitiative/zenbpm/pkg/ptr"
 	"github.com/pbinitiative/zenbpm/pkg/storage"
 	"github.com/pbinitiative/zenbpm/pkg/storage/inmemory"
 	"go.opentelemetry.io/otel"
@@ -238,7 +237,7 @@ func (engine *Engine) handleProcessInstanceInnerCancel(ctx context.Context, inst
 	}
 
 	for _, incident := range incidents {
-		incident.ResolvedAt = ptr.To(time.Now())
+		incident.ResolvedAt = new(time.Now())
 		err = batch.SaveIncident(ctx, incident)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save changes to incident %d: %w", incident.Key, err)
@@ -1281,6 +1280,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 		CorrelationKey:     correlationKey,
 		MessageSubscriptionData: runtime.MessageSubscriptionData{
 			Key:                  engine.generateKey(),
+			ElementInstanceKey:   new(currentToken.ElementInstanceKey),
 			ElementId:            element.GetId(),
 			Name:                 messageName,
 			State:                runtime.ActivityStateActive,

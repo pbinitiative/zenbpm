@@ -1629,7 +1629,7 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(paginationErr.ToApiError()), nil
 	}
 	if stateErr := validateEventSubscriptionState(request.Params.State,
-		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateWithdrawn},
+		[]public.EventSubscriptionState{public.EventSubscriptionStateActive, public.EventSubscriptionStateCompleted, public.EventSubscriptionStateTerminated},
 		"message"); stateErr != nil {
 		return public.GetProcessInstanceMessageSubscriptions400JSONResponse(stateErr.ToApiError()), nil
 	}
@@ -1663,6 +1663,7 @@ func (s *Server) GetProcessInstanceMessageSubscriptions(ctx context.Context, req
 			}
 			items = append(items, public.MessageSubscription{
 				Key:                  sub.GetKey(),
+				ElementInstanceKey:   sub.ElementInstanceKey,
 				ElementId:            sub.GetElementId(),
 				ProcessDefinitionKey: sub.GetProcessDefinitionKey(),
 				ProcessInstanceKey:   sub.GetProcessInstanceKey(),
@@ -1724,6 +1725,7 @@ func (s *Server) GetProcessInstanceTimerSubscriptions(ctx context.Context, reque
 		}
 		items[i] = public.TimerSubscription{
 			Key:                  t.GetKey(),
+			ElementInstanceKey:   t.ElementInstanceKey,
 			ElementId:            t.GetElementId(),
 			ProcessDefinitionKey: t.GetProcessDefinitionKey(),
 			ProcessInstanceKey:   t.GetProcessInstanceKey(),
@@ -1940,6 +1942,7 @@ func (s *Server) mapProtoJob(job *proto.Job) (public.Job, error) {
 		ElementId:          job.GetElementId(),
 		Key:                job.GetKey(),
 		ProcessInstanceKey: job.GetProcessInstanceKey(),
+		ElementInstanceKey: job.GetElementInstanceKey(),
 		State:              jobState,
 		Type:               job.GetType(),
 		InputVariables:     inputVars,

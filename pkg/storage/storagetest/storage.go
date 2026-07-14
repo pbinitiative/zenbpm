@@ -512,6 +512,7 @@ func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionTo
 		CorrelationKey:     fmt.Sprintf("correlation-%d", r),
 		MessageSubscriptionData: bpmnruntime.MessageSubscriptionData{
 			ElementId:            fmt.Sprintf("message-%d", r),
+			ElementInstanceKey:   &token.ElementInstanceKey,
 			Key:                  r + 400,
 			ProcessDefinitionKey: pdKey,
 			Name:                 fmt.Sprintf("message-%d", r),

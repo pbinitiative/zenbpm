@@ -124,6 +124,17 @@ func TestEqualTo_DifferentKey(t *testing.T) {
 	assert.False(t, EqualTo(m1, m2), "subscriptions with different Keys should not be equal")
 }
 
+func TestEqualTo_DifferentElementInstanceKey(t *testing.T) {
+	d1 := baseMessageSubscriptionData()
+	d2 := baseMessageSubscriptionData()
+	key1, key2 := int64(1), int64(2)
+	d1.ElementInstanceKey = &key1
+	d2.ElementInstanceKey = &key2
+	m1 := &TokenMessageSubscription{MessageSubscriptionData: d1}
+	m2 := &TokenMessageSubscription{MessageSubscriptionData: d2}
+	assert.False(t, EqualTo(m1, m2))
+}
+
 func TestEqualTo_DifferentElementId(t *testing.T) {
 	d1 := baseMessageSubscriptionData()
 	d2 := baseMessageSubscriptionData()

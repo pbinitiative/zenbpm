@@ -198,6 +198,7 @@ func (definitions *TIntermediateCatchEvent) UnmarshalXML(d *xml.Decoder, start x
 		}
 	}
 	definitions.ParallelMultiple = tempStruct.ParallelMultiple
+	definitions.Input = tempStruct.Input
 	definitions.Output = tempStruct.Output
 	return nil
 }
@@ -253,6 +254,7 @@ func (definitions *TIntermediateThrowEvent) UnmarshalXML(d *xml.Decoder, start x
 			}
 		}
 	}
+	definitions.Input = tempStruct.Input
 	definitions.Output = tempStruct.Output
 	definitions.TaskDefinition = tempStruct.TaskDefinition
 	return nil

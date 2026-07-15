@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_two_interrupting_message_boundaries" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="two-message-boundary-event-interrupting" name="Test two interrupting boundary events" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_17cg00h</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_17cg00h" sourceRef="StartEvent_1" targetRef="service_task" />
+    <bpmn:endEvent id="end_event_main">
+      <bpmn:incoming>Flow_1gnes9r</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1gnes9r" sourceRef="service_task" targetRef="end_event_main" />
+    <bpmn:endEvent id="end_event_boundary_a">
+      <bpmn:incoming>Flow_14sh6sh</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_14sh6sh" sourceRef="boundary_message_event_a" targetRef="end_event_boundary_a" />
+    <bpmn:boundaryEvent id="boundary_message_event_a" cancelActivity="true" attachedToRef="service_task">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=payloadA" target="payloadA" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_14sh6sh</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_A" messageRef="message_b" />
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="service_task" name="Service task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="simple-job" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_17cg00h</bpmn:incoming>
+      <bpmn:outgoing>Flow_1gnes9r</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="boundary_message_event_b" cancelActivity="true" attachedToRef="service_task">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=payloadB" target="payloadB" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_0nzuzj2</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_B" messageRef="message_a" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="end_event_boundary_b">
+      <bpmn:incoming>Flow_0nzuzj2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0nzuzj2" sourceRef="boundary_message_event_b" targetRef="end_event_boundary_b" />
+  </bpmn:process>
+  <bpmn:message id="message_b" name="messageB">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKeyB" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="message_a" name="messageA">
+    <bpmn:extensionElements>
+      <zenbpm:subscription correlationKey="=correlationKeyA" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="two-message-boundary-event-interrupting">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="182" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_main_di" bpmnElement="end_event_main">
+        <dc:Bounds x="442" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_boundary_a_di" bpmnElement="end_event_boundary_a">
+        <dc:Bounds x="322" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_di" bpmnElement="service_task">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_boundary_b_di" bpmnElement="end_event_boundary_b">
+        <dc:Bounds x="272" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="boundary_message_event_b_di" bpmnElement="boundary_message_event_b">
+        <dc:Bounds x="272" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="boundary_message_event_a_di" bpmnElement="boundary_message_event_a">
+        <dc:Bounds x="322" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_17cg00h_di" bpmnElement="Flow_17cg00h">
+        <di:waypoint x="218" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1gnes9r_di" bpmnElement="Flow_1gnes9r">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="442" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14sh6sh_di" bpmnElement="Flow_14sh6sh">
+        <di:waypoint x="340" y="178" />
+        <di:waypoint x="340" y="222" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0nzuzj2_di" bpmnElement="Flow_0nzuzj2">
+        <di:waypoint x="290" y="178" />
+        <di:waypoint x="290" y="222" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

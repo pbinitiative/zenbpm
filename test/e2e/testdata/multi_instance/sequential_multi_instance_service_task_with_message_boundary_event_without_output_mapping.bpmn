@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_sequential_multi_instance_message_boundary_without_output_mapping" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="sequential-multi-instance-message-boundary-event-without-output-mapping" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>flow_to_service_task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_to_service_task" sourceRef="start_event" targetRef="service_task" />
+    <bpmn:serviceTask id="service_task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="TestType" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=item" target="testElementInput" />
+          <zeebe:output source="=testJobOutput" target="testElementOutput" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_to_service_task</bpmn:incoming>
+      <bpmn:outgoing>flow_to_main_end</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=testInputCollection" inputElement="item" outputCollection="testOutputCollection" outputElement="=testElementOutput" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow_to_main_end" sourceRef="service_task" targetRef="end_event_main" />
+    <bpmn:endEvent id="end_event_main">
+      <bpmn:incoming>flow_to_main_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:boundaryEvent id="boundary_message_event" cancelActivity="false" attachedToRef="service_task">
+      <bpmn:outgoing>flow_to_boundary_end</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="message_event_definition" messageRef="message_id" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="flow_to_boundary_end" sourceRef="boundary_message_event" targetRef="end_event_boundary" />
+    <bpmn:endEvent id="end_event_boundary">
+      <bpmn:incoming>flow_to_boundary_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmn:message id="message_id" name="message">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=correlationKey" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="sequential-multi-instance-message-boundary-event-without-output-mapping">
+      <bpmndi:BPMNShape id="start_event_di" bpmnElement="start_event">
+        <dc:Bounds x="150" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service_task_di" bpmnElement="service_task">
+        <dc:Bounds x="250" y="138" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_main_di" bpmnElement="end_event_main">
+        <dc:Bounds x="470" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="boundary_message_event_di" bpmnElement="boundary_message_event">
+        <dc:Bounds x="282" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_event_boundary_di" bpmnElement="end_event_boundary">
+        <dc:Bounds x="470" y="270" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_to_service_task_di" bpmnElement="flow_to_service_task">
+        <di:waypoint x="186" y="178" />
+        <di:waypoint x="250" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_to_main_end_di" bpmnElement="flow_to_main_end">
+        <di:waypoint x="350" y="178" />
+        <di:waypoint x="470" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_to_boundary_end_di" bpmnElement="flow_to_boundary_end">
+        <di:waypoint x="300" y="236" />
+        <di:waypoint x="300" y="288" />
+        <di:waypoint x="470" y="288" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

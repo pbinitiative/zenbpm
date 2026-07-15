@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_message_end_event_subprocess" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="message_end_event_subprocess" isExecutable="true">
+    <bpmn:startEvent id="parent_start">
+      <bpmn:outgoing>Flow_parent_start_to_subprocess</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_parent_start_to_subprocess" sourceRef="parent_start" targetRef="message_subprocess" />
+    <bpmn:subProcess id="message_subprocess">
+      <bpmn:incoming>Flow_parent_start_to_subprocess</bpmn:incoming>
+      <bpmn:outgoing>Flow_subprocess_to_followup</bpmn:outgoing>
+      <bpmn:startEvent id="subprocess_start">
+        <bpmn:outgoing>Flow_subprocess_start_to_message_end</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_subprocess_start_to_message_end" sourceRef="subprocess_start" targetRef="subprocess_message_end" />
+      <bpmn:endEvent id="subprocess_message_end">
+        <bpmn:extensionElements>
+          <zenbpm:taskDefinition type="orders.completed.subprocess" />
+          <zenbpm:ioMapping>
+            <zenbpm:input source="=businessKey" target="correlationId" />
+            <zenbpm:input source="=messageId" target="messageId" />
+          </zenbpm:ioMapping>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_subprocess_start_to_message_end</bpmn:incoming>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_subprocess" />
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_subprocess_to_followup" sourceRef="message_subprocess" targetRef="parent_followup" />
+    <bpmn:serviceTask id="parent_followup">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="message-end-event-parent-followup" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_subprocess_to_followup</bpmn:incoming>
+      <bpmn:outgoing>Flow_followup_to_parent_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_followup_to_parent_end" sourceRef="parent_followup" targetRef="parent_end" />
+    <bpmn:endEvent id="parent_end">
+      <bpmn:incoming>Flow_followup_to_parent_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_message_end_event_subprocess">
+    <bpmndi:BPMNPlane id="BPMNPlane_message_end_event_subprocess" bpmnElement="message_end_event_subprocess">
+      <bpmndi:BPMNShape id="parent_start_di" bpmnElement="parent_start">
+        <dc:Bounds x="120" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="message_subprocess_di" bpmnElement="message_subprocess" isExpanded="true">
+        <dc:Bounds x="220" y="80" width="350" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="subprocess_start_di" bpmnElement="subprocess_start">
+        <dc:Bounds x="260" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="subprocess_message_end_di" bpmnElement="subprocess_message_end">
+        <dc:Bounds x="460" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parent_followup_di" bpmnElement="parent_followup">
+        <dc:Bounds x="650" y="150" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="parent_end_di" bpmnElement="parent_end">
+        <dc:Bounds x="830" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_parent_start_to_subprocess_di" bpmnElement="Flow_parent_start_to_subprocess">
+        <di:waypoint x="156" y="190" />
+        <di:waypoint x="220" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_subprocess_start_to_message_end_di" bpmnElement="Flow_subprocess_start_to_message_end">
+        <di:waypoint x="296" y="190" />
+        <di:waypoint x="460" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_subprocess_to_followup_di" bpmnElement="Flow_subprocess_to_followup">
+        <di:waypoint x="570" y="190" />
+        <di:waypoint x="650" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_followup_to_parent_end_di" bpmnElement="Flow_followup_to_parent_end">
+        <di:waypoint x="750" y="190" />
+        <di:waypoint x="830" y="190" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

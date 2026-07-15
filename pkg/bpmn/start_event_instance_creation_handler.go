@@ -22,8 +22,9 @@ type startEventInstanceCreationTrigger struct {
 	processDefinitionKey int64
 	// elementId is the BPMN id of the start event that owns the trigger.
 	elementId string
-	// inputVariables are the variables passed to the newly created process instance
-	// (e.g. message payload). For timers this is empty.
+	// inputVariables are the trigger variables (e.g. a message payload). Message
+	// start-event output mappings are applied before these variables are passed to
+	// the new instance. For timers this is empty.
 	inputVariables map[string]any
 	// refresh re-reads the trigger state under the trigger lock and reports whether activation
 	// should be skipped (because a concurrent publisher/timer-fire has already consumed it).
@@ -96,11 +97,43 @@ func (engine *Engine) handleStartEventInstanceCreation(ctx context.Context, t st
 		return fmt.Errorf("failed to find start event %q on process definition %d", t.elementId, t.processDefinitionKey)
 	}
 
-	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, t.inputVariables, nil); err != nil {
+	instanceVariables := t.inputVariables
+	if isMessageStartEvent(startEvent) {
+		instanceVariables, err = engine.mapStartEventTriggerVariables(*startEvent, t.inputVariables)
+		if err != nil {
+			return fmt.Errorf("failed to apply output mappings for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
+		}
+	}
+
+	if _, err := engine.CreateInstanceWithStartingElements(ctx, t.processDefinitionKey, []string{t.elementId}, instanceVariables, nil); err != nil {
 		return fmt.Errorf("failed to create process instance for start event %s of definition %d: %w", t.elementId, t.processDefinitionKey, err)
 	}
 
 	return nil
+}
+
+func (engine *Engine) mapStartEventTriggerVariables(startEvent bpmn20.TStartEvent, inputVariables map[string]any) (map[string]any, error) {
+	instanceVariableHolder := runtime.NewVariableHolder(nil, map[string]any{})
+	triggerVariableHolder := runtime.NewVariableHolder(&instanceVariableHolder, inputVariables)
+
+	instanceVariables, err := triggerVariableHolder.PropagateMappedOutputsOrAll(
+		startEvent.GetOutputMapping(),
+		inputVariables,
+		engine.evaluateExpression,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return instanceVariables, nil
+}
+
+func isMessageStartEvent(startEvent *bpmn20.TStartEvent) bool {
+	for _, eventDefinition := range startEvent.EventDefinitions {
+		if _, ok := eventDefinition.(bpmn20.TMessageEventDefinition); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // renewStartEventTrigger re-creates the trigger on the given start event so that subsequent firings

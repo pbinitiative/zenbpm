@@ -185,7 +185,11 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 				return fmt.Errorf("failed to find active tokens for process %d: %w", parentInstance.ProcessInstance().Key, err)
 			}
 			if len(tokens) == 0 {
-				completeParentAfterEventSubProcess = true
+				hasActiveChild, err := engine.hasActiveSubProcessInstance(ctx, parentInstance.ProcessInstance().Key)
+				if err != nil {
+					return fmt.Errorf("failed to find active subprocess children for process %d: %w", parentInstance.ProcessInstance().Key, err)
+				}
+				completeParentAfterEventSubProcess = !hasActiveChild
 			}
 		}
 	}
@@ -230,10 +234,15 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 	}
 
-	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
-	if err != nil {
-		batch.Clear(ctx)
-		return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+	// An event subprocess belongs to the parent scope, not to the active token used to persist
+	// the child-parent relationship. Only an embedded subprocess owns the parent token and its
+	// boundary subscriptions.
+	if !isEventSubProcess {
+		err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
+		if err != nil {
+			batch.Clear(ctx)
+			return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
 	}
 
 	//handle the finalization, transition back to parent process if sub process is not an event sub process
@@ -265,13 +274,18 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	if err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:             updatedParentToken.ElementInstanceKey,
-		ElementType:     string(parentElement.GetType()),
-		OutputVariables: output,
-		CompletedAt:     new(time.Now()),
-	}); err != nil {
-		return fmt.Errorf("failed to update flow element instance for sub process %s: %w", parentElement.GetId(), err)
+	if !isEventSubProcess {
+		if err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                updatedParentToken.ElementInstanceKey,
+			ProcessInstanceKey: parentInstance.ProcessInstance().GetInstanceKey(),
+			ElementId:          parentElement.GetId(),
+			ElementType:        string(parentElement.GetType()),
+			ExecutionTokenKey:  updatedParentToken.Key,
+			OutputVariables:    output,
+			CompletedAt:        new(time.Now()),
+		}); err != nil {
+			return fmt.Errorf("failed to update flow element instance for sub process %s: %w", parentElement.GetId(), err)
+		}
 	}
 
 	// for nested event subprocesses: complete parent event subprocesses recursively going up

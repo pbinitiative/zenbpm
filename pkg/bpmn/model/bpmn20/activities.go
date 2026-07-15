@@ -12,6 +12,8 @@ const (
 	ElementTypeSequenceFlow ElementType = "SEQUENCE_FLOW"
 	ElementBusinessRuleTask ElementType = "BUSINESS_RULE_TASK"
 	ElementTypeReceiveTask  ElementType = "RECEIVE_TASK"
+	ElementTypeCallActivity ElementType = "CALL_ACTIVITY"
+	ElementTypeSubProcess   ElementType = "SUB_PROCESS"
 )
 
 type Activity interface {
@@ -167,11 +169,17 @@ type TCallActivity struct {
 	CalledElement extensions.TCalledElement `xml:"extensionElements>calledElement"`
 }
 
+// GetType identifies this activity as a call activity.
+func (callActivity TCallActivity) GetType() ElementType { return ElementTypeCallActivity }
+
 type TSubProcess struct {
 	TActivity
 	TProcess
 	TriggeredByEvent bool `xml:"triggeredByEvent,attr"`
 }
+
+// GetType identifies this activity as a subprocess.
+func (subProcess TSubProcess) GetType() ElementType { return ElementTypeSubProcess }
 
 type TMultiInstance struct {
 	IsSequential        bool                 `xml:"isSequential,attr"`

@@ -337,6 +337,10 @@ func (engine *Engine) publishEventOnEventGateway(ctx context.Context, batch *Eng
 		token = *timer.Token
 	}
 
+	if err := engine.completeFlowElementInstance(ctx, batch, instance, gateway, token); err != nil {
+		return nil, fmt.Errorf("failed to complete event gateway history %s: %w", gateway.GetId(), err)
+	}
+
 	err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                engine.generateKey(),
 		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
@@ -523,9 +527,23 @@ func (engine *Engine) handleIntermediateThrowEvent(ctx context.Context, batch *E
 		}
 
 	case bpmn20.TLinkEventDefinition:
-		token, err := engine.handleIntermediateThrowLinkEvent(ctx, instance, ite, currentToken)
+		token, outputVariables, err := engine.handleIntermediateThrowLinkEvent(ctx, instance, ite, currentToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to handle IntermediateThrowLinkEvent: %w", err)
+		}
+		if err := batch.SaveProcessInstance(ctx, instance); err != nil {
+			return nil, fmt.Errorf("failed to save intermediate link throw event variables for process %d: %w", instance.ProcessInstance().Key, err)
+		}
+		if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          ite.GetId(),
+			ElementType:        string(ite.GetType()),
+			ExecutionTokenKey:  currentToken.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
+		}); err != nil {
+			return nil, fmt.Errorf("failed to complete intermediate link throw event history %s: %w", ite.GetId(), err)
 		}
 		return []runtime.ExecutionToken{token}, nil
 	case nil:

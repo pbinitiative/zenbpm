@@ -31,11 +31,15 @@ func (engine *Engine) handleExclusiveGateway(ctx context.Context, batch *EngineB
 				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  currentToken.Key,
+				CompletedAt:        new(time.Now()),
 			},
 		)
 
 		if err != nil {
 			return nil, err
+		}
+		if err := engine.completeFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+			return nil, fmt.Errorf("failed to complete exclusive gateway history %s: %w", element.GetId(), err)
 		}
 
 		currentToken.ElementId = activatedFlows[0].GetTargetRef().GetId()

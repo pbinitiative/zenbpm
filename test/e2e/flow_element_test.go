@@ -72,6 +72,14 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance2Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
 		assert.Equal(t, 3, history.JSON200.TotalCount)
+		require.NotNil(t, history.JSON200.Items)
+		for _, item := range *history.JSON200.Items {
+			if item.ElementId == "callActivity" {
+				assert.Equal(t, "CALL_ACTIVITY", item.ElementType)
+				return
+			}
+		}
+		assert.Fail(t, "call activity should be present in history")
 	})
 
 	t.Run("get child history callActivity", func(t *testing.T) {
@@ -89,6 +97,14 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 		history, err := app.restClient.GetHistoryWithResponse(t.Context(), instance3Key, &zenclient.GetHistoryParams{})
 		assert.NoError(t, err)
 		assert.Equal(t, 3, history.JSON200.TotalCount)
+		require.NotNil(t, history.JSON200.Items)
+		for _, item := range *history.JSON200.Items {
+			if item.ElementId == "Activity_1f5yxes" {
+				assert.Equal(t, "SUB_PROCESS", item.ElementType)
+				return
+			}
+		}
+		assert.Fail(t, "subprocess should be present in history")
 	})
 
 	t.Run("get child history subprocess", func(t *testing.T) {
@@ -107,8 +123,7 @@ func TestGetFlowElementInstanceHistory(t *testing.T) {
 
 // TestGetFlowElementHistoryCompletedAtAndVariables verifies that the /history REST endpoint
 // surfaces the new `completedAt`, `inputVariables` and `outputVariables` fields after a
-// process executes, and that `completedAt` is only set for elements that complete
-// explicitly (e.g. a service task whose job is completed).
+// process executes, including synchronous elements that complete immediately.
 func TestGetFlowElementHistoryCompletedAtAndVariables(t *testing.T) {
 	cleanProcessInstances(t)
 
@@ -148,12 +163,11 @@ func TestGetFlowElementHistoryCompletedAtAndVariables(t *testing.T) {
 	}
 	assert.NotNil(t, task.InputVariables, "service task should carry InputVariables")
 
-	// synchronous elements never call Update -> CompletedAt stays nil, no OutputVariables
 	for _, elementID := range []string{"StartEvent_1", "Flow_0xt1d7q", "Flow_1vz4oo2"} {
 		fe, found := byElementID[elementID]
 		assert.True(t, found, "element %s should be present in history", elementID)
-		assert.Nil(t, fe.CompletedAt, "element %s should have nil CompletedAt (no explicit completion)", elementID)
-		assert.Nil(t, fe.OutputVariables, "element %s should have nil OutputVariables (no completion)", elementID)
+		assert.NotNil(t, fe.CompletedAt, "element %s should have CompletedAt after execution passes it", elementID)
+		assert.Nil(t, fe.OutputVariables, "element %s should have nil OutputVariables", elementID)
 		assert.NotNil(t, fe.InputVariables, "element %s should always carry InputVariables", elementID)
 	}
 

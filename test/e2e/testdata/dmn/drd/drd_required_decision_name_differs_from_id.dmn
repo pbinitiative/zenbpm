@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions_drd_required_decision_id" name="DRD Required Decision ID" namespace="https://zenbpm.io/dmn/drd-required-decision-id">
+  <decision id="drdRiskDecision" name="DRD Risk Decision">
+    <decisionTable id="decisionTable_drdRiskDecision" hitPolicy="FIRST">
+      <output id="drd_risk_output" label="Risk level" name="risk_level" typeRef="string" />
+      <rule id="drd_risk_rule">
+        <outputEntry id="drd_risk_rule_output">
+          <text>"LOW"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="drdApprovalByDecisionId" name="DRD Approval By Decision ID">
+    <informationRequirement>
+      <requiredDecision href="#drdRiskDecision" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdApprovalByDecisionId" hitPolicy="FIRST">
+      <input id="drd_approval_input_risk" label="Risk level">
+        <inputExpression id="drd_approval_input_risk_expression" typeRef="string">
+          <text>drdRiskDecision.risk_level</text>
+        </inputExpression>
+      </input>
+      <output id="drd_approval_output" label="Approval result" name="approval_result" typeRef="string" />
+      <rule id="drd_approval_rule">
+        <inputEntry id="drd_approval_rule_risk">
+          <text>"LOW"</text>
+        </inputEntry>
+        <outputEntry id="drd_approval_rule_output">
+          <text>"APPROVED"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

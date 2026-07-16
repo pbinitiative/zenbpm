@@ -336,22 +336,38 @@ func (engine *ZenDmnEngine) evaluateDecision(
 				return result, dependencies, err
 			}
 
-			for key, outputVariable := range result.DecisionOutput {
-				localVariableContext[key] = outputVariable
+			requiredDecision := findDecisionDefinition(dmnResourceDefinition, requiredDecisionId)
+			if requiredDecision == nil {
+				return result, dependencies, &DecisionNotFoundError{DecisionID: requiredDecisionId}
 			}
+			requiredDecisionValue, err := mapRequiredDecisionOutput(requiredDecision, result.DecisionOutput)
+			if err != nil {
+				return result, dependencies, fmt.Errorf("failed to map required decision %s output: %w", requiredDecisionId, err)
+			}
+			localVariableContext[requiredDecisionId] = requiredDecisionValue
 			evaluatedDependencies = append(evaluatedDependencies, result)
 			evaluatedDependencies = append(evaluatedDependencies, dependencies...)
 		case dmn.TRequiredInput:
 			requiredInputRef := requirement.RequiredResource.(dmn.TRequiredInput).Href
 
 			requiredInputId := strings.TrimPrefix(requiredInputRef, "#")
+			foundRequiredInput := false
 
 			for _, input := range dmnResourceDefinition.Definitions.InputData {
 				if input.Id == requiredInputId {
-					if _, ok := inputVariableContext[input.Name]; !ok {
-						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", input.Name)
+					foundRequiredInput = true
+					requiredInputName := input.Variable.Name
+					if requiredInputName == "" {
+						requiredInputName = input.Name
 					}
+					if _, ok := inputVariableContext[requiredInputName]; !ok {
+						return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input missing for %s", requiredInputName)
+					}
+					break
 				}
+			}
+			if !foundRequiredInput {
+				return EvaluatedDecisionResult{}, nil, fmt.Errorf("required input %s not found", requiredInputId)
 			}
 		default:
 			return EvaluatedDecisionResult{}, nil, fmt.Errorf("unsupported information requirement resource type: %T", requirement.RequiredResource)
@@ -372,7 +388,7 @@ func (engine *ZenDmnEngine) evaluateDecision(
 
 	var decisionType dmn.EvaluatedDecisionType
 	if foundDecision.DecisionTable != nil {
-		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, decisionName, localVariableContext)
+		decisionOutput, matchedRules, evaluatedInputs, err = engine.evaluateDecisionTable(foundDecision.DecisionTable, foundDecision.Id, localVariableContext)
 		if err != nil {
 			return EvaluatedDecisionResult{}, nil, err
 		}
@@ -404,6 +420,29 @@ func (engine *ZenDmnEngine) evaluateDecision(
 		EvaluatedInputs:           evaluatedInputs,
 		DecisionOutput:            decisionOutput,
 	}, evaluatedDependencies, nil
+}
+
+func mapRequiredDecisionOutput(decision *dmn.TDecision, decisionOutput map[string]interface{}) (interface{}, error) {
+	if decision.DecisionTable != nil {
+		return decisionOutput[decision.Id], nil
+	}
+
+	if decision.LiteralExpression != nil {
+		if decision.Variable == nil {
+			return nil, fmt.Errorf("literal expression decision %s has no result variable", decision.Id)
+		}
+		return decisionOutput[decision.Variable.Name], nil
+	}
+
+	if decision.Context != nil {
+		resultKey := decision.Name
+		if resultKey == "" {
+			resultKey = decision.Id
+		}
+		return decisionOutput[resultKey], nil
+	}
+
+	return nil, fmt.Errorf("decision type unsupported on decision id %s", decision.Id)
 }
 
 func (engine *ZenDmnEngine) evaluateContext(decisionContext *dmn.TContext, resultVariableName string, inputVariables map[string]interface{}) (map[string]any, error) {
@@ -480,6 +519,10 @@ func normalizeFeelStringLiteral(expr string) string {
 }
 
 func (engine *ZenDmnEngine) evaluateLiteralExpression(literalExpression *dmn.TLiteralExpression, variable *dmn.TVariable, decisionId string, localVariableContext map[string]interface{}) (map[string]any, error) {
+	if variable == nil {
+		return nil, fmt.Errorf("literal expression decision %s has no result variable", decisionId)
+	}
+
 	var resultValue any
 	var err error
 	switch literalExpression.ExpressionLanguage {

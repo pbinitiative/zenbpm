@@ -163,6 +163,7 @@ func (engine *Engine) startParallelMultiInstance(
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
 		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
@@ -238,6 +239,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
 		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
@@ -354,8 +356,13 @@ func (engine *Engine) handleParentProcessContinuationForMultiInstance(ctx contex
 		return err
 	}
 	err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:             updatedParentToken.ElementInstanceKey,
-		OutputVariables: map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		Key:                updatedParentToken.ElementInstanceKey,
+		ProcessInstanceKey: parentInstance.ProcessInstance().GetInstanceKey(),
+		ElementId:          parentElement.GetId(),
+		ElementType:        string(parentElement.GetType()),
+		ExecutionTokenKey:  updatedParentToken.Key,
+		OutputVariables:    map[string]any{parentElement.GetMultiInstance().LoopCharacteristics.OutputCollectionName: outputCollection},
+		CompletedAt:        new(time.Now()),
 	})
 	if err != nil {
 		return err

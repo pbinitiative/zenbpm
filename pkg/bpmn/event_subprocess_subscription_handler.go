@@ -201,6 +201,9 @@ func (engine *Engine) buildEventSubprocessInstance(
 			subProcessDef.Id, instance.ProcessInstance().Key,
 		)
 	}
+	// Process-instance persistence links child scopes through a parent token. Event subprocesses
+	// are scope-level and do not own that token's flow-element history; the relationship fields
+	// are retained only for parent lookup and error-scope traversal.
 	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
 		ctx,
 		batch,

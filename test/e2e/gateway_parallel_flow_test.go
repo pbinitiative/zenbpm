@@ -6,6 +6,8 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/rest/public"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -128,6 +130,10 @@ func TestParallelGatewayFlow(t *testing.T) {
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceTokenState(t, processInstance.Key, "end_event", runtime.TokenStateCompleted)
+
+		joinHistory := getFlowElementInstancesByElementId(t, processInstance.Key, "parallel_gateway_join")
+		require.Len(t, joinHistory, 1, "one synchronization cycle should create one parallel gateway history instance")
+		assert.NotNil(t, joinHistory[0].CompletedAt, "the parallel gateway history instance should be completed")
 	})
 
 	t.Run("Process continues only after the last branch finishes", func(t *testing.T) {
@@ -223,5 +229,11 @@ func TestParallelGatewayFlow(t *testing.T) {
 		completeJobForElementId(t, processInstance.Key, "service_task_after_join", map[string]any{"loop": false})
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
+
+		joinHistory := getFlowElementInstancesByElementId(t, processInstance.Key, "parallel_gateway_join")
+		require.Len(t, joinHistory, 2, "each synchronization cycle should create its own parallel gateway history instance")
+		for _, history := range joinHistory {
+			assert.NotNil(t, history.CompletedAt)
+		}
 	})
 }

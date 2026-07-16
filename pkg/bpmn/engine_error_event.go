@@ -187,10 +187,12 @@ func (engine *Engine) prepareBoundaryErrorTransition(
 			Key:                boundaryEventKey,
 			ProcessInstanceKey: currentInstance.ProcessInstance().GetInstanceKey(),
 			ElementId:          match.event.TEvent.GetId(),
+			ElementType:        string(match.event.GetType()),
 			CreatedAt:          boundaryEventCreatedAt,
 			ExecutionTokenKey:  match.scope.token.Key,
 			InputVariables:     nil,
 			OutputVariables:    propagatedVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 	if err != nil {

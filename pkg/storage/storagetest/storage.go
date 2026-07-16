@@ -49,6 +49,10 @@ func (st *StorageTester) GetTests() map[string]StorageTestFunc {
 		st.TestDecisionStorageReaderGetSingle,
 		st.TestDecisionStorageReaderGetMultiple,
 		st.TestSaveFlowElementInstanceWriter,
+		st.TestFlowElementInstanceCompletedAt,
+		st.TestFlowElementInstanceSaveWithCompletedAt,
+		st.TestFlowElementInstanceUpdateOutputInsertPath,
+		st.TestFlowElementInstanceExecutionTokenKeyPreserved,
 		st.TestIncidentStorageWriter,
 		st.TestIncidentStorageReader,
 	}
@@ -112,7 +116,7 @@ func (st *StorageTester) PrepareTestData(s storage.Storage, t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		r := s.GenerateId()
 
@@ -127,7 +131,7 @@ func (st *StorageTester) TestProcessDefinitionStorageWriter(s storage.Storage, t
 	}
 }
 
-func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessDefinitionStorageReaderBasic(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -182,7 +186,7 @@ func getJob(key, piKey int64, token bpmnruntime.ExecutionToken) bpmnruntime.Job 
 	}
 }
 
-func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -201,7 +205,7 @@ func (st *StorageTester) TestProcessInstanceStorageWriter(s storage.Storage, t *
 	}
 }
 
-func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestProcessInstanceStorageReader(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -274,7 +278,7 @@ func getTimer(key, pdKey, piKey int64, originActivity bpmnruntime.Job) bpmnrunti
 	}
 }
 
-func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -328,7 +332,7 @@ func (st *StorageTester) TestTimerStorageWriter(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTimerStorageReader(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -402,7 +406,7 @@ func (st *StorageTester) TestTimerStorageReader(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestJobStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestJobStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -421,7 +425,7 @@ func (st *StorageTester) TestJobStorageWriter(s storage.Storage, t *testing.T) f
 	}
 }
 
-func (st *StorageTester) TestJobStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestJobStorageReader(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -470,7 +474,7 @@ func getMessage(r int64, piKey int64, pdKey int64, token bpmnruntime.ExecutionTo
 	}
 }
 
-func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -529,7 +533,7 @@ func (st *StorageTester) TestMessageStorageWriter(s storage.Storage, t *testing.
 	}
 }
 
-func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestMessageStorageReader(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -586,7 +590,7 @@ func (st *StorageTester) TestMessageStorageReader(s storage.Storage, t *testing.
 	}
 }
 
-func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -604,7 +608,7 @@ func (st *StorageTester) TestTokenStorageWriter(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestTokenStorageReader(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -673,7 +677,7 @@ func (st *StorageTester) TestTokenStorageReader(s storage.Storage, t *testing.T)
 	}
 }
 
-func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		r := s.GenerateId()
 
@@ -691,7 +695,129 @@ func (st *StorageTester) TestSaveFlowElementInstanceWriter(s storage.Storage, t 
 	}
 }
 
-func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestFlowElementInstanceCompletedAt(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		saved := bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-completed",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{},
+		}
+		err := s.SaveFlowElementInstance(t.Context(), saved)
+		assert.Nil(t, err)
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.Equal(t, saved.ElementId, read.ElementId)
+		assert.Nil(t, read.CompletedAt, "CompletedAt should be nil after Save with no completion")
+
+		completed := time.Now().Truncate(time.Millisecond)
+		err = s.UpdateOutputFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:             r,
+			OutputVariables: map[string]any{"out": "put"},
+			CompletedAt:     &completed,
+		})
+		assert.Nil(t, err)
+
+		updated, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.NotNil(t, updated.CompletedAt, "CompletedAt should be set after Update")
+		if updated.CompletedAt != nil {
+			assert.True(t, updated.CompletedAt.Equal(completed), "CompletedAt mismatch: got %v want %v", *updated.CompletedAt, completed)
+		}
+		assert.Equal(t, map[string]any{"out": "put"}, updated.OutputVariables, "OutputVariables should be updated")
+		assert.Equal(t, saved.InputVariables, updated.InputVariables, "InputVariables should be preserved")
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceSaveWithCompletedAt(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		completedAt := time.Now().Truncate(time.Millisecond)
+		historyItem := bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-completed-at-on-save",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{"out": "v"},
+			CompletedAt:        &completedAt,
+		}
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), historyItem))
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.NoError(t, err)
+		assert.NotNil(t, read.CompletedAt, "CompletedAt should be preserved when saved via SaveFlowElementInstance")
+		assert.True(t, read.CompletedAt.Equal(completedAt), "CompletedAt mismatch: got %v want %v", *read.CompletedAt, completedAt)
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceUpdateOutputInsertPath(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := s.GenerateId()
+
+		completed := time.Now().Truncate(time.Millisecond)
+		err := s.UpdateOutputFlowElementInstance(t.Context(), bpmnruntime.FlowElementInstance{
+			Key:                r,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-update-insert",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  r,
+			InputVariables:     map[string]any{"in": "v"},
+			OutputVariables:    map[string]any{"out": "put"},
+			CompletedAt:        &completed,
+		})
+		assert.Nil(t, err)
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), r)
+		assert.Nil(t, err)
+		assert.Equal(t, "test-elem-update-insert", read.ElementId)
+		assert.Equal(t, map[string]any{"in": "v"}, read.InputVariables,
+			"InputVariables should be populated even when the row was created via UpdateOutput")
+		assert.Equal(t, map[string]any{"out": "put"}, read.OutputVariables,
+			"OutputVariables should be populated")
+		assert.NotNil(t, read.CompletedAt, "CompletedAt should be set")
+	}
+}
+
+func (st *StorageTester) TestFlowElementInstanceExecutionTokenKeyPreserved(s storage.Storage, _ *testing.T) func(t *testing.T) {
+	return func(t *testing.T) {
+		// Use distinct ids for the flow element instance key and the execution
+		// token key. The previous test cases all used the same value for both,
+		// which hid a bug where GetFlowElementInstanceByKey echoed the element
+		// instance key back as the execution-token key.
+		feiKey := s.GenerateId()
+		tokenKey := s.GenerateId()
+
+		historyItem := bpmnruntime.FlowElementInstance{
+			Key:                feiKey,
+			ProcessInstanceKey: st.processInstance.ProcessInstance().Key,
+			ElementId:          "test-elem-token-key",
+			CreatedAt:          time.Now().Truncate(time.Millisecond),
+			ExecutionTokenKey:  tokenKey,
+			InputVariables:     map[string]any{},
+			OutputVariables:    map[string]any{},
+		}
+		assert.NoError(t, s.SaveFlowElementInstance(t.Context(), historyItem))
+
+		read, err := s.GetFlowElementInstanceByKey(t.Context(), feiKey)
+		assert.NoError(t, err)
+		assert.Equal(t, feiKey, read.Key, "Key should be preserved")
+		assert.Equal(t, tokenKey, read.ExecutionTokenKey,
+			"ExecutionTokenKey should be preserved (not echoed from Key)")
+		assert.NotEqual(t, feiKey, tokenKey,
+			"sanity: distinct ids must be used to detect the bug")
+	}
+}
+
+func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing.T) func(_ *testing.T) {
 	return func(t *testing.T) {
 		r := s.GenerateId()
 		tok := s.GenerateId()
@@ -717,7 +843,7 @@ func (st *StorageTester) TestIncidentStorageWriter(s storage.Storage, t *testing
 	}
 }
 
-func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing.T) func(_ *testing.T) {
 	return func(t *testing.T) {
 
 		r := s.GenerateId()
@@ -843,7 +969,7 @@ func (st *StorageTester) TestIncidentStorageReader(s storage.Storage, t *testing
 	}
 }
 
-func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
@@ -858,7 +984,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageWriter(s storage.Storage, 
 	}
 }
 
-func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
@@ -882,7 +1008,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetSingle(s storage.
 	}
 }
 
-func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		r := s.GenerateId()
@@ -904,7 +1030,7 @@ func (st *StorageTester) TestDecisionDefinitionStorageReaderGetMultiple(s storag
 	}
 }
 
-func (st *StorageTester) TestDecisionStorageWriter(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionStorageWriter(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		dmnResourceDefinitionKey := s.GenerateId()
@@ -930,7 +1056,7 @@ func (st *StorageTester) TestDecisionStorageWriter(s storage.Storage, t *testing
 	}
 }
 
-func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		decisionDefinitionKey := s.GenerateId()
@@ -969,7 +1095,7 @@ func (st *StorageTester) TestDecisionStorageReaderGetSingle(s storage.Storage, t
 	}
 }
 
-func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage, t *testing.T) func(t *testing.T) {
+func (st *StorageTester) TestDecisionStorageReaderGetMultiple(s storage.Storage, _ *testing.T) func(t *testing.T) {
 	return func(t *testing.T) {
 		//setup
 		dmnResourceDefinitionKey := s.GenerateId()

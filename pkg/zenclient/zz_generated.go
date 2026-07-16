@@ -429,10 +429,18 @@ type EventSubscriptionState string
 
 // FlowElementHistory defines model for FlowElementHistory.
 type FlowElementHistory struct {
-	CreatedAt          time.Time `json:"createdAt"`
-	ElementId          string    `json:"elementId"`
-	Key                int64     `json:"key"`
-	ProcessInstanceKey int64     `json:"processInstanceKey"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	ElementId   string     `json:"elementId"`
+	ElementType string     `json:"elementType"`
+
+	// InputVariables Variables provided to the flow element at creation time (from BPMN input mappings)
+	InputVariables map[string]interface{} `json:"inputVariables"`
+	Key            int64                  `json:"key"`
+
+	// OutputVariables Output variables produced by the flow element on completion (after BPMN output mapping)
+	OutputVariables    *map[string]interface{} `json:"outputVariables,omitempty"`
+	ProcessInstanceKey int64                   `json:"processInstanceKey"`
 }
 
 // FlowElementHistoryPage defines model for FlowElementHistoryPage.
@@ -508,7 +516,7 @@ type Job struct {
 	InputVariables map[string]interface{} `json:"inputVariables"`
 	Key            int64                  `json:"key"`
 
-	// OutputVariables Output variables set on job completion or failure
+	// OutputVariables Output variables set on job completion or failure (full output before mapping)
 	OutputVariables    *map[string]interface{} `json:"outputVariables,omitempty"`
 	ProcessInstanceKey int64                   `json:"processInstanceKey"`
 

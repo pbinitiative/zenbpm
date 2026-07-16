@@ -1049,8 +1049,17 @@ func (mem *Storage) SaveFlowElementInstance(ctx context.Context, flowElementInst
 func (mem *Storage) UpdateOutputFlowElementInstance(ctx context.Context, flowElementInstance bpmnruntime.FlowElementInstance) error {
 	mem.mu.Lock()
 	defer mem.mu.Unlock()
-	elementInstance := mem.FlowElementInstance[flowElementInstance.Key]
-	elementInstance.OutputVariables = flowElementInstance.OutputVariables
+	elementInstance, exists := mem.FlowElementInstance[flowElementInstance.Key]
+	// Mirror SQL: INSERT ... ON CONFLICT DO UPDATE
+	if !exists {
+		elementInstance = flowElementInstance
+	} else {
+		elementInstance.OutputVariables = flowElementInstance.OutputVariables
+		// Mirror SQL COALESCE on completed_at.
+		if elementInstance.CompletedAt == nil {
+			elementInstance.CompletedAt = flowElementInstance.CompletedAt
+		}
+	}
 	mem.FlowElementInstance[flowElementInstance.Key] = elementInstance
 	return nil
 }

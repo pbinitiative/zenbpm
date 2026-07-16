@@ -63,6 +63,7 @@ func (engine *Engine) createInternalTask(
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
 		InputVariables:     jobVarHolder.LocalVariables(),
@@ -126,8 +127,13 @@ func (engine *Engine) createInternalTask(
 				job.State = runtime.ActivityStateCompleted
 				batch.UpdateOutputFlowElementInstance(ctx,
 					runtime.FlowElementInstance{
-						Key:             currentToken.ElementInstanceKey,
-						OutputVariables: output,
+						Key:                currentToken.ElementInstanceKey,
+						ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+						ElementId:          currentToken.ElementId,
+						ElementType:        string(element.GetType()),
+						ExecutionTokenKey:  currentToken.Key,
+						OutputVariables:    output,
+						CompletedAt:        new(time.Now()),
 					},
 				)
 			}

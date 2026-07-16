@@ -7,6 +7,7 @@ import (
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	"github.com/pbinitiative/zenbpm/pkg/zenclient"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -126,6 +127,10 @@ func TestInclusiveGatewayFlow(t *testing.T) {
 		waitForProcessInstanceState(t, processInstance.Key, zenclient.ProcessInstanceStateCompleted)
 		assertProcessInstanceIncidentsLength(t, processInstance.Key, 0)
 		assertProcessInstanceTokenState(t, processInstance.Key, "end_event", runtime.TokenStateCompleted)
+
+		joinHistory := getFlowElementInstancesByElementId(t, processInstance.Key, "inclusive_gateway_join")
+		require.Len(t, joinHistory, 1, "one join cycle should create one inclusive gateway history instance, got: %v", joinHistory)
+		assert.NotNil(t, joinHistory[0].CompletedAt, "inclusive gateway history must be completed exactly when the join fires")
 	})
 
 	t.Run("Re-entering the split gateway completes after the loop condition changes", func(t *testing.T) {

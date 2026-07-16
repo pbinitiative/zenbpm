@@ -29,6 +29,24 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 			waitingGatewayTokens = append(waitingGatewayTokens, token)
 		}
 	}
+
+	if len(waitingGatewayTokens) == 0 {
+		if err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  currentToken.Key,
+		}); err != nil {
+			return nil, fmt.Errorf("failed to save parallel gateway history %s: %w", element.GetId(), err)
+		}
+	} else {
+		// All tokens consumed by one synchronization cycle share the first arrival's
+		// flow-element instance. Re-entry starts a new cycle after these tokens complete.
+		currentToken.ElementInstanceKey = waitingGatewayTokens[0].ElementInstanceKey
+	}
+
 	currentToken.State = runtime.TokenStateWaiting
 	if len(waitingGatewayTokens) != len(incoming)-1 {
 		return []runtime.ExecutionToken{currentToken}, nil
@@ -41,6 +59,9 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 		resTokens = append(resTokens, token)
 	}
 	currentToken.State = runtime.TokenStateCompleted
+	if err := engine.completeFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+		return nil, fmt.Errorf("failed to complete parallel gateway history %s for token %d: %w", element.GetId(), currentToken.Key, err)
+	}
 	resTokens = append(resTokens, currentToken)
 
 	for _, flow := range outgoing {
@@ -59,8 +80,10 @@ func (engine *Engine) handleParallelGateway(ctx context.Context, batch *EngineBa
 				Key:                sequenceFlowInstanceKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
+				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  newToken.Key,
+				CompletedAt:        new(time.Now()),
 			},
 		)
 		if err != nil {

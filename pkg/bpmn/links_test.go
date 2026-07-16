@@ -22,6 +22,18 @@ func TestLinkEventsAreThrownAndCaughtAndFlowContinued(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().State)
 	assert.Equal(t, "Task-A,Task-B", cp.CallPath)
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+	byID := make(map[string]runtime.FlowElementInstance, len(flowElements))
+	for _, flowElement := range flowElements {
+		byID[flowElement.ElementId] = flowElement
+	}
+	for _, elementID := range []string{"Link-A-Throw", "Link-A-Catch", "Link-B-Throw", "Link-B-Catch"} {
+		flowElement, found := byID[elementID]
+		assert.True(t, found, "link event %s should be in history", elementID)
+		assert.NotNil(t, flowElement.CompletedAt, "link event %s should have CompletedAt after execution passes it", elementID)
+	}
 }
 
 func TestMissingIntermediateLinkCatchEventStopsEngineWithError(t *testing.T) {
@@ -67,4 +79,13 @@ func TestMissingIntermediateLinkVariablesMapped(t *testing.T) {
 	// then
 	assert.NotNil(t, instance.ProcessInstance().GetVariable("catch"))
 	assert.Equal(t, "catch", instance.ProcessInstance().GetVariable("catch").(string))
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+	byID := make(map[string]runtime.FlowElementInstance, len(flowElements))
+	for _, flowElement := range flowElements {
+		byID[flowElement.ElementId] = flowElement
+	}
+	assert.Equal(t, map[string]any{"throw": "throw"}, byID["Link-Throw"].OutputVariables)
+	assert.Equal(t, map[string]any{"catch": "catch"}, byID["Link-Catch"].OutputVariables)
 }

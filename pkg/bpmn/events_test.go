@@ -51,6 +51,44 @@ func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
 }
 
+func TestIntermediateMessageCatchEventCompletedAt(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-catch-event.bpmn")
+	assert.NoError(t, err)
+
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	before := time.Now()
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.MessageSubscription().Name == "globalMsgRef" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
+			assert.NoError(t, err)
+		}
+	}
+	after := time.Now()
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), pi.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	var catchEvent *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "id-1" {
+			catchEvent = &flowElements[i]
+			break
+		}
+	}
+	assert.NotNil(t, catchEvent, "intermediate message catch event 'id-1' should be in history")
+	if catchEvent == nil {
+		return
+	}
+	assert.NotNil(t, catchEvent.CompletedAt, "intermediate message catch event should have CompletedAt set after the message arrives")
+	if catchEvent.CompletedAt != nil {
+		assert.False(t, catchEvent.CompletedAt.Before(before), "CompletedAt should be >= publish start time (%v)", before)
+		assert.False(t, catchEvent.CompletedAt.After(after), "CompletedAt should be <= publish end time (%v)", after)
+	}
+}
+
 func TestIntermediateCatchEventACatchEventProducesAnActiveSubscription(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// given
@@ -382,6 +420,51 @@ func TestPublishingARandomMessageDoesNoHarm(t *testing.T) {
 	assert.Equal(t, runtime.ActivityStateActive, instance.ProcessInstance().GetState())
 }
 
+func TestEventBasedGatewayCatchFlowAndEventCompletedAt(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-intermediate-timer-event.bpmn")
+	assert.NoError(t, err)
+
+	taskHandler := bpmnEngine.NewTaskHandler().Id("task-for-message").Handler(func(job ActivatedJob) {
+		job.Complete()
+	})
+	defer bpmnEngine.RemoveHandler(taskHandler)
+
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	before := time.Now()
+	for _, message := range engineStorage.MessageSubscriptions {
+		if message.MessageSubscription().Name == "message" {
+			err = bpmnEngine.PublishMessage(t.Context(), message, nil)
+			assert.NoError(t, err)
+		}
+	}
+	after := time.Now()
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	byID := make(map[string]runtime.FlowElementInstance, len(flowElements))
+	for _, fe := range flowElements {
+		byID[fe.ElementId] = fe
+	}
+
+	catchFlow, ok := byID["Flow_message"]
+	assert.True(t, ok, "selected event-based-gateway catch flow 'Flow_message' should be in history")
+	assert.NotNil(t, catchFlow.CompletedAt,
+		"selected event-based-gateway catch flow should have CompletedAt set after firing")
+	if catchFlow.CompletedAt != nil {
+		assert.False(t, catchFlow.CompletedAt.Before(before), "CompletedAt should be >= publish start time (%v)", before)
+		assert.False(t, catchFlow.CompletedAt.After(after), "CompletedAt should be <= publish end time (%v)", after)
+	}
+
+	catchEvent, ok := byID["message"]
+	assert.True(t, ok, "selected event-based-gateway catch event 'message' should be in history")
+	assert.NotNil(t, catchEvent.CompletedAt,
+		"selected event-based-gateway catch event should have CompletedAt set after firing")
+}
+
 func TestEventBasedGatewayJustFiresOneEventAndInstanceCOMPLETED(t *testing.T) {
 	cleanUpMessageSubscriptions()
 	// setup
@@ -512,6 +595,43 @@ func TestInterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 
+}
+
+func TestInterruptingBoundaryMessageEventCompletedAt(t *testing.T) {
+	process, err := bpmnEngine.LoadFromFile(t.Context(), "./test-cases/message-boundary-event-interrupting.bpmn")
+	assert.NoError(t, err)
+	instance, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	assert.NoError(t, err)
+
+	before := time.Now()
+	ck := "message-boundary-event-interruptingCorrelationKey"
+	err = bpmnEngine.PublishMessageByName(t.Context(), "simple-boundary", &ck,
+		map[string]interface{}{"payload": "message payload"})
+	assert.NoError(t, err)
+	after := time.Now()
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), instance.ProcessInstance().Key, true)
+	assert.NoError(t, err)
+
+	var boundary *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "Event_1n9fcqj" {
+			boundary = &flowElements[i]
+			break
+		}
+	}
+	assert.NotNil(t, boundary, "boundary message event 'Event_1n9fcqj' should be in history")
+	if boundary == nil {
+		return
+	}
+	assert.NotNil(t, boundary.CompletedAt,
+		"boundary message event should have CompletedAt set after the boundary fires")
+	if boundary.CompletedAt != nil {
+		assert.False(t, boundary.CompletedAt.Before(before), "CompletedAt should be >= publish start time (%v)", before)
+		assert.False(t, boundary.CompletedAt.After(after), "CompletedAt should be <= publish end time (%v)", after)
+	}
+	assert.Equal(t, map[string]any{"payload": "message payload"}, boundary.OutputVariables,
+		"boundary message event should carry its mapped output variables in history")
 }
 
 func TestNoninterruptingBoundaryEventMessageCatchTriggered(t *testing.T) {

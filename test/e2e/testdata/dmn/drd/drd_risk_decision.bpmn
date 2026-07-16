@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_RiskPricing" targetNamespace="http://example.com/bpmn/risk-pricing">
+  <bpmn:process id="process_drd_risk_pricing" name="DRD Risk pricing process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_ApplicationReceived" name="Application received">
+      <bpmn:outgoing>Flow_Start_To_Decision</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:businessRuleTask id="BusinessRuleTask_EvaluatePricing" name="Evaluate risk pricing">
+      <bpmn:extensionElements>
+        <zenbpm:calledDecision decisionId="interestRate" resultVariable="interestRate" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=application.annualIncome" target="annualIncome" />
+          <zenbpm:input source="=application.latePayments" target="latePayments" />
+          <zenbpm:output source="=interestRate.interestRate" target="interestRate" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Start_To_Decision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Decision_To_Gateway</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:exclusiveGateway id="Gateway_RateAcceptable" name="Interest rate acceptable?" default="Flow_ManualReview">
+      <bpmn:incoming>Flow_Decision_To_Gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_StandardPricing</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ManualReview</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="EndEvent_StandardPricing" name="Standard pricing">
+      <bpmn:incoming>Flow_StandardPricing</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_ManualReview" name="Manual review">
+      <bpmn:incoming>Flow_ManualReview</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_To_Decision" sourceRef="StartEvent_ApplicationReceived" targetRef="BusinessRuleTask_EvaluatePricing" />
+    <bpmn:sequenceFlow id="Flow_Decision_To_Gateway" sourceRef="BusinessRuleTask_EvaluatePricing" targetRef="Gateway_RateAcceptable" />
+    <bpmn:sequenceFlow id="Flow_StandardPricing" name="rate &#60;= 7.5" sourceRef="Gateway_RateAcceptable" targetRef="EndEvent_StandardPricing">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">
+        =interestRate &lt;= 7.5
+      </bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ManualReview" name="otherwise" sourceRef="Gateway_RateAcceptable" targetRef="EndEvent_ManualReview" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_RiskPricing">
+    <bpmndi:BPMNPlane id="BPMNPlane_RiskPricing" bpmnElement="process_drd_risk_pricing">
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_ApplicationReceived">
+        <dc:Bounds x="160" y="142" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Decision" bpmnElement="BusinessRuleTask_EvaluatePricing">
+        <dc:Bounds x="250" y="120" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway" bpmnElement="Gateway_RateAcceptable" isMarkerVisible="true">
+        <dc:Bounds x="480" y="135" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="451" y="105" width="108" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndStandard" bpmnElement="EndEvent_StandardPricing">
+        <dc:Bounds x="650" y="77" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="625" y="120" width="86" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndManual" bpmnElement="EndEvent_ManualReview">
+        <dc:Bounds x="650" y="207" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="627" y="250" width="82" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Start_To_Decision" bpmnElement="Flow_Start_To_Decision">
+        <di:waypoint x="196" y="160" />
+        <di:waypoint x="250" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Decision_To_Gateway" bpmnElement="Flow_Decision_To_Gateway">
+        <di:waypoint x="420" y="160" />
+        <di:waypoint x="480" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_StandardPricing" bpmnElement="Flow_StandardPricing">
+        <di:waypoint x="505" y="135" />
+        <di:waypoint x="505" y="95" />
+        <di:waypoint x="650" y="95" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="548" y="77" width="63" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ManualReview" bpmnElement="Flow_ManualReview">
+        <di:waypoint x="505" y="185" />
+        <di:waypoint x="505" y="225" />
+        <di:waypoint x="650" y="225" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="553" y="207" width="51" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

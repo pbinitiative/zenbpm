@@ -48,6 +48,16 @@ func getDecisionInstance(t testing.TB, key int64) zenclient.DecisionInstanceDeta
 	return zenclient.DecisionInstanceDetail{}
 }
 
+func evaluatedDecisionsByID(evaluatedDecisions []zenclient.EvaluatedDecision) map[string]zenclient.EvaluatedDecision {
+	evaluatedByID := make(map[string]zenclient.EvaluatedDecision, len(evaluatedDecisions))
+	for _, evaluatedDecision := range evaluatedDecisions {
+		if evaluatedDecision.DecisionId != nil {
+			evaluatedByID[*evaluatedDecision.DecisionId] = evaluatedDecision
+		}
+	}
+	return evaluatedByID
+}
+
 type ExpectedDecisionInput struct {
 	InputExpression string
 	InputId         string

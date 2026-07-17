@@ -917,11 +917,12 @@ func (s *Server) GetProcessDefinitionStatistics(ctx context.Context, request pub
 				BpmnProcessId: stat.GetBpmnProcessId(),
 				Name:          ptr.To(stat.GetBpmnProcessName()),
 				InstanceCounts: public.InstanceCounts{
-					Total:      int(stat.InstanceCounts.GetTotal()),
-					Active:     int(stat.InstanceCounts.GetActive()),
-					Completed:  int(stat.InstanceCounts.GetCompleted()),
-					Terminated: int(stat.InstanceCounts.GetTerminated()),
-					Failed:     int(stat.InstanceCounts.GetFailed()),
+					Total:        int(stat.InstanceCounts.GetTotal()),
+					Active:       int(stat.InstanceCounts.GetActive()),
+					Completed:    int(stat.InstanceCounts.GetCompleted()),
+					Terminated:   int(stat.InstanceCounts.GetTerminated()),
+					Failed:       int(stat.InstanceCounts.GetFailed()),
+					WithIncident: int(stat.InstanceCounts.GetWithIncident()),
 				},
 			}
 		}
@@ -1182,6 +1183,7 @@ func (s *Server) GetProcessInstances(ctx context.Context, request public.GetProc
 				ProcessType:          processInstanceType,
 				State:                processInstanceState,
 				Variables:            vars,
+				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
 				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())
@@ -1376,6 +1378,7 @@ func (s *Server) GetChildProcessInstances(ctx context.Context, request public.Ge
 				ProcessType:          processInstanceType,
 				State:                processInstanceState,
 				Variables:            vars,
+				IncidentCount:        new(int(instance.GetIncidentCount())),
 			}
 			if instance.GetParentInstanceKey() != 0 {
 				processInstancesPage.Partitions[i].Items[k].ParentProcessInstanceKey = ptr.To(instance.GetParentInstanceKey())

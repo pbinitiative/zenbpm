@@ -503,6 +503,9 @@ type InstanceCounts struct {
 
 	// Total Total number of process instances
 	Total int `json:"total"`
+
+	// WithIncident Number of process instances that currently have at least one directly associated unresolved incident. Each process instance is counted once, regardless of how many incidents it has, and regardless of its state (i.e. active, completed, terminated or failed). Incidents associated with nested subprocess or multi-instance scopes are not rolled up to their parent instance.
+	WithIncident int `json:"withIncident"`
 }
 
 // Job defines model for Job.
@@ -723,10 +726,13 @@ type ProcessDefinitionsPage struct {
 
 // ProcessInstance defines model for ProcessInstance.
 type ProcessInstance struct {
-	ActiveElementInstances   []ElementInstance          `json:"activeElementInstances"`
-	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
-	BusinessKey              *string                    `json:"businessKey,omitempty"`
-	CreatedAt                time.Time                  `json:"createdAt"`
+	ActiveElementInstances []ElementInstance `json:"activeElementInstances"`
+	BpmnProcessId          *string           `json:"bpmnProcessId,omitempty"`
+	BusinessKey            *string           `json:"businessKey,omitempty"`
+	CreatedAt              time.Time         `json:"createdAt"`
+
+	// IncidentCount Number of currently unresolved incidents directly associated with this process instance. Present on process-instance list responses and omitted from responses where the count is not calculated. Zero when the listed instance has no open incidents.
+	IncidentCount            *int                       `json:"incidentCount,omitempty"`
 	Key                      int64                      `json:"key"`
 	ParentProcessInstanceKey *int64                     `json:"parentProcessInstanceKey,omitempty"`
 	ProcessDefinitionKey     int64                      `json:"processDefinitionKey"`
@@ -759,9 +765,12 @@ type ProcessInstanceState string
 
 // ProcessInstancesSimple defines model for ProcessInstancesSimple.
 type ProcessInstancesSimple struct {
-	BpmnProcessId            *string                    `json:"bpmnProcessId,omitempty"`
-	BusinessKey              *string                    `json:"businessKey,omitempty"`
-	CreatedAt                time.Time                  `json:"createdAt"`
+	BpmnProcessId *string   `json:"bpmnProcessId,omitempty"`
+	BusinessKey   *string   `json:"businessKey,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+
+	// IncidentCount Number of currently unresolved incidents directly associated with this process instance. Present on process-instance list responses and omitted from responses where the count is not calculated. Zero when the listed instance has no open incidents.
+	IncidentCount            *int                       `json:"incidentCount,omitempty"`
 	Key                      int64                      `json:"key"`
 	ParentProcessInstanceKey *int64                     `json:"parentProcessInstanceKey,omitempty"`
 	ProcessDefinitionKey     int64                      `json:"processDefinitionKey"`

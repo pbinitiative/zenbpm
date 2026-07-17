@@ -253,6 +253,7 @@ message ProcessInstance {
   int64 parent_token_key = 8;
   string business_key = 9;
   int64 type = 10;
+  int64 incident_count = 11;
 }
 
 message DecisionInstance {
@@ -754,6 +755,7 @@ message InstanceCounts {
   int64 completed = 3;
   int64 terminated = 4;
   int64 failed = 5;
+  int64 with_incident = 6;
 }
 
 message PartitionedProcessDefinitionStatistics {

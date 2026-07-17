@@ -124,7 +124,8 @@ WITH process_instance_candidates AS (
         ELSE
             1
         END
-)
+),
+paged AS (
 SELECT
     process_instance_candidates.*,
     COUNT(*) OVER () AS total_count
@@ -196,9 +197,49 @@ ORDER BY
   CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN process_instance_candidates.bpmn_process_id END DESC,
   process_instance_candidates.created_at DESC
 
-LIMIT @size OFFSET @offset;
+LIMIT @size OFFSET @offset
+)
+SELECT
+    paged.key,
+    paged.process_definition_key,
+    paged.business_key,
+    paged.created_at,
+    paged.state,
+    paged.variables,
+    paged.parent_process_execution_token,
+    paged.parent_process_target_element_id,
+    paged.parent_process_target_element_instance_key,
+    paged.process_type,
+    paged.history_ttl_sec,
+    paged.history_delete_sec,
+    paged.start_element_id,
+    paged.bpmn_process_id,
+    CAST((
+        SELECT COUNT(*)
+        FROM incident AS i
+        WHERE i.process_instance_key = paged.key
+          AND i.resolved_at IS NULL
+    ) AS INTEGER) AS incident_count,
+    paged.total_count
+FROM paged
+WHERE
+    -- Keep sort_by_order as the first parameter: ORDER BY refers to it as ?1.
+    CASE WHEN @sort_by_order IS NULL THEN 1 ELSE 1 END
+ORDER BY
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc'  THEN paged.created_at END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN paged.created_at END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN paged."key" END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN paged."key" END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN paged.state END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN paged.state END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc'  THEN paged.business_key END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN paged.business_key END DESC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc'  THEN paged.bpmn_process_id END ASC,
+  CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN paged.bpmn_process_id END DESC,
+  paged.created_at DESC;
 
 -- name: FindChildProcessInstancesPage :many
+WITH paged AS (
 SELECT
     pi.*, pd.bpmn_process_id,
     COUNT(*) OVER () AS total_count
@@ -233,7 +274,43 @@ ORDER BY
     CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN pd.bpmn_process_id END ASC,
     CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN pd.bpmn_process_id END DESC,
     pi.created_at DESC
-LIMIT @size OFFSET @offset;
+LIMIT @size OFFSET @offset
+)
+SELECT
+    paged.key,
+    paged.process_definition_key,
+    paged.business_key,
+    paged.created_at,
+    paged.state,
+    paged.variables,
+    paged.parent_process_execution_token,
+    paged.parent_process_target_element_id,
+    paged.parent_process_target_element_instance_key,
+    paged.process_type,
+    paged.history_ttl_sec,
+    paged.history_delete_sec,
+    paged.start_element_id,
+    paged.bpmn_process_id,
+    CAST((
+        SELECT COUNT(*)
+        FROM incident AS i
+        WHERE i.process_instance_key = paged.key
+          AND i.resolved_at IS NULL
+    ) AS INTEGER) AS incident_count,
+    paged.total_count
+FROM paged
+ORDER BY
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_asc' THEN paged.created_at END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'createdAt_desc' THEN paged.created_at END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_asc' THEN paged."key" END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'key_desc' THEN paged."key" END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_asc' THEN paged.state END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'state_desc' THEN paged.state END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_asc' THEN paged.business_key END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'businessKey_desc' THEN paged.business_key END DESC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_asc' THEN paged.bpmn_process_id END ASC,
+    CASE CAST(?1 AS TEXT) WHEN 'bpmnProcessId_desc' THEN paged.bpmn_process_id END DESC,
+    paged.created_at DESC;
 
 -- name: FindProcessesByParentExecutionToken :many
 SELECT

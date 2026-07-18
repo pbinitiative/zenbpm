@@ -3,6 +3,8 @@ package bpmn
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +51,72 @@ func TestIntermediateCatchEventReceivedMessageCompletesTheInstance(t *testing.T)
 	instance, err := bpmnEngine.persistence.FindProcessInstanceByKey(t.Context(), pi.ProcessInstance().Key)
 	assert.NoError(t, err)
 	assert.Equal(t, runtime.ActivityStateCompleted, instance.ProcessInstance().GetState())
+}
+
+func TestReceiveTaskOutputMappingUsesInputSnapshotFromSubscriptionCreation(t *testing.T) {
+	cleanUpMessageSubscriptions()
+	bpmnData, err := os.ReadFile("./test-cases/receive_task/receive-task-boundary-timer-interrupting.bpmn")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	modifiedBPMN := strings.Replace(string(bpmnData),
+		`<bpmn:process id="Process_0anusn1"`,
+		fmt.Sprintf(`<bpmn:process id="Process_0anusn1_%d"`, rand.Int63()),
+		1,
+	)
+	modifiedBPMN = strings.Replace(modifiedBPMN,
+		`<bpmn:receiveTask id="ReceiveTask_1efx577" name="ReceiveTask" messageRef="Message_3chd4fk">
+      <bpmn:incoming>Flow_1xwsg77</bpmn:incoming>`,
+		`<bpmn:receiveTask id="ReceiveTask_1efx577" name="ReceiveTask" messageRef="Message_3chd4fk">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=lateSource" target="localMapped" />
+          <zenbpm:output source="=localMapped" target="result" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1xwsg77</bpmn:incoming>`,
+		1,
+	)
+
+	process, err := bpmnEngine.LoadFromBytes(t.Context(), []byte(modifiedBPMN), rand.Int63())
+	if !assert.NoError(t, err) {
+		return
+	}
+	pi, err := bpmnEngine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{})
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	storedInstance, err := engineStorage.FindProcessInstanceByKey(t.Context(), pi.ProcessInstance().Key)
+	if !assert.NoError(t, err) {
+		return
+	}
+	storedInstance.ProcessInstance().VariableHolder.SetLocalVariable("lateSource", "changed-after-subscription")
+	assert.NoError(t, engineStorage.SaveProcessInstance(t.Context(), storedInstance))
+
+	var subscription runtime.MessageSubscription
+	for _, message := range engineStorage.MessageSubscriptions {
+		tokenSubscription, ok := message.(*runtime.TokenMessageSubscription)
+		if ok && tokenSubscription.Name == "globalMsgRef" && tokenSubscription.ProcessInstanceKey == pi.ProcessInstance().Key {
+			subscription = message
+			break
+		}
+	}
+	if !assert.NotNil(t, subscription) {
+		return
+	}
+
+	err = bpmnEngine.PublishMessage(t.Context(), subscription, nil)
+	assert.NoError(t, err)
+
+	updatedInstance, err := engineStorage.FindProcessInstanceByKey(t.Context(), pi.ProcessInstance().Key)
+	if !assert.NoError(t, err) {
+		return
+	}
+	variables := updatedInstance.ProcessInstance().VariableHolder.LocalVariables()
+	assert.Contains(t, variables, "result")
+	assert.Nil(t, variables["result"], "receive task input mappings must be evaluated from the variables captured when the subscription was created")
 }
 
 func TestIntermediateMessageCatchEventCompletedAt(t *testing.T) {

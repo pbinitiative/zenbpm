@@ -183,7 +183,7 @@ func (engine *Engine) publishMessageOnReceiveTask(ctx context.Context, batch *En
 		return nil, fmt.Errorf("failed to save message subscription %s on instance %d: %w", message.Name, instance.ProcessInstance().Key, err)
 	}
 
-	outputVariables, err := engine.propagateAndSaveReceiveTaskOutputVariables(ctx, batch, instance, token, receiveTask.Output, variables)
+	outputVariables, err := engine.propagateAndSaveReceiveTaskOutputVariables(ctx, batch, instance, token, receiveTask.GetInputMapping(), receiveTask.Output, variables)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func (engine *Engine) publishMessageOnReceiveTask(ctx context.Context, batch *En
 	return tokens, nil
 }
 
-func (engine *Engine) propagateAndSaveReceiveTaskOutputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, token runtime.ExecutionToken, output []extensions.TIoMapping, variables map[string]interface{}) (map[string]interface{}, error) {
+func (engine *Engine) propagateAndSaveReceiveTaskOutputVariables(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, token runtime.ExecutionToken, input []extensions.TIoMapping, output []extensions.TIoMapping, variables map[string]interface{}) (map[string]interface{}, error) {
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, token.ElementInstanceKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load receive task flow element instance %d: %w", token.ElementInstanceKey, err)
@@ -222,6 +222,9 @@ func (engine *Engine) propagateAndSaveReceiveTaskOutputVariables(ctx context.Con
 	}
 
 	variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, inputVariables)
+	if err := engine.evaluateInputMappingsAgainstScope(variableHolder.LocalVariables(), input); err != nil {
+		return nil, fmt.Errorf("failed to evaluate receive task input variables for %s: %w", token.ElementId, err)
+	}
 	outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(output, variables, engine.evaluateExpression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to propagate receive task variables to process instance %d: %w", instance.ProcessInstance().Key, err)

@@ -25,6 +25,7 @@ func (engine *Engine) createCallActivity(
 	callActivityVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
+	flowElementInput := callActivityVarHolder.ExecutionScopeSnapshot()
 	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
@@ -36,7 +37,7 @@ func (engine *Engine) createCallActivity(
 			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     callActivityVarHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)
@@ -82,6 +83,7 @@ func (engine *Engine) createSubProcess(
 	currentToken runtime.ExecutionToken,
 	subProcessVariableHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
+	flowElementInput := subProcessVariableHolder.ExecutionScopeSnapshot()
 	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
@@ -95,7 +97,7 @@ func (engine *Engine) createSubProcess(
 			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     subProcessVariableHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)

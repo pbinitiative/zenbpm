@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceTaskVariables(t *testing.T) {
@@ -35,10 +37,12 @@ func TestServiceTaskVariables(t *testing.T) {
 			cleanupOwnedProcessInstance(t, processInstance.Key)
 		})
 
-		expectedInputVariables := mergeMaps(createInstanceVariables, map[string]any{"missing_input": interface{}(nil)})
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", expectedInputVariables)
+		expectedJobInputVariables := mergeMaps(createInstanceVariables, map[string]any{"missing_input": interface{}(nil)})
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		require.Equal(t, expectedJobInputVariables, job.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 
-		completeJobForElementId(t, processInstance.Key, "service_task", nil)
+		require.NoError(t, completeJob(t, job.Key, nil))
 
 		assertProcessInstanceVariables(t, processInstance.Key, createInstanceVariables)
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
@@ -55,12 +59,14 @@ func TestServiceTaskVariables(t *testing.T) {
 
 		createInstanceVariablesWithInputVariable := mergeMaps(createInstanceVariables, map[string]any{"input_without_source": ""})
 
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariablesWithInputVariable)
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		require.Equal(t, createInstanceVariablesWithInputVariable, job.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", nil)
 
-		completeJobForElementId(t, processInstance.Key, "service_task", nil)
+		require.NoError(t, completeJob(t, job.Key, nil))
 
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariablesWithInputVariable)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertProcessInstanceVariables(t, processInstance.Key, createInstanceVariables)
 	})
@@ -75,12 +81,14 @@ func TestServiceTaskVariables(t *testing.T) {
 		})
 
 		createInstanceVariablesWithInputVariable := mergeMaps(createInstanceVariables, map[string]any{"amount": "var1"})
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariablesWithInputVariable)
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		require.Equal(t, createInstanceVariablesWithInputVariable, job.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", nil)
 
-		completeJobForElementId(t, processInstance.Key, "service_task", nil)
+		require.NoError(t, completeJob(t, job.Key, nil))
 
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariablesWithInputVariable)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertProcessInstanceVariables(t, processInstance.Key, createInstanceVariables)
 	})
@@ -94,12 +102,14 @@ func TestServiceTaskVariables(t *testing.T) {
 		})
 
 		inputVariable := map[string]any{"name": "John"}
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", inputVariable)
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		require.Equal(t, inputVariable, job.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", nil)
 
-		completeJobForElementId(t, processInstance.Key, "service_task", nil)
+		require.NoError(t, completeJob(t, job.Key, nil))
 
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", inputVariable)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", map[string]interface{}{})
 		assertProcessInstanceVariables(t, processInstance.Key, map[string]interface{}{})
 	})
@@ -161,9 +171,11 @@ func TestServiceTaskVariables(t *testing.T) {
 		createInstanceVariablesWithInputVariable := mergeMaps(createInstanceVariables, map[string]any{
 			"local_variable_from_input": "var1",
 		})
-		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariablesWithInputVariable)
+		job := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "service_task")
+		require.Equal(t, createInstanceVariablesWithInputVariable, job.InputVariables)
+		assertFlowElementInputVariables(t, processInstance.Key, "service_task", createInstanceVariables)
 
-		completeJobForElementId(t, processInstance.Key, "service_task", nil)
+		require.NoError(t, completeJob(t, job.Key, nil))
 
 		outputVariables := map[string]any{"output_variable": "var1"}
 		assertFlowElementOutputVariables(t, processInstance.Key, "service_task", outputVariables)

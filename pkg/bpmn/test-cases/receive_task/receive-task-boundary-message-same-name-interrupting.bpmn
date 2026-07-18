@@ -7,6 +7,7 @@
     <bpmn:receiveTask id="ReceiveTask_same_name" name="ReceiveTask" messageRef="Message_receive_same_name">
       <bpmn:extensionElements>
         <zenbpm:ioMapping>
+          <zenbpm:input source="=&#34;receive-correlation-key&#34;" target="receiveCorrelationKey" />
           <zenbpm:output source="=approved" target="approved" />
         </zenbpm:ioMapping>
       </bpmn:extensionElements>
@@ -39,7 +40,7 @@
   </bpmn:process>
   <bpmn:message id="Message_receive_same_name" name="shared receive boundary message">
     <bpmn:extensionElements>
-      <zenbpm:subscription correlationKey="=&#34;receive-correlation-key&#34;" />
+      <zenbpm:subscription correlationKey="=receiveCorrelationKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_boundary_same_name" name="shared receive boundary message">

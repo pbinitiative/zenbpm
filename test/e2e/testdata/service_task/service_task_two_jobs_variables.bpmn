@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" id="Definitions_two_jobs_variables" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="service_task_two_jobs_variables" isExecutable="true">
+    <bpmn:startEvent id="start_event">
+      <bpmn:outgoing>flow_start_first</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="flow_start_first" sourceRef="start_event" targetRef="first_service_task" />
+    <bpmn:serviceTask id="first_service_task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="test" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=seed" target="firstJobInput" />
+          <zenbpm:output source="=firstJobOutput" target="firstResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_start_first</bpmn:incoming>
+      <bpmn:outgoing>flow_first_second</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow_first_second" sourceRef="first_service_task" targetRef="second_service_task" />
+    <bpmn:serviceTask id="second_service_task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="test" />
+        <zenbpm:ioMapping>
+          <zenbpm:input source="=firstResult" target="secondJobInput" />
+          <zenbpm:output source="=secondJobOutput" target="secondResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_first_second</bpmn:incoming>
+      <bpmn:outgoing>flow_second_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flow_second_end" sourceRef="second_service_task" targetRef="end_event" />
+    <bpmn:endEvent id="end_event">
+      <bpmn:incoming>flow_second_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

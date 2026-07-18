@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"maps"
+
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 )
 
@@ -29,6 +31,23 @@ func NewVariableHolder(parent *VariableHolder, localVariables map[string]interfa
 
 func (vh *VariableHolder) LocalVariables() map[string]interface{} {
 	return vh.localVariables
+}
+
+// ExecutionScopeSnapshot returns the variables available to an activity before
+// its input mappings are applied. Local variables take precedence over parent
+// variables, matching input-mapping evaluation.
+func (vh *VariableHolder) ExecutionScopeSnapshot() map[string]interface{} {
+	variables := make(map[string]interface{})
+	var collect func(*VariableHolder)
+	collect = func(holder *VariableHolder) {
+		if holder == nil {
+			return
+		}
+		collect(holder.parent)
+		maps.Copy(variables, holder.localVariables)
+	}
+	collect(vh)
+	return variables
 }
 
 func (vh *VariableHolder) GetLocalVariable(key string) interface{} {

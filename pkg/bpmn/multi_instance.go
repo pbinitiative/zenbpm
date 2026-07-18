@@ -11,6 +11,7 @@ import (
 	"github.com/pbinitiative/zenbpm/internal/log"
 	"github.com/pbinitiative/zenbpm/internal/safego"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
+	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/extensions"
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/runtime"
 	otelPkg "github.com/pbinitiative/zenbpm/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -159,6 +160,8 @@ func (engine *Engine) startParallelMultiInstance(
 			inputCollection[i] = rv.Index(i).Interface()
 		}
 	}
+	flowElementInput := variableHolder.ExecutionScopeSnapshot()
+	flowElementInput[element.GetMultiInstance().LoopCharacteristics.InputElementName] = inputCollection
 	err = batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
@@ -166,7 +169,7 @@ func (engine *Engine) startParallelMultiInstance(
 		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
+		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
 	if err != nil {
@@ -235,6 +238,8 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		}
 	}
 
+	flowElementInput := variableHolder.ExecutionScopeSnapshot()
+	flowElementInput[element.GetMultiInstance().LoopCharacteristics.InputElementName] = inputCollection
 	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
@@ -242,7 +247,7 @@ func (engine *Engine) startSequentialMultiInstance(ctx context.Context, batch *E
 		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     map[string]interface{}{element.GetMultiInstance().LoopCharacteristics.InputElementName: inputCollection},
+		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
 
@@ -396,7 +401,10 @@ func (engine *Engine) collectMultiInstanceOutputCollection(
 
 	outputCollection := make([]interface{}, 0, len(flowElementInstancesSortByCreatedAtAndKey))
 	for _, elementInstance := range flowElementInstancesSortByCreatedAtAndKey {
-		inputAndOutputVariables := mergeInputAndOutputVariables(elementInstance)
+		inputAndOutputVariables, err := engine.buildActivityOutputEvaluationScope(elementInstance, parentElement)
+		if err != nil {
+			return nil, err
+		}
 		evaluatedOutput, err := engine.evaluateExpression(parentElement.GetMultiInstance().LoopCharacteristics.OutputElementExpression, inputAndOutputVariables)
 
 		if err != nil {
@@ -406,6 +414,27 @@ func (engine *Engine) collectMultiInstanceOutputCollection(
 	}
 
 	return outputCollection, nil
+}
+
+func (engine *Engine) buildActivityOutputEvaluationScope(elementInstance runtime.FlowElementInstance, element bpmn20.Activity) (map[string]any, error) {
+	scope := make(map[string]any, len(elementInstance.InputVariables)+len(elementInstance.OutputVariables))
+	for key, value := range elementInstance.InputVariables {
+		scope[key] = value
+	}
+
+	inputMappings, ok := element.(interface {
+		GetInputMapping() []extensions.TIoMapping
+	})
+	if ok {
+		if err := engine.evaluateInputMappingsAgainstScope(scope, inputMappings.GetInputMapping()); err != nil {
+			return nil, err
+		}
+	}
+
+	for key, value := range elementInstance.OutputVariables {
+		scope[key] = value
+	}
+	return scope, nil
 }
 
 func (engine *Engine) handleMultiInstanceElementTransition(ctx context.Context,
@@ -477,15 +506,4 @@ func sortFlowElementInstancesSortByCreatedAtAndKey(elementInstances []runtime.Fl
 	})
 
 	return elementInstancesForParent
-}
-
-func mergeInputAndOutputVariables(elementInstance runtime.FlowElementInstance) map[string]any {
-	scope := make(map[string]any, len(elementInstance.InputVariables)+len(elementInstance.OutputVariables))
-	for k, v := range elementInstance.InputVariables {
-		scope[k] = v
-	}
-	for k, v := range elementInstance.OutputVariables {
-		scope[k] = v
-	}
-	return scope
 }

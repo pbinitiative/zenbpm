@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/pbinitiative/zenbpm/pkg/bpmn/model/bpmn20"
@@ -193,19 +194,9 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 		if err != nil {
 			return nil, fmt.Errorf("failed to find process instance for job key: %d: %w", job.Key, err)
 		}
-		variableHolder := runtime.NewVariableHolder(&processInstance.ProcessInstance().VariableHolder, nil)
-
-		task := processInstance.ProcessInstance().Definition.Definitions.Process.GetInternalTaskById(job.Token.ElementId)
-		if task == nil {
-			return nil, errors.Join(newEngineErrorf("failed to find task element for job: %+v", job), err)
-		}
-		if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(task.GetInputMapping(), engine.evaluateExpression); err != nil {
-			job.State = runtime.ActivityStateFailed
-			perr := engine.persistence.SaveJob(ctx, job)
-			if perr != nil {
-				return nil, errors.Join(fmt.Errorf("failed to save failed job"), err, perr)
-			}
-			return nil, fmt.Errorf("failed to evaluate variables: %w", err)
+		localVars := maps.Clone(job.InputVariables)
+		if localVars == nil {
+			localVars = make(map[string]any)
 		}
 		aj := &activatedJob{
 			processInstanceInfo: processInstance,
@@ -213,7 +204,7 @@ func (engine *Engine) ActivateJobs(ctx context.Context, jobType string) ([]Activ
 			processInstanceKey:  job.ProcessInstanceKey,
 			elementId:           job.ElementId,
 			createdAt:           job.CreatedAt,
-			localVariables:      variableHolder.LocalVariables(),
+			localVariables:      localVars,
 			outputVariables:     map[string]interface{}{},
 		}
 		activatedJobs = append(activatedJobs, aj)

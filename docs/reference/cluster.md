@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 ---
 import ApiOperation from "@theme/ApiOperation";
 import ApiSchema from "@theme/ApiSchema";

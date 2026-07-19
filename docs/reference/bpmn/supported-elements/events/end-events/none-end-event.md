@@ -3,7 +3,7 @@ sidebar_position: 1
 ---
 # None End Event
 
-The simplest end event — it ends the current path without throwing any result. The process instance completes once no active tokens remain.
+A None End Event marks where a path of execution finishes — the process instance completes once no active tokens remain. It ends the path without throwing any result.
 
 ## Key characteristics
 
@@ -15,7 +15,7 @@ The simplest end event — it ends the current path without throwing any result.
 
 A thick single-line circle with no icon inside.
 
-<img src="/img/bpmn/events/none-end-event.svg" alt="None end event" width="120" height="120" />
+<img src="/img/bpmn/end_event.svg" width="130" />
 
 ## XML Definition
 

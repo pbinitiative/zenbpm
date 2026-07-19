@@ -1,4 +1,4 @@
-﻿---
+---
 sidebar_position: 1
 ---
 # Sequence flow
@@ -14,8 +14,6 @@ A Sequence Flow is the basic connector between BPMN elements. It defines the ord
 ## Graphical notation
 
 A solid arrow line between two elements.
-
-![Sequence flow](/img/bpmn/flows/sequence-flow.svg)
 
 ## XML Definition
 

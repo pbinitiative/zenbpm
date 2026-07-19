@@ -1,42 +1,45 @@
 ---
 sidebar_position: 80
 ---
-# Exclusive Gateway
 
-An Exclusive (XOR) gateway routes the flow down exactly one outgoing path, chosen by evaluating conditions on each outgoing sequence flow.
+# Exclusive gateway
+An Exclusive Gateway controls branching and merging of sequence flows based on conditions. When used as a decision point, it evaluates outgoing sequence flow conditions and allows only one to be taken. When used as a merge, it simply passes through the first arriving token without synchronization.
 
 ## Key characteristics
+- Condition-based routing:
+	Only one outgoing flow is selected. If multiple conditions evaluate to true, the BPMN specification does not define the selection priority; engines commonly choose the first in model order.
 
-- **Diverging:** evaluates outgoing conditions and takes exactly one matching path.
-- If multiple conditions are true, the first in model order wins.
-- A **default flow** can be defined as a fallback when no condition matches.
-- **Converging:** forwards the first arriving token without waiting for others.
+- Single outgoing token:
+	Exactly one branch is activated during divergence.
+
+- Default flow support:
+	A default flow may be defined to handle cases where all conditions evaluate to false.
+
+- Convergence behavior:
+	The gateway does not synchronize multiple tokens; it forwards the first token that arrives. 
+## Usage patterns
+- **Decision (Diverging Exclusive Gateway):**
+	Used to model conditional branching (if/else). Each outgoing flow has a condition; exactly one path is selected at runtime.
+
+- **Merge (Converging Exclusive Gateway):**
+	Used to merge alternative branches back into a single flow. The gateway forwards the first token arriving from any branch.
+
+- **Conditional routing with default:**
+	Define a default outgoing sequence flow to provide a fallback path when no conditions apply.
 
 ## Graphical notation
+![Exclusive gateway usage example](../../../assets/bpmn/exclusive_gateway.svg)
 
-A diamond with an "X" icon.
-
-<img src="/img/bpmn/gateways/exclusive-gateway.svg" alt="Exclusive gateway usage example" width="120" height="120" />
+A diamond shape with an X (cross) inside.
 
 ## XML Definition
-
 ```xml
-<bpmn:exclusiveGateway id="checkAmount" name="Amount?" default="Flow_default">
-  <bpmn:incoming>Flow_1</bpmn:incoming>
-  <bpmn:outgoing>Flow_high</bpmn:outgoing>
-  <bpmn:outgoing>Flow_default</bpmn:outgoing>
+<bpmn:exclusiveGateway id="ExclusiveGateway_1" name="Decide">
+  <bpmn:incoming>Flow1</bpmn:incoming>
+  <bpmn:outgoing>Flow2</bpmn:outgoing>
+  <bpmn:outgoing>Flow3</bpmn:outgoing>
 </bpmn:exclusiveGateway>
-
-<bpmn:sequenceFlow id="Flow_high" sourceRef="checkAmount" targetRef="Task_ManualReview">
-  <bpmn:conditionExpression>= amount > 10000</bpmn:conditionExpression>
-</bpmn:sequenceFlow>
-<bpmn:sequenceFlow id="Flow_default" sourceRef="checkAmount" targetRef="Task_AutoApprove" />
 ```
 
-## Practical example
-
-An order approval process routes orders over €10,000 to a manual review task, while smaller orders are auto-approved. The Exclusive Gateway evaluates the `amount` variable and picks exactly one outgoing path.
-
 ## Current Implementation
-
-Fully supported, including default flows and FEEL condition expressions.
+- Exclusive Gateway is fully supported.

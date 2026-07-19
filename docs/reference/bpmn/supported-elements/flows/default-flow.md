@@ -1,4 +1,4 @@
-﻿---
+---
 sidebar_position: 2
 ---
 # Default flow
@@ -14,8 +14,6 @@ A Default Flow is a fallback sequence flow on an Exclusive or Inclusive gateway.
 ## Graphical notation
 
 A sequence flow arrow with a short diagonal slash near the source.
-
-![Default flow](/img/bpmn/flows/default-flow.svg)
 
 ## XML Definition
 

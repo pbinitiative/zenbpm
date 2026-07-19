@@ -1,8 +1,7 @@
-﻿{
+{
   "label": "Others",
   "position": 5,
   "link": {
-    "type": "doc",
-    "id": "reference/bpmn/supported-elements/others/index"
+    "type": "generated-index"
   }
 }

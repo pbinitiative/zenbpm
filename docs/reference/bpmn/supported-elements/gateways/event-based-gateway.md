@@ -3,49 +3,63 @@ sidebar_position: 90
 ---
 # Event-Based Gateway
 
-An Event-Based gateway routes the flow based on which event occurs first. Instead of evaluating data conditions, it waits for competing events and takes the path of the winner.
+An Event-Based Gateway is a BPMN element that decides the path of a process based on which event happens first.
+
+Unlike data-based (exclusive) gateways, the decision is **not** made by evaluating conditions, but by **waiting for events**.
 
 ## Key characteristics
+- **Event-driven decision:**
+  The gateway waits for one of several alternative events to occur. The first event that occurs determines the outgoing path.
 
-- **Diverging only** — each outgoing path leads to a catching event (Message, Timer, etc.).
-- The first event to occur determines the route; all other waiting branches are cancelled.
-- Commonly used to model "wait for reply or timeout" patterns.
-- **Limitation:** currently only for Message and Timer events.
+- **Exactly one path is taken:**
+  Once an event is triggered, all other alternative events are canceled and their paths are disabled.
+
+- **No conditions on sequence flows:**
+  Outgoing sequence flows must not have conditions. The logic is defined by the events themselves.
+
+- **Must be followed only by event-catching elements:**
+  Each outgoing path must lead directly to an **Intermediate Catching Event**, or a **Receive Task**
+
+- **Used for reactive behavior:**
+  Commonly applied in scenarios where a process must react to external signals, messages, timers, or user responses.
+
+- **Consumes no token by itself:**
+  The gateway passes control to the event that occurs; the token continues only along the triggered path.
+
+## Allowed event types after the gateway
+Outgoing sequence flows from an Event-Based Gateway may lead to the following catching events or tasks:
+
+- **Message Intermediate Catch Event:**
+  Waits for a specific message from another process or external system.
+
+- **Timer Intermediate Catch Event:**
+  Waits until a specified time condition is met (date, duration, or cycle).
+
+- **Signal Intermediate Catch Event:**
+  Reacts to a broadcast signal.
+
+- **Conditional Intermediate Catch Event:**
+  Proceeds when a defined condition becomes true.
+
+- **Receive Task:**
+  Represents waiting for a message, modeled as an activity rather than an event.
+
+> **Note:** Throwing events are not allowed after an Event-Based Gateway.
 
 ## Graphical notation
 
-A diamond with a pentagon-in-circle icon.
+A diamond shape with a **pentagon event marker** inside.
 
-<img src="/img/bpmn/gateways/event-based-gateway.svg" alt="Event-based gateway usage example" width="120" height="120" />
+<img src="/img/bpmn/UNI_eventBasedGateway.svg" width="130" />
 
 ## XML Definition
-
 ```xml
-<bpmn:eventBasedGateway id="waitForReplyOrTimeout" name="Reply or timeout?">
-  <bpmn:incoming>Flow_1</bpmn:incoming>
-  <bpmn:outgoing>Flow_reply</bpmn:outgoing>
-  <bpmn:outgoing>Flow_timeout</bpmn:outgoing>
+<bpmn:eventBasedGateway id="EventBasedGateway_1" name="Wait for Event">
+  <bpmn:outgoing>Flow_Message</bpmn:outgoing>
+  <bpmn:outgoing>Flow_Timer</bpmn:outgoing>
 </bpmn:eventBasedGateway>
-
-<bpmn:intermediateCatchEvent id="waitReply" name="Reply received">
-  <bpmn:incoming>Flow_reply</bpmn:incoming>
-  <bpmn:outgoing>Flow_processReply</bpmn:outgoing>
-  <bpmn:messageEventDefinition messageRef="Message_Reply" />
-</bpmn:intermediateCatchEvent>
-
-<bpmn:intermediateCatchEvent id="waitTimeout" name="48h timeout">
-  <bpmn:incoming>Flow_timeout</bpmn:incoming>
-  <bpmn:outgoing>Flow_escalate</bpmn:outgoing>
-  <bpmn:timerEventDefinition>
-    <bpmn:timeDuration>PT48H</bpmn:timeDuration>
-  </bpmn:timerEventDefinition>
-</bpmn:intermediateCatchEvent>
 ```
 
-## Practical example
-
-After sending a quote to a customer, the process waits at an Event-Based Gateway. If the customer replies within 48 hours, the flow continues to process the reply. If the timer fires first, the process escalates to a follow-up task.
-
 ## Current Implementation
+Event based gateway currently supports message and timer events.
 
-Supported for **Message** and **Timer** events. Signal, Conditional, and Receive Task variants are not yet implemented.

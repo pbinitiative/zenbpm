@@ -1,8 +1,0 @@
-{
-  "label": "Tasks",
-  "position": 1,
-  "link": {
-    "type": "doc",
-    "id": "reference/bpmn/supported-elements/activities/tasks/index"
-  }
-}

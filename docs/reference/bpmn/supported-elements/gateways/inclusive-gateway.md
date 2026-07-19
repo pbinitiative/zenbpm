@@ -1,45 +1,52 @@
 ---
 sidebar_position: 70
 ---
+
 # Inclusive Gateway
 
-An Inclusive (OR) gateway activates one or more outgoing paths whose conditions are true, allowing multiple branches to run simultaneously.
+An Inclusive Gateway (OR) is a BPMN flow element that allows one or more outgoing paths to be activated based on conditions, and synchronizes incoming paths from active branches. It enables complex branching where one or more paths can be taken, and ensures all active branches complete before proceeding.
 
 ## Key characteristics
+- Multiple path activation:
+	Inclusive Gateways evaluate conditions on outgoing sequence flows and can activate multiple paths at the same time if their conditions evaluate to true.
 
-- **Diverging:** activates every outgoing path whose condition evaluates to true.
-- A **default flow** is taken only if no other condition matches.
-- **Converging:** waits for all active incoming branches before continuing.
+- Default flow support:
+	A default outgoing sequence flow can be explicitly defined on the gateway and is taken only when none of the defined condition expressions evaluate to true, ensuring that at least one path is followed.
+
+- Synchronization at convergence:
+	When used as a convergence point, the gateway waits for tokens from all previously activated branches before producing a single outgoing token.
+
+- Condition evaluation:
+	Each outgoing sequence flow may have a condition expression. A sequence flow without a condition is not implicitly a default flow unless it is explicitly marked as such.
+
+- Token-based behavior:
+	Multiple tokens can be created on outgoing flows during divergence, and all incoming tokens from active paths must arrive before one outgoing token is produced during convergence.
+
+## Usage patterns
+- **Multi-choice branching (Diverging Inclusive Gateway)**
+	Used when one or more paths can be taken based on different conditions. Unlike Exclusive Gateways, multiple branches may execute concurrently.
+
+- **Synchronization (Converging Inclusive Gateway)**
+	Used to merge multiple branches back into a single flow, waiting for all active paths to complete before continuing.
+
+- **Conditional routing with defaults**
+	Define conditions on one or more outgoing sequence flows and explicitly designate a default flow on the Inclusive Gateway. The default flow is taken only if none of the defined condition expressions evaluate to true.
 
 ## Graphical notation
+![Inclusive gateway usage example](../../../assets/bpmn/inclusive_gateway.svg)
 
-A diamond with a circle ("O") icon.
-
-<img src="/img/bpmn/gateways/inclusive-gateway.svg" alt="Inclusive gateway usage example" width="120" height="120" />
+A diamond shape with a circle inside.
 
 ## XML Definition
-
 ```xml
-<bpmn:inclusiveGateway id="chooseNotifications" name="Which notifications?" default="Flow_default">
-  <bpmn:incoming>Flow_1</bpmn:incoming>
-  <bpmn:outgoing>Flow_email</bpmn:outgoing>
-  <bpmn:outgoing>Flow_sms</bpmn:outgoing>
-  <bpmn:outgoing>Flow_default</bpmn:outgoing>
+<bpmn:inclusiveGateway id="InclusiveGateway_1"
+                       name="Evaluate Options"
+                       default="Flow3">
+  <bpmn:incoming>Flow1</bpmn:incoming>
+  <bpmn:outgoing>Flow2</bpmn:outgoing>
+  <bpmn:outgoing>Flow3</bpmn:outgoing>
 </bpmn:inclusiveGateway>
-
-<bpmn:sequenceFlow id="Flow_email" sourceRef="chooseNotifications" targetRef="Task_SendEmail">
-  <bpmn:conditionExpression>= customer.emailOptIn = true</bpmn:conditionExpression>
-</bpmn:sequenceFlow>
-<bpmn:sequenceFlow id="Flow_sms" sourceRef="chooseNotifications" targetRef="Task_SendSms">
-  <bpmn:conditionExpression>= customer.smsOptIn = true</bpmn:conditionExpression>
-</bpmn:sequenceFlow>
-<bpmn:sequenceFlow id="Flow_default" sourceRef="chooseNotifications" targetRef="Task_SendPushNotification" />
 ```
 
-## Practical example
-
-A notification process sends an email, an SMS, or both depending on the customer's communication preferences. If neither condition matches, a push notification is sent as the default. The Inclusive Gateway can activate multiple paths at once.
-
 ## Current Implementation
-
-Fully supported, including default flows and FEEL condition expressions.
+- Inclusive Gateway is fully supported.

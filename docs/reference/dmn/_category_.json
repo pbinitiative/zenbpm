@@ -1,8 +1,0 @@
-﻿{
-  "label": "DMN",
-  "position": 1,
-  "link": {
-    "type": "generated-index",
-    "description": "Detailed description of DMN elements and how they are implemented within ZenBPM"
-  }
-}

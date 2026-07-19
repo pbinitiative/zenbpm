@@ -1,4 +1,4 @@
-﻿---
+---
 sidebar_position: 3
 ---
 # Conditional flow
@@ -10,12 +10,6 @@ A Conditional Flow is a sequence flow with an attached condition expression. It 
 - Carries a condition expression that evaluates to `true` or `false`.
 - Used on outgoing flows of Exclusive and Inclusive gateways.
 - If the condition is true, the token follows this flow.
-
-## Graphical notation
-
-A sequence flow arrow with a small diamond marker near the source.
-
-![Conditional flow](/img/bpmn/flows/conditional-flow.svg)
 
 ## XML Definition
 

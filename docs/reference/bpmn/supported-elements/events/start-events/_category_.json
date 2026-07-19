@@ -2,7 +2,6 @@
   "label": "Start events",
   "position": 1,
   "link": {
-    "type": "doc",
-    "id": "reference/bpmn/supported-elements/events/start-events/index"
+    "type": "generated-index"
   }
 }

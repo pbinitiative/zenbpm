@@ -1,42 +1,47 @@
 ---
 sidebar_position: 60
 ---
-# Parallel Gateway
 
-A Parallel (AND) gateway splits the flow into all outgoing paths simultaneously and, when used as a merge, waits for all incoming branches to complete before continuing.
+# Parallel gateway
+
+A Parallel Gateway is a BPMN flow element that synchronizes parallel flows within a process. It allows a process to split into multiple concurrent paths and synchronize when those paths complete, enabling parallel execution and synchronization of activities.
 
 ## Key characteristics
+- Synchronization control:
+	Parallel Gateways split and join concurrent flows, ensuring all branches complete before proceeding downstream.
 
-- **Diverging:** activates all outgoing paths unconditionally — no conditions needed.
-- **Converging:** waits for tokens on all incoming paths before releasing the token forward.
-- **Limitation:** works for a single overlapping parallel flow; nested/recursive parallel flows have undefined behaviour.
+- No condition evaluation:
+	Unlike Exclusive Gateways, Parallel Gateways do not evaluate conditions. All outgoing flows are activated when splitting.
+
+- Token-based execution:
+	Each incoming token creates tokens on all outgoing flows (split). All incoming tokens must arrive before one outgoing token is produced (join).
+
+- All paths must complete:
+	In join mode, the gateway waits for tokens from all incoming paths. It does not proceed until all branches have sent their tokens.
+
+- Types of parallel gateway usage:
+	- **Split (Diverging Parallel Gateway):**
+		A single incoming token creates multiple outgoing tokens, one on each outgoing flow. All branches execute concurrently.
+
+	- **Join (Converging Parallel Gateway):**
+		Multiple incoming tokens are collected. When all paths have sent a token, a single outgoing token is produced.
+
+	- **Combined Split and Join (in Loop or Complex Structures):**
+		A Parallel Gateway can function as both a split and join in the same process flow, creating loops with parallel branches.
 
 ## Graphical notation
+![Parallel gateway usage example](../../../assets/bpmn/parallel_gateway.svg)
 
-A diamond with a "+" icon.
-
-<img src="/img/bpmn/gateways/parallel-gateway.svg" alt="Parallel gateway usage example" width="120" height="120" />
+A diamond shape with a thick plus sign (+) inside.
 
 ## XML Definition
-
 ```xml
-<bpmn:parallelGateway id="forkChecks" name="Run checks in parallel">
-  <bpmn:incoming>Flow_1</bpmn:incoming>
-  <bpmn:outgoing>Flow_creditCheck</bpmn:outgoing>
-  <bpmn:outgoing>Flow_idCheck</bpmn:outgoing>
-</bpmn:parallelGateway>
-
-<bpmn:parallelGateway id="joinChecks" name="All checks done">
-  <bpmn:incoming>Flow_creditResult</bpmn:incoming>
-  <bpmn:incoming>Flow_idResult</bpmn:incoming>
-  <bpmn:outgoing>Flow_decision</bpmn:outgoing>
+<bpmn:parallelGateway id="ParallelGateway_1" name="Split">
+  <bpmn:incoming>Flow1</bpmn:incoming>
+  <bpmn:outgoing>Flow2</bpmn:outgoing>
+  <bpmn:outgoing>Flow3</bpmn:outgoing>
 </bpmn:parallelGateway>
 ```
 
-## Practical example
-
-A loan application process runs a credit check and an identity verification simultaneously. Both must complete before the loan decision gateway is reached. The Parallel Gateway fork starts both, and the join waits for both results.
-
 ## Current Implementation
-
-Supported. Handles parallel flows correctly when one parallel section is active at a time. Multiple nested or deeply recursive parallel flows may have undefined behaviour.
+Current implementation handles parallel flows correctly if there is only one overlapping flow in the process instance. **Multiple recursive parallel flows have currently undefined behaviour.**

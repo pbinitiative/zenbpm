@@ -1,34 +1,31 @@
 ---
 sidebar_position: 3
 ---
-# Text Annotation
+# Data Store Annotation
 
-A Text Annotation (sometimes called a Data Store Annotation) is a BPMN artifact used to attach a descriptive note to any diagram element. It has no effect on process execution and exists purely for documentation purposes.
+A Data Store Annotation is a BPMN artifact used to attach a descriptive note to a data store or other diagram element, providing context or explanation without affecting the process flow.
 
 ## Key characteristics
 
-- No effect on process execution.
-- Connected to elements via a dashed **Association** line.
-- Used to clarify intent, document decisions, or add context for diagram readers.
+- Has no effect on process execution.
+- Connected to elements via an Association line.
+- Used purely for documentation and diagram readability.
 
 ## Graphical notation
 
-An open bracket shape connected to the annotated element by a dashed line.
+An open rectangle (bracket shape) connected to the annotated element by a dashed line.
 
-<img src="/img/bpmn/others/data-store-annotation.svg" alt="Text Annotation" height="90" />
+<img src="/img/bpmn/cs_textAnnotation.svg" width="160" />
 
 ## XML Definition
 
 ```xml
 <bpmn:textAnnotation id="Annotation_1">
-  <bpmn:text>This service calls the external payment gateway. SLA: 2s response time.</bpmn:text>
+  <bpmn:text>This store holds archived orders.</bpmn:text>
 </bpmn:textAnnotation>
-
-<bpmn:association id="Association_1"
-                  sourceRef="Task_ChargeCard"
-                  targetRef="Annotation_1" />
+<bpmn:association id="Association_1" sourceRef="DataStore_1" targetRef="Annotation_1" />
 ```
 
 ## Current Implementation
 
-Supported as a **visual/documentation element**. Annotations are parsed and stored but have no runtime effect on the process engine.
+*To confirm with the team.*

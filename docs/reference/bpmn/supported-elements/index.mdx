@@ -1,186 +1,23 @@
 ---
-sidebar_position: 0
+sidebar_position: 1
 ---
+
+import DocCardList from '@theme/DocCardList';
 
 # Supported elements
 
-Elements supported by the ZenBPM engine. Green icons are supported and link to their documentation.
+Elements supported by the BPMN engine.
 
-## Events
+<DocCardList />
 
-<table className="bpmn-coverage bpmn-events">
-  <thead>
-    <tr>
-      <th rowSpan="2">Type</th>
-      <th>Start</th>
-      <th colSpan="2">Intermediate</th>
-      <th colSpan="2">Boundary</th>
-      <th>End</th>
-    </tr>
-    <tr>
-      <th>Normal</th>
-      <th>Catch</th>
-      <th>Throw</th>
-      <th>Interrupting</th>
-      <th>Non-Interrupting</th>
-      <th>Normal</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>None</td>
-      <td><a href="./events/start-events/none-start-event"><img className="bpmn-supported" src="/img/bpmn/events/none-start.svg" alt="None Start Event" /></a></td>
-      <td></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/none-intermediate-throw.svg" alt="None Intermediate Throw Event" /></td>
-      <td></td>
-      <td></td>
-      <td><a href="./events/end-events/none-end-event"><img className="bpmn-supported" src="/img/bpmn/events/none-end.svg" alt="None End Event" /></a></td>
-    </tr>
-    <tr>
-      <td>Message</td>
-      <td><a href="./events/start-events/message-start-event"><img className="bpmn-supported" src="/img/bpmn/events/message-start.svg" alt="Message Start Event" /></a></td>
-      <td><a href="./events/intermediate-events/message-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-catch.svg" alt="Message Intermediate Catch Event" /></a></td>
-      <td><a href="./events/intermediate-events/message-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-throw.svg" alt="Message Intermediate Throw Event" /></a></td>
-      <td><a href="./events/boundary-events/message-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/message-boundary-interrupting.svg" alt="Message Boundary Event (interrupting)" /></a></td>
-      <td><a href="./events/boundary-events/message-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/message-boundary-non-interrupting.svg" alt="Message Boundary Event (non-interrupting)" /></a></td>
-      <td><a href="./events/end-events/message-end-event"><img className="bpmn-supported" src="/img/bpmn/events/message-end.svg" alt="Message End Event" /></a></td>
-    </tr>
-    <tr>
-      <td>Timer</td>
-      <td><a href="./events/start-events/timer-start-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-start.svg" alt="Timer Start Event" /></a></td>
-      <td><a href="./events/intermediate-events/timer-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-intermediate-catch.svg" alt="Timer Intermediate Catch Event" /></a></td>
-      <td></td>
-      <td><a href="./events/boundary-events/timer-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-boundary-interrupting.svg" alt="Timer Boundary Event (interrupting)" /></a></td>
-      <td><a href="./events/boundary-events/timer-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-boundary-non-interrupting.svg" alt="Timer Boundary Event (non-interrupting)" /></a></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>Escalation</td>
-      <td></td>
-      <td></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-intermediate-throw.svg" alt="Escalation Intermediate Throw Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-boundary-interrupting.svg" alt="Escalation Boundary Event (interrupting)" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-boundary-non-interrupting.svg" alt="Escalation Boundary Event (non-interrupting)" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/escalation-end.svg" alt="Escalation End Event" /></td>
-    </tr>
-    <tr>
-      <td>Conditional</td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-start.svg" alt="Conditional Start Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-intermediate-catch.svg" alt="Conditional Intermediate Catch Event" /></td>
-      <td></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-boundary-interrupting.svg" alt="Conditional Boundary Event (interrupting)" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/conditional-boundary-non-interrupting.svg" alt="Conditional Boundary Event (non-interrupting)" /></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>Link</td>
-      <td></td>
-      <td><a href="./events/intermediate-events/link-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-catch.svg" alt="Link Intermediate Catch Event" /></a></td>
-      <td><a href="./events/intermediate-events/link-intermediate-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-throw.svg" alt="Link Intermediate Throw Event" /></a></td>
-      <td></td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td>Error</td>
-      <td></td>
-      <td></td>
-      <td></td>
-      <td><a href="./events/boundary-events/error-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/error-boundary-interrupting.svg" alt="Error Boundary Event (interrupting)" /></a></td>
-      <td></td>
-      <td><a href="./events/end-events/error-end-event"><img className="bpmn-supported" src="/img/bpmn/events/error-end.svg" alt="Error End Event" /></a></td>
-    </tr>
-    <tr>
-      <td>Signal</td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-start.svg" alt="Signal Start Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-intermediate-catch.svg" alt="Signal Intermediate Catch Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-intermediate-throw.svg" alt="Signal Intermediate Throw Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-boundary-interrupting.svg" alt="Signal Boundary Event (interrupting)" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-boundary-non-interrupting.svg" alt="Signal Boundary Event (non-interrupting)" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/signal-end.svg" alt="Signal End Event" /></td>
-    </tr>
-    <tr>
-      <td>Compensation</td>
-      <td></td>
-      <td></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-intermediate-throw.svg" alt="Compensation Intermediate Throw Event" /></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-boundary-interrupting.svg" alt="Compensation Boundary Event (interrupting)" /></td>
-      <td></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/events/compensation-end.svg" alt="Compensation End Event" /></td>
-    </tr>
-  </tbody>
-</table>
+## Supported elements list
 
-Unsupported events: None Intermediate Throw Event, Escalation, Conditional, Signal, Compensation, Cancel
+**Events:** [None start event](./events/start-events/none-start-event) · [Timer start event](./events/start-events/timer-start-event) · [Message start event](./events/start-events/message-start-event) · [None End Event](./events/end-events/none-end-event) · [Message End Event](./events/end-events/message-end-event) · [Error End Event](./events/end-events/error-end-event) · [Terminate End Event](./events/end-events/terminate-end-event) · [Message Boundary Event](./events/boundary-events/message-boundary-event) · [Timer Boundary Event](./events/boundary-events/timer-boundary-event) · [Error Boundary Event](./events/boundary-events/error-boundary-event) · [Message Intermediate Throw Event](./events/intermediate-events/message-throw-event) · [Message Intermediate Catch Event](./events/intermediate-events/message-catch-event) · [Link Intermediate Throw Event](./events/intermediate-events/link-intermediate-throw-event) · [Link Intermediate Catch Event](./events/intermediate-events/link-intermediate-catch-event) · [Timer Intermediate Catch Event](./events/intermediate-events/timer-intermediate-catch-event)
 
-## Activities
+**Activities:** [Script task](./activities/script-task) · [Service task](./activities/service-task) · [Business Rule Task](./activities/business-rule-task) · [User task](./activities/user-task) · [Send task](./activities/send-task) · [Receive task](./activities/receive-task) · [Call activity](./activities/call-activity) · [Sub Process](./activities/sub-process) · [Activity Multi-Instance](./activities/activity-multi-instance)
 
-<table className="bpmn-coverage">
-  <thead>
-    <tr>
-      <th colSpan="7">Task</th>
-      <th colSpan="3">Subprocess</th>
-    </tr>
-    <tr>
-      <th>Service</th>
-      <th>User</th>
-      <th>Business Rule</th>
-      <th>Send</th>
-      <th>Receive</th>
-      <th>Script</th>
-      <th>Manual</th>
-      <th>Call Activity</th>
-      <th>Sub-Process</th>
-      <th>Multi-Instance</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><a href="./activities/tasks/service-task"><img className="bpmn-supported" src="/img/bpmn/activities/service-task.svg" alt="Service Task" /></a></td>
-      <td><a href="./activities/tasks/user-task"><img className="bpmn-supported" src="/img/bpmn/activities/user-task.svg" alt="User Task" /></a></td>
-      <td><a href="./activities/tasks/business-rule-task"><img className="bpmn-supported" src="/img/bpmn/activities/business-rule-task.svg" alt="Business Rule Task" /></a></td>
-      <td><a href="./activities/tasks/send-task"><img className="bpmn-supported" src="/img/bpmn/activities/send-task.svg" alt="Send Task" /></a></td>
-      <td><a href="./activities/tasks/receive-task"><img className="bpmn-supported" src="/img/bpmn/activities/receive-task.svg" alt="Receive Task" /></a></td>
-      <td><a href="./activities/tasks/script-task"><img className="bpmn-supported" src="/img/bpmn/activities/script-task.svg" alt="Script Task" /></a></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/activities/manual-task.svg" alt="Manual Task" /></td>
-      <td><a href="./activities/subprocesses/call-activity"><img className="bpmn-supported" src="/img/bpmn/activities/call-activity.svg" alt="Call Activity" /></a></td>
-      <td><a href="./activities/subprocesses/sub-process"><img className="bpmn-supported" src="/img/bpmn/activities/sub-process.svg" alt="Sub-Process" /></a></td>
-      <td><a href="./activities/subprocesses/activity-multi-instance"><img className="bpmn-supported" src="/img/bpmn/activities/activity-multi-instance.svg" alt="Multi-Instance Activity" /></a></td>
-    </tr>
-  </tbody>
-</table>
+**Gateways:** [Exclusive gateway](./gateways/exclusive-gateway) · [Inclusive Gateway](./gateways/inclusive-gateway) · [Parallel gateway](./gateways/parallel-gateway) · [Event-Based Gateway](./gateways/event-based-gateway)
 
-Unsupported activities: Manual task
+**Flows:** [Sequence flow](./flows/sequence-flow) · [Default flow](./flows/default-flow) · [Conditional flow](./flows/conditional-flow)
 
-## Gateways
-
-<table className="bpmn-coverage">
-  <thead>
-    <tr>
-      <th>Exclusive</th>
-      <th>Inclusive</th>
-      <th>Parallel</th>
-      <th>Event-Based</th>
-      <th>Complex</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><a href="./gateways/exclusive-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/exclusive-gateway.svg" alt="Exclusive Gateway" /></a></td>
-      <td><a href="./gateways/inclusive-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/inclusive-gateway.svg" alt="Inclusive Gateway" /></a></td>
-      <td><a href="./gateways/parallel-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/parallel-gateway.svg" alt="Parallel Gateway" /></a></td>
-      <td><a href="./gateways/event-based-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/event-based-gateway.svg" alt="Event-Based Gateway" /></a></td>
-      <td><img className="bpmn-unsupported" src="/img/bpmn/gateways/complex-gateway.svg" alt="Complex Gateway" /></td>
-    </tr>
-  </tbody>
-</table>
-
-Unsupported gateways: Complex gateway
-
-## Flows
-
-[Sequence flow](./flows/sequence-flow) · [Default flow](./flows/default-flow) · [Conditional flow](./flows/conditional-flow)
-
-## Others
-
-[Data Store Reference](./others/data-store-reference) · [Data Object Reference](./others/data-object-reference) · [Data Store Annotation](./others/data-store-annotation) · [Expanded Pool](./others/expanded-pool) · [Empty Pool](./others/empty-pool)
+**Others:** [Data Store Reference](./others/data-store-reference) · [Data Object Reference](./others/data-object-reference) · [Data Store Annotation](./others/data-store-annotation) · [Expanded Pool](./others/expanded-pool) · [Empty Pool](./others/empty-pool)

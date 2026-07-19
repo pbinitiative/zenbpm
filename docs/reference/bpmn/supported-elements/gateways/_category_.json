@@ -1,8 +1,7 @@
-﻿{
+{
   "label": "Gateways",
   "position": 3,
   "link": {
-    "type": "doc",
-    "id": "reference/bpmn/supported-elements/gateways/index"
+    "type": "generated-index"
   }
 }

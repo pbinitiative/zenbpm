@@ -3,7 +3,7 @@ sidebar_position: 3
 ---
 # Error End Event
 
-An Error End Event throws a BPMN error that an Error Boundary Event on an enclosing scope can catch.
+An Error End Event ends the current path and throws a BPMN error that an Error Boundary Event on an enclosing scope can catch.
 
 ## Key characteristics
 
@@ -13,9 +13,9 @@ An Error End Event throws a BPMN error that an Error Boundary Event on an enclos
 
 ## Graphical notation
 
-A thick single-line circle with a lightning-bolt icon.
+A thick single-line circle with a lightning-bolt icon inside.
 
-<img src="/img/bpmn/UNI_endEventError.svg" width="130" />
+<img src="/img/bpmn/events/error-end-event.svg" alt="Error end event" width="120" height="120" />
 
 ## XML Definition
 
@@ -31,3 +31,4 @@ A thick single-line circle with a lightning-bolt icon.
 ## Current Implementation
 
 Supported.
+

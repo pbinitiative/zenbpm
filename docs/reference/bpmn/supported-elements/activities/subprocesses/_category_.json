@@ -1,0 +1,8 @@
+{
+  "label": "Subprocesses",
+  "position": 2,
+  "link": {
+    "type": "doc",
+    "id": "reference/bpmn/supported-elements/activities/subprocesses/index"
+  }
+}

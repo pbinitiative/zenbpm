@@ -15,7 +15,7 @@ A Terminate End Event immediately ends the entire process instance, cancelling a
 
 A thick single-line circle with a filled circle inside.
 
-<img src="/img/bpmn/UNI_endEventTerminate.svg" width="130" />
+<img src="/img/bpmn/events/terminate-end-event.svg" alt="Terminate end event" width="120" height="120" />
 
 ## XML Definition
 
@@ -29,3 +29,4 @@ A thick single-line circle with a filled circle inside.
 ## Current Implementation
 
 Supported.
+

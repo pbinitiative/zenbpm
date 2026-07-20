@@ -2,6 +2,7 @@
   "label": "Boundary events",
   "position": 3,
   "link": {
-    "type": "generated-index"
+    "type": "doc",
+    "id": "reference/bpmn/supported-elements/events/boundary-events/index"
   }
 }

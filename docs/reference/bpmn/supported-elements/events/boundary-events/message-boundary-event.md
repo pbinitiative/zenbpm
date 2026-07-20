@@ -1,24 +1,27 @@
 ---
 sidebar_position: 1
 ---
-
 # Message Boundary Event
 
-A Message Boundary Event is attached to the boundary of an activity and is triggered when a specific named message is received while the activity is active.
+A boundary event attached to an activity that triggers when a specific named message is received while the activity is active.
 
 ## Key characteristics
 
-- **Message-driven interruption:** When the defined message arrives, the boundary event fires and the flow continues along the boundary event's outgoing sequence flow.
-- **Interrupting vs. non-interrupting:**
-  - **Interrupting:** The attached activity is cancelled and the token moves to the boundary event's outgoing flow.
-  - **Non-interrupting:** The attached activity continues executing and a new token is created on the boundary event's outgoing flow.
-- **Message correlation:** The message is matched by name and can carry payload variables into the process.
+- Attached to an activity; has no incoming flow and one outgoing flow.
+- The message is matched by name and can carry payload variables into the process.
+- **Interrupting:** The attached activity is cancelled and the token moves to the boundary event's outgoing flow.
+- **Non-interrupting:** The attached activity continues and a new token is created on the boundary event's outgoing flow.
 
 ## Graphical notation
 
-A double-ring circle with an envelope icon, attached to the border of an activity.
+A circle on the activity border with an envelope icon. Solid border = interrupting; dashed border = non-interrupting.
 
-<img src="/img/bpmn/UNI_intermediateEventMessageCatch.svg" width="130" /> <img src="/img/bpmn/UNI_intermediateEventMessageBoundary.svg" width="130" />
+<div style={{"display": "flex", "gap": "24px", "alignItems": "flex-start"}}>
+
+<img src="/img/bpmn/events/message-boundary-event.svg" alt="Interrupting" width="120" height="120" />
+<img src="/img/bpmn/events/message-boundary-event-non-interrupting.svg" alt="Non-interrupting" width="120" height="120" />
+
+</div>
 
 ## XML Definition
 

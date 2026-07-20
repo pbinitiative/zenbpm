@@ -3,25 +3,25 @@ sidebar_position: 4
 ---
 # Message Start Event
 
-A Message Start Event starts a process instance when a specific named message is received.
+A Message Start Event starts a process instance when a specific named message is received by the engine.
 
 ## Key characteristics
 
-- **Message-driven:** The process instance is created when the engine receives a message matching the defined message name.
-- **Correlation:** The message can carry payload variables that are passed into the new process instance.
-- **Multiple processes:** Different processes can each listen for different messages, or multiple processes can listen for the same message.
+- The process instance is created when the engine receives a message matching the defined message name.
+- The message can carry payload variables that are passed into the new process instance.
+- Different processes can listen for different messages, or multiple processes can listen for the same message.
 
 ## Graphical notation
 
-A thin single-line circle with an envelope icon inside.
+A thin single-line circle with an unfilled envelope icon inside.
 
-<img src="/img/bpmn/UNI_startEventMessage.svg" width="130" />
+<img src="/img/bpmn/events/message-start-event.svg" alt="Message start event" width="120" height="120" />
 
 ## Configuration
 
-| Field | Format | Example |
-|-------|--------|---------|
-| Message name | String | `OrderReceived` |
+| Field        | Format | Example          |
+|--------------|--------|------------------|
+| Message name | String | `OrderReceived`  |
 
 ## XML Definition
 
@@ -37,3 +37,4 @@ A thin single-line circle with an envelope icon inside.
 ## Current Implementation
 
 Supported.
+

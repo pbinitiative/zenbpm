@@ -1,7 +1,8 @@
-{
+﻿{
   "label": "Flows",
   "position": 4,
   "link": {
-    "type": "generated-index"
+    "type": "doc",
+    "id": "reference/bpmn/supported-elements/flows/index"
   }
 }

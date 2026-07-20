@@ -1,53 +1,32 @@
 ---
-sidebar_position: 110
+sidebar_position: 5
 ---
 # Link Intermediate Throw Event
 
-A Link Intermediate Throw Event is a BPMN flow element used to transfer the process flow to another point within the same process. It represents a source point that links to a corresponding Link Intermediate Catch Event and allows the process to continue without using long or crossing sequence flows.
-
-Link events are used purely for modeling convenience and readability. They do not represent asynchronous behavior, waiting, or external interaction.
+The sending side of a link pair. It connects two points in the same process without drawing a sequence flow between them.
 
 ## Key characteristics
 
-- **Process-internal navigation:**  
-  A Link Intermediate Throw Event transfers the process flow to a corresponding Link Intermediate Catch Event within the same process.
-
-- **Always paired with a catch event:**  
-  A Link Intermediate Throw Event must have a matching Link Intermediate Catch Event with the same link name.
-
-- **No outgoing sequence flow:**  
-  A Link Intermediate Throw Event does not have an outgoing sequence flow. Control flow is transferred implicitly to the corresponding Link Intermediate Catch Event.
-
-- **Single incoming sequence flow:**  
-  A Link Intermediate Throw Event has exactly one incoming sequence flow.
-
-- **Immediate flow transfer:**  
-  When reached, the process flow is immediately transferred to the corresponding Link Intermediate Catch Event without pausing execution.
-
-- **Multiple link pairs allowed:**  
-  A process can contain multiple link event pairs to structure complex and readable process models.
-
-## Types of link events
-
-- **Link Intermediate Throw Event:**  
-  Transfers control to a corresponding Link Intermediate Catch Event.
-
-- **Link Intermediate Catch Event:**  
-  Receives control from a corresponding Link Intermediate Throw Event with the same link name and continues the process flow.
+- Has one incoming sequence flow; no outgoing flow.
+- Paired by name with a Link Intermediate Catch Event in the same process.
+- Commonly used as an "off-page connector" to keep large diagrams readable.
 
 ## Graphical notation
 
-A double-lined circle with a link arrow icon pointing out of the event.
+A double-line circle with a filled arrow icon.
 
-<img src="/img/bpmn/UNI_intermediateEventLinkThrow.svg" width="130" />
+<img src="/img/bpmn/events/link-intermediate-throw-event.svg" alt="Link intermediate throw event" width="120" height="120" />
 
 ## XML Definition
 
 ```xml
-<bpmn:intermediateThrowEvent id="LinkThrowEvent_1" name="Jump Flow">
-  <bpmn:linkEventDefinition name="Link_1" />
+<bpmn:intermediateThrowEvent id="linkOut" name="ContinueA">
+  <bpmn:incoming>Flow_1</bpmn:incoming>
+  <bpmn:linkEventDefinition name="A" />
 </bpmn:intermediateThrowEvent>
 ```
 
 ## Current Implementation
-Link intermediate throw event is fully supported.
+
+Supported.
+

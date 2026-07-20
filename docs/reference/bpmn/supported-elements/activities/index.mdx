@@ -1,0 +1,70 @@
+---
+sidebar_position: 0
+---
+
+# Activities
+
+An activity is work performed within a business process. Activities can be atomic (tasks) or compound (sub-processes).
+
+Green icons are supported and link to their documentation.
+
+<table className="bpmn-coverage">
+  <thead>
+    <tr>
+      <th colSpan="7">Task</th>
+      <th colSpan="3">Subprocess</th>
+    </tr>
+    <tr>
+      <th>Service</th>
+      <th>User</th>
+      <th>Business Rule</th>
+      <th>Send</th>
+      <th>Receive</th>
+      <th>Script</th>
+      <th>Manual</th>
+      <th>Call Activity</th>
+      <th>Sub-Process</th>
+      <th>Multi-Instance</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="./tasks/service-task"><img className="bpmn-supported" src="/img/bpmn/activities/service-task.svg" alt="Service Task" /></a></td>
+      <td><a href="./tasks/user-task"><img className="bpmn-supported" src="/img/bpmn/activities/user-task.svg" alt="User Task" /></a></td>
+      <td><a href="./tasks/business-rule-task"><img className="bpmn-supported" src="/img/bpmn/activities/business-rule-task.svg" alt="Business Rule Task" /></a></td>
+      <td><a href="./tasks/send-task"><img className="bpmn-supported" src="/img/bpmn/activities/send-task.svg" alt="Send Task" /></a></td>
+      <td><a href="./tasks/receive-task"><img className="bpmn-supported" src="/img/bpmn/activities/receive-task.svg" alt="Receive Task" /></a></td>
+      <td><a href="./tasks/script-task"><img className="bpmn-supported" src="/img/bpmn/activities/script-task.svg" alt="Script Task" /></a></td>
+      <td><img className="bpmn-unsupported" src="/img/bpmn/activities/manual-task.svg" alt="Manual Task" /></td>
+      <td><a href="./subprocesses/call-activity"><img className="bpmn-supported" src="/img/bpmn/activities/call-activity.svg" alt="Call Activity" /></a></td>
+      <td><a href="./subprocesses/sub-process"><img className="bpmn-supported" src="/img/bpmn/activities/sub-process.svg" alt="Sub-Process" /></a></td>
+      <td><a href="./subprocesses/activity-multi-instance"><img className="bpmn-supported" src="/img/bpmn/activities/activity-multi-instance.svg" alt="Multi-Instance Activity" /></a></td>
+    </tr>
+  </tbody>
+</table>
+
+:::note[Not yet supported]
+Manual task
+:::
+
+## Tasks
+
+Tasks are the basic elements of BPMN processes — atomic units of work composed to create a meaningful result. When a token arrives at a task, execution pauses until the work is completed; the token then continues along the outgoing sequence flow. The granularity of a task depends on the process design — a step can be modeled as a single task or split into several smaller tasks.
+
+### Key characteristics
+
+- One incoming and one outgoing sequence flow.
+- Represents a single, atomic unit of work.
+- Can define input and output parameter mappings between the process and the task.
+- Errors during execution can be handled using boundary events.
+
+## Subprocesses
+
+Subprocesses are element containers that group a set of activities, events, and gateways into a single unit, typically to improve diagram readability or to decompose a complex process into smaller, reusable parts.
+
+### Key characteristics
+
+- Runs within its own scope, logically connected to the parent process instance.
+- Can have boundary events attached — when triggered, the subprocess is interrupted, regardless of which of its elements is currently active.
+- By default, variables are not inherited from the parent process instance; explicit input and output mappings are required to transfer data.
+- Can be configured to run as multiple instances of the same subprocess.

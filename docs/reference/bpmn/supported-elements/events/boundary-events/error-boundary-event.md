@@ -1,92 +1,36 @@
 ---
-sidebar_position: 141
+sidebar_position: 3
 ---
+# Error Boundary Event
 
-# Error boundary event
+A boundary event that triggers when a matching BPMN error is raised inside the activity it is attached to.
 
-Error boundary event allows a process to react when something goes wrong during task execution. It is attached to an activity (such as a service task or call activity) and activates when a matching BPMN error is raised. When triggered, the activity is interrupted and execution continues along the boundary event's outgoing sequence flow.
+## Key characteristics
+
+- Attached to an activity; has no incoming flow and one outgoing flow.
+- Matches a thrown error by `errorCode`.
+- Matching walks up the scope hierarchy; an unhandled error becomes an incident.
+- Always interrupting — cancels the host activity when triggered.
+
+## Supported activity types
+
+Service task, User task, Business Rule task, Script task, Call activity.
 
 ## Graphical notation
 
-A solid double-ring circle with a lightning-bolt icon, attached to the border of an activity. Error boundary events are always interrupting.
+A solid double-line circle on the activity border with a lightning-bolt icon.
 
-<img src="/img/bpmn/UNI_intermediateEventError.svg" width="130" />
+<img src="/img/bpmn/events/error-boundary-event.svg" alt="Error boundary event" width="120" height="120" />
 
-## When to use
-
-Use an error boundary event when a job worker detects a problem and the process should handle it explicitly — for example, switch to an alternative flow, notify a user, or skip a failed step.
-
-In ZenBPM, BPMN errors can be raised in two ways:
-
-- by reaching an error end event
-- by failing a job with an `errorCode` via the job API
-
-ZenBPM combines the "fail job" and "throw BPMN error" behavior in the same API call. When `FailJob` is invoked with an `errorCode`, the engine looks for a matching error boundary event attached to the activity (or its ancestor scopes) and routes execution accordingly. If no handler matches, the failure becomes an incident.
-
-## Behavior
-
-- **Always interrupting** — when the error is caught, the attached activity stops and does not continue on its normal outgoing flow.
-- **Active only while the activity runs** — the boundary event can only catch errors while the attached activity is in an active state.
-- **Specific match takes priority** — if multiple error boundary events exist on the same activity, a boundary event with a matching `errorCode` is selected first. A catch-all boundary event (one without `errorRef`) is used only as a fallback.
-- **Unhandled error creates an incident** — if no matching boundary event is found anywhere in the scope hierarchy, the job is marked as failed and an incident is created.
-
-## Error propagation
-
-When a job is failed with an `errorCode`, ZenBPM walks up the scope hierarchy looking for a boundary event that can handle it:
-
-1. First, the engine checks boundary events attached to the activity where the error originated.
-2. If no match is found and the activity is inside a subprocess, call activity, or multi-instance body, the engine moves to the parent scope.
-3. This continues up the hierarchy until a match is found or the top-level process is reached.
-
-At each level, exact `errorCode` matches are checked first. If none match, a catch-all boundary event at that level is used. If a parent scope catches the error, all child instances under the failing token are terminated before execution continues from the catching boundary event.
-
-**Example:** A service task inside a called process fails with `errorCode="VALIDATION_ERROR"`. The called process has no matching boundary event, but the parent call activity does. The called process instance is terminated and the parent process continues along the boundary event's outgoing flow.
-
-## Error code matching
-
-ZenBPM matches errors by `errorCode`, not by the boundary event ID or the error name.
-
-The boundary event references a BPMN error definition via `errorRef`. That definition contains an `errorCode`. When a job fails with an `errorCode`, the engine compares the two values using exact string equality.
+## XML Definition
 
 ```xml
-<bpmn:error id="Error_validation" name="Validation error" errorCode="VALIDATION_ERROR" />
-```
-
-A job failed with `errorCode="VALIDATION_ERROR"` matches this error. A job failed with `errorCode="TIMEOUT"` does not.
-
-If a job is failed without an `errorCode`, the engine does not attempt to match any error boundary event and creates an incident directly.
-
-#### XML reference
-```xml
-<bpmn:boundaryEvent id="boundary-error" attachedToRef="my-service-task">
-  <bpmn:outgoing>Flow_error_handled</bpmn:outgoing>
-  <bpmn:errorEventDefinition id="ErrorEventDef_1" errorRef="Error_validation" />
-</bpmn:boundaryEvent>
-
-<bpmn:error id="Error_validation" name="Validation error" errorCode="VALIDATION_ERROR" />
-```
-
-## Catch-all boundary event
-
-A catch-all error boundary event has an `errorEventDefinition` without `errorRef`. It catches any error regardless of its `errorCode`.
-
-- No `<bpmn:error />` definition is needed in the process.
-- If the same activity has both a specific error boundary event and a catch-all, the specific match takes priority.
-- Even for catch-all events, the job must be failed with an `errorCode` — failing without one always results in an incident.
-
-#### XML reference
-```xml
-<bpmn:boundaryEvent id="boundary-error-catchall" attachedToRef="my-service-task">
-  <bpmn:outgoing>Flow_any_error</bpmn:outgoing>
-  <bpmn:errorEventDefinition id="ErrorEventDef_catchall" />
+<bpmn:boundaryEvent id="onError" name="On error" attachedToRef="Task_1">
+  <bpmn:outgoing>Flow_2</bpmn:outgoing>
+  <bpmn:errorEventDefinition errorRef="Error_1" />
 </bpmn:boundaryEvent>
 ```
 
-## Variable propagation
+## Current Implementation
 
-When a job is failed with an `errorCode`, the fail request can also include variables. These variables are available to the catching boundary event and can be mapped using output mappings.
-
-- **With output mappings** — only explicitly mapped variables are propagated to the catching scope. Each mapping evaluates its source expression against the local context and error variables, then writes the result to the target variable.
-- **Without output mappings** — all variables from the error are propagated to the catching scope as-is.
-
-This is the catch event behavior. Activities use stricter output propagation: without output mappings, activity output variables are not propagated. See [Variables](/reference/bpmn/variables).
+Supported. Always interrupting.

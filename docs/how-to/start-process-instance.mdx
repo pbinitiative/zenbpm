@@ -1,0 +1,53 @@
+import ApiOperation from "@theme/ApiOperation";
+import ApiSchema from "@theme/ApiSchema";
+
+# Start a Process Instance
+
+This guide explains how to start a new process instance from a deployed BPMN process definition.
+
+## Prerequisites
+
+- ZenBPM server is running and accessible
+- A process definition has been [deployed](./deploy-process-definition)
+
+## Start a Process Instance
+
+Use the REST API to start a new instance of a deployed process definition:
+
+<ApiOperation id="api" pointer="#/paths/~1process-instances/post" example={true} />
+
+### Request body
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `processDefinitionKey` | string | ✅ | Key of the deployed process definition |
+| `variables` | object | ❌ | Initial process variables passed to the instance |
+| `businessKey` | string | ❌ | External identifier to correlate the instance with a business entity |
+
+### Example
+
+```json
+{
+  "processDefinitionKey": "order-process",
+  "businessKey": "ORDER-12345",
+  "variables": {
+    "customerId": "C-001",
+    "orderAmount": 1500,
+    "priority": "high"
+  }
+}
+```
+
+The response contains the `processInstanceKey` you will need to query or interact with the instance later.
+
+## Verify the Instance is Running
+
+List running process instances to confirm the instance was created:
+
+<ApiOperation id="api" pointer="#/paths/~1process-instances/get" example={true} />
+
+## Next Steps
+
+- [Implement a Job Worker](./implement-job-worker) to handle Service Tasks
+- [Send a message](./send-receive-messages) to trigger a Message Catch Event
+- [Use process variables](./use-process-variables) to read and update instance data

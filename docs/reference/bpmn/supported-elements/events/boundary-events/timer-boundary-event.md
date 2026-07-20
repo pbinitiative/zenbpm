@@ -18,8 +18,8 @@ A circle on the activity border with a clock icon. Solid border = interrupting; 
 
 <div style={{"display": "flex", "gap": "24px", "alignItems": "flex-start"}}>
 
-<img src="/img/bpmn/events/timer-boundary-event.svg" alt="Interrupting" width="120" height="120" />
-<img src="/img/bpmn/events/timer-boundary-event-non-interrupting.svg" alt="Non-interrupting" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/timer-boundary-event.svg').default} alt="Interrupting" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/timer-boundary-event-non-interrupting.svg').default} alt="Non-interrupting" width="120" height="120" />
 
 </div>
 

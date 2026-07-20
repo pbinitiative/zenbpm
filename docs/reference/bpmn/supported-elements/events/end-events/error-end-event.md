@@ -15,7 +15,7 @@ An Error End Event ends the current path and throws a BPMN error that an Error B
 
 A thick single-line circle with a lightning-bolt icon inside.
 
-<img src="/img/bpmn/events/error-end-event.svg" alt="Error end event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/error-end-event.svg').default} alt="Error end event" width="120" height="120" />
 
 ## XML Definition
 

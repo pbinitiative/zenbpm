@@ -40,7 +40,7 @@ These mappings control the variable scope at the start and end of the Sub Proces
 - **Expanded:** shows the embedded flow inside the rounded rectangle.
 - **Collapsed:** shows only a `+` marker; the inner flow is hidden.
 
-<img src="/img/bpmn/activities/sub-process.svg" alt="Sub-Process (collapsed)" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/sub-process.svg').default} alt="Sub-Process (collapsed)" width="110" height="90" />
 
 ## XML Definition
 ```xml

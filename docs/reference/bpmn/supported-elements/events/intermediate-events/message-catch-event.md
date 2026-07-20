@@ -15,7 +15,7 @@ An intermediate event that pauses the flow and waits until a defined message is 
 
 A double-line circle with an unfilled envelope icon.
 
-<img src="/img/bpmn/events/message-catch-event.svg" alt="Message catch event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-catch-event.svg').default} alt="Message catch event" width="120" height="120" />
 
 ## XML Definition
 

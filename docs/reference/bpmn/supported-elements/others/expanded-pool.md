@@ -15,7 +15,7 @@ An Expanded Pool is a BPMN participant whose internal process flow is fully visi
 
 A large labelled rectangle containing the internal process flow. Lanes appear as horizontal or vertical subdivisions.
 
-<img src="/img/bpmn/others/expanded-pool.svg" alt="Expanded Pool" width="400" height="180" />
+<img src={require('!url-loader!../../../assets/bpmn/others/expanded-pool.svg').default} alt="Expanded Pool" width="400" height="180" />
 
 ## XML Definition
 

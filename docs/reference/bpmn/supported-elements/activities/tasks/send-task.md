@@ -20,7 +20,7 @@ A Send Task is a BPMN flow element that sends a defined message and immediately 
 
 A rounded rectangle with a filled envelope icon in the top-left corner.
 
-<img src="/img/bpmn/activities/send-task.svg" alt="Send Task" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/send-task.svg').default} alt="Send Task" width="110" height="90" />
 
 ## XML Definition
 ```xml

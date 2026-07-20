@@ -20,7 +20,7 @@ A Receive Task is a BPMN flow element that pauses the process and waits until a 
 
 A rounded rectangle with an outline envelope icon in the top-left corner.
 
-<img src="/img/bpmn/activities/receive-task.svg" alt="Receive Task" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive Task" width="110" height="90" />
 
 ## XML Definition
 ```xml

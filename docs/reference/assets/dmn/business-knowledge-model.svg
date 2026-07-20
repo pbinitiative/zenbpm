@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="543"
+     height="200"
+     viewBox="0 0 543 200">
+
+  <!-- Business Knowledge Model -->
+  <path
+    d="M60 5
+       H538
+       V145
+       L485 195
+       H5
+       V60
+       Z"
+    fill="#FFFFFF"
+    stroke="#20232A"
+    stroke-width="6"
+    stroke-linejoin="miter"/>
+
+  <!-- Text -->
+  <text
+      x="271.5"
+      y="92"
+      text-anchor="middle"
+      font-family="Arial, Helvetica, sans-serif"
+      font-size="42"
+      fill="#20232A">
+      Business knowledge
+  </text>
+
+  <text
+      x="271.5"
+      y="148"
+      text-anchor="middle"
+      font-family="Arial, Helvetica, sans-serif"
+      font-size="42"
+      fill="#20232A">
+      model
+  </text>
+
+</svg>

@@ -15,7 +15,7 @@ A Knowledge Source is a reference to the authority, regulation, or document that
 
 A document-like shape (truncated rectangle) labelled with the source name.
 
-<img src="/img/dmn/knowledge-source.svg" alt="Knowledge source" width="250" height="175" />
+<img src={require('!url-loader!../../assets/dmn/knowledge-source.svg').default} alt="Knowledge source" width="250" height="175" />
 
 ## XML Definition
 

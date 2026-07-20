@@ -39,7 +39,7 @@ A Script Task is a BPMN flow element that executes a script within the process f
 
 A rectangle with a script icon (scroll/roll) in the top-left corner.
 
-<img src="/img/bpmn/activities/script-task.svg" alt="Script Task" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/script-task.svg').default} alt="Script Task" width="110" height="90" />
 
 ## XML Definition
 ```xml

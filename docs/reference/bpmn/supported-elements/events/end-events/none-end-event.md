@@ -15,7 +15,7 @@ The simplest end event — it ends the current path without throwing any result.
 
 A thick single-line circle with no icon inside.
 
-<img src="/img/bpmn/events/none-end-event.svg" alt="None end event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/none-end-event.svg').default} alt="None end event" width="120" height="120" />
 
 ## XML Definition
 

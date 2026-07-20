@@ -15,7 +15,7 @@ The sending side of a link pair. It connects two points in the same process with
 
 A double-line circle with a filled arrow icon.
 
-<img src="/img/bpmn/events/link-intermediate-throw-event.svg" alt="Link intermediate throw event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/link-intermediate-throw-event.svg').default} alt="Link intermediate throw event" width="120" height="120" />
 
 ## XML Definition
 

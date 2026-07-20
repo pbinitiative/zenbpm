@@ -15,7 +15,7 @@ A Literal Expression is a decision expressed as a single FEEL (Friendly Enough E
 
 A rectangle with a curly-braces icon, labelled with the decision name.
 
-<img src="/img/dmn/literal-expression.svg" alt="Literal expression" width="250" height="113" />
+<img src={require('!url-loader!../../assets/dmn/literal-expression.svg').default} alt="Literal expression" width="250" height="113" />
 
 ## XML Definition
 

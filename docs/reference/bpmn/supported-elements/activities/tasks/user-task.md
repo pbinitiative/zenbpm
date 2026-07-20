@@ -42,7 +42,7 @@ A User Task is a BPMN flow element that represents work performed by a human. It
 
 A rectangle with a person icon in the top-left corner.
 
-<img src="/img/bpmn/activities/user-task.svg" alt="User task usage example" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/user-task.svg').default} alt="User task usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

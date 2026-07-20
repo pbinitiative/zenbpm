@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="414"
+     height="289"
+     viewBox="0 0 414 289">
+
+  <path
+    d="M8 8
+       H406
+       V221
+       C340 188 270 188 207 221
+       C144 254 74 254 8 221
+       Z"
+    fill="white"
+    stroke="#20232A"
+    stroke-width="6"
+    stroke-linejoin="round"/>
+
+  <text
+    x="207"
+    y="100"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="42"
+    fill="#20232A">
+    Knowledge
+  </text>
+
+  <text
+    x="207"
+    y="158"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="42"
+    fill="#20232A">
+    source
+  </text>
+
+</svg>

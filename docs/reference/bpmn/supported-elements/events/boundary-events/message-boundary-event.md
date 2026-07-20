@@ -18,8 +18,8 @@ A circle on the activity border with an envelope icon. Solid border = interrupti
 
 <div style={{"display": "flex", "gap": "24px", "alignItems": "flex-start"}}>
 
-<img src="/img/bpmn/events/message-boundary-event.svg" alt="Interrupting" width="120" height="120" />
-<img src="/img/bpmn/events/message-boundary-event-non-interrupting.svg" alt="Non-interrupting" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-boundary-event.svg').default} alt="Interrupting" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-boundary-event-non-interrupting.svg').default} alt="Non-interrupting" width="120" height="120" />
 
 </div>
 

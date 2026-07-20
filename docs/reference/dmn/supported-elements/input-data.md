@@ -15,7 +15,7 @@ Input Data represents an external data source or variable that is provided as in
 
 An oval shape labelled with the input data name.
 
-<img src="/img/dmn/input-data.svg" alt="Input data" width="250" height="95" />
+<img src={require('!url-loader!../../assets/dmn/input-data.svg').default} alt="Input data" width="250" height="95" />
 
 ## XML Definition
 

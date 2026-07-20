@@ -16,7 +16,7 @@ The simplest start event — it has no specific trigger. A process instance is c
 
 A thin single-line circle with no icon inside.
 
-<img src="/img/bpmn/events/none-start-event.svg" alt="None start event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/none-start-event.svg').default} alt="None start event" width="120" height="120" />
 
 ## XML Definition
 

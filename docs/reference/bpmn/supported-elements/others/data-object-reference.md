@@ -15,7 +15,7 @@ A Data Object Reference is a BPMN artifact that represents data produced or cons
 
 A document icon with a folded corner.
 
-<img src="/img/bpmn/others/data-object-reference.svg" alt="Data Object Reference" height="90" />
+<img src={require('!url-loader!../../../assets/bpmn/others/data-object-reference.svg').default} alt="Data Object Reference" height="90" />
 
 ## XML Definition
 

@@ -15,7 +15,7 @@ An Inclusive (OR) gateway activates one or more outgoing paths whose conditions 
 
 A diamond with a circle ("O") icon.
 
-<img src="/img/bpmn/gateways/inclusive-gateway.svg" alt="Inclusive gateway usage example" width="120" height="120" />
+<img src={require('!url-loader!../../../assets/bpmn/gateways/inclusive-gateway.svg').default} alt="Inclusive gateway usage example" width="120" height="120" />
 
 ## XML Definition
 

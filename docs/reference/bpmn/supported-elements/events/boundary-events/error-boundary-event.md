@@ -20,7 +20,7 @@ Service task, User task, Business Rule task, Script task, Call activity.
 
 A solid double-line circle on the activity border with a lightning-bolt icon.
 
-<img src="/img/bpmn/events/error-boundary-event.svg" alt="Error boundary event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/error-boundary-event.svg').default} alt="Error boundary event" width="120" height="120" />
 
 ## XML Definition
 

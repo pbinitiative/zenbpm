@@ -15,7 +15,7 @@ An Empty Decision is a decision node with no logic defined. It serves as a place
 
 A plain rectangle with no icon, labelled with the decision name.
 
-<img src="/img/dmn/empty-decision.svg" alt="Empty decision" width="250" height="113" />
+<img src={require('!url-loader!../../assets/dmn/empty-decision.svg').default} alt="Empty decision" width="250" height="113" />
 
 ## XML Definition
 

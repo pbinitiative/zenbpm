@@ -31,21 +31,21 @@ Green icons are supported and link to their documentation.
   <tbody>
     <tr>
       <td><a href="./message-boundary-event">Message</a></td>
-      <td><a href="./message-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/message-boundary-interrupting.svg" alt="Message Boundary Event" height="70" /></a></td>
+      <td><a href="./message-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/message-boundary-interrupting.svg').default} alt="Message Boundary Event" height="70" /></a></td>
       <td>A named message is received while the activity is active</td>
       <td>✅ Supported</td>
       <td>✅ Supported</td>
     </tr>
     <tr>
       <td><a href="./timer-boundary-event">Timer</a></td>
-      <td><a href="./timer-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-boundary-interrupting.svg" alt="Timer Boundary Event" height="70" /></a></td>
+      <td><a href="./timer-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/timer-boundary-interrupting.svg').default} alt="Timer Boundary Event" height="70" /></a></td>
       <td>A time condition is met while the activity is active</td>
       <td>✅ Supported</td>
       <td>✅ Supported</td>
     </tr>
     <tr>
       <td><a href="./error-boundary-event">Error</a></td>
-      <td><a href="./error-boundary-event"><img className="bpmn-supported" src="/img/bpmn/events/error-boundary-interrupting.svg" alt="Error Boundary Event" height="70" /></a></td>
+      <td><a href="./error-boundary-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/error-boundary-interrupting.svg').default} alt="Error Boundary Event" height="70" /></a></td>
       <td>A BPMN error is thrown inside the activity</td>
       <td>✅ Supported</td>
       <td>❌ Not supported</td>

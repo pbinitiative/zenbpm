@@ -15,7 +15,7 @@ An Empty Pool (also called a Black Box Pool) is a BPMN participant whose interna
 
 A plain labelled rectangle with no internal elements visible.
 
-<img src="/img/bpmn/others/empty-pool.svg" alt="Empty Pool" width="400" height="180" />
+<img src={require('!url-loader!../../../assets/bpmn/others/empty-pool.svg').default} alt="Empty Pool" width="400" height="180" />
 
 ## XML Definition
 

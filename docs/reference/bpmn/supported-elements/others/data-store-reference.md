@@ -15,7 +15,7 @@ A Data Store Reference is a BPMN artifact that represents a persistent external 
 
 A cylinder icon, similar to a database symbol.
 
-<img src="/img/bpmn/others/data-store-reference.svg" alt="Data Store Reference" height="90" />
+<img src={require('!url-loader!../../../assets/bpmn/others/data-store-reference.svg').default} alt="Data Store Reference" height="90" />
 
 ## XML Definition
 

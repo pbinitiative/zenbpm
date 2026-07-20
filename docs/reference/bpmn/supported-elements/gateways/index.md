@@ -27,22 +27,22 @@ Green icons are supported and link to their documentation.
   <tbody>
     <tr>
       <td><a href="./exclusive-gateway">Exclusive</a></td>
-      <td><a href="./exclusive-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/exclusive-gateway.svg" alt="Exclusive Gateway" height="70" /></a></td>
+      <td><a href="./exclusive-gateway"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/gateways/exclusive-gateway.svg').default} alt="Exclusive Gateway" height="70" /></a></td>
       <td>Routes the flow down exactly one outgoing path, chosen by evaluating conditions on each outgoing sequence flow.</td>
     </tr>
     <tr>
       <td><a href="./inclusive-gateway">Inclusive</a></td>
-      <td><a href="./inclusive-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/inclusive-gateway.svg" alt="Inclusive Gateway" height="70" /></a></td>
+      <td><a href="./inclusive-gateway"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/gateways/inclusive-gateway.svg').default} alt="Inclusive Gateway" height="70" /></a></td>
       <td>Activates one or more outgoing paths whose conditions are true, allowing multiple branches to run simultaneously.</td>
     </tr>
     <tr>
       <td><a href="./parallel-gateway">Parallel</a></td>
-      <td><a href="./parallel-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/parallel-gateway.svg" alt="Parallel Gateway" height="70" /></a></td>
+      <td><a href="./parallel-gateway"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/gateways/parallel-gateway.svg').default} alt="Parallel Gateway" height="70" /></a></td>
       <td>Splits the flow into all outgoing paths simultaneously and, when used as a merge, waits for all incoming branches to complete before continuing. <strong>Limitation:</strong> works for a single overlapping parallel flow; nested/recursive parallel flows have undefined behaviour.</td>
     </tr>
     <tr>
       <td><a href="./event-based-gateway">Event-Based</a></td>
-      <td><a href="./event-based-gateway"><img className="bpmn-supported" src="/img/bpmn/gateways/event-based-gateway.svg" alt="Event-Based Gateway" height="70" /></a></td>
+      <td><a href="./event-based-gateway"><img className="bpmn-supported" src={require('!url-loader!../../../assets/bpmn/gateways/event-based-gateway.svg').default} alt="Event-Based Gateway" height="70" /></a></td>
       <td>Routes the flow based on which event occurs first, instead of evaluating data conditions. <strong>Limitation:</strong> currently only for Message and Timer events.</td>
     </tr>
   </tbody>

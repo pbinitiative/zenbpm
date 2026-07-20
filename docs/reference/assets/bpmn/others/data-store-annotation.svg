@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="177"
+     height="250"
+     viewBox="0 0 177 250">
+
+  <!-- Annotation bracket -->
+  <path d="M64 27 H104
+           M64 27 V178
+           M64 178 H104"
+        fill="none"
+        stroke="#20232A"
+        stroke-width="8"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Dotted association -->
+  <circle cx="165" cy="181" r="4" fill="#20232A"/>
+  <circle cx="149" cy="193" r="4" fill="#20232A"/>
+  <circle cx="132" cy="205" r="4" fill="#20232A"/>
+  <circle cx="115" cy="217" r="4" fill="#20232A"/>
+  <circle cx="98"  cy="229" r="4" fill="#20232A"/>
+  <circle cx="81"  cy="241" r="4" fill="#20232A"/>
+
+</svg>

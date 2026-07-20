@@ -15,7 +15,7 @@ A Decision Table is the most common way to express decision logic in DMN. It map
 
 A rectangle with a table icon, labelled with the decision name.
 
-<img src="/img/dmn/decision-table.svg" alt="Decision table" width="250" height="113" />
+<img src={require('!url-loader!../../assets/dmn/decision-table.svg').default} alt="Decision table" width="250" height="113" />
 
 ## XML Definition
 

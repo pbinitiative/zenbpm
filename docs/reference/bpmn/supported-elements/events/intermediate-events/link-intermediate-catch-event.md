@@ -16,7 +16,7 @@ The receiving side of a link pair — matched to its throw counterpart by name. 
 
 A double-line circle with an unfilled arrow icon.
 
-<img src="/img/bpmn/events/link-intermediate-catch-event.svg" alt="Link intermediate catch event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/link-intermediate-catch-event.svg').default} alt="Link intermediate catch event" width="120" height="120" />
 
 ## XML Definition
 

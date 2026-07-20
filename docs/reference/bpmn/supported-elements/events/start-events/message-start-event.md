@@ -15,7 +15,7 @@ A Message Start Event starts a process instance when a specific named message is
 
 A thin single-line circle with an unfilled envelope icon inside.
 
-<img src="/img/bpmn/events/message-start-event.svg" alt="Message start event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-start-event.svg').default} alt="Message start event" width="120" height="120" />
 
 ## Configuration
 

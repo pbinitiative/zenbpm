@@ -29,31 +29,31 @@ Green icons are supported and link to their documentation.
   <tbody>
     <tr>
       <td><a href="./message-catch-event">Message Catch</a></td>
-      <td><a href="./message-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-catch.svg" alt="Message Intermediate Catch Event" height="70" /></a></td>
+      <td><a href="./message-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/message-intermediate-catch.svg').default} alt="Message Intermediate Catch Event" height="70" /></a></td>
       <td>Catch</td>
       <td>Pauses the flow and waits until a named message is received</td>
     </tr>
     <tr>
       <td><a href="./message-throw-event">Message Throw</a></td>
-      <td><a href="./message-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/message-intermediate-throw.svg" alt="Message Intermediate Throw Event" height="70" /></a></td>
+      <td><a href="./message-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/message-intermediate-throw.svg').default} alt="Message Intermediate Throw Event" height="70" /></a></td>
       <td>Throw</td>
       <td>Sends a defined message and immediately continues</td>
     </tr>
     <tr>
       <td><a href="./timer-intermediate-catch-event">Timer Catch</a></td>
-      <td><a href="./timer-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/timer-intermediate-catch.svg" alt="Timer Intermediate Catch Event" height="70" /></a></td>
+      <td><a href="./timer-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/timer-intermediate-catch.svg').default} alt="Timer Intermediate Catch Event" height="70" /></a></td>
       <td>Catch</td>
       <td>Pauses the flow until a time condition is met</td>
     </tr>
     <tr>
       <td><a href="./link-intermediate-catch-event">Link Catch</a></td>
-      <td><a href="./link-intermediate-catch-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-catch.svg" alt="Link Intermediate Catch Event" height="70" /></a></td>
+      <td><a href="./link-intermediate-catch-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/link-intermediate-catch.svg').default} alt="Link Intermediate Catch Event" height="70" /></a></td>
       <td>Catch</td>
       <td>Receiving side of a link pair — resumes flow from its throw counterpart</td>
     </tr>
     <tr>
       <td><a href="./link-intermediate-throw-event">Link Throw</a></td>
-      <td><a href="./link-intermediate-throw-event"><img className="bpmn-supported" src="/img/bpmn/events/link-intermediate-throw.svg" alt="Link Intermediate Throw Event" height="70" /></a></td>
+      <td><a href="./link-intermediate-throw-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/link-intermediate-throw.svg').default} alt="Link Intermediate Throw Event" height="70" /></a></td>
       <td>Throw</td>
       <td>Sending side of a link pair — transfers flow to the matching catch event</td>
     </tr>

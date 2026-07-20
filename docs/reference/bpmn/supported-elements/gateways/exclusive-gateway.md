@@ -16,7 +16,7 @@ An Exclusive (XOR) gateway routes the flow down exactly one outgoing path, chose
 
 A diamond with an "X" icon.
 
-<img src="/img/bpmn/gateways/exclusive-gateway.svg" alt="Exclusive gateway usage example" width="120" height="120" />
+<img src={require('!url-loader!../../../assets/bpmn/gateways/exclusive-gateway.svg').default} alt="Exclusive gateway usage example" width="120" height="120" />
 
 ## XML Definition
 

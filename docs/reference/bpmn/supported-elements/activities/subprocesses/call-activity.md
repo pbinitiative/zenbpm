@@ -75,7 +75,7 @@ These mappings control the variable scope at the start and end of the Call Activ
 
 A rectangle with a thick border and a subprocess marker (small rectangle with a plus sign) in the bottom-center.
 
-<img src="/img/bpmn/activities/call-activity.svg" alt="Call activity usage example" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/call-activity.svg').default} alt="Call activity usage example" width="110" height="90" />
 
 ## XML Definition
 ```xml

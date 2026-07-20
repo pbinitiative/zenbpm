@@ -152,9 +152,9 @@ A standard activity shape with a **multi-instance marker** at the bottom center:
 
 <div style={{"display": "flex", "gap": "24px", "alignItems": "flex-start"}}>
 
-<img src="/img/bpmn/activities/activity-multi-instance-loop.svg" alt="Loop" width="110" height="90" />
-<img src="/img/bpmn/activities/activity-multi-instance-parallel.svg" alt="Parallel" width="110" height="90" />
-<img src="/img/bpmn/activities/activity-multi-instance-serial.svg" alt="Sequential" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/activity-multi-instance-loop.svg').default} alt="Loop" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/activity-multi-instance-parallel.svg').default} alt="Parallel" width="110" height="90" />
+<img src={require('!url-loader!../../../../assets/bpmn/activities/activity-multi-instance-serial.svg').default} alt="Sequential" width="110" height="90" />
 
 </div>
 

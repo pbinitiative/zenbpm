@@ -14,7 +14,7 @@ An intermediate event that pauses the flow and waits for a timer condition to be
 
 A double-line circle with a clock icon.
 
-<img src="/img/bpmn/events/timer-intermediate-catch-event.svg" alt="Timer intermediate catch event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/timer-intermediate-catch-event.svg').default} alt="Timer intermediate catch event" width="120" height="120" />
 
 ## Configuration
 

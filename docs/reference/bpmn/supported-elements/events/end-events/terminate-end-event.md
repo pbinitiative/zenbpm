@@ -15,7 +15,7 @@ A Terminate End Event immediately ends the entire process instance, cancelling a
 
 A thick single-line circle with a filled circle inside.
 
-<img src="/img/bpmn/events/terminate-end-event.svg" alt="Terminate end event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/terminate-end-event.svg').default} alt="Terminate end event" width="120" height="120" />
 
 ## XML Definition
 

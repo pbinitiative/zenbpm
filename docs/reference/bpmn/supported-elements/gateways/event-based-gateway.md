@@ -16,7 +16,7 @@ An Event-Based gateway routes the flow based on which event occurs first. Instea
 
 A diamond with a pentagon-in-circle icon.
 
-<img src="/img/bpmn/gateways/event-based-gateway.svg" alt="Event-based gateway usage example" width="120" height="120" />
+<img src={require('!url-loader!../../../assets/bpmn/gateways/event-based-gateway.svg').default} alt="Event-based gateway usage example" width="120" height="120" />
 
 ## XML Definition
 

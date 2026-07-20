@@ -28,22 +28,22 @@ Green icons are supported and link to their documentation.
   <tbody>
     <tr>
       <td><a href="./none-end-event">None</a></td>
-      <td><a href="./none-end-event"><img className="bpmn-supported" src="/img/bpmn/events/none-end.svg" alt="None End Event" height="70" /></a></td>
+      <td><a href="./none-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/none-end.svg').default} alt="None End Event" height="70" /></a></td>
       <td>The path ends without any result</td>
     </tr>
     <tr>
       <td><a href="./message-end-event">Message</a></td>
-      <td><a href="./message-end-event"><img className="bpmn-supported" src="/img/bpmn/events/message-end.svg" alt="Message End Event" height="70" /></a></td>
+      <td><a href="./message-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/message-end.svg').default} alt="Message End Event" height="70" /></a></td>
       <td>Sends a defined message before ending the path</td>
     </tr>
     <tr>
       <td><a href="./error-end-event">Error</a></td>
-      <td><a href="./error-end-event"><img className="bpmn-supported" src="/img/bpmn/events/error-end.svg" alt="Error End Event" height="70" /></a></td>
+      <td><a href="./error-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/error-end.svg').default} alt="Error End Event" height="70" /></a></td>
       <td>Throws a BPMN error that can be caught by an Error Boundary Event</td>
     </tr>
     <tr>
       <td><a href="./terminate-end-event">Terminate</a></td>
-      <td><a href="./terminate-end-event"><img className="bpmn-supported" src="/img/bpmn/events/terminate-end-event.svg" alt="Terminate End Event" height="70" /></a></td>
+      <td><a href="./terminate-end-event"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/events/terminate-end-event.svg').default} alt="Terminate End Event" height="70" /></a></td>
       <td>Immediately cancels the entire process instance including all parallel tokens</td>
     </tr>
   </tbody>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="513"
+     height="196"
+     viewBox="0 0 513 196">
+
+  <!-- Rounded rectangle -->
+  <rect
+    x="5"
+    y="10"
+    width="503"
+    height="176"
+    rx="88"
+    ry="88"
+    fill="white"
+    stroke="#20232A"
+    stroke-width="6"/>
+
+  <!-- Text -->
+  <text
+    x="256.5"
+    y="98"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="48"
+    fill="#20232A">
+    Input data
+  </text>
+
+</svg>

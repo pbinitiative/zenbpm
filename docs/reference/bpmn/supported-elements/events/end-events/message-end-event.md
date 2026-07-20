@@ -14,7 +14,7 @@ A Message End Event ends the current path and sends a defined message before doi
 
 A thick single-line circle with a filled envelope icon inside.
 
-<img src="/img/bpmn/events/message-end-event.svg" alt="Message end event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-end-event.svg').default} alt="Message end event" width="120" height="120" />
 
 ## XML Definition
 

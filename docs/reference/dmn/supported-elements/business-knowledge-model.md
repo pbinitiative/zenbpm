@@ -15,7 +15,7 @@ A Business Knowledge Model (BKM) is a reusable encapsulation of decision logic â
 
 A rectangle with clipped corners, labelled with the BKM name.
 
-<img src="/img/dmn/business-knowledge-model.svg" alt="Business knowledge model" width="250" height="95" />
+<img src={require('!url-loader!../../assets/dmn/business-knowledge-model.svg').default} alt="Business knowledge model" width="250" height="95" />
 
 ## XML Definition
 

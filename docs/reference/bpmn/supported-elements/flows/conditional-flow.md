@@ -15,7 +15,7 @@ A Conditional Flow is a sequence flow with an attached condition expression. It 
 
 A sequence flow arrow with a small diamond marker near the source.
 
-![Conditional flow](/img/bpmn/flows/conditional-flow.svg)
+![Conditional flow](../../../assets/bpmn/flows/conditional-flow.svg)
 
 ## XML Definition
 

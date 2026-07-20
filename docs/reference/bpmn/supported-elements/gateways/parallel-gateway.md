@@ -15,7 +15,7 @@ A Parallel (AND) gateway splits the flow into all outgoing paths simultaneously 
 
 A diamond with a "+" icon.
 
-<img src="/img/bpmn/gateways/parallel-gateway.svg" alt="Parallel gateway usage example" width="120" height="120" />
+<img src={require('!url-loader!../../../assets/bpmn/gateways/parallel-gateway.svg').default} alt="Parallel gateway usage example" width="120" height="120" />
 
 ## XML Definition
 

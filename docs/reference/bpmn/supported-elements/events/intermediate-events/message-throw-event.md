@@ -14,7 +14,7 @@ An intermediate event that sends a defined message and then continues execution 
 
 A double-line circle with a filled envelope icon.
 
-<img src="/img/bpmn/events/message-throw-event.svg" alt="Message throw event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/message-throw-event.svg').default} alt="Message throw event" width="120" height="120" />
 
 ## XML Definition
 

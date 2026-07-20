@@ -15,7 +15,7 @@ A Timer Start Event starts a process instance automatically at a specific time, 
 
 A thin single-line circle with a clock icon inside.
 
-<img src="/img/bpmn/events/timer-start-event.svg" alt="Timer start event" width="120" height="120" />
+<img src={require('!url-loader!../../../../assets/bpmn/events/timer-start-event.svg').default} alt="Timer start event" width="120" height="120" />
 
 ## Configuration
 

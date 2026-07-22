@@ -1,5 +1,6 @@
 ---
 sidebar_position: 2
+sidebar_label: Variable mapping
 ---
 
 # Variables
@@ -10,10 +11,10 @@ ZenBPM stores process data as variables. BPMN elements can read variables from t
 
 Output mappings control which variables are written from an element's local scope back to the parent process scope. ZenBPM uses different default propagation rules for activities and catching events.
 
-| Element type | With output mappings | Without output mappings |
-| --- | --- | --- |
+| Element type                                                                                           | With output mappings                             | Without output mappings                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Activities, such as Service Tasks, User Tasks, Business Rule Tasks, Sub Processes, and Call Activities | Only explicitly mapped variables are propagated. | No output variables are propagated. Output variables returned by a job or produced by the activity are not written to the parent scope. |
-| Catching events that receive a payload, such as Message Catch Events and Error Boundary Events | Only explicitly mapped variables are propagated. | All payload variables are propagated to the catching scope as-is. |
+| Catching events that receive a payload, such as Message Catch Events and Error Boundary Events         | Only explicitly mapped variables are propagated. | All payload variables are propagated to the catching scope as-is.                                                                       |
 
 An output mapping evaluates its source expression against the element's local variable context plus the payload variables. The evaluated result is written to the mapping target in the parent or catching scope.
 
@@ -33,4 +34,4 @@ When a job completes the full output variables returned by the job worker are st
 
 When an output mapping is defined on the activity, only the explicitly mapped variables are propagated to the parent process scope. The mapped output variables are stored as historical data on the `FlowElementInstance` record, visible via the `/process-instances/{key}/history` endpoint.
 
-When no output mapping variable is defined, *no variables* are propagated to the parent process scope and `FlowElementInstance` have no output variables.
+When no output mapping variable is defined, _no variables_ are propagated to the parent process scope and `FlowElementInstance` have no output variables.

@@ -41,6 +41,7 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 		TEvent
 		MessageEventDefinition *TMessageEventDefinition `xml:"messageEventDefinition"`
 		TimerEventDefinition   *TTimerEventDefinition   `xml:"timerEventDefinition"`
+		ErrorEventDefinition   *TErrorEventDefinition   `xml:"errorEventDefinition"`
 		IsInterrupting         *bool                    `xml:"isInterrupting,attr"`
 		ParallelMultiple       bool                     `xml:"parallelMultiple,attr"`
 		Output                 []extensions.TIoMapping  `xml:"extensionElements>ioMapping>output"`
@@ -62,6 +63,9 @@ func (startEvent *TStartEvent) UnmarshalXML(d *xml.Decoder, start xml.StartEleme
 	if tempStruct.MessageEventDefinition != nil {
 		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.MessageEventDefinition)
 	}
+	if tempStruct.ErrorEventDefinition != nil {
+		startEvent.EventDefinitions = append(startEvent.EventDefinitions, *tempStruct.ErrorEventDefinition)
+	}
 	return nil
 }
 
@@ -77,7 +81,9 @@ type TTerminateEventDefinition struct {
 	Id *string `xml:"id,attr"`
 }
 
-func (TTerminateEventDefinition) eventDefinition() {}
+func (TTerminateEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}
 
 func (endEvent *TEndEvent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	tempStruct := struct {
@@ -140,7 +146,9 @@ type TUnsupportedEventDefinition struct {
 	Id   string
 }
 
-func (TUnsupportedEventDefinition) eventDefinition() {}
+func (TUnsupportedEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}
 
 func isEventDefinitionElement(localName string) bool {
 	const suffix = "EventDefinition"
@@ -314,8 +322,10 @@ type TMessageEventDefinition struct {
 	output     []extensions.TIoMapping
 }
 
-func (TMessageEventDefinition) eventDefinition() {}
-func (d TMessageEventDefinition) GetId() string  { return *d.Id }
+func (TMessageEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}
+func (d TMessageEventDefinition) GetId() string { return *d.Id }
 func (d TMessageEventDefinition) GetType() ElementType {
 	return ElementTypeIntermediateMessageThrowEvent
 }
@@ -329,7 +339,9 @@ type TTimerEventDefinition struct {
 	TimeCycle    *TTimeInfo `xml:"timeCycle"`
 }
 
-func (TTimerEventDefinition) eventDefinition() {}
+func (TTimerEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}
 func (t TTimerEventDefinition) GetId() string {
 	if t.Id == nil {
 		return ""
@@ -342,7 +354,9 @@ type TLinkEventDefinition struct {
 	Name string `xml:"name,attr"`
 }
 
-func (TLinkEventDefinition) eventDefinition() {}
+func (TLinkEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}
 
 type TTimeInfo struct {
 	XMLText string `xml:",innerxml"`
@@ -354,4 +368,6 @@ type TErrorEventDefinition struct {
 	ErrorRef *string `xml:"errorRef,attr"`
 }
 
-func (TErrorEventDefinition) eventDefinition() {}
+func (TErrorEventDefinition) eventDefinition() {
+	// Marker method to satisfy EventDefinition.
+}

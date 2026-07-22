@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Definitions_Decision_hit_policy_any" name="Hit Policy Any Test" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_any" name="DMN Hit Policy Any">
+    <decisionTable id="discount_table" hitPolicy="ANY">
+      <input id="input_customer_type" label="Customer Type">
+        <inputExpression id="inputExpression_customer_type" typeRef="string">
+          <text>customer_type</text>
+        </inputExpression>
+      </input>
+      <input id="input_amount" label="Amount">
+        <inputExpression id="inputExpression_amount" typeRef="number">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="output_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_standard_high_amount">
+        <inputEntry id="rule_standard_high_amount_customer_type">
+          <text>"STANDARD"</text>
+        </inputEntry>
+        <inputEntry id="rule_standard_high_amount_amount">
+          <text>&gt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="rule_standard_high_amount_discount">
+          <text>10</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_vip_high_amount">
+        <inputEntry id="rule_vip_high_amount_customer_type">
+          <text>"VIP"</text>
+        </inputEntry>
+        <inputEntry id="rule_vip_high_amount_amount">
+          <text>&gt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="rule_vip_high_amount_discount">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_vip_medium_amount">
+        <inputEntry id="rule_vip_medium_amount_customer_type">
+          <text>"VIP"</text>
+        </inputEntry>
+        <inputEntry id="rule_vip_medium_amount_amount">
+          <text>&gt;= 500</text>
+        </inputEntry>
+        <outputEntry id="rule_vip_medium_amount_discount">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_conflict_high_amount">
+        <inputEntry id="rule_conflict_high_amount_customer_type">
+          <text>"CONFLICT"</text>
+        </inputEntry>
+        <inputEntry id="rule_conflict_high_amount_amount">
+          <text>&gt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="rule_conflict_high_amount_discount">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_conflict_medium_amount">
+        <inputEntry id="rule_conflict_medium_amount_customer_type">
+          <text>"CONFLICT"</text>
+        </inputEntry>
+        <inputEntry id="rule_conflict_medium_amount_amount">
+          <text>&gt;= 500</text>
+        </inputEntry>
+        <outputEntry id="rule_conflict_medium_amount_discount">
+          <text>15</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_1btqilz">
+      <dmndi:DMNShape id="DMNShape_1hyax1c" dmnElementRef="dmn_hit_policy_any">
+        <dc:Bounds height="80" width="180" x="150" y="150" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

@@ -145,15 +145,20 @@ func resolveEventSubprocessDefs(instance runtime.ProcessInstance, elementId stri
 // prepareParentForEventSubprocess handles all mutations to the parent process instance that must happen before the
 // event subprocess can be created: optionally interrupts the parent, propagates trigger variables and saves the
 // updated parent instance. It also fetches and returns the parent's currently active tokens.
+//
+// omitTokenKeys are excluded from the interrupting cancellation. Callers that want a token to complete normally
+// (rather than be canceled) while still interrupting every other branch of the scope pass its key here — e.g. the
+// token executing an error end event that is caught by an error event subprocess in the same scope.
 func (engine *Engine) prepareParentForEventSubprocess(
 	ctx context.Context,
 	batch *EngineBatch,
 	instance runtime.ProcessInstance,
 	startEventDef *bpmn20.TStartEvent,
 	inputVariables map[string]any,
+	omitTokenKeys ...int64,
 ) (runtime.VariableHolder, []runtime.ExecutionToken, error) {
 	if startEventDef.IsInterrupting {
-		if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch); err != nil {
+		if _, err := engine.handleProcessInstanceInnerCancel(ctx, instance, batch, omitTokenKeys...); err != nil {
 			return runtime.VariableHolder{}, nil, fmt.Errorf("failed to cancel parent instance %d for interrupting event subprocess: %w", instance.ProcessInstance().Key, err)
 		}
 	}
@@ -196,6 +201,9 @@ func (engine *Engine) buildEventSubprocessInstance(
 			subProcessDef.Id, instance.ProcessInstance().Key,
 		)
 	}
+	// Process-instance persistence links child scopes through a parent token. Event subprocesses
+	// are scope-level and do not own that token's flow-element history; the relationship fields
+	// are retained only for parent lookup and error-scope traversal.
 	subProcessInstance, subTokens, err := engine.createInstanceWithStartingElements(
 		ctx,
 		batch,
@@ -206,6 +214,9 @@ func (engine *Engine) buildEventSubprocessInstance(
 			ParentProcessExecutionToken:           tokens[0],
 			ParentProcessTargetElementInstanceKey: tokens[0].ElementInstanceKey,
 			ParentProcessTargetElementId:          subProcessDef.Id,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		},
 	)
 	if err != nil {

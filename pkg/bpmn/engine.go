@@ -374,6 +374,20 @@ func (engine *Engine) startExecutionTokens(ctx context.Context, batch *EngineBat
 	return executionTokens, nil
 }
 
+// resolveHistoryTTL ensures the instance carries a history TTL in memory.
+// Child instances have already been seeded with their parent's TTL at the
+// creation site, so they are left untouched (a nil parent TTL must not be
+// overridden by the resuming request's context). Root instances take the TTL
+// from the request context that started them.
+func resolveHistoryTTL(ctx context.Context, instance runtime.ProcessInstance) {
+	if instance.GetParentProcessInstanceKey() != nil || instance.ProcessInstance().HistoryTTLSec != nil {
+		return
+	}
+	if ttl, ok := appcontext.HistoryTTLFromContext(ctx); ok {
+		instance.ProcessInstance().HistoryTTLSec = new(int64(ttl.Seconds()))
+	}
+}
+
 // createInstance creates a process instance for a given process definition and returns it.
 // Also returns execution tokens for plain StartEvent
 func (engine *Engine) createInstance(
@@ -388,6 +402,7 @@ func (engine *Engine) createInstance(
 	instance.ProcessInstance().VariableHolder = variableHolder
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
+	resolveHistoryTTL(ctx, instance)
 
 	ctx, createSpan := engine.tracer.Start(ctx, fmt.Sprintf("create-instance:%s", instance.ProcessInstance().Definition.BpmnProcessId), trace.WithAttributes(
 		attribute.Int64(otelPkg.AttributeProcessInstanceKey, instance.ProcessInstance().Key),
@@ -470,6 +485,7 @@ func (engine *Engine) createInstanceWithStartingElements(
 	instance.ProcessInstance().VariableHolder = variableHolder
 	instance.ProcessInstance().CreatedAt = time.Now()
 	instance.ProcessInstance().State = runtime.ActivityStateReady
+	resolveHistoryTTL(ctx, instance)
 
 	startNodeIds := make([]string, 0, len(startingFlowNodes))
 	for _, startNode := range startingFlowNodes {
@@ -787,16 +803,21 @@ func (engine *Engine) processFlowNode(
 		flowNodeSpan.End()
 	}()
 
-	//TODO: move this into each element handler
-	batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:                currentToken.ElementInstanceKey,
-		ProcessInstanceKey: instance.ProcessInstance().Key,
-		ElementId:          activity.Element().GetId(),
-		CreatedAt:          time.Now(),
-		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     nil,
-		OutputVariables:    nil,
-	})
+	if !flowNodeOwnsHistory(activity.Element()) {
+		err := batch.SaveFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().Key,
+			ElementId:          activity.Element().GetId(),
+			ElementType:        string(activity.Element().GetType()),
+			CreatedAt:          time.Now(),
+			ExecutionTokenKey:  currentToken.Key,
+			InputVariables:     nil,
+			OutputVariables:    nil,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element instance %d: %w", activity.GetKey(), err)
+		}
+	}
 
 	switch element := activity.Element().(type) {
 	case *bpmn20.TStartEvent:
@@ -805,6 +826,9 @@ func (engine *Engine) processFlowNode(
 		if err != nil {
 			flowNodeSpan.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("failed to process StartEvent flow transition %d: %w", activity.GetKey(), err)
+		}
+		if err := engine.completeFlowElementInstance(ctx, batch, instance, element, currentToken); err != nil {
+			return nil, fmt.Errorf("failed to complete StartEvent history %d: %w", activity.GetKey(), err)
 		}
 		return tokens, nil
 	case *bpmn20.TEndEvent:
@@ -876,6 +900,37 @@ func (engine *Engine) processFlowNode(
 	default:
 		return nil, fmt.Errorf("unsupported element: id=%s, type=%s", activity.Element().GetId(), activity.Element().GetType())
 	}
+}
+
+func flowNodeOwnsHistory(element bpmn20.FlowNode) bool {
+	switch element.(type) {
+	case *bpmn20.TParallelGateway, *bpmn20.TInclusiveGateway:
+		// Synchronizing gateway cycles consume multiple tokens but produce one
+		// flow-element instance, so their handlers create and complete it.
+		return true
+	default:
+		return false
+	}
+}
+
+// completeFlowElementInstance updates the history row keyed by token.ElementInstanceKey.
+// Handlers that merge tokens must first assign every participating token the selected
+// synchronization cycle's key.
+func (engine *Engine) completeFlowElementInstance(
+	ctx context.Context,
+	batch *EngineBatch,
+	instance runtime.ProcessInstance,
+	element bpmn20.FlowNode,
+	token runtime.ExecutionToken,
+) error {
+	return batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+		Key:                token.ElementInstanceKey,
+		ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
+		ExecutionTokenKey:  token.Key,
+		CompletedAt:        new(time.Now()),
+	})
 }
 
 func (engine *Engine) handleActivity(ctx context.Context, batch *EngineBatch, instance runtime.ProcessInstance, activity runtime.Activity, currentToken runtime.ExecutionToken, element bpmn20.FlowNode) ([]runtime.ExecutionToken, error) {
@@ -994,22 +1049,28 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	currentToken runtime.ExecutionToken,
 	localBusinessRuleVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
+	flowElementInput := localBusinessRuleVarHolder.ExecutionScopeSnapshot()
 	if err := localBusinessRuleVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for business rule %s: %w", element.TTask.Id, err)
 	}
 
-	batch.SaveFlowElementInstance(ctx,
+	err := batch.SaveFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     localBusinessRuleVarHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)
+	if err != nil {
+		instance.ProcessInstance().State = runtime.ActivityStateFailed
+		return runtime.ActivityStateFailed, fmt.Errorf("failed to persist business rule flow elemnt instance %s: %w", element.GetId(), err)
+	}
 
 	ctx = appcontext.WithProcessInstanceKey(ctx, instance.ProcessInstance().Key)
 	ctx = appcontext.WithElementInstanceKey(ctx, currentToken.ElementInstanceKey)
@@ -1039,8 +1100,13 @@ func (engine *Engine) handleLocalBusinessRuleTask(
 	}
 	batch.UpdateOutputFlowElementInstance(ctx,
 		runtime.FlowElementInstance{
-			Key:             currentToken.ElementInstanceKey,
-			OutputVariables: outputVariables,
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
+			ExecutionTokenKey:  currentToken.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
 		},
 	)
 
@@ -1117,17 +1183,23 @@ func (engine *Engine) handleDefaultElementTransition(
 		}
 
 		//this saves only transitions between nodes
-		batch.SaveFlowElementInstance(ctx,
+		err := batch.SaveFlowElementInstance(ctx,
 			runtime.FlowElementInstance{
 				Key:                seqFlowKey,
 				ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 				ElementId:          flow.GetId(),
+				ElementType:        string(bpmn20.ElementTypeSequenceFlow),
 				CreatedAt:          time.Now(),
 				ExecutionTokenKey:  resTokens[i].Key,
 				InputVariables:     nil,
 				OutputVariables:    nil,
+				CompletedAt:        new(time.Now()),
 			},
 		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to save flow element instance %s: %w", flow.GetId(), err)
+		}
 	}
 	return resTokens, nil
 }
@@ -1162,6 +1234,7 @@ func (engine *Engine) createReceiveTaskSubscription(
 	currentToken runtime.ExecutionToken,
 	variableHolder runtime.VariableHolder,
 ) (runtime.ExecutionToken, error) {
+	flowElementInput := variableHolder.ExecutionScopeSnapshot()
 	if err := variableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		currentToken.State = runtime.TokenStateFailed
 		return currentToken, fmt.Errorf("failed to evaluate receive task input variables for %s: %w", element.GetId(), err)
@@ -1171,9 +1244,10 @@ func (engine *Engine) createReceiveTaskSubscription(
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     variableHolder.LocalVariables(),
+		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
 	if err != nil {
@@ -1248,8 +1322,33 @@ func (engine *Engine) createIntermediateCatchEvent(ctx context.Context, batch *E
 		token, err := engine.createTimerCatchEvent(ctx, batch, instance, ice.EventDefinition.(bpmn20.TTimerEventDefinition), ice, currentToken)
 		return []runtime.ExecutionToken{token}, err
 	case bpmn20.TLinkEventDefinition:
+		variableHolder := runtime.NewVariableHolder(&instance.ProcessInstance().VariableHolder, nil)
+		outputVariables, err := variableHolder.PropagateMappedOutputsOrAll(ice.Output, nil, engine.evaluateExpression)
+		if err != nil {
+			return nil, &ExpressionEvaluationError{
+				Msg: fmt.Sprintf("Can't evaluate expression in element id=%s name=%s", ice.Id, ice.Name),
+				Err: err,
+			}
+		}
+		if err := batch.SaveProcessInstance(ctx, instance); err != nil {
+			return nil, fmt.Errorf("failed to save intermediate link catch event variables for process %d: %w", instance.ProcessInstance().Key, err)
+		}
 		tokens, err := engine.handleElementTransition(ctx, batch, instance, ice, currentToken)
-		return tokens, err
+		if err != nil {
+			return nil, err
+		}
+		if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          ice.GetId(),
+			ElementType:        string(ice.GetType()),
+			ExecutionTokenKey:  currentToken.Key,
+			OutputVariables:    outputVariables,
+			CompletedAt:        new(time.Now()),
+		}); err != nil {
+			return nil, fmt.Errorf("failed to complete intermediate link catch event history %s: %w", ice.GetId(), err)
+		}
+		return tokens, nil
 	default:
 		return nil, fmt.Errorf("unsupported IntermediateCatchEvent definition type %T for element %q", ice.EventDefinition, ice.GetId())
 	}
@@ -1267,6 +1366,9 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 				if err != nil {
 					return nil, fmt.Errorf("failed to process terminateEndEvent: %w", err)
 				}
+				if err := engine.completeFlowElementInstance(ctx, batch, instance, endEvent, currentToken); err != nil {
+					return nil, fmt.Errorf("failed to complete terminateEndEvent history %s: %w", endEvent.GetId(), err)
+				}
 				updatedTokens = append(updatedTokens, tokens...)
 				processPlainEvent = false
 			case bpmn20.TMessageEventDefinition:
@@ -1280,6 +1382,9 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 				tokens, err := engine.handleEndErrorEvent(ctx, batch, instance, endEvent, currentToken)
 				if err != nil {
 					return nil, fmt.Errorf("failed to process errorEndEvent: %w", err)
+				}
+				if err := engine.completeFlowElementInstance(ctx, batch, instance, endEvent, currentToken); err != nil {
+					return nil, fmt.Errorf("failed to complete errorEndEvent history %s: %w", endEvent.GetId(), err)
 				}
 				updatedTokens = append(updatedTokens, tokens...)
 				processPlainEvent = false
@@ -1295,6 +1400,18 @@ func (engine *Engine) handleEndEvent(ctx context.Context, batch *EngineBatch, in
 			return nil, fmt.Errorf("failed to process EndEvent: %w", err)
 		}
 		updatedTokens = append(updatedTokens, currentToken)
+
+		err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                currentToken.ElementInstanceKey,
+			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+			ElementId:          endEvent.GetId(),
+			ElementType:        string(endEvent.GetType()),
+			ExecutionTokenKey:  currentToken.Key,
+			CompletedAt:        new(time.Now()),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update flow element instance for plain end event %s: %w", endEvent.GetId(), err)
+		}
 	}
 	return updatedTokens, nil
 }
@@ -1398,7 +1515,7 @@ func (engine *Engine) hasActiveSubProcessInstance(ctx context.Context, processIn
 			if child.Type() != runtime.ProcessTypeSubProcess {
 				continue
 			}
-			if child.ProcessInstance().State == runtime.ActivityStateActive {
+			if child.ProcessInstance().State == runtime.ActivityStateReady || child.ProcessInstance().State == runtime.ActivityStateActive {
 				return true, nil
 			}
 		}

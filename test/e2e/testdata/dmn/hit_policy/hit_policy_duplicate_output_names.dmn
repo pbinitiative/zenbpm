@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_duplicate_output_names" name="Duplicate Output Names" namespace="http://example.com/dmn">
+  <decision id="dmn_duplicate_output_names" name="DMN Duplicate Output Names">
+    <decisionTable id="duplicate_output_names_table" hitPolicy="FIRST">
+      <input id="input_duplicate_output_names_score" label="Score">
+        <inputExpression id="inputExpression_duplicate_output_names_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_duplicate_output_names_discount_1" label="Discount 1" name="discount" typeRef="number" />
+      <output id="output_duplicate_output_names_discount_2" label="Discount 2" name="discount" typeRef="number" />
+      <rule id="rule_duplicate_output_names_score_at_least_1">
+        <inputEntry id="input_duplicate_output_names_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_duplicate_output_names_discount_1_at_least_1">
+          <text>10</text>
+        </outputEntry>
+        <outputEntry id="output_duplicate_output_names_discount_2_at_least_1">
+          <text>20</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

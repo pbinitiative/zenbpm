@@ -23,6 +23,7 @@ func (engine *Engine) createInternalTask(
 	currentToken runtime.ExecutionToken,
 	jobVarHolder runtime.VariableHolder,
 ) (state runtime.ActivityState, retErr error) {
+	flowElementInput := jobVarHolder.ExecutionScopeSnapshot()
 	if err := jobVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate input variables: %w", err)
 	}
@@ -63,9 +64,10 @@ func (engine *Engine) createInternalTask(
 		Key:                currentToken.ElementInstanceKey,
 		ProcessInstanceKey: instance.ProcessInstance().Key,
 		ElementId:          element.GetId(),
+		ElementType:        string(element.GetType()),
 		CreatedAt:          time.Now(),
 		ExecutionTokenKey:  currentToken.Key,
-		InputVariables:     jobVarHolder.LocalVariables(),
+		InputVariables:     flowElementInput,
 		OutputVariables:    nil,
 	})
 	if err != nil {
@@ -118,7 +120,8 @@ func (engine *Engine) createInternalTask(
 			job.State = runtime.ActivityStateFailed
 			jobError = newEngineErrorf("failing internal job with message: %s", failReason)
 		case runtime.ActivityStateCompleting:
-			output, err := jobVarHolder.PropagateOnlyMappedOutputs(element.GetOutputMapping(), activatedJob.GetOutputVariables(), engine.evaluateExpression)
+			job.OutputVariables = activatedJob.GetOutputVariables()
+			output, err := jobVarHolder.PropagateOnlyMappedOutputs(element.GetOutputMapping(), job.OutputVariables, engine.evaluateExpression)
 			if err != nil {
 				job.State = runtime.ActivityStateFailed
 				jobError = newEngineErrorf("failing internal job with message: %s", err)
@@ -126,8 +129,13 @@ func (engine *Engine) createInternalTask(
 				job.State = runtime.ActivityStateCompleted
 				batch.UpdateOutputFlowElementInstance(ctx,
 					runtime.FlowElementInstance{
-						Key:             currentToken.ElementInstanceKey,
-						OutputVariables: output,
+						Key:                currentToken.ElementInstanceKey,
+						ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
+						ElementId:          currentToken.ElementId,
+						ElementType:        string(element.GetType()),
+						ExecutionTokenKey:  currentToken.Key,
+						OutputVariables:    output,
+						CompletedAt:        new(time.Now()),
 					},
 				)
 			}

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions_drd_dependency_failure" name="DRD Dependency Failure" namespace="https://zenbpm.io/dmn/drd-dependency-failure">
+  <inputData id="input_amount" name="amount">
+    <variable id="input_amount_variable" name="amount" typeRef="number" />
+  </inputData>
+
+  <decision id="drdFailingDependency" name="DRD Failing Dependency">
+    <informationRequirement>
+      <requiredInput href="#input_amount" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdFailingDependency" hitPolicy="UNIQUE">
+      <input id="failing_dependency_input_amount" label="Amount">
+        <inputExpression id="failing_dependency_input_amount_expression" typeRef="number">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="failing_dependency_output" label="Risk level" name="risk_level" typeRef="string" />
+      <rule id="failing_dependency_rule_1">
+        <inputEntry id="failing_dependency_rule_1_amount">
+          <text>&gt;= 0</text>
+        </inputEntry>
+        <outputEntry id="failing_dependency_rule_1_output">
+          <text>"LOW"</text>
+        </outputEntry>
+      </rule>
+      <rule id="failing_dependency_rule_2">
+        <inputEntry id="failing_dependency_rule_2_amount">
+          <text>&gt;= 0</text>
+        </inputEntry>
+        <outputEntry id="failing_dependency_rule_2_output">
+          <text>"HIGH"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="drdDependencyFailureApproval" name="DRD Dependency Failure Approval">
+    <informationRequirement>
+      <requiredDecision href="#drdFailingDependency" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdDependencyFailureApproval" hitPolicy="FIRST">
+      <input id="dependency_failure_approval_input_risk" label="Risk level">
+        <inputExpression id="dependency_failure_approval_input_risk_expression" typeRef="string">
+          <text>drdFailingDependency.risk_level</text>
+        </inputExpression>
+      </input>
+      <output id="dependency_failure_approval_output" label="Approval result" name="approval_result" typeRef="string" />
+      <rule id="dependency_failure_approval_rule">
+        <inputEntry id="dependency_failure_approval_rule_risk">
+          <text>-</text>
+        </inputEntry>
+        <outputEntry id="dependency_failure_approval_rule_output">
+          <text>"SHOULD_NOT_REACH"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

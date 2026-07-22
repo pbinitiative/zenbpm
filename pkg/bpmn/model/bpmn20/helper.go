@@ -17,6 +17,9 @@ func (definitions *TDefinitions) ResolveReferences() error {
 	if err := walkForUnsupportedEventDefinitions(&definitions.Process); err != nil {
 		return err
 	}
+	if err := validateSubProcessStartEvents(&definitions.Process.TFlowElementsContainer); err != nil {
+		return err
+	}
 	// Map to store FlowNodes by their IDs
 	baseElementMap := make(map[string]BaseElement)
 	resolvables := make([]resolvableFunc, 0)
@@ -114,6 +117,40 @@ func validateEventBasedGateways(container *TFlowElementsContainer) error {
 		}
 	}
 	return nil
+}
+
+func validateSubProcessStartEvents(container *TFlowElementsContainer) error {
+	for i := range container.SubProcess {
+		subProcess := &container.SubProcess[i]
+		if len(subProcess.StartEvents) > 1 {
+			ids := make([]string, 0, len(subProcess.StartEvents))
+			for _, startEvent := range subProcess.StartEvents {
+				ids = append(ids, startEvent.GetId())
+			}
+			return fmt.Errorf("invalid sub process configuration: subProcess id=%q declares %d start events (ids: %v): a sub process must declare exactly one start event",
+				subProcess.GetId(), len(subProcess.StartEvents), ids)
+		}
+		for i := range subProcess.StartEvents {
+			startEvent := &subProcess.StartEvents[i]
+			if !startEvent.IsInterrupting && hasErrorEventDefinition(startEvent) {
+				return fmt.Errorf("invalid sub process configuration: subProcess id=%q has a non-interrupting error start event id=%q: error start events must be interrupting",
+					subProcess.GetId(), startEvent.GetId())
+			}
+		}
+		if err := validateSubProcessStartEvents(&subProcess.TFlowElementsContainer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func hasErrorEventDefinition(startEvent *TStartEvent) bool {
+	for _, eventDefinition := range startEvent.EventDefinitions {
+		if _, ok := eventDefinition.(TErrorEventDefinition); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func collectUnknownElements(container *TFlowElementsContainer, byType map[string][]string) {

@@ -60,13 +60,15 @@ type ExecutionToken struct {
 }
 
 type FlowElementInstance struct {
-	Key                int64  `json:"key"`
-	ElementID          string `json:"element_id"`
-	ProcessInstanceKey int64  `json:"process_instance_key"`
-	ExecutionTokenKey  int64  `json:"execution_token_key"`
-	CreatedAt          int64  `json:"created_at"`
-	InputVariables     string `json:"input_variables"`
-	OutputVariables    string `json:"output_variables"`
+	Key                int64         `json:"key"`
+	ElementID          string        `json:"element_id"`
+	ProcessInstanceKey int64         `json:"process_instance_key"`
+	ExecutionTokenKey  int64         `json:"execution_token_key"`
+	CreatedAt          int64         `json:"created_at"`
+	InputVariables     string        `json:"input_variables"`
+	OutputVariables    string        `json:"output_variables"`
+	CompletedAt        sql.NullInt64 `json:"completed_at"`
+	ElementType        string        `json:"element_type"`
 }
 
 type Incident struct {

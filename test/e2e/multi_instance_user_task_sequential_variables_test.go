@@ -87,8 +87,14 @@ func TestSequentialMultiInstanceUserTaskVariables(t *testing.T) {
 
 		assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
 
-		assertFlowElementInputVariablesAt(t, firstChild.Key, "user_task", 0, map[string]any{"approver": "alice"})
-		assertFlowElementInputVariablesAt(t, firstChild.Key, "user_task", 1, map[string]any{"approver": "bob"})
+		assertFlowElementInputVariablesAt(t, firstChild.Key, "user_task", 0, map[string]any{
+			"approver":  "alice",
+			"approvers": []any{"alice", "bob"},
+		})
+		assertFlowElementInputVariablesAt(t, firstChild.Key, "user_task", 1, map[string]any{
+			"approver":  "bob",
+			"approvers": []any{"alice", "bob"},
+		})
 	})
 
 	t.Run("output element value accumulates into output collection in parent scope", func(t *testing.T) {

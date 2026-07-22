@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_any_non_scalar" name="Hit Policy Any Non Scalar" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_any_non_scalar" name="DMN Hit Policy Any Non Scalar">
+    <decisionTable id="hit_policy_any_non_scalar_table" hitPolicy="ANY">
+      <input id="input_any_non_scalar_customer_type" label="Customer Type">
+        <inputExpression id="inputExpression_any_non_scalar_customer_type" typeRef="string">
+          <text>customer_type</text>
+        </inputExpression>
+      </input>
+      <output id="output_any_non_scalar_items" label="Items" name="items" typeRef="list" />
+      <output id="output_any_non_scalar_details" label="Details" name="details" typeRef="context" />
+      <rule id="rule_any_non_scalar_ok_1">
+        <inputEntry id="rule_any_non_scalar_ok_1_customer_type">
+          <text>"NON_SCALAR_OK"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_ok_1_items">
+          <text>["alpha", "beta"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_ok_1_details">
+          <text>{code: "same"}</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_non_scalar_ok_2">
+        <inputEntry id="rule_any_non_scalar_ok_2_customer_type">
+          <text>"NON_SCALAR_OK"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_ok_2_items">
+          <text>["alpha", "beta"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_ok_2_details">
+          <text>{code: "same"}</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_non_scalar_list_conflict_1">
+        <inputEntry id="rule_any_non_scalar_list_conflict_1_customer_type">
+          <text>"LIST_CONFLICT"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_list_conflict_1_items">
+          <text>["alpha", "beta"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_list_conflict_1_details">
+          <text>{code: "same"}</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_non_scalar_list_conflict_2">
+        <inputEntry id="rule_any_non_scalar_list_conflict_2_customer_type">
+          <text>"LIST_CONFLICT"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_list_conflict_2_items">
+          <text>["alpha", "gamma"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_list_conflict_2_details">
+          <text>{code: "same"}</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_non_scalar_context_conflict_1">
+        <inputEntry id="rule_any_non_scalar_context_conflict_1_customer_type">
+          <text>"CONTEXT_CONFLICT"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_context_conflict_1_items">
+          <text>["alpha", "beta"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_context_conflict_1_details">
+          <text>{code: "first"}</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_non_scalar_context_conflict_2">
+        <inputEntry id="rule_any_non_scalar_context_conflict_2_customer_type">
+          <text>"CONTEXT_CONFLICT"</text>
+        </inputEntry>
+        <outputEntry id="rule_any_non_scalar_context_conflict_2_items">
+          <text>["alpha", "beta"]</text>
+        </outputEntry>
+        <outputEntry id="rule_any_non_scalar_context_conflict_2_details">
+          <text>{code: "second"}</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

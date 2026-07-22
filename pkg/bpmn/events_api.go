@@ -62,16 +62,16 @@ func (engine *Engine) receiveTaskOwnsSubscription(ctx context.Context, instance 
 		return false, nil
 	}
 
-	localVars := make(map[string]interface{})
-	for key, value := range instance.ProcessInstance().VariableHolder.LocalVariables() {
-		localVars[key] = value
-	}
 	flowElementInstance, err := engine.persistence.GetFlowElementInstanceByKey(ctx, message.Token.ElementInstanceKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to load receive task flow element instance %d: %w", message.Token.ElementInstanceKey, err)
 	}
+	localVars := make(map[string]interface{}, len(flowElementInstance.InputVariables))
 	for key, value := range flowElementInstance.InputVariables {
 		localVars[key] = value
+	}
+	if err := engine.evaluateInputMappingsAgainstScope(localVars, receiveTask.GetInputMapping()); err != nil {
+		return false, fmt.Errorf("failed to evaluate input mappings for receive task %s: %w", receiveTask.GetId(), err)
 	}
 
 	correlationKey, err := engine.evaluateMessageCorrelationKey(*instance.ProcessInstance().Definition, localVars, bpmn20.TMessageEventDefinition{MessageRef: receiveTask.MessageRef})

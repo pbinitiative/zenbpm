@@ -193,6 +193,43 @@ func TestTaskInputOutputMappingHappyPath(t *testing.T) {
 	assert.Nil(t, pi.ProcessInstance().GetVariable("orderName"))
 }
 
+func TestJobOutputMappingSeesParentVariablesUpdatedAfterJobCreation(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	require.NoError(t, err)
+
+	instance, err := engine.CreateInstanceByKey(t.Context(), process.Key, nil)
+	require.NoError(t, err)
+	jobs, err := store.FindPendingProcessInstanceJobs(t.Context(), instance.ProcessInstance().Key)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+
+	instance.ProcessInstance().VariableHolder.SetLocalVariable("variable_name", "introduced-after-job-creation")
+	require.NoError(t, engine.JobCompleteByKey(t.Context(), jobs[0].Key, nil))
+
+	assert.Equal(t, "introduced-after-job-creation", instance.ProcessInstance().VariableHolder.GetLocalVariable("variable_name"))
+}
+
+func TestActivatedJobLocalVariablesDoNotMutateStoredInputVariables(t *testing.T) {
+	store := inmemory.NewStorage()
+	engine := NewEngine(EngineWithStorage(store))
+	process, err := engine.LoadFromFile(t.Context(), "./test-cases/simple_task.bpmn")
+	require.NoError(t, err)
+
+	_, err = engine.CreateInstanceByKey(t.Context(), process.Key, map[string]interface{}{"input": "original"})
+	require.NoError(t, err)
+
+	activatedJobs, err := engine.ActivateJobs(t.Context(), "TestType")
+	require.NoError(t, err)
+	require.Len(t, activatedJobs, 1)
+	activatedJobs[0].GetLocalVariables()["input"] = "worker-change"
+
+	storedJob, err := store.FindJobByJobKey(t.Context(), activatedJobs[0].Key())
+	require.NoError(t, err)
+	assert.Equal(t, "original", storedJob.InputVariables["input"])
+}
+
 func TestInstanceFailsOnInvalidInputMapping(t *testing.T) {
 	// setup
 	cp := CallPath{}

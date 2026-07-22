@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_output_order" name="Hit Policy Output Order" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_output_order" name="DMN Hit Policy Output Order">
+    <decisionTable id="hit_policy_output_order_table" hitPolicy="OUTPUT ORDER">
+      <input id="input_output_order_score" label="Score">
+        <inputExpression id="inputExpression_output_order_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="output_output_order_discount" label="Discount" name="discount" typeRef="number" />
+      <rule id="rule_output_order_score_at_least_1">
+        <inputEntry id="input_output_order_score_at_least_1">
+          <text>&gt;= 1</text>
+        </inputEntry>
+        <outputEntry id="output_output_order_score_at_least_1">
+          <text>10</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

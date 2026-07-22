@@ -37,6 +37,18 @@ func TestSubProcessEndErrorWithMatchingBoundaryIsCaught(t *testing.T) {
 	subProcess := findSubProcessInstance(processInstance.ProcessInstance().Key)
 	require.NotNil(t, subProcess)
 	assert.Equal(t, runtime.ActivityStateTerminated, subProcess.ProcessInstance().State)
+
+	flowElements, err := bpmnEngine.persistence.GetFlowElementInstancesByProcessInstanceKey(t.Context(), subProcess.ProcessInstance().Key, true)
+	require.NoError(t, err)
+	var errorEndEvent *runtime.FlowElementInstance
+	for i := range flowElements {
+		if flowElements[i].ElementId == "error_end_event" {
+			errorEndEvent = &flowElements[i]
+			break
+		}
+	}
+	require.NotNil(t, errorEndEvent, "error end event should be in child scope history")
+	assert.NotNil(t, errorEndEvent.CompletedAt, "error end event should have CompletedAt after throwing")
 }
 
 func TestSubProcessEndErrorWithCatchAllBoundaryIsCaught(t *testing.T) {

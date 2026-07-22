@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_hit_policy_any_multi_output" name="Hit Policy Any Multi Output" namespace="http://example.com/dmn">
+  <decision id="dmn_hit_policy_any_multi_output" name="DMN Hit Policy Any Multi Output">
+    <decisionTable id="hit_policy_any_multi_output_table" hitPolicy="ANY">
+      <input id="input_any_multi_output_customer_type" label="Customer Type">
+        <inputExpression id="inputExpression_any_multi_output_customer_type" typeRef="string">
+          <text>customer_type</text>
+        </inputExpression>
+      </input>
+      <input id="input_any_multi_output_amount" label="Amount">
+        <inputExpression id="inputExpression_any_multi_output_amount" typeRef="number">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="output_any_multi_output_discount" label="Discount" name="discount" typeRef="number" />
+      <output id="output_any_multi_output_reason" label="Reason" name="reason" typeRef="string" />
+      <rule id="rule_any_multi_output_vip_high">
+        <inputEntry id="rule_any_multi_output_vip_high_customer_type">
+          <text>"VIP"</text>
+        </inputEntry>
+        <inputEntry id="rule_any_multi_output_vip_high_amount">
+          <text>&gt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="rule_any_multi_output_vip_high_discount">
+          <text>20</text>
+        </outputEntry>
+        <outputEntry id="rule_any_multi_output_vip_high_reason">
+          <text>"vip"</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_multi_output_vip_medium">
+        <inputEntry id="rule_any_multi_output_vip_medium_customer_type">
+          <text>"VIP"</text>
+        </inputEntry>
+        <inputEntry id="rule_any_multi_output_vip_medium_amount">
+          <text>&gt;= 500</text>
+        </inputEntry>
+        <outputEntry id="rule_any_multi_output_vip_medium_discount">
+          <text>20</text>
+        </outputEntry>
+        <outputEntry id="rule_any_multi_output_vip_medium_reason">
+          <text>"vip"</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_multi_output_conflict_high">
+        <inputEntry id="rule_any_multi_output_conflict_high_customer_type">
+          <text>"CONFLICT"</text>
+        </inputEntry>
+        <inputEntry id="rule_any_multi_output_conflict_high_amount">
+          <text>&gt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="rule_any_multi_output_conflict_high_discount">
+          <text>20</text>
+        </outputEntry>
+        <outputEntry id="rule_any_multi_output_conflict_high_reason">
+          <text>"primary"</text>
+        </outputEntry>
+      </rule>
+      <rule id="rule_any_multi_output_conflict_medium">
+        <inputEntry id="rule_any_multi_output_conflict_medium_customer_type">
+          <text>"CONFLICT"</text>
+        </inputEntry>
+        <inputEntry id="rule_any_multi_output_conflict_medium_amount">
+          <text>&gt;= 500</text>
+        </inputEntry>
+        <outputEntry id="rule_any_multi_output_conflict_medium_discount">
+          <text>20</text>
+        </outputEntry>
+        <outputEntry id="rule_any_multi_output_conflict_medium_reason">
+          <text>"secondary"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

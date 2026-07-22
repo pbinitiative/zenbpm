@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_error_event_subprocess_non_interrupting_xml" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="invalid-error-event-subprocess-error-start-non-interrupting-xml" name="Error Event Subprocess Non Interrupting XML" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="service-task-error-event-subprocess" />
+    <bpmn:serviceTask id="service-task-error-event-subprocess" name="Main task">
+      <bpmn:extensionElements>
+        <zenbpm:taskDefinition type="error-event-subprocess-non-interrupting-xml-task" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_main_success</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_main_success" sourceRef="service-task-error-event-subprocess" targetRef="should-not-happen-end" />
+    <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_main_success</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="error-event-subprocess" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;error-caught-despite-non-interrupting-xml&#34;" target="subProcessResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:startEvent id="error-start-event" isInterrupting="false">
+        <bpmn:outgoing>Flow_error_sub</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_sub" errorRef="Error_fail_test" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_error_sub" sourceRef="error-start-event" targetRef="handled-end" />
+      <bpmn:endEvent id="handled-end" name="Handled end">
+        <bpmn:incoming>Flow_error_sub</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="invalid-error-event-subprocess-error-start-non-interrupting-xml">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="service-task-error-event-subprocess_di" bpmnElement="service-task-error-event-subprocess">
+        <dc:Bounds x="270" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="should-not-happen-end_di" bpmnElement="should-not-happen-end">
+        <dc:Bounds x="432" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-event-subprocess_di" bpmnElement="error-event-subprocess" isExpanded="true">
+        <dc:Bounds x="160" y="280" width="360" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-start-event_di" bpmnElement="error-start-event">
+        <dc:Bounds x="200" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="handled-end_di" bpmnElement="handled-end">
+        <dc:Bounds x="412" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="198" y="120" />
+        <di:waypoint x="270" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_main_success_di" bpmnElement="Flow_main_success">
+        <di:waypoint x="370" y="120" />
+        <di:waypoint x="432" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_sub_di" bpmnElement="Flow_error_sub">
+        <di:waypoint x="236" y="360" />
+        <di:waypoint x="412" y="360" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -15,6 +15,14 @@ func (engine *Engine) handleEndErrorEvent(ctx context.Context, batch *EngineBatc
 		return nil, err
 	}
 
+	if match := engine.findMatchingErrorEventSubprocessInScope(instance, errorCode); match != nil {
+		currentToken.State = runtime.TokenStateCompleted
+		if err := engine.activateErrorEventSubprocessOnEndError(ctx, batch, instance.ProcessInstance().Key, match, nil, currentToken.Key); err != nil {
+			return nil, err
+		}
+		return []runtime.ExecutionToken{currentToken}, nil
+	}
+
 	parentScope, err := engine.loadParentErrorEventContext(ctx, batch, instance, true)
 	if err != nil {
 		return nil, err
@@ -27,7 +35,22 @@ func (engine *Engine) handleEndErrorEvent(ctx context.Context, batch *EngineBatc
 		return engine.failUnhandledEndError(ctx, batch, tokens, currentToken, endEvent.Id, errorCode)
 	}
 
-	return engine.propagateErrorToParentHierarchy(ctx, batch, tokens, instance, currentToken, parentScope, endEvent.Id, errorCode)
+	return engine.propagateErrorToParentHierarchy(ctx, batch, tokens, parentScope, endErrorPropagation{
+		errorSourceInstance: instance,
+		errorSourceToken:    currentToken,
+		endEventId:          endEvent.Id,
+		errorCode:           errorCode,
+	})
+}
+
+// endErrorPropagation carries the immutable context of an error thrown by an error end event while it
+// is propagating up the scope hierarchy looking for a catching handler (boundary event or error event
+// subprocess). Bundling these values keeps the propagation helpers below within sane parameter counts.
+type endErrorPropagation struct {
+	errorSourceInstance runtime.ProcessInstance
+	errorSourceToken    runtime.ExecutionToken
+	endEventId          string
+	errorCode           *string
 }
 
 func (engine *Engine) findErrorCode(instance runtime.ProcessInstance, endEvent *bpmn20.TEndEvent) (*string, error) {
@@ -80,31 +103,18 @@ func (engine *Engine) propagateErrorToParentHierarchy(
 	ctx context.Context,
 	batch *EngineBatch,
 	tokens []runtime.ExecutionToken,
-	errorSourceInstance runtime.ProcessInstance,
-	errorSourceToken runtime.ExecutionToken,
 	parentErrorEventContext *errorEventContext,
-	endEventId string,
-	errorCode *string,
+	prop endErrorPropagation,
 ) ([]runtime.ExecutionToken, error) {
 	propagatingScopes := make([]*errorEventContext, 0)
 
 	for parentErrorEventContext != nil {
-		boundaryEvent := engine.findMatchingBoundaryErrorEventInCurrentProcessInstance(parentErrorEventContext.instance, parentErrorEventContext.attachedToRef, errorCode)
-		if boundaryEvent != nil {
-			var err error
-			tokens, err = engine.terminateEndErrorThrowingScope(ctx, batch, errorSourceInstance, errorSourceToken, tokens, endEventId)
-			if err != nil {
-				return nil, err
-			}
-			for _, propagatingScope := range propagatingScopes {
-				if err := engine.terminateEndErrorPropagatingScope(ctx, batch, propagatingScope.instance, propagatingScope.token); err != nil {
-					return nil, err
-				}
-			}
-			if err := engine.activateBoundaryErrorHandler(ctx, batch, parentErrorEventContext, boundaryEvent); err != nil {
-				return nil, err
-			}
-			return tokens, nil
+		handled, updatedTokens, err := engine.tryCatchEndErrorAtScope(ctx, batch, parentErrorEventContext, propagatingScopes, tokens, prop)
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			return updatedTokens, nil
 		}
 
 		nextParentEventContext, err := engine.loadParentErrorEventContext(ctx, batch, parentErrorEventContext.instance, true)
@@ -113,17 +123,63 @@ func (engine *Engine) propagateErrorToParentHierarchy(
 		}
 
 		if nextParentEventContext == nil {
-			tokens, err = engine.failUnhandledEndErrorOnParent(ctx, batch, parentErrorEventContext, tokens, endEventId, errorCode)
-			if err != nil {
-				return nil, err
-			}
-			return tokens, nil
+			return engine.failUnhandledEndErrorOnParent(ctx, batch, parentErrorEventContext, tokens, prop.endEventId, prop.errorCode)
 		}
 
 		propagatingScopes = append(propagatingScopes, parentErrorEventContext)
 		parentErrorEventContext = nextParentEventContext
 	}
 
+	return tokens, nil
+}
+
+func (engine *Engine) tryCatchEndErrorAtScope(
+	ctx context.Context,
+	batch *EngineBatch,
+	scope *errorEventContext,
+	propagatingScopes []*errorEventContext,
+	tokens []runtime.ExecutionToken,
+	prop endErrorPropagation,
+) (handled bool, updatedTokens []runtime.ExecutionToken, err error) {
+	boundaryEvent, subprocessMatch := engine.matchErrorHandlerInScope(scope.instance, scope.attachedToRef, prop.errorCode)
+	if boundaryEvent == nil && subprocessMatch == nil {
+		return false, tokens, nil
+	}
+
+	tokens, err = engine.terminateEndErrorChain(ctx, batch, propagatingScopes, tokens, prop)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if boundaryEvent != nil {
+		if err := engine.activateBoundaryErrorHandler(ctx, batch, scope, boundaryEvent); err != nil {
+			return false, nil, err
+		}
+		return true, tokens, nil
+	}
+
+	if err := engine.activateErrorEventSubprocessInParentScope(ctx, batch, scope, subprocessMatch); err != nil {
+		return false, nil, err
+	}
+	return true, tokens, nil
+}
+
+func (engine *Engine) terminateEndErrorChain(
+	ctx context.Context,
+	batch *EngineBatch,
+	propagatingScopes []*errorEventContext,
+	tokens []runtime.ExecutionToken,
+	prop endErrorPropagation,
+) ([]runtime.ExecutionToken, error) {
+	tokens, err := engine.terminateEndErrorThrowingScope(ctx, batch, prop.errorSourceInstance, prop.errorSourceToken, tokens, prop.endEventId)
+	if err != nil {
+		return nil, err
+	}
+	for _, propagatingScope := range propagatingScopes {
+		if err := engine.terminateEndErrorPropagatingScope(ctx, batch, propagatingScope.instance, propagatingScope.token); err != nil {
+			return nil, err
+		}
+	}
 	return tokens, nil
 }
 

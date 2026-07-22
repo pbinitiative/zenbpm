@@ -7,6 +7,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSequentialServiceTaskJobAndFlowElementVariables(t *testing.T) {
+	processVariables := map[string]any{"seed": "initial"}
+	processInstance := deployAndCreateUniqueProcessDefinition(t, "testdata/service_task/service_task_two_jobs_variables.bpmn", processVariables)
+	t.Cleanup(func() {
+		cleanupOwnedProcessInstance(t, processInstance.Key)
+	})
+
+	firstJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "first_service_task")
+	require.Equal(t, map[string]any{
+		"seed":          "initial",
+		"firstJobInput": "initial",
+	}, firstJob.InputVariables)
+	firstJobOutput := map[string]any{"firstJobOutput": "first-value"}
+	require.NoError(t, completeJob(t, firstJob.Key, firstJobOutput))
+
+	secondJob := waitForProcessInstanceActiveJobByElementId(t, processInstance.Key, "second_service_task")
+	require.Equal(t, map[string]any{
+		"seed":           "initial",
+		"firstResult":    "first-value",
+		"secondJobInput": "first-value",
+	}, secondJob.InputVariables)
+	secondJobOutput := map[string]any{"secondJobOutput": "second-value"}
+	require.NoError(t, completeJob(t, secondJob.Key, secondJobOutput))
+	assertProcessInstanceIsCompleted(t, processInstance.Key, "end_event")
+
+	firstJob = waitForProcessInstanceJobByElementId(t, processInstance.Key, "first_service_task", public.JobStateCompleted)
+	require.Equal(t, firstJobOutput, *firstJob.OutputVariables)
+	secondJob = waitForProcessInstanceJobByElementId(t, processInstance.Key, "second_service_task", public.JobStateCompleted)
+	require.Equal(t, secondJobOutput, *secondJob.OutputVariables)
+
+	assertFlowElementInputVariables(t, processInstance.Key, "first_service_task", processVariables)
+	assertFlowElementOutputVariables(t, processInstance.Key, "first_service_task", map[string]any{"firstResult": "first-value"})
+	assertFlowElementInputVariables(t, processInstance.Key, "second_service_task", map[string]any{
+		"seed":        "initial",
+		"firstResult": "first-value",
+	})
+	assertFlowElementOutputVariables(t, processInstance.Key, "second_service_task", map[string]any{"secondResult": "second-value"})
+}
+
 func TestServiceTaskJobCompleteVariables(t *testing.T) {
 
 	t.Run("Job completion variables are local without output mapping", func(t *testing.T) {

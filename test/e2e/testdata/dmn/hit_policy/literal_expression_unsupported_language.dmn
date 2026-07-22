@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="Definitions_Decision_unsupported_literal_expression_language" name="Unsupported Literal Expression Language" namespace="http://example.com/dmn">
+  <decision id="dmn_unsupported_literal_expression_language" name="DMN Unsupported Literal Expression Language">
+    <variable id="unsupported_literal_expression_language_result" name="result" typeRef="string" />
+    <literalExpression expressionLanguage="javascript">
+      <text>"unsupported"</text>
+    </literalExpression>
+  </decision>
+</definitions>

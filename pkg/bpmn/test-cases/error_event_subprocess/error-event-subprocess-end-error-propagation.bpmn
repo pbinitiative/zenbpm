@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zenbpm="http://zenbpm.pbinitiative.org/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_error_event_subprocess_end_error_propagation" targetNamespace="http://bpmn.io/schema/bpmn" exporter="ZenBPM Modeler" exporterVersion="1.0.0">
+  <bpmn:process id="error-event-subprocess-end-error-propagation" name="Error End Event Propagated To Parent Error Event Subprocess" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_main</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_start_main" sourceRef="StartEvent_1" targetRef="embedded-sub" />
+    <bpmn:subProcess id="embedded-sub" name="Embedded subprocess">
+      <bpmn:incoming>Flow_start_main</bpmn:incoming>
+      <bpmn:outgoing>Flow_sub_success</bpmn:outgoing>
+      <bpmn:startEvent id="embedded-start">
+        <bpmn:outgoing>Flow_embedded</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_embedded" sourceRef="embedded-start" targetRef="embedded-error-end" />
+      <bpmn:endEvent id="embedded-error-end" name="Throw error">
+        <bpmn:incoming>Flow_embedded</bpmn:incoming>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_throw" errorRef="Error_fail_test" />
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_sub_success" sourceRef="embedded-sub" targetRef="should-not-happen-end" />
+    <bpmn:endEvent id="should-not-happen-end" name="Should not happen end">
+      <bpmn:incoming>Flow_sub_success</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="error-event-subprocess" triggeredByEvent="true">
+      <bpmn:extensionElements>
+        <zenbpm:ioMapping>
+          <zenbpm:output source="=&#34;end-error-caught&#34;" target="subProcessResult" />
+        </zenbpm:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:startEvent id="error-start-event">
+        <bpmn:outgoing>Flow_error_sub</bpmn:outgoing>
+        <bpmn:errorEventDefinition id="ErrorEventDefinition_sub" errorRef="Error_fail_test" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_error_sub" sourceRef="error-start-event" targetRef="handled-end" />
+      <bpmn:endEvent id="handled-end" name="Handled end">
+        <bpmn:incoming>Flow_error_sub</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmn:error id="Error_fail_test" name="Fail test error" errorCode="42" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="error-event-subprocess-end-error-propagation">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="embedded-sub_di" bpmnElement="embedded-sub" isExpanded="true">
+        <dc:Bounds x="260" y="80" width="300" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="embedded-start_di" bpmnElement="embedded-start">
+        <dc:Bounds x="300" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="embedded-error-end_di" bpmnElement="embedded-error-end">
+        <dc:Bounds x="482" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="should-not-happen-end_di" bpmnElement="should-not-happen-end">
+        <dc:Bounds x="612" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-event-subprocess_di" bpmnElement="error-event-subprocess" isExpanded="true">
+        <dc:Bounds x="260" y="300" width="300" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="error-start-event_di" bpmnElement="error-start-event">
+        <dc:Bounds x="300" y="360" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="handled-end_di" bpmnElement="handled-end">
+        <dc:Bounds x="482" y="360" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_main_di" bpmnElement="Flow_start_main">
+        <di:waypoint x="198" y="158" />
+        <di:waypoint x="260" y="158" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_sub_success_di" bpmnElement="Flow_sub_success">
+        <di:waypoint x="560" y="158" />
+        <di:waypoint x="612" y="158" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_embedded_di" bpmnElement="Flow_embedded">
+        <di:waypoint x="336" y="158" />
+        <di:waypoint x="482" y="158" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_error_sub_di" bpmnElement="Flow_error_sub">
+        <di:waypoint x="336" y="378" />
+        <di:waypoint x="482" y="378" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+

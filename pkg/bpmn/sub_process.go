@@ -25,6 +25,7 @@ func (engine *Engine) createCallActivity(
 	callActivityVarHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
 	processId := element.CalledElement.ProcessId
+	flowElementInput := callActivityVarHolder.ExecutionScopeSnapshot()
 	if err := callActivityVarHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for call activity: %w", err)
 	}
@@ -33,9 +34,10 @@ func (engine *Engine) createCallActivity(
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     callActivityVarHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)
@@ -53,6 +55,9 @@ func (engine *Engine) createCallActivity(
 		&runtime.CallActivityInstance{
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		})
 	if err != nil {
 		return runtime.ActivityStateFailed, err
@@ -78,6 +83,7 @@ func (engine *Engine) createSubProcess(
 	currentToken runtime.ExecutionToken,
 	subProcessVariableHolder runtime.VariableHolder,
 ) (runtime.ActivityState, error) {
+	flowElementInput := subProcessVariableHolder.ExecutionScopeSnapshot()
 	if err := subProcessVariableHolder.EvaluateAndSetMappingsToLocalVariables(element.GetInputMapping(), engine.evaluateExpression); err != nil {
 		instance.ProcessInstance().State = runtime.ActivityStateFailed
 		return runtime.ActivityStateFailed, fmt.Errorf("failed to evaluate local variables for sub process: %w", err)
@@ -88,9 +94,10 @@ func (engine *Engine) createSubProcess(
 			Key:                currentToken.ElementInstanceKey,
 			ProcessInstanceKey: instance.ProcessInstance().GetInstanceKey(),
 			ElementId:          element.GetId(),
+			ElementType:        string(element.GetType()),
 			CreatedAt:          time.Now(),
 			ExecutionTokenKey:  currentToken.Key,
-			InputVariables:     subProcessVariableHolder.LocalVariables(),
+			InputVariables:     flowElementInput,
 			OutputVariables:    nil,
 		},
 	)
@@ -111,6 +118,9 @@ func (engine *Engine) createSubProcess(
 			ParentProcessExecutionToken:           currentToken,
 			ParentProcessTargetElementInstanceKey: currentToken.ElementInstanceKey,
 			ParentProcessTargetElementId:          element.Id,
+			ProcessInstanceData: runtime.ProcessInstanceData{
+				HistoryTTLSec: instance.ProcessInstance().HistoryTTLSec,
+			},
 		},
 	)
 	if err != nil {
@@ -177,7 +187,11 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 				return fmt.Errorf("failed to find active tokens for process %d: %w", parentInstance.ProcessInstance().Key, err)
 			}
 			if len(tokens) == 0 {
-				completeParentAfterEventSubProcess = true
+				hasActiveChild, err := engine.hasActiveSubProcessInstance(ctx, parentInstance.ProcessInstance().Key)
+				if err != nil {
+					return fmt.Errorf("failed to find active subprocess children for process %d: %w", parentInstance.ProcessInstance().Key, err)
+				}
+				completeParentAfterEventSubProcess = !hasActiveChild
 			}
 		}
 	}
@@ -222,10 +236,15 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 		return fmt.Errorf("failed to propagate variables back to parent: %w", err)
 	}
 
-	err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
-	if err != nil {
-		batch.Clear(ctx)
-		return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+	// An event subprocess belongs to the parent scope, not to the active token used to persist
+	// the child-parent relationship. Only an embedded subprocess owns the parent token and its
+	// boundary subscriptions.
+	if !isEventSubProcess {
+		err = engine.cancelBoundarySubscriptions(ctx, batch, parentInstance.ProcessInstance().Key, updatedParentToken)
+		if err != nil {
+			batch.Clear(ctx)
+			return fmt.Errorf("failed to cancel boundary subscriptions for parent process instance %d: %w", instance.ProcessInstance().Key, err)
+		}
 	}
 
 	//handle the finalization, transition back to parent process if sub process is not an event sub process
@@ -257,10 +276,19 @@ func (engine *Engine) handleParentProcessContinuationForSubProcess(ctx context.C
 	if err != nil {
 		return fmt.Errorf("failed to save process instance %d: %w", instance.ProcessInstance().Key, err)
 	}
-	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
-		Key:             updatedParentToken.ElementInstanceKey,
-		OutputVariables: output,
-	})
+	if !isEventSubProcess {
+		if err = batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+			Key:                updatedParentToken.ElementInstanceKey,
+			ProcessInstanceKey: parentInstance.ProcessInstance().GetInstanceKey(),
+			ElementId:          parentElement.GetId(),
+			ElementType:        string(parentElement.GetType()),
+			ExecutionTokenKey:  updatedParentToken.Key,
+			OutputVariables:    output,
+			CompletedAt:        new(time.Now()),
+		}); err != nil {
+			return fmt.Errorf("failed to update flow element instance for sub process %s: %w", parentElement.GetId(), err)
+		}
+	}
 
 	// for nested event subprocesses: complete parent event subprocesses recursively going up
 	if isEventSubProcess && parentInstance.ProcessInstance().State == runtime.ActivityStateCompleted && parentInstance.Type() == runtime.ProcessTypeSubProcess {
@@ -355,10 +383,14 @@ func (engine *Engine) handleParentProcessContinuationForCallActivity(ctx context
 		batch.SaveToken(ctx, tok)
 	}
 	batch.SaveProcessInstance(ctx, parentInstance)
-	batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
+	if err := batch.UpdateOutputFlowElementInstance(ctx, runtime.FlowElementInstance{
 		Key:             updatedParentToken.ElementInstanceKey,
+		ElementType:     string(parentElement.GetType()),
 		OutputVariables: output,
-	})
+		CompletedAt:     new(time.Now()),
+	}); err != nil {
+		return fmt.Errorf("failed to update flow element instance for call activity %s: %w", parentElement.GetId(), err)
+	}
 
 	batch.AddPostFlushAction(ctx, func() {
 		safego.Go("parent-continuation-call-activity", engine.logger, func() {

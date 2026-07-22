@@ -1,0 +1,209 @@
+name: release reusable
+
+on:
+  workflow_call:
+    inputs:
+      release-command:
+        description: Command used for the GoReleaser build step.
+        required: true
+        type: string
+      release-tag:
+        description: Image and report tag used by security scanning.
+        required: true
+        type: string
+      checkout-ref:
+        description: Git ref checked out before building.
+        required: true
+        type: string
+      artifact-prefix:
+        description: Prefix for uploaded Trivy report artifacts.
+        required: true
+        type: string
+      publish:
+        description: Whether the workflow publishes release artifacts.
+        required: true
+        type: boolean
+      security-scan:
+        description: Whether to run Trivy security scanning and upload reports.
+        required: true
+        type: boolean
+      notify:
+        description: Whether to send the Discord release notification.
+        required: true
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+env:
+  IMAGE_NAME: ghcr.io/pbinitiative/zenbpm
+  TRIVY_VERSION: 0.69.3
+  TRIVY_ARCHIVE_SHA256: 1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
+  RELEASE_TAG: ${{ inputs.release-tag }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref }}
+          submodules: 'true'
+      - run: git fetch --prune --unshallow
+      - name: setup dependencies
+        uses: actions/setup-go@v5
+      - name: cache goreleaser go cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/go-build
+            .cache/go-mod
+            .cache/goreleaser
+          key: release-${{ runner.os }}-${{ hashFiles('go.sum', '.goreleaser.yaml', 'Dockerfile') }}
+          restore-keys: |
+            release-${{ runner.os }}-
+      - name: login to github
+        if: inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GORELEASER_ACCESS_TOKEN }}
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: Verify builder
+        run: |
+          docker buildx ls
+          echo "BUILDX_BUILDER=$BUILDX_BUILDER"
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+      - name: setup release environment
+        if: inputs.publish
+        run: |-
+          echo 'GITHUB_TOKEN=${{secrets.GORELEASER_ACCESS_TOKEN}}' > .release-env
+      - name: release build
+        run: ${{ inputs.release-command }}
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+
+  release_security:
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ always() && inputs.security-scan }}
+    continue-on-error: true
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref }}
+          submodules: 'true'
+      - run: git fetch --prune --unshallow
+      - name: setup dependencies
+        uses: actions/setup-go@v5
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: install verified trivy
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh install-trivy
+      - name: build release image locally for trivy
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh build-scan-image
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+      # Trivy findings are report-only and must not block release publishing.
+      - name: trivy scan release inputs
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh scan
+      - name: summarize trivy reports
+        id: trivy_summary
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh summarize
+      - name: upload trivy image sarif
+        if: ${{ always() && hashFiles('trivy-reports/image.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-reports/image.sarif
+          category: trivy-image
+      - name: upload trivy filesystem sarif
+        if: ${{ always() && hashFiles('trivy-reports/fs.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-reports/fs.sarif
+          category: trivy-fs
+      - name: upload trivy secret sarif
+        if: ${{ always() && hashFiles('trivy-reports/secrets.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-reports/secrets.sarif
+          category: trivy-secrets
+      - name: upload trivy reports
+        if: ${{ always() && hashFiles('trivy-reports/**') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-prefix }}-${{ inputs.release-tag }}
+          path: trivy-reports/
+
+  release_notify:
+    runs-on: ubuntu-latest
+    needs:
+      - release_security
+      - release
+    if: ${{ always() && inputs.notify }}
+    continue-on-error: true
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref }}
+          submodules: 'true'
+      - name: login to github
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GORELEASER_ACCESS_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: download trivy reports
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-prefix }}-${{ inputs.release-tag }}
+          path: trivy-reports/
+      - name: resolve published image digest
+        id: image_digest
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh resolve-digest
+      - name: summarize trivy reports
+        id: trivy_summary
+        if: always()
+        continue-on-error: true
+        run: bash scripts/ci/release-security.sh summarize
+      - name: notify discord
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+        run: bash scripts/ci/release-security.sh notify-discord

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions_drd_missing_dependency" name="DRD Missing Dependency" namespace="https://zenbpm.io/dmn/drd-missing-dependency">
+  <decision id="drdMissingDependencyApproval" name="DRD Missing Dependency Approval">
+    <informationRequirement>
+      <requiredDecision href="#drdDoesNotExist" />
+    </informationRequirement>
+    <decisionTable id="decisionTable_drdMissingDependencyApproval" hitPolicy="FIRST">
+      <input id="missing_dependency_approval_input_risk" label="Risk level">
+        <inputExpression id="missing_dependency_approval_input_risk_expression" typeRef="string">
+          <text>drdDoesNotExist.risk_level</text>
+        </inputExpression>
+      </input>
+      <output id="missing_dependency_approval_output" label="Approval result" name="approval_result" typeRef="string" />
+      <rule id="missing_dependency_approval_rule">
+        <inputEntry id="missing_dependency_approval_rule_risk">
+          <text>-</text>
+        </inputEntry>
+        <outputEntry id="missing_dependency_approval_rule_output">
+          <text>"SHOULD_NOT_REACH"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

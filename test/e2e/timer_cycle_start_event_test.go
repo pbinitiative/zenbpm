@@ -186,10 +186,22 @@ func assertDefinitionLevelTriggeredTimers(t *testing.T, anyInstanceKey, definiti
 func assertProcessInstanceCountNeverExceeds(t *testing.T, bpmnProcessId string, store storage.Storage, definitionKey int64, maxCount int, duration, interval time.Duration) {
 	t.Helper()
 	require.Never(t, func() bool {
-		if len(listParentInstances(t, bpmnProcessId)) > maxCount {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		page, err := app.restClient.GetProcessInstancesWithResponse(ctx, &zenclient.GetProcessInstancesParams{
+			BpmnProcessId: &bpmnProcessId,
+		})
+		if err != nil || page == nil || page.JSON200 == nil {
+			return false
+		}
+		count := 0
+		for _, p := range page.JSON200.Partitions {
+			count += len(p.Items)
+		}
+		if count > maxCount {
 			return true
 		}
-		triggered, err := store.FindProcessDefinitionTimers(t.Context(), definitionKey, bpmnruntime.TimerStateTriggered)
+		triggered, err := store.FindProcessDefinitionTimers(ctx, definitionKey, bpmnruntime.TimerStateTriggered)
 		if err != nil {
 			return false
 		}

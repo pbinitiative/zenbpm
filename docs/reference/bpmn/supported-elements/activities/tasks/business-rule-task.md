@@ -2,49 +2,75 @@
 sidebar_position: 30
 ---
 
-# Business Rule Task
+# Business rule task
 
-A Business Rule Task is a BPMN flow element that provides a mechanism for invoking business rules. It allows processes to delegate complex decision logic to rule engines, enabling dynamic and maintainable business logic execution.
+A Business Rule Task evaluates a business decision and makes the result available to the process. It delegates decision logic — eligibility checks, scoring, pricing — to a rule engine instead of hard-coding it into the process flow.
 
-## Key characteristics
-- Rule engine integration:
-	Business Rule Tasks invoke a business rule decision, which may be implemented using external or embedded rule engines or decision services to evaluate business rules against provided data.
+<img src={require('!url-loader!../../../../assets/bpmn/activities/business-rule-task.svg').default} alt="Business rule task" width="110" height="90" />
 
-- Input and output parameters:
-	Tasks can receive input data from the process and return decision results back to the process instance.
+Rendered as a rounded rectangle with a table icon in the top-left corner.
 
-- Decision automation:
-	Enables automated decision-making based on predefined business rules, reducing manual intervention and ensuring consistency.
+## Use cases
 
-- Rule versioning and management:
-	Supports integration with rule management systems for versioning, testing, and deployment of business rules.
+- **Scoring** — calculate a credit or risk score before approving an order, claim, or loan.
+- **Eligibility checks** — decide whether a customer qualifies for a discount or a claim can be settled automatically.
+- **Dynamic calculations** — derive prices, fees, or routing priorities from decision tables instead of hard-coded process logic.
 
-- Error handling:
-	Errors during rule evaluation can be handled using BPMN error or escalation boundary events when the evaluation fails or returns unexpected results.
+## Usage in BPMN
 
-## Usage patterns
-- **Decision automation**
-	Use when complex business logic needs to be evaluated automatically, such as credit scoring, eligibility checks, or policy enforcement.
+The implementation type is selected by the extension element present on the task: `zenbpm:calledDecision` evaluates a deployed DMN decision with the internal [DMN engine](../../../../dmn/dmn-engine.md), while `zenbpm:taskDefinition` delegates the decision to an external [job worker](#job-based).
 
-- **Rule-based routing**
-	Combine with gateways to route process flows based on rule evaluation results.
+### Called decision
 
-- **Dynamic calculations**
-	Apply business rules for pricing, risk assessment, or other computational decisions.
+To evaluate a decision internally, reference a deployed DMN decision in a `zenbpm:calledDecision` extension element. Optionally, control the data that flows into and out of the task with a `zenbpm:ioMapping`.
 
-## Graphical notation
+| Extension element                    | Attribute          | Required | Description                                                                                                                          |
+| ------------------------------------ | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `zenbpm:calledDecision`              | `decisionId`       | yes      | Id of the deployed DMN decision to evaluate. Can be prefixed with the DMN resource id (`myDrd.myDecision`) to disambiguate decisions with the same id. |
+| `zenbpm:calledDecision`              | `resultVariable`   | yes      | Name of the local variable that receives the decision output.                                                                          |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, used as the decision input context. See [Variables](../../../variables.md).        |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the decision result back to the process scope. See [Variables](../../../variables.md).                                            |
 
-A rounded rectangle with the business rule marker (grid icon) in the top-left corner.
+Execution flow:
 
-<img src={require('!url-loader!../../../../assets/bpmn/activities/business-rule-task.svg').default} alt="Business rule task usage example" width="110" height="90" />
+1. A token arrives at the Business Rule Task and input mappings are evaluated into the task's local scope.
+2. The internal DMN engine looks up the latest deployed version of the decision with the configured `decisionId` and evaluates it with the local variables as input.
+3. The decision output is stored in the local variable named by `resultVariable`.
+4. Output mappings are applied and the token moves on. **Without output mappings, the decision result is not propagated to the process scope** — map the result variable to keep it.
+5. If the decision cannot be found or evaluation fails, the task fails.
 
-## XML Definition
+:::note[Not yet supported]
+The latest deployed version of the decision is always evaluated — pinning a specific version via the `bindingType` and `versionTag` attributes is not yet supported.
+:::
+
+### Job-based
+
+With a `zenbpm:taskDefinition` extension element the decision is evaluated by an external job worker instead of the internal DMN engine. The task is configured and executed exactly like a [Service task](./service-task.md) — see the [Service task usage](./service-task.md#usage-in-bpmn) for the configuration and XML example.
+
+## Related documentation
+
+- [DMN engine](../../../../dmn/dmn-engine.md) — how decisions are deployed and evaluated by the internal engine.
+- [DMN supported elements](../../../../dmn/supported-elements/index.md) — decision tables, literal expressions, and other DMN elements a called decision can use.
+- [Variables](../../../variables.md) — variable scoping and output mapping propagation rules for activities.
+- [Jobs](../../../../jobs.md) — how jobs for the job-based implementation are created, distributed, and completed.
+- [Implement a job worker](../../../../../how-to/implement-job-worker.md) — build the application that evaluates job-based decisions.
+- [Error boundary event](../../events/boundary-events/error-boundary-event.md) — routing the process when the decision evaluation fails.
+- [Multi-instance activity](../activity-multi-instance.md) — evaluating the decision once per element of a collection.
+
+## XML example
+
+A Business Rule Task that evaluates the decision `can_auto_liquidate` with the internal DMN engine. The input mapping provides the claim amount as decision input, the result is stored in `autoLiquidation`, and the output mapping propagates it to the process variable `claimDecision`.
+
 ```xml
-<bpmn:businessRuleTask id="BusinessRuleTask_1" name="Evaluate Credit Score">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:businessRuleTask id="Activity_CheckClaim" name="Check auto-liquidation">
+  <bpmn:extensionElements>
+    <zenbpm:calledDecision decisionId="can_auto_liquidate" resultVariable="autoLiquidation" />
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=claim.amount" target="amountOfDamage" />
+      <zenbpm:output source="=autoLiquidation" target="claimDecision" />
+    </zenbpm:ioMapping>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:businessRuleTask>
 ```
-
-## Current Implementation
-Supported through internal [dmn engine](/reference/dmn/dmn-engine).

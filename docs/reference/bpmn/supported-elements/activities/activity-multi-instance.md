@@ -63,7 +63,7 @@ When a Parallel Multi Instance is triggered:
 - All the required activity instances are created.
 - Activity instance are executed in parallel.
 
-The child process for Multi Instance is started on the same [partition](/reference/cluster) as the parent process that
+The child process for Multi Instance is started on the same [partition](../../../cluster.md) as the parent process that
 invoked it.
 
 In case of **Parallel** Multi Instance the behavior is the same expect the instances are all started at the start of the

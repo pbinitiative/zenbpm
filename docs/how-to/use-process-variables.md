@@ -90,7 +90,7 @@ Variables can be referenced in FEEL expressions (e.g. on Exclusive Gateway condi
 = amount > 1000 and currency = "CZK"
 ```
 
-See the [Script Engine reference](/reference/script-engine) for supported FEEL syntax.
+See the [Script Engine reference](../reference/script-engine.md) for supported FEEL syntax.
 
 ## Best Practices
 

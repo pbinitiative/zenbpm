@@ -4,33 +4,40 @@ sidebar_position: 40
 
 # Send task
 
-A Send Task is a BPMN flow element that sends a defined message and immediately continues execution without waiting for a response. It is functionally equivalent to a Message Intermediate Throw Event but modelled as a task shape.
+A Send Task sends a message to an external recipient and immediately continues execution without waiting for a response. In ZenBPM the actual sending is performed by a job worker — the task creates a **job** and the worker delivers the message (e-mail, message queue, API call, or a message correlated to another process).
 
-## Key characteristics
-- Fire-and-forget messaging:
-	A Send Task sends the message and moves on immediately — it does not block the token waiting for a reply.
+<img src={require('!url-loader!../../../../assets/bpmn/activities/send-task.svg').default} alt="Send task" width="110" height="90" />
 
-- Can have incoming and outgoing sequence flows:
-	Send Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing.
+Rendered as a rounded rectangle with a filled envelope icon in the top-left corner.
 
-- Message correlation:
-	The message sent can trigger a Message Start Event or be correlated to a waiting Message Catch Event or Receive Task in another process.
+## Use cases
 
-## Graphical notation
+- **Notify a customer** — send an order confirmation e-mail or SMS and continue the process without waiting for a reply.
+- **Publish an event** — push a message to a message broker so downstream systems learn about a process milestone.
+- **Message another process** — send a message that is correlated to a message start or catch event in a different process.
 
-A rounded rectangle with a filled envelope icon in the top-left corner.
+## Usage in BPMN
 
-<img src={require('!url-loader!../../../../assets/bpmn/activities/send-task.svg').default} alt="Send Task" width="110" height="90" />
+A Send Task is configured and executed exactly like a [Service task](./service-task.md): define the job type in `zenbpm:taskDefinition` and optionally map variables with `zenbpm:ioMapping`. See the [Service task usage](./service-task.md#usage-in-bpmn) for details.
 
-## XML Definition
+## Related documentation
+
+- [Service task](./service-task.md) — full configuration and execution details for job-based tasks: `zenbpm:taskDefinition`, variable mappings, and job handling.
+
+## XML example
+
+A Send Task that creates a job of type `send-email`. The input mappings give the worker the recipient address and the order it should reference in the message.
+
 ```xml
-<bpmn:sendTask id="SendTask_1" name="Send order confirmation" messageRef="Message_OrderConfirmation">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:sendTask id="Activity_SendConfirmation" name="Send order confirmation">
+  <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="send-email" />
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=customer.email" target="recipient" />
+      <zenbpm:input source="=order.id" target="orderId" />
+    </zenbpm:ioMapping>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:sendTask>
-
-<bpmn:message id="Message_OrderConfirmation" name="OrderConfirmation" />
 ```
-
-## Current Implementation
-Supported.

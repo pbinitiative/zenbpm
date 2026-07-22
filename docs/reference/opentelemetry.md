@@ -6,7 +6,7 @@ sidebar_position: 110
 
 ## Traces
 We provide a tracing implementation as a means to gain view into the system performance and bottlenecks.
-You can configure the collectors through [application configuration](/reference/configuration#tracing-configuration-tracing)
+You can configure the collectors through [application configuration](./configuration.md#tracing-configuration-tracing)
 :::note[Future plans]
 You can specify the custom headers that you want to transfer through the application.
 :::

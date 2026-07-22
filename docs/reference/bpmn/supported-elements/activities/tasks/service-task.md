@@ -4,59 +4,62 @@ sidebar_position: 10
 
 # Service task
 
-A Service Task is a BPMN flow element that represents work performed automatically by a system, without human involvement. It automates process steps by invoking external services, APIs, or backend systems.
+A Service Task represents work performed automatically by a system, without human involvement. In ZenBPM a Service Task does not call the external system itself — when a token reaches the task, the engine creates a **job** and waits. A job worker (your application) picks the job up, executes the business logic, and completes it, after which the token continues along the outgoing sequence flow.
 
-## Key characteristics
-- Automated execution:
-	A Service Task executes automatically without requiring human interaction. It invokes an external service and waits for the result.
+<img src={require('!url-loader!../../../../assets/bpmn/activities/service-task.svg').default} alt="Service task" width="110" height="90" />
 
-- Can have incoming and outgoing sequence flows:
-	Service Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing based on service outcomes.
+Rendered as a rounded rectangle with a gear icon in the top-left corner.
 
-- Input and output parameters:
-	Service Tasks can receive data from the process and return data back to continue execution with service-provided information.
+## Use cases
 
-- Implementation types:
-	Service Tasks can invoke different types of implementations (HTTP calls, web services, scripts, etc.) based on configuration.
+- **Call an external system** — charge a credit card through a payment gateway, send a request to a shipping provider, or query a customer record from a CRM.
+- **Run background processing** — generate a PDF invoice, resize an image, or transform a dataset as part of the process.
+- **Update another system of record** — write the process result to an ERP, a database, or a legacy application so downstream systems stay in sync.
 
-- Error handling:
-	Service Tasks support error handling through boundary events and fault responses when service calls fail.
+## Usage in BPMN
 
-- Types of service task handling:
-	- **HTTP/REST invocation:**
-		Calls external REST APIs or HTTP endpoints. Sends request data and processes the response to continue execution.
+To make a Service Task executable, define the job type in a `zenbpm:taskDefinition` extension element. Optionally, control the data that flows into and out of the task with a `zenbpm:ioMapping`.
 
-	- **SOAP web service:**
-		Invokes SOAP-based web services with XML payloads. Suitable for enterprise system integration.
+| Extension element                    | Attribute          | Required | Description                                                                                                                                                                               |
+| ------------------------------------ | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zenbpm:taskDefinition`              | `type`             | yes      | The job type. The engine creates a job of this type when the task is activated; workers subscribe to this type to receive the job.                                                        |
+| `zenbpm:ioMapping` → `zenbpm:input`  | `source`, `target` | no       | Maps process variables into the task's local scope, visible to the job worker. See [Variables](../../../variables.md). |
+| `zenbpm:ioMapping` → `zenbpm:output` | `source`, `target` | no       | Maps the job's result variables back to the process scope. See [Variables](../../../variables.md).                     |
 
-	- **Message-based:**
-		Sends a message to an external system and waits for a correlated response or acknowledgment.
+Execution flow:
 
-	- **Script execution:**
-		Executes server-side scripts or expressions to perform calculations, data transformations, or business logic.
+1. A token arrives at the Service Task and the engine creates a job with the configured `type`, carrying the task's variables.
+2. A worker activates the job via the REST or gRPC API (or an internal task handler registered on the engine), performs the work, and completes or fails it.
+3. On completion, output mappings are applied and the token moves on. **Without output mappings, no variables returned by the worker are propagated to the process scope** — define an output mapping for every value you want to keep.
+4. On failure, an incident is created; the failure can be handled with an error boundary event.
 
-	- **Database operations:**
-		Executes database queries, updates, or stored procedures to interact with data systems.
+:::note[Not yet supported]
+The `retries` attribute of `zenbpm:taskDefinition` and task headers are parsed but not yet applied by the engine.
+:::
 
-	- **External worker pattern:**
-		Delegates work to external worker applications that subscribe to task types and handle execution asynchronously.
+## Related documentation
 
-	- **System integration:**
-		Integrates with third-party systems, microservices, or legacy systems through adapters or connectors.
+- [Jobs](../../../../jobs.md) — how jobs are created, distributed, and completed over the REST and gRPC APIs.
+- [Implement a job worker](../../../../../how-to/implement-job-worker.md) — build the application that executes Service Task jobs.
+- [Variables](../../../variables.md) — variable scoping and output mapping propagation rules for activities.
+- [Handle errors](../../../../../how-to/handle-errors.md) — failing jobs, incidents, and recovering from errors.
+- [Error boundary event](../../events/boundary-events/error-boundary-event.md) — routing the process when a job throws a BPMN error.
+- [Multi-instance activity](../activity-multi-instance.md) — running a Service Task once per element of a collection.
 
-## Graphical notation
+## XML example
 
-A rectangle with a gear icon in the top-left corner.
+A Service Task that creates a job of type `charge-card`. The input mapping passes the order total to the worker as `amount`; the output mapping stores the worker's `transactionId` result in the process variable `paymentTransactionId`.
 
-<img src={require('!url-loader!../../../../assets/bpmn/activities/service-task.svg').default} alt="Service task usage example" width="110" height="90" />
-
-## XML Definition
 ```xml
-<bpmn:serviceTask id="ServiceTask_1" name="Process Payment">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:serviceTask id="Activity_ChargeCard" name="Charge credit card">
+  <bpmn:extensionElements>
+    <zenbpm:taskDefinition type="charge-card" />
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=order.totalAmount" target="amount" />
+      <zenbpm:output source="=transactionId" target="paymentTransactionId" />
+    </zenbpm:ioMapping>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:serviceTask>
 ```
-
-## Current Implementation
-Service task is fully supported.

@@ -51,14 +51,9 @@ Green icons are supported and link to their documentation.
       <td><a href="./receive-task"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive Task" height="70" /></a></td>
       <td>Pauses the process and waits until a specific named message is received, then continues execution.</td>
     </tr>
-    <tr>
-      <td><a href="./script-task">Script task</a></td>
-      <td><a href="./script-task"><img className="bpmn-supported" src={require('!url-loader!../../../../assets/bpmn/activities/script-task.svg').default} alt="Script Task" height="70" /></a></td>
-      <td>Executes a script within the process flow, allowing custom logic, calculations, data transformations, and integrations.</td>
-    </tr>
   </tbody>
 </table>
 
 :::note[Not yet supported]
-Manual task
+Script task, Manual task
 :::

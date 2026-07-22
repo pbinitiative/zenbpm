@@ -4,53 +4,47 @@ sidebar_position: 20
 
 # User task
 
-A User Task is a BPMN flow element that represents work performed by a human. It suspends process execution until a user completes the task and provides input or makes a decision.
+A User Task represents work performed by a human. The process pauses at the task until a person completes the work and submits a result — typically through a task list or form application built on top of the ZenBPM API. Internally the task creates a **job** that the application completes on the user's behalf.
 
-## Key characteristics
-- Requires human intervention:
-	a User Task pauses the process instance and waits for a human to complete the work and submit a response.
+<img src={require('!url-loader!../../../../assets/bpmn/activities/user-task.svg').default} alt="User task" width="110" height="90" />
 
-- Can have incoming and outgoing sequence flows:
-	User Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing based on task outcomes.
+Rendered as a rounded rectangle with a person icon in the top-left corner.
 
-- Input and output parameters:
-	User Tasks can receive data from the process and return data back to continue execution with user-provided information.
+## Use cases
 
-- Assignment rules:
-	tasks can be assigned to specific users, groups, or dynamically based on process variables and expressions.
+- **Approvals** — a manager approves an order, invoice, or leave request before the process continues.
+- **Manual data entry** — a user fills in a form to supply data the process cannot obtain automatically.
+- **Exception review** — a case flagged by automated checks is reviewed by a human before processing resumes.
 
-- Types of user task handling:
-	- **Simple assignment:**
-		task is assigned to a single user or group. The assigned user must claim and complete the task.
+## Usage in BPMN
 
-	- **Pool-based assignment:**
-		task is assigned to a pool of candidates (e.g., all users in a department). Any member can claim and complete it.
+A User Task always creates a job of the fixed type `user-task-type` — unlike a [Service task](./service-task.md), no `zenbpm:taskDefinition` is needed. Variable mappings with `zenbpm:ioMapping` work exactly as for a [Service task](./service-task.md#usage-in-bpmn).
 
-	- **Dynamic assignment:**
-		task assignment is determined at runtime based on process variables, expressions, or business rules.
+The task can be routed to its performer with a `zenbpm:assignmentDefinition` extension element:
 
-	- **Escalation:**
-		if a User Task is not completed within a specified time, it can be escalated to a manager or supervisor.
+| Attribute         | Required | Description                                                     |
+| ----------------- | -------- | --------------------------------------------------------------- |
+| `assignee`        | no       | The user the task is assigned to.                               |
+| `candidateGroups` | no       | Comma-separated list of groups whose members can claim the task. |
 
-	- **Delegation:**
-		the assigned user can delegate the task to another user while maintaining audit trail and original assignment context.
+## Related documentation
 
-	- **Priority-based:**
-		user asks can have priority levels (low, medium, high, critical) to help users prioritize their work queue.
+- [Service task](./service-task.md) — full configuration and execution details for job-based tasks: `zenbpm:taskDefinition`, variable mappings, and job handling.
 
-## Graphical notation
+## XML example
 
-A rectangle with a person icon in the top-left corner.
+A User Task assigned to `jane.doe`, claimable by the `sales` and `support` groups. The input mapping exposes the order total to the form; the output mapping stores the user's decision in the process variable `orderApproved`.
 
-<img src={require('!url-loader!../../../../assets/bpmn/activities/user-task.svg').default} alt="User task usage example" width="110" height="90" />
-
-## XML Definition
 ```xml
-<bpmn:userTask id="UserTask_1" name="Approve Request">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:userTask id="Activity_ApproveOrder" name="Approve order">
+  <bpmn:extensionElements>
+    <zenbpm:assignmentDefinition assignee="jane.doe" candidateGroups="sales, support" />
+    <zenbpm:ioMapping>
+      <zenbpm:input source="=order.total" target="orderTotal" />
+      <zenbpm:output source="=approved" target="orderApproved" />
+    </zenbpm:ioMapping>
+  </bpmn:extensionElements>
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:userTask>
 ```
-
-## Current Implementation
-User task is fully supported.

@@ -37,7 +37,7 @@ When a Call Activity is triggered:
 - The new instance is linked to its parent process instance.
 - The child process runs in its own isolated scope.
 
-The called process for Call Activity is started on the same [partition](/reference/cluster) as the parent process that invoked it.
+The called process for Call Activity is started on the same [partition](../../../cluster.md) as the parent process that invoked it.
 
 #### Variable handling
 By default, no variables are inherited from the parent process instance.

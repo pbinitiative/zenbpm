@@ -4,33 +4,39 @@ sidebar_position: 50
 
 # Receive task
 
-A Receive Task is a BPMN flow element that pauses the process and waits until a specific named message is received, then continues execution. It is functionally equivalent to a Message Intermediate Catch Event but modelled as a task shape.
+A Receive Task pauses the process and waits until a specific message is received, then continues execution. It behaves like a [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) modelled as a task shape, which allows attaching boundary events and multi-instance markers.
 
-## Key characteristics
-- Blocking wait for a message:
-	A Receive Task blocks the token until the matching message arrives.
+<img src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive task" width="110" height="90" />
 
-- Can have incoming and outgoing sequence flows:
-	Receive Tasks connect to other flow elements via sequence flows, allowing complex workflows with conditional routing.
+Rendered as a rounded rectangle with an unfilled envelope icon in the top-left corner.
 
-- Message correlation:
-	The expected message is correlated by name and an optional correlation key, so the correct waiting instance receives it.
+## Use cases
 
-## Graphical notation
+- **Wait for confirmation** — pause the order process until a payment confirmation arrives from the payment provider.
+- **Request–response between processes** — wait for the reply message of a request previously sent by a [Send task](./send-task.md).
+- **External callbacks** — hold the process until an external system reports back, such as a shipment-delivered notification.
 
-A rounded rectangle with an outline envelope icon in the top-left corner.
+## Usage in BPMN
 
-<img src={require('!url-loader!../../../../assets/bpmn/activities/receive-task.svg').default} alt="Receive Task" width="110" height="90" />
+A Receive Task references a message definition via its `messageRef` attribute; the message is correlated to a waiting instance exactly like a [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) — see that page for message definitions, subscriptions, and correlation keys. Additionally, with `instantiate="true"` the Receive Task can start a new process instance when the message arrives, like a message start event.
 
-## XML Definition
+## Related documentation
+
+- [Message intermediate catch event](../../events/intermediate-events/message-catch-event.md) — a Receive Task receives messages in nearly the same way as this event, so everything about defining messages, subscribing to them, and correlating them to a waiting process instance is documented there and applies here as well.
+
+## XML example
+
+A Receive Task that waits for the `OrderPaid` message, correlated to the process instance by the order id:
+
 ```xml
-<bpmn:receiveTask id="ReceiveTask_1" name="Wait for payment confirmation" messageRef="Message_PaymentConfirmed">
-  <bpmn:incoming>Flow1</bpmn:incoming>
-  <bpmn:outgoing>Flow2</bpmn:outgoing>
+<bpmn:receiveTask id="Activity_WaitForPayment" name="Wait for payment" messageRef="Message_OrderPaid">
+  <bpmn:incoming>Flow_In</bpmn:incoming>
+  <bpmn:outgoing>Flow_Out</bpmn:outgoing>
 </bpmn:receiveTask>
 
-<bpmn:message id="Message_PaymentConfirmed" name="PaymentConfirmed" />
+<bpmn:message id="Message_OrderPaid" name="OrderPaid">
+  <bpmn:extensionElements>
+    <zenbpm:subscription correlationKey="=order.id" />
+  </bpmn:extensionElements>
+</bpmn:message>
 ```
-
-## Current Implementation
-Supported.

@@ -17,7 +17,7 @@ When a Sub Process is triggered:
 - The new instance is linked to its parent process instance and uses the subprocess part of the parent's process definition.
 - The child process runs in its own isolated scope.
 
-The child process for Sub Process is started on the same [partition](/reference/cluster) as the parent process.
+The child process for Sub Process is started on the same [partition](../../../../cluster.md) as the parent process.
 
 #### Variable handling
 By default, no variables are inherited from the parent process instance.
